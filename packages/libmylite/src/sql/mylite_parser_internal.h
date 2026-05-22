@@ -1757,6 +1757,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
     struct mylite_sql_token comment_token,
     struct mylite_sql_ast_node *comment
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_generated_column_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token as_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren_token,
+    struct mylite_sql_ast_node *storage
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_generated_column_storage(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_node_kind kind
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,

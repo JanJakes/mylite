@@ -6327,6 +6327,9 @@ column_attribute(A) ::= COMMENT(C) STRING(V). {
         C,
         mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
 }
+column_attribute(A) ::= generated_column_clause(B). {
+    A = B;
+}
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_inline_primary_key(state, P, K);
 }
@@ -6349,6 +6352,30 @@ column_attribute(A) ::= ENFORCED(E). {
 column_attribute(A) ::= NOT(N) ENFORCED. {
     A = mylite_sql_parser_make_check_enforcement(
         state, N, MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED);
+}
+
+generated_column_clause(A) ::=
+    generated_always_opt AS(T) LPAREN expression(E) RPAREN(R) generated_storage_opt(S). {
+    A = mylite_sql_parser_make_generated_column_clause(state, T, E, R, S);
+}
+
+generated_always_opt ::= .
+generated_always_opt ::= GENERATED ALWAYS.
+
+generated_storage_opt(A) ::= . {
+    A = NULL;
+}
+generated_storage_opt(A) ::= VIRTUAL(T). {
+    A = mylite_sql_parser_make_generated_column_storage(
+        state,
+        T,
+        MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL);
+}
+generated_storage_opt(A) ::= STORED(T). {
+    A = mylite_sql_parser_make_generated_column_storage(
+        state,
+        T,
+        MYLITE_SQL_AST_GENERATED_COLUMN_STORED);
 }
 
 column_type(A) ::= integer_type(T). {

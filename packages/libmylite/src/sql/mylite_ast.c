@@ -1086,6 +1086,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_charset_attribute";
     case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
         return "column_collation_attribute";
+    case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
+        return "generated_column_clause";
+    case MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL:
+        return "generated_column_virtual";
+    case MYLITE_SQL_AST_GENERATED_COLUMN_STORED:
+        return "generated_column_stored";
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
         return "table_auto_increment_option";
     case MYLITE_SQL_AST_NULLABILITY:

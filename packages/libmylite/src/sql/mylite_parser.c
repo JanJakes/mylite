@@ -37,6 +37,7 @@ struct column_attribute_positions {
     size_t primary_key;
     size_t unique_key;
     size_t auto_increment;
+    size_t generated;
 };
 
 static bool map_lexer_token(
@@ -6035,6 +6036,39 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_generated_column_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token as_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren_token,
+    struct mylite_sql_ast_node *storage
+) {
+    struct mylite_sql_source_span span = span_from_token(&as_token);
+    struct mylite_sql_ast_node *clause = NULL;
+
+    span = span_join(span, span_from_token(&right_paren_token));
+    if (storage != NULL) {
+        span = span_join(span, storage->span);
+    }
+
+    clause = make_node(state, MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE, span);
+    if (clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(clause, expression);
+    mylite_sql_ast_node_append_child(clause, storage);
+    return clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_generated_column_storage(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_node_kind kind
+) {
+    return make_node(state, kind, span_from_token(&token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
@@ -6137,6 +6171,7 @@ static int scan_column_attribute_positions(
         .primary_key = (size_t)-1,
         .unique_key = (size_t)-1,
         .auto_increment = (size_t)-1,
+        .generated = (size_t)-1,
     };
 
     attribute = attributes == NULL ? NULL : attributes->first_child;
@@ -6168,6 +6203,9 @@ static int scan_column_attribute_positions(
             break;
         case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
             rc = record_column_attribute_position(state, &out_positions->auto_increment, position);
+            break;
+        case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
+            rc = record_column_attribute_position(state, &out_positions->generated, position);
             break;
         default:
             break;
@@ -6210,6 +6248,21 @@ static int validate_legacy_column_attribute_order(
     if (column_attribute_position_is_set(positions->charset) &&
         column_attribute_position_is_set(positions->collation) &&
         positions->charset > positions->collation) {
+        invalid_order = true;
+    }
+    if (column_attribute_position_is_set(positions->generated) &&
+        ((column_attribute_position_is_set(positions->nullability) &&
+          positions->nullability < positions->generated) ||
+         (column_attribute_position_is_set(positions->default_value) &&
+          positions->default_value < positions->generated) ||
+         (column_attribute_position_is_set(positions->primary_key) &&
+          positions->primary_key < positions->generated) ||
+         (column_attribute_position_is_set(positions->unique_key) &&
+          positions->unique_key < positions->generated) ||
+         (column_attribute_position_is_set(positions->auto_increment) &&
+          positions->auto_increment < positions->generated) ||
+         (column_attribute_position_is_set(positions->comment) &&
+          positions->comment < positions->generated))) {
         invalid_order = true;
     }
     if (legacy_column_attribute_precedes_charset_collation(positions, charset_collation_limit)) {
@@ -7087,6 +7140,10 @@ static bool map_keyword_token(
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
+        {"GENERATED", MYLITE_SQL_PARSE_GENERATED},
+        {"ALWAYS", MYLITE_SQL_PARSE_ALWAYS},
+        {"VIRTUAL", MYLITE_SQL_PARSE_VIRTUAL},
+        {"STORED", MYLITE_SQL_PARSE_STORED},
         {"IF", MYLITE_SQL_PARSE_IF},
         {"IFNULL", MYLITE_SQL_PARSE_IFNULL},
         {"COALESCE", MYLITE_SQL_PARSE_COALESCE},

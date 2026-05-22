@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 29
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 29
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 30
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 30
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -38,6 +38,7 @@ enum {
                                               MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
                                              1,
     MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY = 4096,
+    MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY = 4096,
 };
 
 #define MYLITE_CATALOG_DEFAULT_TABLE_CHARSET "utf8mb4"
@@ -62,6 +63,12 @@ enum mylite_catalog_column_default_kind {
     MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME = 9,
     MYLITE_CATALOG_COLUMN_DEFAULT_BINARY = 10,
     MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION = 11,
+};
+
+enum mylite_catalog_generated_column_kind {
+    MYLITE_CATALOG_GENERATED_COLUMN_INVALID = 0,
+    MYLITE_CATALOG_GENERATED_COLUMN_VIRTUAL = 1,
+    MYLITE_CATALOG_GENERATED_COLUMN_STORED = 2,
 };
 
 enum mylite_catalog_index_kind {
@@ -133,6 +140,10 @@ struct mylite_catalog_column_descriptor {
     char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char comment[MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY];
+    bool is_generated;
+    enum mylite_catalog_generated_column_kind generated_kind;
+    char generation_expression[MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY];
+    char sqlite_generation_expression[MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -326,6 +337,10 @@ int mylite_catalog_insert_column_in_mutation(
     const char *character_set_name,
     const char *collation_name,
     const char *comment,
+    bool is_generated,
+    enum mylite_catalog_generated_column_kind generated_kind,
+    const char *generation_expression,
+    const char *sqlite_generation_expression,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_insert_index_in_mutation(
@@ -493,7 +508,11 @@ int mylite_catalog_replace_column_in_mutation(
     bool on_update_current_timestamp,
     const char *character_set_name,
     const char *collation_name,
-    const char *comment
+    const char *comment,
+    bool is_generated,
+    enum mylite_catalog_generated_column_kind generated_kind,
+    const char *generation_expression,
+    const char *sqlite_generation_expression
 );
 
 struct mylite_catalog_column_reorder {
@@ -712,6 +731,10 @@ int mylite_catalog_create_column(
     const char *character_set_name,
     const char *collation_name,
     const char *comment,
+    bool is_generated,
+    enum mylite_catalog_generated_column_kind generated_kind,
+    const char *generation_expression,
+    const char *sqlite_generation_expression,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_read_column_by_name(

@@ -131,6 +131,7 @@ enum {
     mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
+    mysql_error_generated_column_value = 3105,
     mysql_error_default_val_generated = 3773,
     mysql_error_database_does_not_exist = 3503,
     mysql_error_primary_key_index_invisible = 3522,
@@ -395,6 +396,7 @@ enum {
     information_schema_columns_column_key_column = 16,
     information_schema_columns_extra_column = 17,
     information_schema_columns_column_comment_column = 19,
+    information_schema_columns_generation_expression_column = 20,
     show_processlist_info_truncation_length = 100,
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
@@ -1628,6 +1630,11 @@ struct planned_column {
     char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char comment[MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY];
+    bool is_generated;
+    enum mylite_catalog_generated_column_kind generated_kind;
+    const struct mylite_sql_ast_node *generation_expression_node;
+    char generation_expression[MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY];
+    char sqlite_generation_expression[MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY];
 };
 
 struct planned_secondary_index_part {
@@ -1719,6 +1726,19 @@ struct check_expression_render_work_item {
     enum mylite_sql_ast_operator operator_kind;
 };
 
+enum generated_expression_render_work_item_kind {
+    GENERATED_EXPRESSION_RENDER_NODE = 0,
+    GENERATED_EXPRESSION_RENDER_TEXT = 1,
+    GENERATED_EXPRESSION_RENDER_CHAR = 2,
+};
+
+struct generated_expression_render_work_item {
+    enum generated_expression_render_work_item_kind kind;
+    const struct mylite_sql_ast_node *node;
+    const char *text;
+    char character;
+};
+
 struct check_expression_render_context {
     struct mylite_db *database;
     const struct planned_create_table *plan;
@@ -1726,6 +1746,14 @@ struct check_expression_render_context {
     size_t inline_column_index;
     const char *alter_check_constraint_name;
     struct dynamic_string *check_clause;
+    struct dynamic_string *sqlite_expression;
+};
+
+struct generated_expression_render_context {
+    struct mylite_db *database;
+    const struct planned_create_table *plan;
+    size_t generated_column_index;
+    struct dynamic_string *generation_expression;
     struct dynamic_string *sqlite_expression;
 };
 
@@ -2317,6 +2345,16 @@ struct integer_column_range {
     uint64_t negative_abs_max;
 };
 
+struct integer_logical_type_range_request {
+    const char *logical_type;
+    const char *unsupported_message;
+};
+
+struct generated_constraint_columns {
+    const struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+};
+
 enum planned_update_assignment_value_kind {
     PLANNED_UPDATE_ASSIGNMENT_VALUE = 0,
     PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC = 1,
@@ -2375,6 +2413,7 @@ struct planned_insert_duplicate_update_assignment {
     const struct mylite_sql_ast_node *assignment_value_node;
     enum planned_insert_duplicate_update_value_kind value_kind;
     size_t values_column_index;
+    bool generated_default_noop;
 };
 
 struct planned_insert_duplicate_update {
@@ -2988,6 +3027,7 @@ struct planned_update_assignment {
     struct mylite_catalog_column_descriptor column;
     const struct mylite_sql_ast_node *value_node;
     struct planned_value value;
+    bool generated_default_noop;
 };
 
 struct planned_update {
@@ -3023,6 +3063,7 @@ struct planned_update {
     size_t primary_key_column_index;
     int64_t primary_key_column_id;
     bool is_joined;
+    bool generated_default_noop;
 };
 
 struct update_unique_key_conflict_bind_request {
@@ -10084,6 +10125,10 @@ static int plan_alter_table_add_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_column *out_plan
 );
+static int reject_unsupported_alter_add_column_planned_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
 static int plan_alter_table_add_column_position(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *position,
@@ -11254,6 +11299,10 @@ static int plan_insert_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_insert_select *out_plan
+);
+static int reject_insert_select_generated_targets(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan
 );
 static enum planned_insert_select_source_kind insert_select_source_kind(
     const struct mylite_sql_ast_node *source_statement
@@ -15542,6 +15591,8 @@ static int plan_joined_update(
 );
 static void planned_update_deinit(struct planned_update *plan);
 static bool planned_update_has_multiple_assignments(const struct planned_update *plan);
+static bool planned_update_assignment_is_noop(const struct planned_update_assignment *assignment);
+static size_t planned_update_executable_assignment_count(const struct planned_update *plan);
 static int copy_update_assignments_for_execution(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -16058,6 +16109,82 @@ static int render_check_constraint_expression(
     char *sqlite_expression,
     size_t sqlite_expression_size
 );
+static int finalize_planned_generated_columns(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+);
+static int finalize_planned_generated_column(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t column_index
+);
+static int render_generated_column_expression(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    size_t generated_column_index,
+    const struct mylite_sql_ast_node *expression,
+    char *generation_expression,
+    size_t generation_expression_size,
+    char *sqlite_expression,
+    size_t sqlite_expression_size
+);
+static int render_generated_expression_node(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+);
+static int render_generated_expression_work_item(
+    struct generated_expression_render_context *context,
+    struct generated_expression_render_work_item item,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count
+);
+static int render_generated_expression_column(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+);
+static int render_generated_expression_literal(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+);
+static int render_generated_expression_unary(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count
+);
+static int render_generated_expression_binary(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count
+);
+static const char *generated_expression_binary_operator_text(
+    enum mylite_sql_ast_operator operator_kind
+);
+static int append_generated_expression_render_node(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    const struct mylite_sql_ast_node *node
+);
+static int append_generated_expression_render_text(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    const char *text
+);
+static int append_generated_expression_render_char(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    char character
+);
+static int append_generated_expression_render_work_item(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    struct generated_expression_render_work_item item
+);
 static int render_check_expression_node(
     struct check_expression_render_context *context,
     const struct mylite_sql_ast_node *node,
@@ -16497,6 +16624,24 @@ static int validate_column_attributes(
     const struct mylite_sql_ast_node *column_node,
     const struct planned_column *column
 );
+static bool column_attribute_counts_have_duplicates(
+    size_t nullability_count,
+    size_t default_count,
+    size_t primary_key_count,
+    size_t auto_increment_count,
+    size_t on_update_count,
+    size_t charset_count,
+    size_t collation_count,
+    size_t generated_count
+);
+static int validate_generated_column_attributes(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
+static int validate_non_generated_column_attributes(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
 static int apply_column_charset_collation_attributes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
@@ -16506,6 +16651,14 @@ static int apply_column_comment_attributes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *column
+);
+static int apply_column_generated_attribute(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+);
+static enum mylite_catalog_generated_column_kind generated_column_storage_kind(
+    const struct mylite_sql_ast_node *generated_clause
 );
 static bool column_charset_collation_requests_binary(
     bool has_charset,
@@ -17726,6 +17879,10 @@ static bool insert_duplicate_assignment_targets_column_id(
     const struct planned_insert *plan,
     int64_t column_id
 );
+static bool insert_duplicate_assignment_is_noop(
+    const struct planned_insert_duplicate_update_assignment *assignment
+);
+static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan);
 static int validate_update_string_key_value(
     struct mylite_db *database,
     const struct planned_update *plan
@@ -20177,6 +20334,11 @@ static int integer_range_for_column(
     const char *unsupported_message,
     struct integer_column_range *out_range
 );
+static int integer_range_for_logical_type(
+    struct mylite_db *database,
+    struct integer_logical_type_range_request request,
+    struct integer_column_range *out_range
+);
 static int plan_row_scalar_select_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -22146,6 +22308,19 @@ static int append_create_table_check_constraints_sql(
     struct dynamic_string *string,
     const struct planned_create_table *plan
 );
+static int append_create_table_generated_column_constraints_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan
+);
+static int append_generated_column_range_check_constraint_sql(
+    struct dynamic_string *string,
+    const struct planned_column *column,
+    size_t column_index
+);
+static int append_generated_column_range_check_constraint_name(
+    struct dynamic_string *string,
+    size_t column_index
+);
 static int append_create_table_primary_key_sql(
     struct dynamic_string *string,
     const struct planned_create_table *plan,
@@ -22446,9 +22621,11 @@ static int append_insert_column_names(
     struct dynamic_string *string,
     const struct planned_insert *plan
 );
+static size_t count_physical_insert_columns(const struct planned_insert *plan);
 static int append_insert_parameters(struct dynamic_string *string, size_t column_count);
 static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index);
 static int append_size_literal(struct dynamic_string *string, size_t value);
+static int append_uint64_literal(struct dynamic_string *string, uint64_t value);
 static int build_insert_select_temp_table_name(
     const struct mylite_db *database,
     char *destination,
@@ -23400,6 +23577,12 @@ static int handle_insert_duplicate_key_update(
     size_t row_index,
     struct insert_execution_counters *counters
 );
+static int handle_insert_duplicate_update_constraint(
+    struct mylite_db *database,
+    int sqlite_rc,
+    const struct planned_insert *plan,
+    size_t row_index
+);
 static int handle_replace_unique_key_conflict(
     struct mylite_db *database,
     int sqlite_step_rc,
@@ -23452,9 +23635,31 @@ static int handle_check_constraint_violation(
     bool ignore_errors,
     bool *out_was_check_violation
 );
+static int handle_generated_not_null_violation(
+    struct mylite_db *database,
+    int sqlite_rc,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    bool *out_was_generated_not_null_violation
+);
+static int handle_generated_range_constraint_violation(
+    struct mylite_db *database,
+    struct generated_constraint_columns columns,
+    size_t row_number,
+    bool *out_was_generated_range_violation
+);
 static bool sqlite_error_message_has_check_constraint(
     const char *message,
     const char **out_physical_name
+);
+static bool sqlite_error_message_has_not_null_column(
+    const char *message,
+    const char **out_column_name,
+    size_t *out_column_name_length
+);
+static bool generated_range_constraint_column_index(
+    const char *physical_name,
+    size_t *out_column_index
 );
 static int set_or_warn_check_constraint_violation(
     struct mylite_db *database,
@@ -24472,6 +24677,11 @@ static void set_column_specified_twice_error(struct mylite_db *database, const c
 static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
 static void set_bad_null_error(struct mylite_db *database, const char *column_name);
 static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name);
+static void set_generated_column_value_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *table_name
+);
 static void set_data_truncated_error(
     struct mylite_db *database,
     const char *column_name,
@@ -25200,6 +25410,9 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
     case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
     case MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE:
+    case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
+    case MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL:
+    case MYLITE_SQL_AST_GENERATED_COLUMN_STORED:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -35730,6 +35943,10 @@ static int append_information_schema_columns_base_column_row(
     );
     values[information_schema_columns_extra_column] = extra;
     values[information_schema_columns_column_comment_column] = column->comment;
+    if (column->is_generated) {
+        values[information_schema_columns_generation_expression_column] =
+            column->generation_expression;
+    }
 
     return append_information_schema_row(database, rows, values);
 }
@@ -35742,6 +35959,9 @@ static int column_default_display_text(
     const char **out_default_text
 ) {
     *out_default_text = NULL;
+    if (column->is_generated) {
+        return MYLITE_OK;
+    }
     if (column->is_auto_increment) {
         return MYLITE_OK;
     }
@@ -36029,6 +36249,19 @@ static int append_mysql_escaped_expression_text(struct dynamic_string *string, c
 static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column) {
     bool generated = column_default_is_generated_extra(column);
 
+    if (column->is_generated && column->generated_kind == MYLITE_CATALOG_GENERATED_COLUMN_STORED &&
+        !column->is_visible) {
+        return "STORED GENERATED INVISIBLE";
+    }
+    if (column->is_generated && column->generated_kind == MYLITE_CATALOG_GENERATED_COLUMN_STORED) {
+        return "STORED GENERATED";
+    }
+    if (column->is_generated && !column->is_visible) {
+        return "VIRTUAL GENERATED INVISIBLE";
+    }
+    if (column->is_generated) {
+        return "VIRTUAL GENERATED";
+    }
     if (column->is_auto_increment && !column->is_visible) {
         return "auto_increment INVISIBLE";
     }
@@ -42682,13 +42915,27 @@ static int append_show_create_table_column_definition(
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_column_charset_collation(string, table, column, is_national);
     }
+    if (rc == MYLITE_OK && column->is_generated) {
+        rc = dynamic_string_append(string, " GENERATED ALWAYS AS (");
+    }
+    if (rc == MYLITE_OK && column->is_generated) {
+        rc = dynamic_string_append(string, column->generation_expression);
+    }
+    if (rc == MYLITE_OK && column->is_generated) {
+        rc = dynamic_string_append(
+            string,
+            column->generated_kind == MYLITE_CATALOG_GENERATED_COLUMN_STORED ? ") STORED"
+                                                                             : ") VIRTUAL"
+        );
+    }
     if (rc == MYLITE_OK && !column->is_nullable) {
         rc = dynamic_string_append(string, " NOT NULL");
     }
-    if (rc == MYLITE_OK && column->is_nullable && column_descriptor_is_timestamp(column)) {
+    if (rc == MYLITE_OK && !column->is_generated && column->is_nullable &&
+        column_descriptor_is_timestamp(column)) {
         rc = dynamic_string_append(string, " NULL");
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !column->is_generated) {
         rc = append_show_create_table_column_default(database, string, column);
     }
     if (rc == MYLITE_OK) {
@@ -44243,6 +44490,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
     case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
     case MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE:
+    case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
+    case MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL:
+    case MYLITE_SQL_AST_GENERATED_COLUMN_STORED:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -44692,6 +44942,9 @@ static int plan_create_table_items(
     while (rc == MYLITE_OK && item != NULL) {
         rc = plan_create_table_item(database, item, out_plan, &column_index, &primary_key);
         item = item->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = finalize_planned_generated_columns(database, out_plan);
     }
     if (rc == MYLITE_OK && primary_key != NULL) {
         rc = apply_create_table_primary_key_definition(database, out_plan, primary_key);
@@ -45870,6 +46123,471 @@ static int reject_duplicate_schema_check_constraint_name_callback(
     if (text_equals_ascii_case_insensitive(check_constraint->name, context->name)) {
         context->found = true;
     }
+    return MYLITE_OK;
+}
+
+static int finalize_planned_generated_columns(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        rc = finalize_planned_generated_column(database, plan, column_index);
+    }
+
+    return rc;
+}
+
+static int finalize_planned_generated_column(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t column_index
+) {
+    struct planned_column *column = &plan->columns[column_index];
+
+    if (!column->is_generated) {
+        return MYLITE_OK;
+    }
+    if (column->generated_kind != MYLITE_CATALOG_GENERATED_COLUMN_VIRTUAL &&
+        column->generated_kind != MYLITE_CATALOG_GENERATED_COLUMN_STORED) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (column->physical_type == NULL || strcmp(column->physical_type, "INTEGER") != 0 ||
+        planned_column_is_bit(column) || planned_column_is_year(column)) {
+        set_unsupported_error(
+            database,
+            "generated columns support only baseline integer descriptor target columns"
+        );
+        return MYLITE_ERROR;
+    }
+    {
+        struct integer_column_range range = {0};
+        int rc = integer_range_for_logical_type(
+            database,
+            (struct integer_logical_type_range_request){
+                .logical_type = column->logical_type,
+                .unsupported_message =
+                    "generated columns support only baseline integer descriptor target columns",
+            },
+            &range
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return render_generated_column_expression(
+        database,
+        plan,
+        column_index,
+        column->generation_expression_node,
+        column->generation_expression,
+        sizeof(column->generation_expression),
+        column->sqlite_generation_expression,
+        sizeof(column->sqlite_generation_expression)
+    );
+}
+
+static int render_generated_column_expression(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    size_t generated_column_index,
+    const struct mylite_sql_ast_node *expression,
+    char *generation_expression,
+    size_t generation_expression_size,
+    char *sqlite_expression,
+    size_t sqlite_expression_size
+) {
+    struct dynamic_string generation_string;
+    struct dynamic_string sqlite_string;
+    struct generated_expression_render_context context = {
+        .database = database,
+        .plan = plan,
+        .generated_column_index = generated_column_index,
+        .generation_expression = &generation_string,
+        .sqlite_expression = &sqlite_string,
+    };
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&generation_string);
+    dynamic_string_init(&sqlite_string);
+    rc = dynamic_string_reserve(&generation_string, 1U);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_reserve(&sqlite_string, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = render_generated_expression_node(&context, expression);
+    }
+    if (rc == MYLITE_OK && (generation_string.length >= generation_expression_size ||
+                            sqlite_string.length >= sqlite_expression_size)) {
+        set_unsupported_error(database, "generated column expression is too long");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(generation_expression, generation_string.text, generation_string.length + 1U);
+        memcpy(sqlite_expression, sqlite_string.text, sqlite_string.length + 1U);
+    }
+
+    dynamic_string_deinit(&generation_string);
+    dynamic_string_deinit(&sqlite_string);
+    return rc;
+}
+
+static int render_generated_expression_node(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+) {
+    struct generated_expression_render_work_item *items = NULL;
+    size_t item_count = 0U;
+    int rc = append_generated_expression_render_node(context->database, &items, &item_count, node);
+
+    while (rc == MYLITE_OK && item_count != 0U) {
+        struct generated_expression_render_work_item item = items[--item_count];
+
+        rc = render_generated_expression_work_item(context, item, &items, &item_count);
+    }
+    free(items);
+    return rc;
+}
+
+static int render_generated_expression_work_item(
+    struct generated_expression_render_context *context,
+    struct generated_expression_render_work_item item,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_expression(item.node);
+    int rc = MYLITE_OK;
+
+    switch (item.kind) {
+    case GENERATED_EXPRESSION_RENDER_TEXT:
+        rc = dynamic_string_append(context->generation_expression, item.text);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(context->sqlite_expression, item.text);
+        }
+        return rc;
+    case GENERATED_EXPRESSION_RENDER_CHAR:
+        rc = dynamic_string_append_char(context->generation_expression, item.character);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(context->sqlite_expression, item.character);
+        }
+        return rc;
+    case GENERATED_EXPRESSION_RENDER_NODE:
+        break;
+    }
+
+    if (node == NULL) {
+        set_parse_error(context->database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    switch (node->kind) {
+    case MYLITE_SQL_AST_IDENTIFIER:
+        return render_generated_expression_column(context, node);
+    case MYLITE_SQL_AST_LITERAL:
+        return render_generated_expression_literal(context, node);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return render_generated_expression_unary(context, node, items, item_count);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return render_generated_expression_binary(context, node, items, item_count);
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        context->database,
+        "generated columns support only unqualified integer columns, integer literals, NULL, "
+        "TRUE, FALSE, unary signs, and +, -, * expressions"
+    );
+    return MYLITE_ERROR;
+}
+
+static int render_generated_expression_column(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    const struct planned_column *column = NULL;
+    int rc = copy_identifier_text(node, column_name, sizeof(column_name), context->database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_planned_column_index(
+        context->plan->columns,
+        context->plan->column_count,
+        column_name,
+        &column_index
+    );
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(context->database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (column_index >= context->generated_column_index) {
+        set_unsupported_error(
+            context->database,
+            "generated columns support only references to previously declared base columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    column = &context->plan->columns[column_index];
+    if (column->is_generated || column->physical_type == NULL ||
+        strcmp(column->physical_type, "INTEGER") != 0 || planned_column_is_bit(column) ||
+        planned_column_is_year(column)) {
+        set_unsupported_error(
+            context->database,
+            "generated column expressions support only baseline integer descriptor columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc =
+        dynamic_string_append_mysql_quoted_identifier(context->generation_expression, column->name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(context->sqlite_expression, column->name);
+    }
+    return rc;
+}
+
+static int render_generated_expression_literal(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(node);
+
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        int rc = append_check_expression_span_text(
+            context->database,
+            context->generation_expression,
+            node
+        );
+
+        if (rc == MYLITE_OK) {
+            rc = append_check_expression_span_text(
+                context->database,
+                context->sqlite_expression,
+                node
+            );
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        int rc = dynamic_string_append(context->generation_expression, "TRUE");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(context->sqlite_expression, "1");
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        int rc = dynamic_string_append(context->generation_expression, "FALSE");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(context->sqlite_expression, "0");
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        int rc = dynamic_string_append(context->generation_expression, "NULL");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(context->sqlite_expression, "NULL");
+        }
+        return rc;
+    }
+
+    set_unsupported_error(
+        context->database,
+        "generated column expressions support only integer, boolean, and NULL literals"
+    );
+    return MYLITE_ERROR;
+}
+
+static int render_generated_expression_unary(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(node);
+    int rc = MYLITE_OK;
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        return append_generated_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 0U)
+        );
+    }
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_unsupported_error(
+            context->database,
+            "generated column expressions support only unary + and -"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = append_generated_expression_render_char(context->database, items, item_count, ')');
+    if (rc == MYLITE_OK) {
+        rc = append_generated_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 0U)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_generated_expression_render_text(context->database, items, item_count, "-(");
+    }
+    return rc;
+}
+
+static int render_generated_expression_binary(
+    struct generated_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(node);
+    const char *operator_text = generated_expression_binary_operator_text(operator_kind);
+    int rc = MYLITE_OK;
+
+    if (operator_text == NULL) {
+        set_unsupported_error(
+            context->database,
+            "generated column expressions support only +, -, *"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = append_generated_expression_render_char(context->database, items, item_count, ')');
+    if (rc == MYLITE_OK) {
+        rc = append_generated_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 1U)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_generated_expression_render_text(
+            context->database,
+            items,
+            item_count,
+            operator_text
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_generated_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 0U)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_generated_expression_render_char(context->database, items, item_count, '(');
+    }
+    return rc;
+}
+
+static const char *generated_expression_binary_operator_text(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return " + ";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return " - ";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return " * ";
+    default:
+        return NULL;
+    }
+}
+
+static int append_generated_expression_render_node(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    const struct mylite_sql_ast_node *node
+) {
+    return append_generated_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct generated_expression_render_work_item){
+            .kind = GENERATED_EXPRESSION_RENDER_NODE,
+            .node = node,
+        }
+    );
+}
+
+static int append_generated_expression_render_text(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    const char *text
+) {
+    return append_generated_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct generated_expression_render_work_item){
+            .kind = GENERATED_EXPRESSION_RENDER_TEXT,
+            .text = text,
+        }
+    );
+}
+
+static int append_generated_expression_render_char(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    char character
+) {
+    return append_generated_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct generated_expression_render_work_item){
+            .kind = GENERATED_EXPRESSION_RENDER_CHAR,
+            .character = character,
+        }
+    );
+}
+
+static int append_generated_expression_render_work_item(
+    struct mylite_db *database,
+    struct generated_expression_render_work_item **items,
+    size_t *item_count,
+    struct generated_expression_render_work_item item
+) {
+    struct generated_expression_render_work_item *grown_items = NULL;
+    size_t required_count = *item_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*grown_items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    grown_items = realloc(*items, required_count * sizeof(*grown_items));
+    if (grown_items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    *items = grown_items;
+    (*items)[*item_count] = item;
+    *item_count = required_count;
+
     return MYLITE_OK;
 }
 
@@ -47926,6 +48644,10 @@ static int validate_secondary_index_column(
         set_runtime_error(database, "invalid secondary-index column");
         return MYLITE_ERROR;
     }
+    if (column->is_generated) {
+        set_unsupported_error(database, "generated columns are not yet supported in keys");
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_text_family(column)) {
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
@@ -47962,6 +48684,10 @@ static int validate_fulltext_index_column(
         set_runtime_error(database, "invalid FULLTEXT index column");
         return MYLITE_ERROR;
     }
+    if (column->is_generated) {
+        set_unsupported_error(database, "generated columns are not yet supported in keys");
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_char_or_varchar(column)) {
         return validate_fulltext_string_key_column(database, column);
     }
@@ -47979,6 +48705,10 @@ static int validate_spatial_index_column(
 ) {
     if (column == NULL) {
         set_runtime_error(database, "invalid SPATIAL index column");
+        return MYLITE_ERROR;
+    }
+    if (column->is_generated) {
+        set_unsupported_error(database, "generated columns are not yet supported in keys");
         return MYLITE_ERROR;
     }
     if (!planned_column_is_spatial(column)) {
@@ -48538,6 +49268,10 @@ static bool planned_primary_key_contains_column(
 static int validate_primary_key_column(struct mylite_db *database, struct planned_column *column) {
     if (column == NULL) {
         set_runtime_error(database, "invalid primary-key column");
+        return MYLITE_ERROR;
+    }
+    if (column->is_generated) {
+        set_unsupported_error(database, "generated columns are not yet supported in keys");
         return MYLITE_ERROR;
     }
     if (planned_column_is_spatial(column)) {
@@ -51074,6 +51808,12 @@ static int create_temporary_table_from_plan(
         set_unsupported_error(database, "Temporary CHECK constraint tables are not yet supported");
         return MYLITE_ERROR;
     }
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (plan->columns[column_index].is_generated) {
+            set_unsupported_error(database, "Temporary generated columns are not yet supported");
+            return MYLITE_ERROR;
+        }
+    }
 
     rc = mylite_temporary_catalog_try_read_table_by_name(
         &database->session.temporary_catalog,
@@ -51374,6 +52114,10 @@ static int insert_create_table_catalog_rows(
             column->character_set_name,
             column->collation_name,
             column->comment,
+            column->is_generated,
+            column->generated_kind,
+            column->generation_expression,
+            column->sqlite_generation_expression,
             &inserted_column
         );
         if (rc == MYLITE_OK) {
@@ -52525,12 +53269,8 @@ static int plan_alter_table_add_column(
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
     }
-    if (rc == MYLITE_OK && planned_column_is_spatial(&out_plan->column)) {
-        set_unsupported_error(
-            database,
-            "ALTER TABLE ADD COLUMN does not yet support spatial columns"
-        );
-        rc = MYLITE_ERROR;
+    if (rc == MYLITE_OK) {
+        rc = reject_unsupported_alter_add_column_planned_column(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
         rc = reject_inline_primary_key_column_definition(
@@ -52628,6 +53368,27 @@ static int plan_alter_table_add_column(
     free(columns);
 
     return rc;
+}
+
+static int reject_unsupported_alter_add_column_planned_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    if (column->is_generated) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD COLUMN does not support generated columns"
+        );
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_spatial(column)) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD COLUMN does not yet support spatial columns"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int finish_alter_table_add_column_plan_columns(
@@ -52895,6 +53656,10 @@ static int alter_table_add_column_from_plan(
             plan->column.character_set_name,
             plan->column.collation_name,
             plan->column.comment,
+            plan->column.is_generated,
+            plan->column.generated_kind,
+            plan->column.generation_expression,
+            plan->column.sqlite_generation_expression,
             &inserted_column
         );
     }
@@ -53356,7 +54121,11 @@ static int alter_table_add_primary_key_from_plan(
             column->on_update_current_timestamp,
             column->character_set_name,
             column->collation_name,
-            column->comment
+            column->comment,
+            column->is_generated,
+            column->generated_kind,
+            column->generation_expression,
+            column->sqlite_generation_expression
         );
     }
     if (rc == MYLITE_OK) {
@@ -59352,6 +60121,13 @@ static int plan_alter_table_modify_column(
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
     }
+    if (rc == MYLITE_OK && out_plan->column.is_generated) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE MODIFY COLUMN does not support generated columns"
+        );
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = reject_inline_primary_key_column_definition(
             database,
@@ -59423,6 +60199,13 @@ static int plan_alter_table_change_column(
     }
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 2U), &out_plan->column);
+    }
+    if (rc == MYLITE_OK && out_plan->column.is_generated) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE CHANGE COLUMN does not support generated columns"
+        );
+        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = reject_inline_primary_key_column_definition(
@@ -59624,7 +60407,11 @@ static int alter_table_set_default_from_plan(
             plan->original_column.on_update_current_timestamp,
             plan->original_column.character_set_name,
             plan->original_column.collation_name,
-            plan->original_column.comment
+            plan->original_column.comment,
+            plan->original_column.is_generated,
+            plan->original_column.generated_kind,
+            plan->original_column.generation_expression,
+            plan->original_column.sqlite_generation_expression
         );
     }
     if (rc == MYLITE_OK) {
@@ -59745,7 +60532,11 @@ static int alter_table_drop_default_from_plan(
             plan->column.on_update_current_timestamp,
             plan->column.character_set_name,
             plan->column.collation_name,
-            plan->column.comment
+            plan->column.comment,
+            plan->column.is_generated,
+            plan->column.generated_kind,
+            plan->column.generation_expression,
+            plan->column.sqlite_generation_expression
         );
     }
     if (rc == MYLITE_OK) {
@@ -60527,6 +61318,20 @@ static void planned_column_from_catalog_descriptor(
         descriptor->collation_name
     );
     snprintf(out_column->comment, sizeof(out_column->comment), "%s", descriptor->comment);
+    out_column->is_generated = descriptor->is_generated;
+    out_column->generated_kind = descriptor->generated_kind;
+    snprintf(
+        out_column->generation_expression,
+        sizeof(out_column->generation_expression),
+        "%s",
+        descriptor->generation_expression
+    );
+    snprintf(
+        out_column->sqlite_generation_expression,
+        sizeof(out_column->sqlite_generation_expression),
+        "%s",
+        descriptor->sqlite_generation_expression
+    );
 }
 
 static int resolve_alter_table_column_replacement_plan(
@@ -61072,7 +61877,11 @@ static int alter_table_modify_column_from_plan(
             plan->column.on_update_current_timestamp,
             plan->column.character_set_name,
             plan->column.collation_name,
-            plan->column.comment
+            plan->column.comment,
+            plan->column.is_generated,
+            plan->column.generated_kind,
+            plan->column.generation_expression,
+            plan->column.sqlite_generation_expression
         );
     }
     if (rc == MYLITE_OK && plan->changes_position) {
@@ -62539,6 +63348,23 @@ static int plan_insert_duplicate_assignment(
         set_parse_error(database, NULL);
         rc = MYLITE_ERROR;
     }
+    if (rc == MYLITE_OK &&
+        plan->columns[duplicate_assignment->assignment_column_index].is_generated) {
+        const struct mylite_sql_ast_node *unwrapped_value = unwrap_parenthesized_expression(value);
+
+        if (unwrapped_value != NULL && unwrapped_value->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+            duplicate_assignment->assignment_value_node = value;
+            duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
+            duplicate_assignment->generated_default_noop = true;
+            return MYLITE_OK;
+        }
+        set_generated_column_value_error(
+            database,
+            plan->columns[duplicate_assignment->assignment_column_index].name,
+            plan->table.name
+        );
+        return MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK && value->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE) {
         rc = plan_insert_duplicate_values_reference(database, value, plan, duplicate_assignment);
     } else if (rc == MYLITE_OK) {
@@ -62705,6 +63531,11 @@ static bool insert_duplicate_assignment_targets_key(const struct planned_insert 
             for (size_t assignment_index = 0U;
                  assignment_index < plan->duplicate_update.assignment_count;
                  ++assignment_index) {
+                if (insert_duplicate_assignment_is_noop(
+                        &plan->duplicate_update.assignments[assignment_index]
+                    )) {
+                    continue;
+                }
                 if (key->parts[part_index].column_index ==
                     plan->duplicate_update.assignments[assignment_index].assignment_column_index) {
                     return true;
@@ -62722,6 +63553,9 @@ static bool insert_duplicate_assignment_targets_auto_increment(const struct plan
     }
 
     for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
         if (plan->duplicate_update.assignments[index].assignment_column_index ==
             plan->auto_increment_column_index) {
             return true;
@@ -62740,6 +63574,9 @@ static bool insert_duplicate_assignment_targets_column_id(
     }
 
     for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
         size_t column_index = plan->duplicate_update.assignments[index].assignment_column_index;
 
         if (column_index < plan->column_count &&
@@ -62749,6 +63586,26 @@ static bool insert_duplicate_assignment_targets_column_id(
     }
 
     return false;
+}
+
+static bool insert_duplicate_assignment_is_noop(
+    const struct planned_insert_duplicate_update_assignment *assignment
+) {
+    return (assignment != NULL && assignment->generated_default_noop) != 0;
+}
+
+static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan) {
+    size_t count = 0U;
+
+    if (plan == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        if (!insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 static int count_insert_auto_increment_modes(
@@ -63218,8 +64075,22 @@ static int handle_insert_plan_constraint(
 
     *out_row_complete = false;
     if (sqlite_status_is_constraint(sqlite_step_rc)) {
+        bool was_generated_range_violation = false;
         bool was_check_violation = false;
+        bool was_generated_not_null_violation = false;
 
+        rc = handle_generated_range_constraint_violation(
+            database,
+            (struct generated_constraint_columns){
+                .columns = plan->columns,
+                .column_count = plan->column_count,
+            },
+            row_index + 1U,
+            &was_generated_range_violation
+        );
+        if (rc != MYLITE_OK || was_generated_range_violation) {
+            return rc;
+        }
         rc = handle_check_constraint_violation(
             database,
             plan->table.table_id,
@@ -63231,6 +64102,16 @@ static int handle_insert_plan_constraint(
                 rc = reset_insert_statement_after_constraint(statement);
                 *out_row_complete = rc == MYLITE_OK;
             }
+            return rc;
+        }
+        rc = handle_generated_not_null_violation(
+            database,
+            sqlite_step_rc,
+            plan->columns,
+            plan->column_count,
+            &was_generated_not_null_violation
+        );
+        if (rc != MYLITE_OK || was_generated_not_null_violation) {
             return rc;
         }
     }
@@ -63770,21 +64651,27 @@ static int compare_replace_conflicting_row(
     size_t row_index,
     bool *out_matches
 ) {
+    int statement_column_index = 0;
+
     *out_matches = false;
     if (row_index >= plan->row_count) {
         return MYLITE_ERROR;
     }
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        if (column_index >= (size_t)INT_MAX) {
+        if (plan->columns[column_index].is_generated) {
+            continue;
+        }
+        if (statement_column_index >= INT_MAX) {
             return MYLITE_ERROR;
         }
         if (!sqlite_column_matches_planned_value(
                 statement,
-                (int)column_index,
+                statement_column_index,
                 &plan->rows[row_index].values[column_index]
             )) {
             return MYLITE_OK;
         }
+        ++statement_column_index;
     }
 
     *out_matches = true;
@@ -64000,6 +64887,9 @@ static int plan_insert_select(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_insert_select_generated_targets(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_insert_duplicate_update(database, statement, &out_plan->target);
     }
     if (rc == MYLITE_OK && out_plan->target.duplicate_update.has_clause &&
@@ -64035,6 +64925,35 @@ static int plan_insert_select(
 
     primary_key_info_deinit(&primary_key);
     return rc;
+}
+
+static int reject_insert_select_generated_targets(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan
+) {
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    for (size_t target_position = 0U; target_position < plan->target_count; ++target_position) {
+        size_t column_index = plan->target_indexes[target_position];
+
+        if (column_index >= plan->target.column_count) {
+            set_runtime_error(database, "invalid INSERT ... SELECT target descriptor");
+            return MYLITE_ERROR;
+        }
+        if (plan->target.columns[column_index].is_generated) {
+            set_generated_column_value_error(
+                database,
+                plan->target.columns[column_index].name,
+                plan->target.table.name
+            );
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
 }
 
 static enum planned_insert_select_source_kind insert_select_source_kind(
@@ -66884,6 +67803,24 @@ static int plan_joined_update_assignment(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (out_plan->assignment_column.is_generated) {
+        const struct mylite_sql_ast_node *unwrapped_value =
+            unwrap_parenthesized_expression(value_node);
+
+        if (unwrapped_value != NULL && unwrapped_value->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+            set_unsupported_error(
+                database,
+                "joined UPDATE does not support generated column DEFAULT assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        set_generated_column_value_error(
+            database,
+            out_plan->assignment_column.name,
+            source_context->sources[out_plan->target_source_index].table.name
+        );
+        return MYLITE_ERROR;
+    }
     if (!update_assignment_value_is_multi_constant_supported(value_node)) {
         set_unsupported_error(database, "joined UPDATE supports only constant assignment values");
         return MYLITE_ERROR;
@@ -67021,6 +67958,25 @@ static bool planned_update_has_multiple_assignments(const struct planned_update 
     return plan->assignment_count > 1U;
 }
 
+static bool planned_update_assignment_is_noop(const struct planned_update_assignment *assignment) {
+    return (assignment != NULL && assignment->generated_default_noop) != 0;
+}
+
+static size_t planned_update_executable_assignment_count(const struct planned_update *plan) {
+    size_t count = 0U;
+
+    if (plan == NULL || plan->assignments == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        if (!planned_update_assignment_is_noop(&plan->assignments[index])) {
+            ++count;
+        }
+    }
+
+    return count;
+}
+
 static int copy_update_assignments_for_execution(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -67038,6 +67994,8 @@ static int copy_update_assignments_for_execution(
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
         executable_plan->assignments[index].column = plan->assignments[index].column;
         executable_plan->assignments[index].value_node = plan->assignments[index].value_node;
+        executable_plan->assignments[index].generated_default_noop =
+            plan->assignments[index].generated_default_noop;
     }
 
     return MYLITE_OK;
@@ -67069,7 +68027,14 @@ static int execute_update_from_plan(
     bool matches_any_row = false;
     uint64_t matched_row_count = 0U;
     int64_t affected_rows = 0;
-    int rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
+    int rc = MYLITE_OK;
+
+    if (plan->generated_default_noop) {
+        mylite_result_set_affected_rows(result, 0);
+        return MYLITE_OK;
+    }
+
+    rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
 
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
@@ -67247,6 +68212,9 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
     for (uint64_t row_index = 1U; rc == MYLITE_OK && row_index < matched_row_count; ++row_index) {
         if (planned_update_has_multiple_assignments(plan)) {
             for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+                if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+                    continue;
+                }
                 rc = append_update_assignment_adjustment_warning(
                     database,
                     plan->assignments[index].value_node,
@@ -68215,6 +69183,9 @@ static int prepare_update_multiple_assignments(
         const struct mylite_sql_ast_node *value_node =
             unwrap_parenthesized_expression(plan->assignments[index].value_node);
 
+        if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
         if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
             struct select_source_context source_context = {.source = &plan->target};
 
@@ -68747,15 +69718,39 @@ static int step_update_statement(
         return MYLITE_OK;
     }
     if (sqlite_status_is_constraint(sqlite_rc)) {
+        bool was_generated_range_violation = false;
         bool was_check_violation = false;
-        int rc = handle_check_constraint_violation(
+        bool was_generated_not_null_violation = false;
+        int rc = handle_generated_range_constraint_violation(
+            database,
+            (struct generated_constraint_columns){
+                .columns = plan->columns,
+                .column_count = plan->column_count,
+            },
+            1U,
+            &was_generated_range_violation
+        );
+
+        if (rc != MYLITE_OK || was_generated_range_violation) {
+            return rc;
+        }
+        rc = handle_check_constraint_violation(
             database,
             plan->table.table_id,
             false,
             &was_check_violation
         );
-
         if (rc != MYLITE_OK || was_check_violation) {
+            return rc;
+        }
+        rc = handle_generated_not_null_violation(
+            database,
+            sqlite_rc,
+            plan->columns,
+            plan->column_count,
+            &was_generated_not_null_violation
+        );
+        if (rc != MYLITE_OK || was_generated_not_null_violation) {
             return rc;
         }
         return handle_update_unique_key_conflict(database, executable_plan, plan, sqlite_rc);
@@ -99201,6 +100196,9 @@ static int plan_column(
         out_column->is_nullable = column_is_nullable(nullability_node);
         out_column->is_visible = true;
     }
+    if (rc == MYLITE_OK) {
+        rc = apply_column_generated_attribute(database, column_node, out_column);
+    }
     if (rc == MYLITE_OK && out_column->is_auto_increment &&
         out_column->nullability == MYLITE_SQL_AST_NULLABILITY_UNSPECIFIED) {
         out_column->is_nullable = false;
@@ -99283,6 +100281,47 @@ static int apply_column_comment_attributes(
     return MYLITE_OK;
 }
 
+static int apply_column_generated_attribute(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+) {
+    const struct mylite_sql_ast_node *generated_clause =
+        child_with_kind(column_node, MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE);
+
+    column->is_generated = false;
+    column->generated_kind = MYLITE_CATALOG_GENERATED_COLUMN_INVALID;
+    column->generation_expression_node = NULL;
+    column->generation_expression[0] = '\0';
+    column->sqlite_generation_expression[0] = '\0';
+    if (generated_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (child_at(generated_clause, 0U) == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    column->is_generated = true;
+    column->generated_kind = generated_column_storage_kind(generated_clause);
+    column->generation_expression_node = child_at(generated_clause, 0U);
+    return MYLITE_OK;
+}
+
+static enum mylite_catalog_generated_column_kind generated_column_storage_kind(
+    const struct mylite_sql_ast_node *generated_clause
+) {
+    const struct mylite_sql_ast_node *storage = child_at(generated_clause, 1U);
+
+    if (storage == NULL || storage->kind == MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL) {
+        return MYLITE_CATALOG_GENERATED_COLUMN_VIRTUAL;
+    }
+    if (storage->kind == MYLITE_SQL_AST_GENERATED_COLUMN_STORED) {
+        return MYLITE_CATALOG_GENERATED_COLUMN_STORED;
+    }
+    return MYLITE_CATALOG_GENERATED_COLUMN_INVALID;
+}
+
 static int validate_column_attributes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
@@ -99296,7 +100335,9 @@ static int validate_column_attributes(
     size_t on_update_count = 0U;
     size_t charset_count = 0U;
     size_t collation_count = 0U;
+    size_t generated_count = 0U;
     bool previous_attribute_allows_check_enforcement = false;
+    int rc = MYLITE_OK;
 
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
@@ -99328,6 +100369,9 @@ static int validate_column_attributes(
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) {
             ++collation_count;
             previous_attribute_allows_check_enforcement = false;
+        } else if (child->kind == MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE) {
+            ++generated_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
             /* Column CHECK attributes are planned after all columns are known. */
             previous_attribute_allows_check_enforcement = true;
@@ -99344,18 +100388,77 @@ static int validate_column_attributes(
         child = child->next_sibling;
     }
 
-    if (nullability_count > 1U || default_count > 1U || primary_key_count > 1U ||
-        auto_increment_count > 1U || on_update_count > 1U || charset_count > 1U ||
-        collation_count > 1U) {
+    if (column_attribute_counts_have_duplicates(
+            nullability_count,
+            default_count,
+            primary_key_count,
+            auto_increment_count,
+            on_update_count,
+            charset_count,
+            collation_count,
+            generated_count
+        )) {
         set_unsupported_error(database, "duplicate column attributes are not supported");
         return MYLITE_ERROR;
     }
-    if (column != NULL && column->is_auto_increment && column->default_node != NULL) {
+    if (column == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = validate_generated_column_attributes(database, column);
+    if (rc == MYLITE_OK) {
+        rc = validate_non_generated_column_attributes(database, column);
+    }
+    return rc;
+}
+
+static bool column_attribute_counts_have_duplicates(
+    size_t nullability_count,
+    size_t default_count,
+    size_t primary_key_count,
+    size_t auto_increment_count,
+    size_t on_update_count,
+    size_t charset_count,
+    size_t collation_count,
+    size_t generated_count
+) {
+    return (nullability_count > 1U || default_count > 1U || primary_key_count > 1U ||
+            auto_increment_count > 1U || on_update_count > 1U || charset_count > 1U ||
+            collation_count > 1U || generated_count > 1U) != 0;
+}
+
+static int validate_generated_column_attributes(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    if (!column->is_generated) {
+        return MYLITE_OK;
+    }
+    if (column->default_node != NULL) {
+        set_wrong_usage_error(database, "DEFAULT", "generated column");
+        return MYLITE_ERROR;
+    }
+    if (column->is_auto_increment) {
+        set_wrong_usage_error(database, "AUTO_INCREMENT", "generated column");
+        return MYLITE_ERROR;
+    }
+    if (column->on_update_current_timestamp) {
+        set_unsupported_error(database, "generated columns do not support ON UPDATE");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_non_generated_column_attributes(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    if (column->is_auto_increment && column->default_node != NULL) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column != NULL && column->on_update_current_timestamp &&
-        !planned_column_is_datetime(column) && !planned_column_is_timestamp(column)) {
+    if (column->on_update_current_timestamp && !planned_column_is_datetime(column) &&
+        !planned_column_is_timestamp(column)) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -107100,6 +108203,9 @@ static int check_insert_omitted_columns(
                 break;
             }
         }
+        if (!column_is_targeted && plan->columns[column_index].is_generated) {
+            continue;
+        }
         if (!column_is_targeted &&
             !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
             !plan->columns[column_index].is_nullable &&
@@ -107268,6 +108374,9 @@ static int append_insert_omitted_column_warnings(
                 break;
             }
         }
+        if (!column_is_targeted && plan->columns[column_index].is_generated) {
+            continue;
+        }
         if (!column_is_targeted &&
             !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
             !plan->columns[column_index].is_nullable &&
@@ -107387,6 +108496,10 @@ static int allocate_insert_column_value(
     bool adjust_implicit_default = (insert_allows_implicit_default_adjustment(database, plan) &&
                                     !column_descriptor_is_auto_increment(column)) != 0;
 
+    if (column->is_generated) {
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) {
         return materialize_integer_expression_default_value(database, column, out_value);
     }
@@ -107600,6 +108713,15 @@ static int convert_insert_value_for_plan(
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL || plan == NULL || column == NULL || out_value == NULL) {
         set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (column->is_generated) {
+        if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+            planned_value_deinit(out_value);
+            *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+            return MYLITE_OK;
+        }
+        set_generated_column_value_error(database, column->name, plan->table.name);
         return MYLITE_ERROR;
     }
     if (value_node->kind != MYLITE_SQL_AST_DEFAULT_FUNCTION) {
@@ -129656,6 +130778,21 @@ static int plan_update_assignment(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    if (out_plan->assignment_column.is_generated) {
+        const struct mylite_sql_ast_node *value_node =
+            unwrap_parenthesized_expression(out_plan->assignment_value_node);
+
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+            out_plan->generated_default_noop = true;
+            return MYLITE_OK;
+        }
+        set_generated_column_value_error(
+            database,
+            out_plan->assignment_column.name,
+            out_plan->table.name
+        );
+        return MYLITE_ERROR;
+    }
     rc = plan_update_arithmetic_assignment(database, table_columns, table_column_count, out_plan);
     if (rc != MYLITE_OK ||
         out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
@@ -129692,6 +130829,9 @@ static int plan_update_multiple_assignments(
             out_plan,
             assignment_index
         );
+    }
+    if (rc == MYLITE_OK && planned_update_executable_assignment_count(out_plan) == 0U) {
+        out_plan->generated_default_noop = true;
     }
 
     return rc;
@@ -129736,6 +130876,21 @@ static int plan_update_multiple_assignment(
             set_update_duplicate_assignment_unsupported_error(database);
             return MYLITE_ERROR;
         }
+    }
+    if (table_columns[column_index].is_generated) {
+        value_node = unwrap_parenthesized_expression(child_at(assignment, 1U));
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+            out_plan->assignments[assignment_index].column = table_columns[column_index];
+            out_plan->assignments[assignment_index].value_node = child_at(assignment, 1U);
+            out_plan->assignments[assignment_index].generated_default_noop = true;
+            return MYLITE_OK;
+        }
+        set_generated_column_value_error(
+            database,
+            table_columns[column_index].name,
+            out_plan->table.name
+        );
+        return MYLITE_ERROR;
     }
     if (column_descriptor_is_auto_increment(&table_columns[column_index]) ||
         update_column_id_is_keyed(out_plan, table_columns[column_index].column_id)) {
@@ -131107,6 +132262,21 @@ static int integer_range_for_column(
     const char *unsupported_message,
     struct integer_column_range *out_range
 ) {
+    return integer_range_for_logical_type(
+        database,
+        (struct integer_logical_type_range_request){
+            .logical_type = column->logical_type,
+            .unsupported_message = unsupported_message,
+        },
+        out_range
+    );
+}
+
+static int integer_range_for_logical_type(
+    struct mylite_db *database,
+    struct integer_logical_type_range_request request,
+    struct integer_column_range *out_range
+) {
     const uint64_t int_signed_positive_max = 2147483647ULL;
     const uint64_t int_signed_negative_abs_max = 2147483648ULL;
     const uint64_t int_unsigned_max = 4294967295ULL;
@@ -131122,77 +132292,77 @@ static int integer_range_for_column(
     const uint64_t bigint_signed_positive_max = 9223372036854775807ULL;
     const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
 
-    if (strcmp(column->logical_type, "TINYINT") == 0) {
+    if (strcmp(request.logical_type, "TINYINT") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = tinyint_signed_positive_max,
             .negative_abs_max = tinyint_signed_negative_abs_max,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "TINYINT(1)") == 0) {
+    if (strcmp(request.logical_type, "TINYINT(1)") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = tinyint_signed_positive_max,
             .negative_abs_max = tinyint_signed_negative_abs_max,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "TINYINT UNSIGNED") == 0) {
+    if (strcmp(request.logical_type, "TINYINT UNSIGNED") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = tinyint_unsigned_max,
             .negative_abs_max = 0U,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "SMALLINT") == 0) {
+    if (strcmp(request.logical_type, "SMALLINT") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = smallint_signed_positive_max,
             .negative_abs_max = smallint_signed_negative_abs_max,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "SMALLINT UNSIGNED") == 0) {
+    if (strcmp(request.logical_type, "SMALLINT UNSIGNED") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = smallint_unsigned_max,
             .negative_abs_max = 0U,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "MEDIUMINT") == 0) {
+    if (strcmp(request.logical_type, "MEDIUMINT") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = mediumint_signed_positive_max,
             .negative_abs_max = mediumint_signed_negative_abs_max,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "MEDIUMINT UNSIGNED") == 0) {
+    if (strcmp(request.logical_type, "MEDIUMINT UNSIGNED") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = mediumint_unsigned_max,
             .negative_abs_max = 0U,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "INT") == 0) {
+    if (strcmp(request.logical_type, "INT") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = int_signed_positive_max,
             .negative_abs_max = int_signed_negative_abs_max,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "INT UNSIGNED") == 0) {
+    if (strcmp(request.logical_type, "INT UNSIGNED") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = int_unsigned_max,
             .negative_abs_max = 0U,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "BIGINT") == 0) {
+    if (strcmp(request.logical_type, "BIGINT") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = bigint_signed_positive_max,
             .negative_abs_max = bigint_signed_negative_abs_max,
         };
         return MYLITE_OK;
     }
-    if (strcmp(column->logical_type, "BIGINT UNSIGNED") == 0) {
+    if (strcmp(request.logical_type, "BIGINT UNSIGNED") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = bigint_signed_positive_max,
             .negative_abs_max = 0U,
@@ -131200,7 +132370,9 @@ static int integer_range_for_column(
         return MYLITE_OK;
     }
 
-    set_unsupported_error(database, unsupported_message);
+    if (database != NULL) {
+        set_unsupported_error(database, request.unsupported_message);
+    }
     return MYLITE_ERROR;
 }
 
@@ -134518,6 +135690,9 @@ static int append_create_table_definition_sql(
         rc = append_create_table_columns_sql(string, plan);
     }
     if (rc == MYLITE_OK) {
+        rc = append_create_table_generated_column_constraints_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = append_create_table_check_constraints_sql(string, plan);
     }
     if (rc == MYLITE_OK) {
@@ -134577,6 +135752,19 @@ static int append_create_table_columns_sql(
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append(string, column->physical_type);
         }
+        if (rc == MYLITE_OK && column->is_generated) {
+            rc = dynamic_string_append(string, " GENERATED ALWAYS AS (");
+        }
+        if (rc == MYLITE_OK && column->is_generated) {
+            rc = dynamic_string_append(string, column->sqlite_generation_expression);
+        }
+        if (rc == MYLITE_OK && column->is_generated) {
+            rc = dynamic_string_append(
+                string,
+                column->generated_kind == MYLITE_CATALOG_GENERATED_COLUMN_STORED ? ") STORED"
+                                                                                 : ") VIRTUAL"
+            );
+        }
         if (rc == MYLITE_OK && !column->is_nullable) {
             rc = dynamic_string_append(string, " NOT NULL");
         }
@@ -134610,6 +135798,120 @@ static int append_create_table_check_constraints_sql(
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append_char(string, ')');
         }
+    }
+
+    return rc;
+}
+
+static int append_create_table_generated_column_constraints_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const struct planned_column *column = &plan->columns[column_index];
+
+        if (!column->is_generated) {
+            continue;
+        }
+        rc = append_generated_column_range_check_constraint_sql(string, column, column_index);
+    }
+
+    return rc;
+}
+
+static int append_generated_column_range_check_constraint_sql(
+    struct dynamic_string *string,
+    const struct planned_column *column,
+    size_t column_index
+) {
+    const uint64_t sqlite_int64_negative_abs_max = 9223372036854775808ULL;
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_logical_type(
+        NULL,
+        (struct integer_logical_type_range_request){
+            .logical_type = column->logical_type,
+            .unsupported_message = "",
+        },
+        &range
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = dynamic_string_append(string, ", CONSTRAINT ");
+    if (rc == MYLITE_OK) {
+        rc = append_generated_column_range_check_constraint_name(string, column_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " CHECK (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL OR (typeof(");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ") = 'integer' AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " >= ");
+    }
+    if (rc == MYLITE_OK) {
+        if (range.negative_abs_max == 0U) {
+            rc = dynamic_string_append_char(string, '0');
+        } else if (range.negative_abs_max == sqlite_int64_negative_abs_max) {
+            rc = dynamic_string_append(string, "(-9223372036854775807 - 1)");
+        } else {
+            rc = dynamic_string_append_char(string, '-');
+            if (rc == MYLITE_OK) {
+                rc = append_uint64_literal(string, range.negative_abs_max);
+            }
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <= ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_uint64_literal(string, range.positive_max);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "))");
+    }
+
+    return rc;
+}
+
+static int append_generated_column_range_check_constraint_name(
+    struct dynamic_string *string,
+    size_t column_index
+) {
+    int rc = dynamic_string_append_char(string, '"');
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "_mylite_generated_column_range_");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_size_literal(string, column_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '"');
     }
 
     return rc;
@@ -136988,6 +138290,7 @@ static int build_truncate_table_sql(const struct planned_truncate_table *plan, c
 
 static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
     struct dynamic_string string;
+    size_t physical_column_count = count_physical_insert_columns(plan);
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -137007,7 +138310,7 @@ static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
         rc = dynamic_string_append(&string, ") VALUES (");
     }
     if (rc == MYLITE_OK) {
-        rc = append_insert_parameters(&string, plan->column_count);
+        rc = append_insert_parameters(&string, physical_column_count);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
@@ -137029,18 +138332,34 @@ static int append_insert_column_names(
     const struct planned_insert *plan
 ) {
     int rc = MYLITE_OK;
+    bool has_previous = false;
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
-        if (column_index != 0U) {
+        if (plan->columns[column_index].is_generated) {
+            continue;
+        }
+        if (has_previous) {
             rc = dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append_quoted_identifier(string, plan->columns[column_index].name);
         }
+        has_previous = true;
     }
 
     return rc;
+}
+
+static size_t count_physical_insert_columns(const struct planned_insert *plan) {
+    size_t count = 0U;
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (!plan->columns[column_index].is_generated) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 static int append_insert_parameters(struct dynamic_string *string, size_t column_count) {
@@ -137072,6 +138391,17 @@ static int append_numbered_parameter(struct dynamic_string *string, size_t param
 static int append_size_literal(struct dynamic_string *string, size_t value) {
     char text[integer_text_capacity];
     int written = snprintf(text, sizeof(text), "%zu", value);
+
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        return MYLITE_NOMEM;
+    }
+
+    return dynamic_string_append(string, text);
+}
+
+static int append_uint64_literal(struct dynamic_string *string, uint64_t value) {
+    char text[integer_text_capacity];
+    int written = snprintf(text, sizeof(text), "%" PRIu64, value);
 
     if (written < 0 || (size_t)written >= sizeof(text)) {
         return MYLITE_NOMEM;
@@ -142536,7 +143866,7 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
 
 static size_t update_assignment_parameter_count(const struct planned_update *plan) {
     if (planned_update_has_multiple_assignments(plan)) {
-        return plan->assignment_count;
+        return planned_update_executable_assignment_count(plan);
     }
     return 1U;
 }
@@ -142576,10 +143906,14 @@ static int append_update_multiple_assignments_sql(
     struct dynamic_string *string,
     const struct planned_update *plan
 ) {
+    size_t emitted_count = 0U;
     int rc = MYLITE_OK;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
-        if (index > 0U) {
+        if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
+        if (emitted_count > 0U) {
             rc = dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
@@ -142592,7 +143926,10 @@ static int append_update_multiple_assignments_sql(
             rc = dynamic_string_append(string, " = ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, index + 1U);
+            rc = append_numbered_parameter(string, emitted_count + 1U);
+        }
+        if (rc == MYLITE_OK) {
+            ++emitted_count;
         }
     }
 
@@ -142640,6 +143977,9 @@ static bool planned_update_column_has_auto_update(
     }
     if (planned_update_has_multiple_assignments(plan)) {
         for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+                continue;
+            }
             if (plan->assignments[index].column.column_id == column->column_id) {
                 return false;
             }
@@ -142938,10 +144278,14 @@ static int append_update_multiple_changed_condition_sql(
     const struct planned_update *plan,
     size_t *next_parameter
 ) {
+    size_t emitted_count = 0U;
     int rc = dynamic_string_append_char(string, '(');
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
-        if (index > 0U) {
+        if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
+        if (emitted_count > 0U) {
             rc = dynamic_string_append(string, " OR ");
         }
         if (rc == MYLITE_OK) {
@@ -142951,6 +144295,9 @@ static int append_update_multiple_changed_condition_sql(
                 &plan->assignments[index].value,
                 next_parameter
             );
+        }
+        if (rc == MYLITE_OK) {
+            ++emitted_count;
         }
     }
     if (rc == MYLITE_OK) {
@@ -143170,19 +144517,20 @@ static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert 
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
 
+    int bind_index = 1;
+
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         const struct planned_value *value = &plan->rows[row].values[column_index];
-        int bind_index = 0;
+        int rc = MYLITE_OK;
 
-        if (column_index >= (size_t)INT_MAX) {
-            return MYLITE_ERROR;
+        if (plan->columns[column_index].is_generated) {
+            continue;
         }
-        bind_index = (int)column_index + 1;
-        int rc = bind_planned_value_parameter(statement, bind_index, value);
-
+        rc = bind_planned_value_parameter(statement, bind_index, value);
         if (rc != MYLITE_OK) {
             return rc;
         }
+        ++bind_index;
     }
 
     return MYLITE_OK;
@@ -143256,6 +144604,79 @@ static int handle_check_constraint_violation(
     return set_or_warn_check_constraint_violation(database, &check_constraint, ignore_errors);
 }
 
+static int handle_generated_not_null_violation(
+    struct mylite_db *database,
+    int sqlite_rc,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    bool *out_was_generated_not_null_violation
+) {
+    const char *column_name = NULL;
+    size_t column_name_length = 0U;
+    int extended_rc = SQLITE_OK;
+
+    *out_was_generated_not_null_violation = false;
+    extended_rc = database == NULL ? sqlite_rc : sqlite3_extended_errcode(database->sqlite);
+    if (sqlite_rc != SQLITE_CONSTRAINT_NOTNULL && extended_rc != SQLITE_CONSTRAINT_NOTNULL) {
+        return MYLITE_OK;
+    }
+
+    if (sqlite_error_message_has_not_null_column(
+            sqlite3_errmsg(database->sqlite),
+            &column_name,
+            &column_name_length
+        )) {
+        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+            size_t descriptor_name_length = strlen(columns[column_index].name);
+
+            if (columns[column_index].is_generated && !columns[column_index].is_nullable &&
+                descriptor_name_length == column_name_length &&
+                strncmp(columns[column_index].name, column_name, column_name_length) == 0) {
+                set_bad_null_error(database, columns[column_index].name);
+                *out_was_generated_not_null_violation = true;
+                return MYLITE_ERROR;
+            }
+        }
+        return MYLITE_OK;
+    }
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        if (columns[column_index].is_generated && !columns[column_index].is_nullable) {
+            set_bad_null_error(database, columns[column_index].name);
+            *out_was_generated_not_null_violation = true;
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int handle_generated_range_constraint_violation(
+    struct mylite_db *database,
+    struct generated_constraint_columns columns,
+    size_t row_number,
+    bool *out_was_generated_range_violation
+) {
+    const char *physical_name = NULL;
+    size_t column_index = 0U;
+
+    *out_was_generated_range_violation = false;
+    if (!sqlite_error_message_has_check_constraint(
+            sqlite3_errmsg(database->sqlite),
+            &physical_name
+        )) {
+        return MYLITE_OK;
+    }
+    if (!generated_range_constraint_column_index(physical_name, &column_index) ||
+        column_index >= columns.column_count || !columns.columns[column_index].is_generated) {
+        return MYLITE_OK;
+    }
+
+    set_out_of_range_error(database, columns.columns[column_index].name, row_number);
+    *out_was_generated_range_violation = true;
+    return MYLITE_ERROR;
+}
+
 static bool sqlite_error_message_has_check_constraint(
     const char *message,
     const char **out_physical_name
@@ -143271,6 +144692,79 @@ static bool sqlite_error_message_has_check_constraint(
     }
     if (out_physical_name != NULL) {
         *out_physical_name = message + prefix_length;
+    }
+    return true;
+}
+
+static bool sqlite_error_message_has_not_null_column(
+    const char *message,
+    const char **out_column_name,
+    size_t *out_column_name_length
+) {
+    static const char prefix[] = "NOT NULL constraint failed: ";
+    const char *column_name = NULL;
+    size_t prefix_length = sizeof(prefix) - 1U;
+    size_t length = 0U;
+
+    if (out_column_name != NULL) {
+        *out_column_name = NULL;
+    }
+    if (out_column_name_length != NULL) {
+        *out_column_name_length = 0U;
+    }
+    if (message == NULL || strncmp(message, prefix, prefix_length) != 0) {
+        return false;
+    }
+
+    column_name = message + prefix_length;
+    for (const char *cursor = column_name; *cursor != '\0'; ++cursor) {
+        if (*cursor == '.') {
+            column_name = cursor + 1;
+        }
+    }
+    length = strlen(column_name);
+    if (length == 0U) {
+        return false;
+    }
+    if (out_column_name != NULL) {
+        *out_column_name = column_name;
+    }
+    if (out_column_name_length != NULL) {
+        *out_column_name_length = length;
+    }
+    return true;
+}
+
+static bool generated_range_constraint_column_index(
+    const char *physical_name,
+    size_t *out_column_index
+) {
+    enum { decimal_radix = 10U };
+
+    static const char prefix[] = "_mylite_generated_column_range_";
+    size_t prefix_length = sizeof(prefix) - 1U;
+    size_t value = 0U;
+
+    if (out_column_index != NULL) {
+        *out_column_index = 0U;
+    }
+    if (physical_name == NULL || strncmp(physical_name, prefix, prefix_length) != 0 ||
+        physical_name[prefix_length] == '\0') {
+        return false;
+    }
+    for (size_t index = prefix_length; physical_name[index] != '\0'; ++index) {
+        unsigned char byte = (unsigned char)physical_name[index];
+
+        if (byte < '0' || byte > '9') {
+            return false;
+        }
+        if (value > (SIZE_MAX - (size_t)(byte - '0')) / decimal_radix) {
+            return false;
+        }
+        value = (value * decimal_radix) + (size_t)(byte - '0');
+    }
+    if (out_column_index != NULL) {
+        *out_column_index = value;
     }
     return true;
 }
@@ -143402,6 +144896,13 @@ static int apply_insert_duplicate_key_update(
             assignment_values
         );
     }
+    if (rc == MYLITE_OK && count_executable_insert_duplicate_assignments(plan) == 0U) {
+        insert_duplicate_update_values_deinit(
+            &assignment_values,
+            plan->duplicate_update.assignment_count
+        );
+        return MYLITE_OK;
+    }
     if (rc == MYLITE_OK) {
         rc = build_insert_duplicate_update_sql(plan, conflicting_index, assignment_values, &sql);
     }
@@ -143424,17 +144925,7 @@ static int apply_insert_duplicate_key_update(
                 counters->affected_rows += 2;
             }
         } else if (sqlite_status_is_constraint(sqlite_rc)) {
-            bool was_check_violation = false;
-
-            rc = handle_check_constraint_violation(
-                database,
-                plan->table.table_id,
-                false,
-                &was_check_violation
-            );
-            if (rc == MYLITE_OK && !was_check_violation) {
-                rc = mylite_sqlite_status_to_mylite(sqlite_rc);
-            }
+            rc = handle_insert_duplicate_update_constraint(database, sqlite_rc, plan, row_index);
         } else {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
@@ -143445,6 +144936,50 @@ static int apply_insert_duplicate_key_update(
         plan->duplicate_update.assignment_count
     );
     free(sql);
+
+    return rc;
+}
+
+static int handle_insert_duplicate_update_constraint(
+    struct mylite_db *database,
+    int sqlite_rc,
+    const struct planned_insert *plan,
+    size_t row_index
+) {
+    bool was_generated_range_violation = false;
+    bool was_check_violation = false;
+    bool was_generated_not_null_violation = false;
+    int rc = handle_generated_range_constraint_violation(
+        database,
+        (struct generated_constraint_columns){
+            .columns = plan->columns,
+            .column_count = plan->column_count,
+        },
+        row_index + 1U,
+        &was_generated_range_violation
+    );
+
+    if (rc == MYLITE_OK && !was_generated_range_violation) {
+        rc = handle_check_constraint_violation(
+            database,
+            plan->table.table_id,
+            false,
+            &was_check_violation
+        );
+    }
+    if (rc == MYLITE_OK && !was_check_violation && !was_generated_range_violation) {
+        rc = handle_generated_not_null_violation(
+            database,
+            sqlite_rc,
+            plan->columns,
+            plan->column_count,
+            &was_generated_not_null_violation
+        );
+    }
+    if (rc == MYLITE_OK && !was_check_violation && !was_generated_range_violation &&
+        !was_generated_not_null_violation) {
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
 
     return rc;
 }
@@ -143686,6 +145221,11 @@ static int project_insert_duplicate_updated_row_values(
         for (size_t assignment_index = 0U;
              assignment_index < plan->duplicate_update.assignment_count;
              ++assignment_index) {
+            if (insert_duplicate_assignment_is_noop(
+                    &plan->duplicate_update.assignments[assignment_index]
+                )) {
+                continue;
+            }
             if (plan->duplicate_update.assignments[assignment_index].assignment_column_index ==
                 column_index) {
                 source = &inputs.assignment_values[assignment_index];
@@ -143715,6 +145255,11 @@ static bool insert_duplicate_index_has_assigned_part(
         for (size_t assignment_index = 0U;
              assignment_index < plan->duplicate_update.assignment_count;
              ++assignment_index) {
+            if (insert_duplicate_assignment_is_noop(
+                    &plan->duplicate_update.assignments[assignment_index]
+                )) {
+                continue;
+            }
             if (index->parts[part_index].column_index ==
                 plan->duplicate_update.assignments[assignment_index].assignment_column_index) {
                 return true;
@@ -143873,6 +145418,11 @@ static int convert_insert_duplicate_update_value(
             out_value
         );
     }
+    if (insert_duplicate_assignment_is_noop(duplicate_assignment)) {
+        planned_value_deinit(out_value);
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
 
     value_node = unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
     column = &plan->columns[duplicate_assignment->assignment_column_index];
@@ -144004,6 +145554,7 @@ static int build_insert_duplicate_update_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
+    size_t executable_assignment_count = count_executable_insert_duplicate_assignments(plan);
     size_t next_parameter = 0U;
     int rc = MYLITE_OK;
 
@@ -144014,7 +145565,11 @@ static int build_insert_duplicate_update_sql(
         dynamic_string_deinit(&string);
         return MYLITE_ERROR;
     }
-    next_parameter = plan->duplicate_update.assignment_count + conflicting_index->part_count + 1U;
+    if (executable_assignment_count == 0U) {
+        dynamic_string_deinit(&string);
+        return MYLITE_ERROR;
+    }
+    next_parameter = executable_assignment_count + conflicting_index->part_count + 1U;
 
     rc = dynamic_string_append(&string, "UPDATE ");
     if (rc == MYLITE_OK) {
@@ -144062,7 +145617,7 @@ static int append_insert_duplicate_key_predicate_sql(
     return append_insert_duplicate_key_predicate_sql_from_parameters(
         string,
         conflicting_index,
-        plan->duplicate_update.assignment_count + 1U
+        count_executable_insert_duplicate_assignments(plan) + 1U
     );
 }
 
@@ -144103,13 +145658,18 @@ static int append_insert_duplicate_assignments_sql(
     const struct planned_insert *plan
 ) {
     int rc = MYLITE_OK;
+    size_t parameter_index = 1U;
+    bool has_previous = false;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
         const size_t column_index =
             plan->duplicate_update.assignments[index].assignment_column_index;
 
-        if (index > 0U) {
+        if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
+        if (has_previous) {
             rc = dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
@@ -144119,8 +145679,10 @@ static int append_insert_duplicate_assignments_sql(
             rc = dynamic_string_append(string, " = ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, index + 1U);
+            rc = append_numbered_parameter(string, parameter_index);
         }
+        has_previous = true;
+        ++parameter_index;
     }
 
     return rc;
@@ -144133,13 +145695,17 @@ static int append_insert_duplicate_changed_conditions_sql(
     size_t *next_parameter
 ) {
     int rc = dynamic_string_append_char(string, '(');
+    bool has_previous = false;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
         const size_t column_index =
             plan->duplicate_update.assignments[index].assignment_column_index;
 
-        if (index > 0U) {
+        if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
+        if (has_previous) {
             rc = dynamic_string_append(string, " OR ");
         }
         if (rc == MYLITE_OK) {
@@ -144150,6 +145716,7 @@ static int append_insert_duplicate_changed_conditions_sql(
                 next_parameter
             );
         }
+        has_previous = true;
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
@@ -144253,6 +145820,9 @@ static int bind_insert_duplicate_assignment_parameters(
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
+        if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
         rc = bind_planned_value_parameter(statement, *parameter_index, &assignment_values[index]);
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
@@ -144296,6 +145866,9 @@ static int bind_insert_duplicate_changed_condition_parameters(
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
+        if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
         if (assignment_values[index].is_null) {
             continue;
         }
@@ -147475,6 +149048,9 @@ static int bind_update_multiple_assignment_parameters(
     int rc = MYLITE_OK;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
         rc = bind_planned_value_parameter(
             statement,
             *parameter_index,
@@ -147517,6 +149093,9 @@ static int bind_update_multiple_changed_condition_parameters(
     int rc = MYLITE_OK;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
         if (plan->assignments[index].value.is_null) {
             continue;
         }
@@ -150521,6 +152100,31 @@ static void set_spatial_bad_null_error(struct mylite_db *database, const char *c
         mylite_connection_diagnostics(database),
         mysql_error_spatial_column_cannot_be_null,
         "23000",
+        message
+    );
+}
+
+static void set_generated_column_value_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "The value specified for generated column '%s' in table '%s' is not allowed.",
+        column_name,
+        table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_generated_column_value,
+        "HY000",
         message
     );
 }

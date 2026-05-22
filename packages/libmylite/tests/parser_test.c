@@ -118,6 +118,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_create_table_generated_column_statements(void);
 static int test_create_table_comment_option_statements(void);
 static int test_alter_table_comment_statements(void);
 static int test_show_full_tables_statements(void);
@@ -420,6 +421,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_create_table_generated_column_statements();
     failures += test_create_table_comment_option_statements();
     failures += test_alter_table_comment_statements();
     failures += test_show_full_tables_statements();
@@ -11349,6 +11351,73 @@ static int test_table_lifecycle_statements(void) {
         child_at(child_at(child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_generated_column_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *generated = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE generated_lifecycle ("
+        "a INT, "
+        "b INT AS (a + 1), "
+        "c BIGINT GENERATED ALWAYS AS ((a * 2)) STORED NOT NULL, "
+        "d INT GENERATED ALWAYS AS (NULL) VIRTUAL COMMENT 'ok');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "generated create table");
+    failures += expect_child_count(columns, 4U, "generated column count");
+
+    column = child_at(columns, 1U);
+    generated = child_at(column, 2U);
+    failures += expect_node(
+        generated,
+        MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE,
+        "default virtual generated clause"
+    );
+    failures += expect_span_text(child_at(generated, 0U), "a + 1", "default generated expr");
+
+    column = child_at(columns, 2U);
+    generated = child_at(column, 2U);
+    failures += expect_node(
+        child_at(generated, 1U),
+        MYLITE_SQL_AST_GENERATED_COLUMN_STORED,
+        "stored generated storage"
+    );
+    failures += expect_nullability(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "generated not-null attribute"
+    );
+
+    column = child_at(columns, 3U);
+    generated = child_at(column, 2U);
+    failures += expect_node(
+        child_at(generated, 1U),
+        MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL,
+        "explicit virtual generated storage"
+    );
+    failures += expect_literal(
+        child_at(generated, 0U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "generated null expression"
+    );
+    failures += expect_node(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE,
+        "generated comment attribute"
     );
     mylite_sql_parse_result_deinit(&result);
 

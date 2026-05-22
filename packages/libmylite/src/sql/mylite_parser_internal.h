@@ -1254,6 +1254,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_ast_node *right,
     struct mylite_sql_ast_node *condition
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    enum mylite_sql_ast_join_kind join_kind,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_ast_node *condition
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_hint_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *hint

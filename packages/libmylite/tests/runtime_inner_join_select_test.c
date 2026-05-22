@@ -56,6 +56,7 @@ static int seed_join_tables(
     const char *right_rows,
     int64_t right_count
 );
+static int seed_extra_join_tables(mylite_db *database);
 static int expect_statement(
     mylite_db *database,
     const char *sql,
@@ -124,6 +125,59 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9"};
     static const char *const alias_order_rows[] = {"1", "8", "1", "7"};
     static const char *const multi_order_rows[] = {"1", "8", "1", "7"};
+    static const char *const three_join_rows[] = {"1", "7", "30", "1", "8", "31"};
+    static const char *const four_join_rows[] = {
+        "1",
+        "7",
+        "30",
+        "40",
+        "1",
+        "8",
+        "31",
+        "41",
+    };
+    static const char *const non_immediate_on_rows[] = {
+        "1",
+        "7",
+        "30",
+        "43",
+        "1",
+        "8",
+        "31",
+        "43",
+    };
+    static const char *const three_cartesian_rows[] = {"1", "7", "30", "1", "8", "30"};
+    static const char *const multi_star_columns[] = {
+        "id",
+        "k",
+        "v",
+        "name",
+        "id",
+        "k",
+        "w",
+        "name",
+        "id",
+        "right_w",
+        "z",
+        "name",
+    };
+    static const char *const multi_star_rows[] = {
+        "1", "10", "100", "alpha", "7", "10", "700", "ALPHA", "30", "700", "3000", "first",
+        "1", "10", "100", "alpha", "8", "10", "800", "beta",  "31", "800", "3100", "second",
+    };
+    static const char *const qualified_wildcard_columns[] = {"id", "k", "v", "name", "z"};
+    static const char *const qualified_wildcard_rows[] = {
+        "1",
+        "10",
+        "100",
+        "alpha",
+        "3000",
+        "1",
+        "10",
+        "100",
+        "alpha",
+        "3100",
+    };
     static const char *const temp_shadow_rows[] = {"10", "7", "10", "8"};
     static const char *const row_count_rows[] = {"-1"};
     static const char *const warning_row_count_rows[] = {"0", "-1"};
@@ -149,6 +203,7 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
         "(7,10,700,'ALPHA'),(8,10,800,'beta'),(9,NULL,900,'none')",
         3
     );
+    failures += seed_extra_join_tables(database);
 
     failures += expect_query_values(
         database,
@@ -368,6 +423,93 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .context = "schema-qualified comma join sources and columns",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id, extras.id "
+                   "FROM lefts JOIN rights ON lefts.k = rights.k "
+                   "JOIN extras ON rights.w = extras.right_w ORDER BY extras.id",
+            .values = three_join_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "three-source inner join chain",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id, extras.id "
+                   "FROM lefts JOIN rights ON lefts.k = rights.k CROSS JOIN extras "
+                   "WHERE extras.id = 30 ORDER BY rights.id",
+            .values = three_cartesian_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "three-source cross join chain",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id, extras.id FROM lefts, rights, extras "
+                   "WHERE lefts.k = rights.k AND rights.w = extras.right_w "
+                   "ORDER BY extras.id",
+            .values = three_join_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "three-source comma join with where equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id, extras.id, fourths.id "
+                   "FROM lefts JOIN rights ON lefts.k = rights.k "
+                   "JOIN extras ON rights.w = extras.right_w "
+                   "JOIN fourths ON extras.z = fourths.extra_z ORDER BY fourths.id",
+            .values = four_join_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "four-source inner join chain",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id, extras.id, fourths.id "
+                   "FROM lefts JOIN rights ON lefts.k = rights.k "
+                   "JOIN extras ON rights.w = extras.right_w "
+                   "JOIN fourths ON lefts.v = fourths.q ORDER BY rights.id",
+            .values = non_immediate_on_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "later ON can reference an earlier non-immediate source",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM lefts JOIN rights ON lefts.k = rights.k "
+                   "JOIN extras ON rights.w = extras.right_w ORDER BY extras.id",
+            .columns = multi_star_columns,
+            .values = multi_star_rows,
+            .column_count = sizeof(multi_star_columns) / sizeof(multi_star_columns[0]),
+            .row_count = 2U,
+            .context = "three-source star projection expands sources left to right",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.*, extras.z FROM lefts JOIN rights ON lefts.k = rights.k "
+                   "JOIN extras ON rights.w = extras.right_w ORDER BY extras.id",
+            .columns = qualified_wildcard_columns,
+            .values = qualified_wildcard_rows,
+            .column_count =
+                sizeof(qualified_wildcard_columns) / sizeof(qualified_wildcard_columns[0]),
+            .row_count = 2U,
+            .context = "qualified wildcard in three-source join",
+        }
+    );
 
     failures += expect_statement(
         database,
@@ -459,6 +601,18 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT lefts.id, rights2.id, extras.id "
+                   "FROM lefts JOIN rights2 ON lefts.k = rights2.k "
+                   "JOIN extras ON rights2.w = extras.right_w ORDER BY extras.id",
+            .values = three_join_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "three-source join after table rename",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT lefts.id, rights2.id FROM lefts, rights2 WHERE lefts.k = rights2.k "
                    "ORDER BY rights2.id",
             .values = limited_cartesian_rows,
@@ -507,6 +661,7 @@ static int test_inner_join_diagnostics(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += seed_app_schema(database);
     failures += seed_join_tables(database, "(1,10,100,'alpha')", 1, "(7,10,700,'ALPHA')", 1);
+    failures += seed_extra_join_tables(database);
 
     failures += expect_int(
         mylite_open_memory(&missing_default_database),
@@ -634,6 +789,16 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
+        "SELECT x.id FROM lefts AS x JOIN rights AS y ON x.k = y.k "
+        "JOIN extras AS x ON y.w = x.right_w",
+        (struct expected_sql_error){
+            .code = mysql_error_not_unique_table_alias,
+            .sqlstate = "42000",
+            .message_part = "Not unique table/alias: 'x'",
+        }
+    );
+    failures += expect_error(
+        database,
         "SELECT missing.id FROM lefts JOIN rights ON lefts.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -657,6 +822,36 @@ static int test_inner_join_diagnostics(void) {
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
             .message_part = "Unknown column 'lefts.missing' in 'where clause'",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts JOIN rights ON lefts.k = rights.k "
+        "JOIN extras ON rights.missing = extras.right_w",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'rights.missing' in 'on clause'",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT id FROM lefts JOIN rights ON lefts.k = rights.k "
+        "JOIN extras ON rights.w = extras.right_w",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in field list is ambiguous",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts JOIN rights ON lefts.k = rights.k "
+        "JOIN extras ON k = extras.right_w",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'k' in on clause is ambiguous",
         }
     );
     failures += expect_error(
@@ -748,9 +943,9 @@ static int test_inner_join_diagnostics(void) {
         database,
         "SELECT lefts.id FROM lefts, rights, missing",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing' doesn't exist",
         }
     );
     failures += expect_error(
@@ -887,6 +1082,36 @@ static int seed_join_tables(
         return failures + 1;
     }
     failures += expect_statement(database, sql, (struct expected_statement){right_count, 0U});
+
+    return failures;
+}
+
+static int seed_extra_join_tables(mylite_db *database) {
+    int failures = 0;
+
+    failures += expect_statement(
+        database,
+        "CREATE TABLE extras (id INT NOT NULL, right_w INT NULL, z INT NULL, name VARCHAR(20))",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "CREATE TABLE fourths (id INT NOT NULL, extra_z INT NULL, q INT NULL, name VARCHAR(20))",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO extras VALUES "
+        "(30,700,3000,'first'),(31,800,3100,'second'),(32,NULL,3200,'none')",
+        (struct expected_statement){3, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO fourths VALUES "
+        "(40,3000,4000,'one'),(41,3100,4100,'two'),(42,NULL,4200,'none'),"
+        "(43,9999,100,'left-one')",
+        (struct expected_statement){4, 0U}
+    );
 
     return failures;
 }

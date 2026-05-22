@@ -86,6 +86,13 @@ static int expect_two_column_rows(
     size_t warning_count,
     const char *context
 );
+static int expect_three_column_rows(
+    const mylite_result *result,
+    const char *const (*values)[3],
+    size_t row_count,
+    size_t warning_count,
+    const char *context
+);
 static int expect_empty_result(
     const mylite_result *result,
     size_t warning_count,
@@ -389,6 +396,7 @@ static int test_sql_calc_found_rows_selects(void) {
 
 static int test_sql_calc_found_rows_joined_selects(void) {
     static const char *const inner_limit_rows[][2] = {{"1", "7"}};
+    static const char *const multi_inner_limit_rows[][3] = {{"1", "7", "30"}};
     static const char *const cartesian_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const left_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const right_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
@@ -431,6 +439,33 @@ static int test_sql_calc_found_rows_joined_selects(void) {
             .warning_count = "1",
             .row_count = "-1",
             .context = "joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id, extras.id "
+        "FROM lefts JOIN rights ON lefts.k = rights.k "
+        "JOIN extras ON rights.w = extras.right_w "
+        "ORDER BY extras.id LIMIT 1",
+        &result
+    );
+    failures += expect_three_column_rows(
+        result,
+        multi_inner_limit_rows,
+        1U,
+        1U,
+        "multi-source joined sql calc limit row"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "2",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "multi-source joined sql calc found rows",
         }
     );
 
@@ -767,6 +802,8 @@ static int prepare_join_fixture(mylite_db *database) {
         database,
         "CREATE TABLE rights (id INT NOT NULL, k INT NULL, w INT NULL)"
     );
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE extras (id INT NOT NULL, right_w INT NULL)");
     failures += execute_statement_ok(
         database,
         "INSERT INTO lefts VALUES (1, 10, 100), (2, 20, 200), (3, NULL, 300)"
@@ -774,6 +811,10 @@ static int prepare_join_fixture(mylite_db *database) {
     failures += execute_statement_ok(
         database,
         "INSERT INTO rights VALUES (7, 10, 700), (8, 10, 800), (9, NULL, 900)"
+    );
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO extras VALUES (30, 700), (31, 800), (32, NULL)"
     );
     return failures;
 }
@@ -890,6 +931,30 @@ static int expect_two_column_rows(
             expect_text_or_null(mylite_result_value_text(result, row, 0U), values[row][0], context);
         failures +=
             expect_text_or_null(mylite_result_value_text(result, row, 1U), values[row][1], context);
+    }
+    return failures;
+}
+
+static int expect_three_column_rows(
+    const mylite_result *result,
+    const char *const (*values)[3],
+    size_t row_count,
+    size_t warning_count,
+    const char *context
+) {
+    int failures = 0;
+
+    failures += expect_size(mylite_result_column_count(result), 3U, context);
+    failures += expect_size(mylite_result_row_count(result), row_count, context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += expect_size(mylite_result_warning_count(result), warning_count, context);
+    for (size_t row = 0U; row < row_count; ++row) {
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row, 0U), values[row][0], context);
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row, 1U), values[row][1], context);
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row, 2U), values[row][2], context);
     }
     return failures;
 }

@@ -21816,8 +21816,10 @@ static int test_select_inner_join_clause(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *from_join = NULL;
+    const struct mylite_sql_ast_node *nested_join = NULL;
     const struct mylite_sql_ast_node *left_source = NULL;
     const struct mylite_sql_ast_node *right_source = NULL;
+    const struct mylite_sql_ast_node *third_source = NULL;
     const struct mylite_sql_ast_node *hint_list = NULL;
     const struct mylite_sql_ast_node *hint = NULL;
     const struct mylite_sql_ast_node *condition = NULL;
@@ -21943,6 +21945,36 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT l.id FROM lefts l JOIN rights r ON l.k = r.k "
+        "JOIN extras e ON r.id = e.id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    nested_join = child_at(from_join, 0U);
+    third_source = child_at(from_join, 1U);
+    condition = child_at(from_join, 2U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "multi-source join root");
+    failures += expect_node(nested_join, MYLITE_SQL_AST_FROM_JOIN, "multi-source nested join");
+    failures += expect_child_count(from_join, 3U, "multi-source join child count");
+    failures += expect_child_count(nested_join, 3U, "multi-source nested join child count");
+    failures += expect_span_text(
+        child_at(child_at(nested_join, 0U), 0U),
+        "lefts",
+        "multi-source first table"
+    );
+    failures += expect_span_text(
+        child_at(child_at(nested_join, 1U), 0U),
+        "rights",
+        "multi-source second table"
+    );
+    failures += expect_span_text(child_at(third_source, 0U), "extras", "multi-source third table");
+    failures += expect_span_text(child_at(condition, 0U), "r.id", "multi-source final left key");
+    failures += expect_span_text(child_at(condition, 1U), "e.id", "multi-source final right key");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT l.id FROM lefts l INNER JOIN rights r ON l.k = r.k;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -22014,11 +22046,28 @@ static int test_select_inner_join_clause(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "SELECT l.id FROM lefts l, rights r, extras e;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parse_sql("SELECT l.id FROM lefts l, rights r, extras e;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    nested_join = child_at(from_join, 0U);
+    third_source = child_at(from_join, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "multi-source comma root");
+    failures += expect_node(nested_join, MYLITE_SQL_AST_FROM_JOIN, "multi-source comma nested");
+    failures += expect_child_count(from_join, 2U, "multi-source comma child count");
+    failures += expect_child_count(nested_join, 2U, "multi-source nested comma child count");
+    failures += expect_span_text(
+        child_at(child_at(nested_join, 0U), 0U),
+        "lefts",
+        "multi-source comma first table"
     );
+    failures += expect_span_text(
+        child_at(child_at(nested_join, 1U), 0U),
+        "rights",
+        "multi-source comma second table"
+    );
+    failures +=
+        expect_span_text(child_at(third_source, 0U), "extras", "multi-source comma third table");
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT l.id FROM lefts l, rights r JOIN extras e ON r.id = e.id;",

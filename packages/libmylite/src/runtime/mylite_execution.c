@@ -2745,6 +2745,9 @@ struct planned_select {
     bool requires_source_alias;
     enum mylite_sql_ast_join_kind join_kind;
     struct planned_select_join_condition join_condition;
+    enum mylite_sql_ast_join_kind *join_kinds;
+    struct planned_select_join_condition *join_conditions;
+    size_t join_count;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
@@ -2754,6 +2757,16 @@ struct select_optional_clauses {
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *order_clause;
     const struct mylite_sql_ast_node *limit_clause;
+};
+
+struct joined_select_ast {
+    const struct mylite_sql_ast_node *statement;
+    const struct mylite_sql_ast_node *from_clause;
+};
+
+struct joined_select_temp_nodes {
+    const struct mylite_sql_ast_node **source_nodes;
+    const struct mylite_sql_ast_node **join_condition_nodes;
 };
 
 enum planned_row_scalar_expression_kind {
@@ -12295,8 +12308,35 @@ static void copy_plan_source_alias_if_present(
 );
 static int plan_joined_select(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct joined_select_ast *joined_select,
+    struct planned_select *out_plan
+);
+static int prepare_joined_select_plan(
+    struct mylite_db *database,
     const struct mylite_sql_ast_node *from_clause,
+    struct planned_select *out_plan,
+    struct joined_select_temp_nodes *temp_nodes
+);
+static void joined_select_temp_nodes_deinit(struct joined_select_temp_nodes *temp_nodes);
+static size_t joined_select_source_count(const struct mylite_sql_ast_node *from_clause);
+static int collect_joined_select_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_select *out_plan,
+    const struct joined_select_temp_nodes *temp_nodes
+);
+static int plan_joined_select_sources(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *const *source_nodes,
+    struct planned_select *out_plan
+);
+static int reject_unsupported_multi_source_join_edges(
+    struct mylite_db *database,
+    const struct planned_select *plan
+);
+static int plan_joined_select_conditions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *const *join_condition_nodes,
     struct planned_select *out_plan
 );
 static int plan_joined_select_source(
@@ -73641,7 +73681,11 @@ static int plan_select(
         return MYLITE_ERROR;
     }
     if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JOIN) {
-        return plan_joined_select(database, statement, from_clause, out_plan);
+        const struct joined_select_ast joined_select = {
+            .statement = statement,
+            .from_clause = from_clause,
+        };
+        return plan_joined_select(database, &joined_select, out_plan);
     }
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
@@ -73801,57 +73845,29 @@ static void copy_plan_source_alias_if_present(
 
 static int plan_joined_select(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const struct mylite_sql_ast_node *from_clause,
+    const struct joined_select_ast *joined_select,
     struct planned_select *out_plan
 ) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *where_clause = NULL;
-    const struct mylite_sql_ast_node *order_clause = NULL;
-    const struct mylite_sql_ast_node *limit_clause = NULL;
-    const struct mylite_sql_ast_node *join_condition = child_at(from_clause, 2U);
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *select_list = NULL;
+    struct joined_select_temp_nodes temp_nodes = {0};
+    struct select_optional_clauses clauses = {0};
     struct select_source_context source_context = {0};
     int rc = MYLITE_OK;
 
+    if (joined_select == NULL || joined_select->statement == NULL ||
+        joined_select->from_clause == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    select_list = child_at(joined_select->statement, 0U);
     if (out_plan->is_distinct) {
         set_unsupported_error(database, "joined SELECT does not yet support DISTINCT");
         return MYLITE_ERROR;
     }
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            where_clause = optional_clause;
-        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-            order_clause = optional_clause;
-        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
-            limit_clause = optional_clause;
-        } else {
-            set_unsupported_error(
-                database,
-                "joined SELECT supports only WHERE, ORDER BY, and LIMIT"
-            );
-            return MYLITE_ERROR;
-        }
-        optional_clause = optional_clause->next_sibling;
-    }
-
-    out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
-    if ((out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
-         out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) &&
-        join_condition == NULL) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
-    if (out_plan->sources == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    out_plan->source_count = 2U;
-
-    rc = plan_joined_select_source(database, child_at(from_clause, 0U), &out_plan->sources[0]);
+    rc = collect_select_optional_clauses(database, joined_select->statement, &clauses);
     if (rc == MYLITE_OK) {
-        rc = plan_joined_select_source(database, child_at(from_clause, 1U), &out_plan->sources[1]);
+        rc =
+            prepare_joined_select_plan(database, joined_select->from_clause, out_plan, &temp_nodes);
     }
     if (rc == MYLITE_OK) {
         rc = reject_duplicate_select_source_reference(
@@ -73868,13 +73884,13 @@ static int plan_joined_select(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_joined_select_condition(
-            database,
-            join_condition,
-            out_plan->join_kind,
-            &source_context,
-            &out_plan->join_condition
-        );
+        rc = reject_unsupported_multi_source_join_edges(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_conditions(database, temp_nodes.join_condition_nodes, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->join_condition = out_plan->join_conditions[0];
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_columns(database, select_list, &source_context, NULL, 0U, out_plan);
@@ -73882,7 +73898,7 @@ static int plan_joined_select(
     if (rc == MYLITE_OK) {
         rc = plan_joined_select_predicate(
             database,
-            where_clause,
+            clauses.where_clause,
             &source_context,
             &out_plan->predicate
         );
@@ -73890,7 +73906,7 @@ static int plan_joined_select(
     if (rc == MYLITE_OK) {
         rc = plan_select_order(
             database,
-            order_clause,
+            clauses.order_clause,
             &source_context,
             out_plan,
             NULL,
@@ -73900,13 +73916,211 @@ static int plan_joined_select(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, limit_clause, &out_plan->limit);
+        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
     if (rc != MYLITE_OK) {
         planned_select_deinit(out_plan);
     }
+    joined_select_temp_nodes_deinit(&temp_nodes);
     return rc;
+}
+
+static int prepare_joined_select_plan(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_select *out_plan,
+    struct joined_select_temp_nodes *temp_nodes
+) {
+    int rc = MYLITE_OK;
+
+    if (temp_nodes == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->source_count = joined_select_source_count(from_clause);
+    if (out_plan->source_count < 2U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->join_count = out_plan->source_count - 1U;
+    out_plan->sources = calloc(out_plan->source_count, sizeof(*out_plan->sources));
+    out_plan->join_kinds = calloc(out_plan->join_count, sizeof(*out_plan->join_kinds));
+    out_plan->join_conditions = calloc(out_plan->join_count, sizeof(*out_plan->join_conditions));
+    temp_nodes->source_nodes = (const struct mylite_sql_ast_node **)
+        calloc(out_plan->source_count, sizeof(*temp_nodes->source_nodes));
+    temp_nodes->join_condition_nodes = (const struct mylite_sql_ast_node **)
+        calloc(out_plan->join_count, sizeof(*temp_nodes->join_condition_nodes));
+
+    if (out_plan->sources == NULL || out_plan->join_kinds == NULL ||
+        out_plan->join_conditions == NULL || temp_nodes->source_nodes == NULL ||
+        temp_nodes->join_condition_nodes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = collect_joined_select_parts(database, from_clause, out_plan, temp_nodes);
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_sources(database, temp_nodes->source_nodes, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->join_kind = out_plan->join_kinds[0];
+    }
+
+    return rc;
+}
+
+static void joined_select_temp_nodes_deinit(struct joined_select_temp_nodes *temp_nodes) {
+    if (temp_nodes == NULL) {
+        return;
+    }
+
+    free((void *)temp_nodes->source_nodes);
+    free((void *)temp_nodes->join_condition_nodes);
+    *temp_nodes = (struct joined_select_temp_nodes){0};
+}
+
+static size_t joined_select_source_count(const struct mylite_sql_ast_node *from_clause) {
+    const struct mylite_sql_ast_node *node = from_clause;
+    size_t source_count = 0U;
+
+    while (node != NULL && node->kind == MYLITE_SQL_AST_FROM_JOIN) {
+        ++source_count;
+        node = child_at(node, 0U);
+    }
+    if (node == NULL || node->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return 0U;
+    }
+    return source_count + 1U;
+}
+
+static int collect_joined_select_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_select *out_plan,
+    const struct joined_select_temp_nodes *temp_nodes
+) {
+    const struct mylite_sql_ast_node *node = from_clause;
+    size_t join_index = 0U;
+
+    if (node == NULL || out_plan == NULL || temp_nodes == NULL ||
+        temp_nodes->source_nodes == NULL || temp_nodes->join_condition_nodes == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    join_index = out_plan->join_count;
+    while (node != NULL && node->kind == MYLITE_SQL_AST_FROM_JOIN) {
+        const struct mylite_sql_ast_node *right_source = child_at(node, 1U);
+
+        if (join_index == 0U || right_source == NULL ||
+            right_source->kind != MYLITE_SQL_AST_FROM_TABLE) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+
+        --join_index;
+        temp_nodes->source_nodes[join_index + 1U] = right_source;
+        out_plan->join_kinds[join_index] = mylite_sql_ast_node_join_kind(node);
+        temp_nodes->join_condition_nodes[join_index] = child_at(node, 2U);
+        node = child_at(node, 0U);
+    }
+
+    if (join_index != 0U || node == NULL || node->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    temp_nodes->source_nodes[0] = node;
+    return MYLITE_OK;
+}
+
+static int plan_joined_select_sources(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *const *source_nodes,
+    struct planned_select *out_plan
+) {
+    if (source_nodes == NULL || out_plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    for (size_t source_index = 0U; source_index < out_plan->source_count; ++source_index) {
+        if (source_nodes[source_index] == NULL) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        const int rc = plan_joined_select_source(
+            database,
+            source_nodes[source_index],
+            &out_plan->sources[source_index]
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int reject_unsupported_multi_source_join_edges(
+    struct mylite_db *database,
+    const struct planned_select *plan
+) {
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (plan->source_count <= 2U) {
+        return MYLITE_OK;
+    }
+
+    for (size_t join_index = 0U; join_index < plan->join_count; ++join_index) {
+        if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
+            plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+            set_unsupported_error(
+                database,
+                "multi-source SELECT supports only inner and cartesian join chains"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int plan_joined_select_conditions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *const *join_condition_nodes,
+    struct planned_select *out_plan
+) {
+    if (join_condition_nodes == NULL || out_plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    for (size_t join_index = 0U; join_index < out_plan->join_count; ++join_index) {
+        struct select_source_context edge_source_context = {0};
+        int rc = init_join_select_source_context(
+            out_plan->sources,
+            join_index + 2U,
+            &edge_source_context
+        );
+
+        if (rc == MYLITE_OK) {
+            rc = plan_joined_select_condition(
+                database,
+                join_condition_nodes[join_index],
+                out_plan->join_kinds[join_index],
+                &edge_source_context,
+                &out_plan->join_conditions[join_index]
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
 }
 
 static int plan_joined_select_source(
@@ -74325,6 +74539,8 @@ static void planned_select_deinit(struct planned_select *plan) {
     free(plan->columns);
     free((void *)plan->column_aliases);
     free(plan->column_source_indexes);
+    free(plan->join_kinds);
+    free(plan->join_conditions);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_order_deinit(&plan->order);
     *plan = (struct planned_select){0};
@@ -147860,7 +148076,8 @@ static int append_select_from_sql(
         }
         return rc;
     }
-    if (plan->source_count != 2U) {
+    if (plan->join_count != plan->source_count - 1U || plan->join_kinds == NULL ||
+        plan->join_conditions == NULL) {
         return MYLITE_ERROR;
     }
 
@@ -147871,24 +148088,32 @@ static int append_select_from_sql(
     if (rc == MYLITE_OK) {
         rc = append_select_source_alias(string, 0U);
     }
-    if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
-        rc = dynamic_string_append(string, " LEFT JOIN ");
-    } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
-        rc = dynamic_string_append(string, " RIGHT JOIN ");
-    } else if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, " JOIN ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(string, plan->sources[1].table.physical_name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 1U);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_join_condition_sql(string, &plan->join_condition);
+
+    for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
+        size_t right_source_index = join_index + 1U;
+
+        if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+            rc = dynamic_string_append(string, " LEFT JOIN ");
+        } else if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+            rc = dynamic_string_append(string, " RIGHT JOIN ");
+        } else {
+            rc = dynamic_string_append(string, " JOIN ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(
+                string,
+                plan->sources[right_source_index].table.physical_name
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_source_alias(string, right_source_index);
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_join_condition_sql(string, &plan->join_conditions[join_index]);
+        }
     }
 
     return rc;

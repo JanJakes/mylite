@@ -4410,6 +4410,36 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     return join;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    enum mylite_sql_ast_join_kind join_kind,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_ast_node *condition
+) {
+    struct mylite_sql_source_span span =
+        left != NULL ? left->span : (struct mylite_sql_source_span){0};
+    struct mylite_sql_ast_node *join = NULL;
+
+    if (right != NULL) {
+        span = span_join(span, right->span);
+    }
+    if (condition != NULL) {
+        span = span_join(span, condition->span);
+    }
+
+    join = make_node(state, MYLITE_SQL_AST_FROM_JOIN, span);
+    if (join == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_join_kind(join, join_kind);
+    mylite_sql_ast_node_append_child(join, left);
+    mylite_sql_ast_node_append_child(join, right);
+    mylite_sql_ast_node_append_child(join, condition);
+    return join;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_hint_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *hint

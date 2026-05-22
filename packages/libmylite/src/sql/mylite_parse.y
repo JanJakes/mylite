@@ -65,6 +65,8 @@
 %type union_modifier_opt { enum mylite_sql_ast_union_modifier }
 %type show_full_opt { int }
 %type join_operator { enum mylite_sql_ast_join_kind }
+%type inner_join_operator { enum mylite_sql_ast_join_kind }
+%type outer_join_operator { enum mylite_sql_ast_join_kind }
 %type table_or_tables { struct mylite_sql_token }
 %type trim_direction { enum mylite_sql_ast_node_kind }
 %type cast_basic_target { enum mylite_sql_ast_node_kind }
@@ -2726,20 +2728,25 @@ select_statement(A) ::=
         L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) join_operator(JO)
-    table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM inner_join_table_source(JT)
+    where_clause_opt(W) group_clause_opt(G)
+    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B, JT, W, G, H, O, L, K);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT)
+    outer_join_operator(JO) table_source(RT) ON join_condition(J) where_clause_opt(W) group_clause_opt(G)
     having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) COMMA
-    table_source(RT) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM comma_table_sources(CT)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
     select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B,
-        mylite_sql_parser_make_from_join(state, F, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL),
-        W, G, H, O, L, K);
+        state, T, M, B, CT, W, G, H, O, L, K);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
@@ -2761,21 +2768,28 @@ select_statement(A) ::=
         mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O, L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) join_operator(JO)
-    table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
+    SELECT(T) select_modifiers(M) STAR(S) FROM inner_join_table_source(JT)
+    where_clause_opt(W) group_clause_opt(G)
+    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        JT, W, G, H, O, L, K);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) outer_join_operator(JO)
+    table_source(RT) ON join_condition(J) where_clause_opt(W) group_clause_opt(G)
     having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) COMMA table_source(RT)
+    SELECT(T) select_modifiers(M) STAR(S) FROM comma_table_sources(CT)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) select_order_clause_opt(O)
     limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_join(state, F, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL),
-        W, G, H, O, L, K);
+        CT, W, G, H, O, L, K);
 }
 
 compound_select_statement(A) ::= select_statement(S) union_term_list(T). {
@@ -2805,6 +2819,24 @@ union_modifier_opt(A) ::= ALL. {
 
 table_source(A) ::= table_name(N) table_alias_opt(AL) table_index_hints_opt(IH). {
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+
+inner_join_table_source(A) ::=
+    table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+inner_join_table_source(A) ::=
+    inner_join_table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+
+comma_table_sources(A) ::= table_source(LT) COMMA table_source(RT). {
+    A = mylite_sql_parser_make_join_source(
+        state, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL);
+}
+comma_table_sources(A) ::= comma_table_sources(LT) COMMA table_source(RT). {
+    A = mylite_sql_parser_make_join_source(
+        state, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL);
 }
 
 table_statement(A) ::= TABLE(T) table_name(N) table_order_clause_opt(O) limit_clause_opt(L). {
@@ -2898,6 +2930,29 @@ join_operator(A) ::= RIGHT JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
 }
 join_operator(A) ::= RIGHT OUTER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
+}
+
+inner_join_operator(A) ::= JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+inner_join_operator(A) ::= INNER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+inner_join_operator(A) ::= CROSS JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+
+outer_join_operator(A) ::= LEFT JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER;
+}
+outer_join_operator(A) ::= LEFT OUTER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER;
+}
+outer_join_operator(A) ::= RIGHT JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
+}
+outer_join_operator(A) ::= RIGHT OUTER JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
 }
 

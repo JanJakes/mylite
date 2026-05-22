@@ -11903,6 +11903,46 @@ static int test_alter_table_multi_action_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "ALTER TABLE defaults ALTER a SET DEFAULT 9, ALTER b DROP DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi default statement"
+    );
+    failures += expect_child_count(actions, 2U, "alter multi default action count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT,
+        "alter multi first set default action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT,
+        "alter multi second drop default action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE defaults ADD COLUMN c INT, ALTER a SET DEFAULT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_child_count(actions, 2U, "alter multi add column set default count");
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT,
+        "alter multi set default after add column action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -24928,6 +24968,13 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_name.old_col SET DEFAULT 1, ALTER other DROP DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE old_name ALTER old_col SET DEFAULT (1 + 1);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -24953,13 +25000,6 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name ALTER COLUMN old_name.old_col DROP DEFAULT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name ALTER old_col DROP DEFAULT, ALTER other DROP DEFAULT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -24992,13 +25032,6 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE t ADD COLUMN v INT INVISIBLE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name ALTER old_col SET DEFAULT 1, ALTER other SET DEFAULT 2;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

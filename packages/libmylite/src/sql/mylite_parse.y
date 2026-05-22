@@ -1559,6 +1559,26 @@ alter_table_multi_first_action(A) ::= DROP(A1) KEY identifier(I) COMMA. {
             I,
             mylite_sql_parser_empty_alter_table_options()));
 }
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_set_default_statement(
+            state, A1, NULL, C, mylite_sql_parser_make_column_default_null(state, D, N)));
+}
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) column_default_value(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_set_default_statement(
+            state, A1, NULL, C, mylite_sql_parser_make_column_default_value(state, D, V)));
+}
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) DROP DEFAULT(D) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_default_statement(state, A1, NULL, C, D));
+}
 
 alter_table_multi_action(A) ::=
     ADD(A1) column_keyword_opt column_definition(C) column_position_opt(P). {
@@ -1609,6 +1629,19 @@ alter_table_multi_action(A) ::= DROP(A1) KEY identifier(I). {
         NULL,
         I,
         mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N). {
+    A = mylite_sql_parser_make_alter_table_set_default_statement(
+        state, A1, NULL, C, mylite_sql_parser_make_column_default_null(state, D, N));
+}
+alter_table_multi_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) column_default_value(V). {
+    A = mylite_sql_parser_make_alter_table_set_default_statement(
+        state, A1, NULL, C, mylite_sql_parser_make_column_default_value(state, D, V));
+}
+alter_table_multi_action(A) ::= ALTER(A1) column_keyword_opt identifier(C) DROP DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_drop_default_statement(state, A1, NULL, C, D);
 }
 
 alter_table_add_column_statement(A) ::=

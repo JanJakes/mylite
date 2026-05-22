@@ -20,6 +20,8 @@ enum {
     mysql_error_key_column_missing = 1072,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_duplicate_key = 1062,
+    mysql_error_unknown_column = 1054,
+    mysql_error_field_no_default = 1364,
 };
 
 struct expected_sql_error {
@@ -38,6 +40,8 @@ struct expected_query {
 
 static int test_multi_action_success_metadata_and_persistence(void);
 static int test_multi_action_drop_add_and_rollback(void);
+static int test_multi_action_default_metadata_and_persistence(void);
+static int test_multi_action_default_rollback_and_diagnostics(void);
 static int test_multi_action_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -74,6 +78,8 @@ int main(void) {
 
     failures += test_multi_action_success_metadata_and_persistence();
     failures += test_multi_action_drop_add_and_rollback();
+    failures += test_multi_action_default_metadata_and_persistence();
+    failures += test_multi_action_default_rollback_and_diagnostics();
     failures += test_multi_action_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -337,6 +343,307 @@ static int test_multi_action_drop_add_and_rollback(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "index name is reusable after failed multi-action rollback",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_multi_action_default_metadata_and_persistence(void) {
+    static const char *const default_rows[] = {
+        "a",
+        "9",
+        "b",
+        NULL,
+        "c",
+        NULL,
+    };
+    static const char *const inserted_rows[] = {"1", "9", "5", "6"};
+    static const char *const mixed_rows[] = {"a", "3", "c", "4"};
+    static const char *const mixed_show_create_rows[] = {
+        "mixed",
+        "CREATE TABLE `mixed` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `a` int DEFAULT '3',\n"
+        "  `c` int DEFAULT '4',\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open defaults db");
+    failures += expect_dml_ok(database, "CREATE DATABASE app", 1);
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE defaults_t (id INT PRIMARY KEY, a INT DEFAULT 1, b INT DEFAULT 2, c INT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE defaults_t ALTER a SET DEFAULT 9, ALTER b DROP DEFAULT"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'defaults_t' "
+                   "AND COLUMN_NAME IN ('a', 'b', 'c') "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = default_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "default metadata after multi default alter",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t (id, c) VALUES (1, 4)",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'b' doesn't have a default value",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE defaults_t ALTER b SET DEFAULT 5, ALTER c SET DEFAULT 6"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO defaults_t (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b, c FROM defaults_t",
+            .values = inserted_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "insert after multi default alter",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE mixed (id INT PRIMARY KEY, a INT)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE mixed ADD COLUMN c INT DEFAULT 4, ALTER a SET DEFAULT 3"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'mixed' "
+                   "AND COLUMN_NAME IN ('a', 'c') "
+                   "ORDER BY COLUMN_NAME",
+            .values = mixed_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "mixed add column and old-column default alter",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE mixed",
+            .values = mixed_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "mixed multi default SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_bytes(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)) == 0 ? actual_preamble
+                                                                              : NULL,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after multi default ALTER"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen defaults db");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b, c FROM defaults_t",
+            .values = inserted_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "reopened multi default rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'mixed' "
+                   "AND COLUMN_NAME IN ('a', 'c') "
+                   "ORDER BY COLUMN_NAME",
+            .values = mixed_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "reopened mixed default metadata",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_multi_action_default_rollback_and_diagnostics(void) {
+    static const char *const rollback_rows[] = {"a", "1", "b", "2"};
+    static const char *const zero_rows[] = {"0"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *mode_result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "default_rollback") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open default rollback db");
+    failures += execute_error(
+        database,
+        "ALTER TABLE defaults_t ALTER a SET DEFAULT 9, ALTER b DROP DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += expect_dml_ok(database, "CREATE DATABASE app", 1);
+    failures += expect_statement_ok(database, "USE app");
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_schema.defaults_t ALTER a SET DEFAULT 9, ALTER b DROP DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_t ALTER a SET DEFAULT 9, ALTER b DROP DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing_t' doesn't exist",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE defaults_t (id INT PRIMARY KEY, a INT DEFAULT 1, b INT DEFAULT 2, v INT)"
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE defaults_t ALTER a SET DEFAULT 9, ALTER missing SET DEFAULT 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'defaults_t'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'defaults_t' "
+                   "AND COLUMN_NAME IN ('a', 'b') "
+                   "ORDER BY COLUMN_NAME",
+            .values = rollback_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "failed multi default rolls back earlier default",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE defaults_t ADD INDEX k_v (v), ALTER missing SET DEFAULT 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'defaults_t'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'defaults_t' "
+                   "AND INDEX_NAME = 'k_v'",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "failed multi default rolls back physical index",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE defaults_t ADD COLUMN c INT, ALTER c SET DEFAULT 7",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'c' in 'defaults_t'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'defaults_t' "
+                   "AND COLUMN_NAME = 'c'",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "failed same-statement added default target rolls back column",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TEMPORARY TABLE tmp (id INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE tmp ALTER id SET DEFAULT 1, ALTER id DROP DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "multi-action ALTER TABLE supports only persistent base tables",
+        }
+    );
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE zero_temporal (id INT, d DATETIME DEFAULT '0000-00-00 00:00:00', a INT)"
+    );
+    failures += execute_ok(database, "SET sql_mode = 'NO_ZERO_DATE'", &mode_result);
+    failures +=
+        expect_size(mylite_result_warning_count(mode_result), 1U, "NO_ZERO_DATE mode warning");
+    mylite_result_free(mode_result);
+    mode_result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE zero_temporal ALTER a SET DEFAULT 1, ALTER id SET DEFAULT 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "multi-action ALTER TABLE does not yet support warning-producing "
+                            "SET DEFAULT",
         }
     );
 

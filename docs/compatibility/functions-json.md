@@ -10,8 +10,8 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_ARRAY_APPEND()` | ❌ | Append data to JSON document |
 | `JSON_ARRAY_INSERT()` | ❌ | Insert into JSON array |
 | `JSON_ARRAYAGG()` | ❌ | Return result set as a single JSON array |
-| `JSON_CONTAINS()` | ❌ | Whether JSON document contains specific object at path |
-| `JSON_CONTAINS_PATH()` | ❌ | Whether JSON document contains any data at path |
+| `JSON_CONTAINS()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection/predicate containment over SQL string/`NULL`, JSON descriptor, and nonbinary string descriptor document/candidate values, with optional simple path string/`NULL` literal and current signed-integer JSON number subset; no wildcard/range paths, arbitrary expression arguments, binary strings, decimals/exponents, ordering/grouping expressions, DML assignment expressions, mutation, or protocol-grade JSON metadata |
+| `JSON_CONTAINS_PATH()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection/predicate path existence over SQL string/`NULL`, JSON descriptor, and nonbinary string descriptor document values with case-insensitive literal `one`/`all` and simple path string/`NULL` literals; no wildcard/range/multi-match paths, arbitrary expression arguments, path columns, binary strings, ordering/grouping expressions, DML assignment expressions, or protocol-grade JSON metadata |
 | `JSON_DEPTH()` | ❌ | Maximum depth of JSON document |
 | `JSON_EXTRACT()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection with one JSON document operand and one simple path string literal; supports SQL string literals, `NULL`, JSON columns, and nonbinary string columns, returning JSON text or SQL `NULL`; no multiple paths, wildcards/ranges, predicates, expression ordering, DML assignment expressions, or arbitrary expressions |
 | `JSON_INSERT()` | ❌ | Insert data into JSON document |

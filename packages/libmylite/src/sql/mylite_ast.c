@@ -1332,6 +1332,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_array_function";
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
         return "json_object_function";
+    case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
+        return "json_contains_function";
+    case MYLITE_SQL_AST_JSON_CONTAINS_ARGUMENT_COUNT_ERROR:
+        return "json_contains_argument_count_error";
+    case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
+        return "json_contains_path_function";
+    case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
+        return "json_contains_path_argument_count_error";
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
         return "json_type_function";
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:

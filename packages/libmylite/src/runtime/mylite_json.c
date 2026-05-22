@@ -35,6 +35,7 @@ enum {
     json_ascii_byte_limit = 0x7f,
     json_hex_low_nibble = 0x0f,
     json_sql_integer_buffer_length = 32,
+    json_contains_stack_capacity = (json_max_nesting_depth * 2) + 2,
 };
 
 struct json_text {
@@ -135,6 +136,30 @@ struct json_deinit_frame {
 struct json_deinit_stack {
     struct json_deinit_frame frames[json_max_nesting_depth + 1U];
     size_t count;
+};
+
+enum json_contains_frame_kind {
+    JSON_CONTAINS_CHECK,
+    JSON_CONTAINS_ARRAY_VALUE,
+    JSON_CONTAINS_ARRAY_CANDIDATE,
+    JSON_CONTAINS_OBJECT_CANDIDATE,
+};
+
+struct json_contains_frame {
+    enum json_contains_frame_kind kind;
+    const struct json_value *target;
+    const struct json_value *candidate;
+    size_t target_index;
+    size_t candidate_index;
+    bool waiting_child;
+    bool child_result;
+};
+
+struct json_contains_stack {
+    struct json_contains_frame frames[json_contains_stack_capacity];
+    size_t count;
+    bool done;
+    bool result;
 };
 
 struct json_number_integer_part {
@@ -288,6 +313,36 @@ static int extract_path_value(
     const struct json_value *root,
     const struct json_value **out_value,
     bool *out_matched
+);
+static bool json_value_contains(
+    const struct json_value *target,
+    const struct json_value *candidate
+);
+static bool json_contains_stack_push(
+    struct json_contains_stack *stack,
+    const struct json_value *target,
+    const struct json_value *candidate
+);
+static bool json_contains_stack_complete(struct json_contains_stack *stack, bool result);
+static bool json_contains_process_check_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+);
+static bool json_contains_process_array_value_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+);
+static bool json_contains_process_array_candidate_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+);
+static bool json_contains_process_object_candidate_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+);
+static bool json_scalar_values_equal(
+    const struct json_value *target,
+    const struct json_value *candidate
 );
 static const char *json_value_type_name(const struct json_value *value);
 static int json_value_shallow_length(const struct json_value *value, int64_t *out_length);
@@ -597,6 +652,153 @@ int mylite_json_extract(
 
     value_deinit(&document);
     writer_deinit(&writer);
+    return rc;
+}
+
+int mylite_json_contains(
+    const char *target,
+    size_t target_length,
+    const char *candidate,
+    size_t candidate_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    int64_t *out_contains,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser target_parser = {
+        .text = target,
+        .length = target_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser candidate_parser = {
+        .text = candidate,
+        .length = candidate_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser path_parser = {
+        .text = path,
+        .length = path_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value target_value = {0};
+    struct json_value candidate_value = {0};
+    const struct json_value *matched_target = NULL;
+    bool matched = false;
+    int rc = MYLITE_OK;
+
+    if (out_contains == NULL || out_is_null == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_contains = 0;
+    *out_is_null = false;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (target == NULL || candidate == NULL || (has_path && path == NULL)) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&target_parser, &target_value);
+    *out_result = target_parser.result;
+    if (rc == MYLITE_OK) {
+        rc = parse_document(&candidate_parser, &candidate_value);
+        *out_result = candidate_parser.result;
+    }
+    if (rc == MYLITE_OK && has_path) {
+        rc = extract_path_value(&path_parser, &target_value, &matched_target, &matched);
+        *out_result = path_parser.result;
+        if (rc == MYLITE_OK && !matched) {
+            *out_is_null = true;
+        }
+    } else if (rc == MYLITE_OK) {
+        matched_target = &target_value;
+        matched = true;
+    }
+    if (rc == MYLITE_OK && matched) {
+        if (json_value_contains(matched_target, &candidate_value)) {
+            *out_contains = 1;
+        }
+    }
+
+    value_deinit(&candidate_value);
+    value_deinit(&target_value);
+    return rc;
+}
+
+int mylite_json_contains_path(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    bool require_all,
+    int64_t *out_contains,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    bool any_match = false;
+    int rc = MYLITE_OK;
+
+    if (out_contains == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_contains = 0;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL || (path_count != 0U && (paths == NULL || path_lengths == NULL))) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    for (size_t path_index = 0U; rc == MYLITE_OK && path_index < path_count; ++path_index) {
+        struct json_parser path_parser = {
+            .text = paths[path_index],
+            .length = path_lengths[path_index],
+            .position = 0U,
+            .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+        };
+        const struct json_value *matched_value = NULL;
+        bool matched = false;
+
+        rc = extract_path_value(&path_parser, &document, &matched_value, &matched);
+        (void)matched_value;
+        *out_result = path_parser.result;
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        if (matched) {
+            any_match = true;
+        } else if (require_all) {
+            *out_contains = 0;
+            value_deinit(&document);
+            return MYLITE_OK;
+        }
+        if (matched && !require_all) {
+            *out_contains = 1;
+            value_deinit(&document);
+            return MYLITE_OK;
+        }
+    }
+    if (rc == MYLITE_OK && (require_all || any_match)) {
+        *out_contains = 1;
+    }
+
+    value_deinit(&document);
     return rc;
 }
 
@@ -1981,6 +2183,237 @@ static int extract_path_value(
     }
 
     return rc;
+}
+
+static bool json_value_contains(
+    const struct json_value *target,
+    const struct json_value *candidate
+) {
+    struct json_contains_stack stack = {0};
+
+    if (!json_contains_stack_push(&stack, target, candidate)) {
+        return false;
+    }
+
+    while (!stack.done) {
+        struct json_contains_frame *frame = &stack.frames[stack.count - 1U];
+        bool progressed = false;
+
+        switch (frame->kind) {
+        case JSON_CONTAINS_CHECK:
+            progressed = json_contains_process_check_frame(&stack, frame);
+            break;
+        case JSON_CONTAINS_ARRAY_VALUE:
+            progressed = json_contains_process_array_value_frame(&stack, frame);
+            break;
+        case JSON_CONTAINS_ARRAY_CANDIDATE:
+            progressed = json_contains_process_array_candidate_frame(&stack, frame);
+            break;
+        case JSON_CONTAINS_OBJECT_CANDIDATE:
+            progressed = json_contains_process_object_candidate_frame(&stack, frame);
+            break;
+        }
+        if (!progressed) {
+            return false;
+        }
+    }
+    return stack.result;
+}
+
+static bool json_contains_stack_push(
+    struct json_contains_stack *stack,
+    const struct json_value *target,
+    const struct json_value *candidate
+) {
+    if (stack == NULL || stack->count >= json_contains_stack_capacity) {
+        return false;
+    }
+    stack->frames[stack->count] = (struct json_contains_frame){
+        .kind = JSON_CONTAINS_CHECK,
+        .target = target,
+        .candidate = candidate,
+        .target_index = 0U,
+        .candidate_index = 0U,
+        .waiting_child = false,
+        .child_result = false,
+    };
+    ++stack->count;
+    return true;
+}
+
+static bool json_contains_stack_complete(struct json_contains_stack *stack, bool result) {
+    if (stack == NULL || stack->count == 0U) {
+        return false;
+    }
+
+    --stack->count;
+    if (stack->count == 0U) {
+        stack->done = true;
+        stack->result = result;
+        return true;
+    }
+
+    stack->frames[stack->count - 1U].child_result = result;
+    return true;
+}
+
+static bool json_contains_process_check_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+) {
+    if (frame == NULL || frame->target == NULL || frame->candidate == NULL) {
+        return json_contains_stack_complete(stack, false);
+    }
+    if (frame->target->kind == JSON_VALUE_ARRAY) {
+        frame->kind = frame->candidate->kind == JSON_VALUE_ARRAY ? JSON_CONTAINS_ARRAY_CANDIDATE
+                                                                 : JSON_CONTAINS_ARRAY_VALUE;
+        frame->target_index = 0U;
+        frame->candidate_index = 0U;
+        frame->waiting_child = false;
+        frame->child_result = false;
+        return true;
+    }
+    if (frame->target->kind == JSON_VALUE_OBJECT && frame->candidate->kind == JSON_VALUE_OBJECT) {
+        frame->kind = JSON_CONTAINS_OBJECT_CANDIDATE;
+        frame->target_index = 0U;
+        frame->candidate_index = 0U;
+        frame->waiting_child = false;
+        frame->child_result = false;
+        return true;
+    }
+    if (frame->target->kind == frame->candidate->kind) {
+        return json_contains_stack_complete(
+            stack,
+            json_scalar_values_equal(frame->target, frame->candidate)
+        );
+    }
+    return json_contains_stack_complete(stack, false);
+}
+
+static bool json_contains_process_array_value_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+) {
+    if (frame == NULL || frame->target == NULL || frame->candidate == NULL ||
+        frame->target->kind != JSON_VALUE_ARRAY) {
+        return json_contains_stack_complete(stack, false);
+    }
+    if (frame->waiting_child) {
+        if (frame->child_result) {
+            return json_contains_stack_complete(stack, true);
+        }
+        ++frame->target_index;
+        frame->waiting_child = false;
+    }
+    if (frame->target_index >= frame->target->payload.array.count) {
+        return json_contains_stack_complete(stack, false);
+    }
+
+    frame->waiting_child = true;
+    return json_contains_stack_push(
+        stack,
+        &frame->target->payload.array.values[frame->target_index],
+        frame->candidate
+    );
+}
+
+static bool json_contains_process_array_candidate_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+) {
+    if (frame == NULL || frame->target == NULL || frame->candidate == NULL ||
+        frame->target->kind != JSON_VALUE_ARRAY || frame->candidate->kind != JSON_VALUE_ARRAY) {
+        return json_contains_stack_complete(stack, false);
+    }
+    if (frame->candidate_index >= frame->candidate->payload.array.count) {
+        return json_contains_stack_complete(stack, true);
+    }
+    if (frame->waiting_child) {
+        if (frame->child_result) {
+            ++frame->candidate_index;
+            frame->target_index = 0U;
+        } else {
+            ++frame->target_index;
+        }
+        frame->waiting_child = false;
+    }
+    if (frame->candidate_index >= frame->candidate->payload.array.count) {
+        return json_contains_stack_complete(stack, true);
+    }
+    if (frame->target_index >= frame->target->payload.array.count) {
+        return json_contains_stack_complete(stack, false);
+    }
+
+    frame->waiting_child = true;
+    return json_contains_stack_push(
+        stack,
+        &frame->target->payload.array.values[frame->target_index],
+        &frame->candidate->payload.array.values[frame->candidate_index]
+    );
+}
+
+static bool json_contains_process_object_candidate_frame(
+    struct json_contains_stack *stack,
+    struct json_contains_frame *frame
+) {
+    const struct json_member *candidate_member = NULL;
+    const struct json_value *target_member = NULL;
+
+    if (frame == NULL || frame->target == NULL || frame->candidate == NULL ||
+        frame->target->kind != JSON_VALUE_OBJECT || frame->candidate->kind != JSON_VALUE_OBJECT) {
+        return json_contains_stack_complete(stack, false);
+    }
+    if (frame->candidate_index >= frame->candidate->payload.object.count) {
+        return json_contains_stack_complete(stack, true);
+    }
+    if (frame->waiting_child) {
+        if (!frame->child_result) {
+            return json_contains_stack_complete(stack, false);
+        }
+        ++frame->candidate_index;
+        frame->waiting_child = false;
+    }
+    if (frame->candidate_index >= frame->candidate->payload.object.count) {
+        return json_contains_stack_complete(stack, true);
+    }
+
+    candidate_member = &frame->candidate->payload.object.members[frame->candidate_index];
+    target_member =
+        object_member_value(frame->target, candidate_member->key, candidate_member->key_length);
+    if (target_member == NULL) {
+        return json_contains_stack_complete(stack, false);
+    }
+
+    frame->waiting_child = true;
+    return json_contains_stack_push(stack, target_member, candidate_member->value);
+}
+
+static bool json_scalar_values_equal(
+    const struct json_value *target,
+    const struct json_value *candidate
+) {
+    if (target == NULL || candidate == NULL || target->kind != candidate->kind) {
+        return false;
+    }
+
+    switch (target->kind) {
+    case JSON_VALUE_NULL:
+        return true;
+    case JSON_VALUE_BOOL:
+        return target->payload.boolean == candidate->payload.boolean;
+    case JSON_VALUE_NUMBER:
+    case JSON_VALUE_STRING:
+        return (target->payload.text.length == candidate->payload.text.length &&
+                memcmp(
+                    target->payload.text.text,
+                    candidate->payload.text.text,
+                    target->payload.text.length
+                ) == 0) != 0;
+    case JSON_VALUE_ARRAY:
+    case JSON_VALUE_OBJECT:
+        break;
+    }
+    return false;
 }
 
 static int parse_path_member_leg(

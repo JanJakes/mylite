@@ -592,6 +592,8 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"JOIN", MYLITE_SQL_KEYWORD_RESERVED},
         {"JSON", 0U},
         {"JSON_ARRAY", 0U},
+        {"JSON_CONTAINS", 0U},
+        {"JSON_CONTAINS_PATH", 0U},
         {"JSON_EXTRACT", 0U},
         {"JSON_LENGTH", 0U},
         {"JSON_OBJECT", 0U},

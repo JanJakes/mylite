@@ -66,6 +66,28 @@ int mylite_json_extract(
     bool *out_is_null,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_contains(
+    const char *target,
+    size_t target_length,
+    const char *candidate,
+    size_t candidate_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    int64_t *out_contains,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_contains_path(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    bool require_all,
+    int64_t *out_contains,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_path_validate(
     const char *path,
     size_t path_length,

@@ -808,6 +808,18 @@ static int test_catalog_v28_character_expression_migration(void) {
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE existing_defaults (id INT)");
     sqlite = mylite_connection_sqlite_for_test(database);
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN row_format_option");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN key_block_size");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN pack_keys");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN checksum");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_persistent");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_auto_recalc");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_sample_pages");
     failures += execute_sql(
         sqlite,
         "UPDATE _mylite_catalog_state "

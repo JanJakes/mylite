@@ -1724,6 +1724,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "table_collation_option";
     case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
         return "table_comment_option";
+    case MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION:
+        return "table_row_format_option";
+    case MYLITE_SQL_AST_TABLE_KEY_BLOCK_SIZE_OPTION:
+        return "table_key_block_size_option";
+    case MYLITE_SQL_AST_TABLE_PACK_KEYS_OPTION:
+        return "table_pack_keys_option";
+    case MYLITE_SQL_AST_TABLE_CHECKSUM_OPTION:
+        return "table_checksum_option";
+    case MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION:
+        return "table_stats_persistent_option";
+    case MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION:
+        return "table_stats_auto_recalc_option";
+    case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
+        return "table_stats_sample_pages_option";
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
         return "insert_set_statement";
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:

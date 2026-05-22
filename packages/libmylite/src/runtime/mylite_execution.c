@@ -49,6 +49,7 @@ enum {
     mysql_error_database_access_denied = 1044,
     mysql_error_database_exists = 1007,
     mysql_error_cant_drop_database = 1008,
+    mysql_error_table_storage_engine_option = 1031,
     mysql_error_unknown_database = 1049,
     mysql_error_table_exists = 1050,
     mysql_error_column_ambiguous = 1052,
@@ -339,6 +340,7 @@ enum {
     show_table_status_create_time_column = 11,
     show_table_status_update_time_column = 12,
     show_table_status_data_length = 16384,
+    table_status_create_options_capacity = 192,
     show_character_set_result_column_count = 4,
     show_collation_result_column_count = 7,
     show_triggers_result_column_count = 11,
@@ -626,6 +628,9 @@ static const uint64_t max_allowed_packet_default_value = 67108864ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
 static const uint64_t timeout_system_variable_max_value = 31536000ULL;
 static const uint64_t scalar_integer_cast_int64_min_magnitude = 9223372036854775808ULL;
+static const uint64_t table_key_block_size_eight = 8U;
+static const uint64_t table_key_block_size_sixteen = 16U;
+static const uint64_t table_stats_sample_pages_max = 65535U;
 static const unsigned char ascii_max_byte = 0x7fU;
 static const char national_character_set_name[] = "utf8mb3";
 static const char national_collation_name[] = "utf8mb3_general_ci";
@@ -1783,6 +1788,13 @@ struct planned_create_table {
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
+    char row_format_option[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int64_t key_block_size;
+    int64_t pack_keys;
+    int64_t checksum;
+    int64_t stats_persistent;
+    int64_t stats_auto_recalc;
+    int64_t stats_sample_pages;
     bool suppress_spatial_index_warnings;
 };
 
@@ -3277,10 +3289,14 @@ struct table_status_values {
     char auto_increment_text[integer_text_capacity];
     char create_time_text[datetime_text_length + 1U];
     char update_time_text[datetime_text_length + 1U];
+    char row_format_text[sizeof("Compressed")];
+    char create_options_text[table_status_create_options_capacity];
     const char *index_length;
     const char *auto_increment;
     const char *create_time;
     const char *update_time;
+    const char *row_format;
+    const char *create_options;
 };
 
 struct show_table_status_context {
@@ -8797,6 +8813,34 @@ static int load_table_status_values(
     const struct mylite_catalog_table_descriptor *table,
     struct table_status_values *out_values
 );
+static int load_table_status_row_format(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *out_values
+);
+static bool table_status_row_format_is_compressed(
+    const struct mylite_catalog_table_descriptor *table
+);
+static int load_table_status_create_options(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *out_values
+);
+static int append_table_status_create_option(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    bool *has_option,
+    const char *text
+);
+static int append_table_status_create_option_i64(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    bool *has_option,
+    const char *prefix,
+    int64_t value
+);
 static int table_status_has_auto_increment(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
@@ -9758,6 +9802,76 @@ static int apply_create_table_comment_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_options,
     struct planned_create_table *plan
+);
+static int apply_create_table_storage_statistics_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options,
+    struct planned_create_table *plan
+);
+static int apply_table_storage_statistics_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_row_format_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_key_block_size_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_pack_keys_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_checksum_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_stats_persistent_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_stats_auto_recalc_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_stats_sample_pages_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int copy_table_row_format_option_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    char *row_format_name,
+    size_t row_format_name_size
+);
+static int parse_table_option_unsigned_integer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_table_option_default_or_integer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    int64_t default_value,
+    int64_t *out_value
+);
+static bool table_option_value_is_default(const struct mylite_sql_ast_node *value_node);
+static bool create_table_storage_statistics_option_is_valid(
+    const struct mylite_sql_ast_node *table_option
+);
+static int validate_create_table_storage_statistics_combination(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
 );
 static int decode_table_comment_option(
     struct mylite_db *database,
@@ -15342,6 +15456,17 @@ static int append_show_create_table_auto_increment_option(
 static int append_show_create_table_comment_option(
     struct dynamic_string *string,
     const struct planned_show_create_table *plan
+);
+static int append_show_create_table_storage_statistics_options(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+);
+static int append_show_create_table_integer_option(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const char *prefix,
+    int64_t value
 );
 static bool show_create_table_has_auto_increment(const struct planned_show_create_table *plan);
 static int append_show_create_table_index(
@@ -24502,6 +24627,10 @@ static int append_unknown_table_note(
     const char *table_name
 );
 static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name);
+static void set_table_storage_engine_option_error(
+    struct mylite_db *database,
+    const char *table_name
+);
 static void set_failed_read_auto_increment_error(struct mylite_db *database);
 static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name);
 static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name);
@@ -25459,6 +25588,13 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
+    case MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION:
+    case MYLITE_SQL_AST_TABLE_KEY_BLOCK_SIZE_OPTION:
+    case MYLITE_SQL_AST_TABLE_PACK_KEYS_OPTION:
+    case MYLITE_SQL_AST_TABLE_CHECKSUM_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
     case MYLITE_SQL_AST_INDEX_OPTION_LIST:
     case MYLITE_SQL_AST_INDEX_TYPE_OPTION:
     case MYLITE_SQL_AST_INDEX_COMMENT_OPTION:
@@ -35450,7 +35586,7 @@ static int append_information_schema_tables_base_row(
         "BASE TABLE",
         "InnoDB",
         "10",
-        "Dynamic",
+        status.row_format,
         status.row_count_text,
         status.average_row_length_text,
         "16384",
@@ -35463,7 +35599,7 @@ static int append_information_schema_tables_base_row(
         NULL,
         table->default_collation,
         NULL,
-        "",
+        status.create_options,
         table->comment,
     };
 
@@ -35599,8 +35735,202 @@ static int load_table_status_values(
             &out_values->update_time
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = load_table_status_row_format(database, table, out_values);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_status_create_options(database, table, out_values);
+    }
 
     return rc;
+}
+
+static int load_table_status_row_format(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *out_values
+) {
+    const char *row_format = "Dynamic";
+
+    if (table == NULL || out_values == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table_status_row_format_is_compressed(table)) {
+        row_format = "Compressed";
+    } else if (text_equals_ascii_case_insensitive(table->row_format_option, "COMPACT")) {
+        row_format = "Compact";
+    } else if (text_equals_ascii_case_insensitive(table->row_format_option, "REDUNDANT")) {
+        row_format = "Redundant";
+    } else if (
+        table->row_format_option[0] != '\0' &&
+        !text_equals_ascii_case_insensitive(table->row_format_option, "DYNAMIC")
+    ) {
+        set_runtime_error(database, "invalid table row format descriptor");
+        return MYLITE_ERROR;
+    }
+    snprintf(out_values->row_format_text, sizeof(out_values->row_format_text), "%s", row_format);
+    out_values->row_format = out_values->row_format_text;
+    return MYLITE_OK;
+}
+
+static bool table_status_row_format_is_compressed(
+    const struct mylite_catalog_table_descriptor *table
+) {
+    if (table == NULL) {
+        return false;
+    }
+    if (text_equals_ascii_case_insensitive(table->row_format_option, "COMPRESSED")) {
+        return true;
+    }
+    if (table->row_format_option[0] != '\0') {
+        return false;
+    }
+    if (table->key_block_size > 0) {
+        return true;
+    }
+    return false;
+}
+
+static int load_table_status_create_options(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *out_values
+) {
+    bool has_option = false;
+    int rc = MYLITE_OK;
+
+    if (table == NULL || out_values == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_values->create_options_text[0] = '\0';
+    out_values->create_options = out_values->create_options_text;
+
+    if (table->row_format_option[0] != '\0') {
+        char text[sizeof("row_format=") + MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        int written = snprintf(text, sizeof(text), "row_format=%s", table->row_format_option);
+
+        if (written < 0 || (size_t)written >= sizeof(text)) {
+            set_runtime_error(database, "failed to format table create option");
+            return MYLITE_ERROR;
+        }
+        rc = append_table_status_create_option(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            text
+        );
+    }
+    if (rc == MYLITE_OK && table->stats_sample_pages > 0) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "stats_sample_pages=",
+            table->stats_sample_pages
+        );
+    }
+    if (rc == MYLITE_OK && table->stats_auto_recalc != -1) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "stats_auto_recalc=",
+            table->stats_auto_recalc
+        );
+    }
+    if (rc == MYLITE_OK && table->key_block_size > 0) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "KEY_BLOCK_SIZE=",
+            table->key_block_size
+        );
+    }
+    if (rc == MYLITE_OK && table->stats_persistent != -1) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "stats_persistent=",
+            table->stats_persistent
+        );
+    }
+    if (rc == MYLITE_OK && table->pack_keys != -1) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "pack_keys=",
+            table->pack_keys
+        );
+    }
+    if (rc == MYLITE_OK && table->checksum != 0) {
+        rc = append_table_status_create_option(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "checksum=1"
+        );
+    }
+    return rc;
+}
+
+static int append_table_status_create_option(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    bool *has_option,
+    const char *text
+) {
+    size_t current_length = 0U;
+    size_t separator_length = 0U;
+    size_t text_length = 0U;
+
+    if (buffer == NULL || buffer_size == 0U || has_option == NULL || text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    current_length = strlen(buffer);
+    text_length = strlen(text);
+    if (*has_option) {
+        separator_length = 1U;
+    }
+    if (current_length + separator_length + text_length >= buffer_size) {
+        set_runtime_error(database, "failed to format table create options");
+        return MYLITE_ERROR;
+    }
+    if (*has_option) {
+        buffer[current_length] = ' ';
+        ++current_length;
+    }
+    memcpy(buffer + current_length, text, text_length + 1U);
+    *has_option = true;
+    return MYLITE_OK;
+}
+
+static int append_table_status_create_option_i64(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    bool *has_option,
+    const char *prefix,
+    int64_t value
+) {
+    char text[integer_text_capacity + sizeof("stats_sample_pages=")];
+    int written = snprintf(text, sizeof(text), "%s%" PRId64, prefix, value);
+
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        set_runtime_error(database, "failed to format table create option");
+        return MYLITE_ERROR;
+    }
+    return append_table_status_create_option(database, buffer, buffer_size, has_option, text);
 }
 
 static int table_status_has_auto_increment(
@@ -43398,6 +43728,9 @@ static int append_show_create_table_table_options(
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_comment_option(string, plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_table_storage_statistics_options(database, string, plan);
+    }
 
     return rc;
 }
@@ -43467,6 +43800,85 @@ static int append_show_create_table_comment_option(
     }
 
     return rc;
+}
+
+static int append_show_create_table_storage_statistics_options(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_OK;
+    }
+    if (plan->table.pack_keys != -1) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " PACK_KEYS=",
+            plan->table.pack_keys
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.stats_persistent != -1) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " STATS_PERSISTENT=",
+            plan->table.stats_persistent
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.stats_auto_recalc != -1) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " STATS_AUTO_RECALC=",
+            plan->table.stats_auto_recalc
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.stats_sample_pages > 0) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " STATS_SAMPLE_PAGES=",
+            plan->table.stats_sample_pages
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.checksum != 0) {
+        rc = dynamic_string_append(string, " CHECKSUM=1");
+    }
+    if (rc == MYLITE_OK && plan->table.row_format_option[0] != '\0') {
+        rc = dynamic_string_append(string, " ROW_FORMAT=");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, plan->table.row_format_option);
+        }
+    }
+    if (rc == MYLITE_OK && plan->table.key_block_size > 0) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " KEY_BLOCK_SIZE=",
+            plan->table.key_block_size
+        );
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_integer_option(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const char *prefix,
+    int64_t value
+) {
+    char text[integer_text_capacity + sizeof(" STATS_SAMPLE_PAGES=")];
+    int written = snprintf(text, sizeof(text), "%s%" PRId64, prefix, value);
+
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        set_runtime_error(database, "failed to format table option value");
+        return MYLITE_ERROR;
+    }
+    return dynamic_string_append(string, text);
 }
 
 static int append_show_create_table_index(
@@ -44539,6 +44951,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
+    case MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION:
+    case MYLITE_SQL_AST_TABLE_KEY_BLOCK_SIZE_OPTION:
+    case MYLITE_SQL_AST_TABLE_PACK_KEYS_OPTION:
+    case MYLITE_SQL_AST_TABLE_CHECKSUM_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
     case MYLITE_SQL_AST_INDEX_OPTION_LIST:
     case MYLITE_SQL_AST_INDEX_TYPE_OPTION:
     case MYLITE_SQL_AST_INDEX_COMMENT_OPTION:
@@ -44843,6 +45262,9 @@ static int plan_create_table(
 
     *out_plan = (struct planned_create_table){0};
     out_plan->auto_increment_next = 1;
+    out_plan->pack_keys = -1;
+    out_plan->stats_persistent = -1;
+    out_plan->stats_auto_recalc = -1;
     memcpy(
         out_plan->default_charset,
         MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
@@ -44883,6 +45305,13 @@ static int plan_create_table(
     );
     if (rc == MYLITE_OK) {
         rc = apply_create_table_comment_option(
+            database,
+            create_table_options_node(statement),
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_create_table_storage_statistics_options(
             database,
             create_table_options_node(statement),
             out_plan
@@ -49428,6 +49857,9 @@ static int plan_create_table_like(
 
     *out_plan = (struct planned_create_table_like){0};
     out_plan->create_table.suppress_spatial_index_warnings = true;
+    out_plan->create_table.pack_keys = -1;
+    out_plan->create_table.stats_persistent = -1;
+    out_plan->create_table.stats_auto_recalc = -1;
     rc = reject_information_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
         rc = resolve_visible_table_reference(
@@ -49453,6 +49885,17 @@ static int plan_create_table_like(
             out_plan->source_table.comment,
             strlen(out_plan->source_table.comment) + 1U
         );
+        memcpy(
+            out_plan->create_table.row_format_option,
+            out_plan->source_table.row_format_option,
+            strlen(out_plan->source_table.row_format_option) + 1U
+        );
+        out_plan->create_table.key_block_size = out_plan->source_table.key_block_size;
+        out_plan->create_table.pack_keys = out_plan->source_table.pack_keys;
+        out_plan->create_table.checksum = out_plan->source_table.checksum;
+        out_plan->create_table.stats_persistent = out_plan->source_table.stats_persistent;
+        out_plan->create_table.stats_auto_recalc = out_plan->source_table.stats_auto_recalc;
+        out_plan->create_table.stats_sample_pages = out_plan->source_table.stats_sample_pages;
     }
     if (rc == MYLITE_OK) {
         rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->create_table.target);
@@ -49772,6 +50215,9 @@ static int plan_create_table_select(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_create_table_select){0};
+    out_plan->create_table.pack_keys = -1;
+    out_plan->create_table.stats_persistent = -1;
+    out_plan->create_table.stats_auto_recalc = -1;
     memcpy(
         out_plan->create_table.default_charset,
         MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
@@ -50588,6 +51034,9 @@ static int validate_create_table_option(
     if (table_option->kind == MYLITE_SQL_AST_TABLE_COMMENT_OPTION) {
         return validate_create_table_comment_option(database, table_option);
     }
+    if (create_table_storage_statistics_option_is_valid(table_option)) {
+        return MYLITE_OK;
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
@@ -50903,6 +51352,362 @@ static int apply_create_table_comment_option(
         table_option = table_option->next_sibling;
     }
 
+    return MYLITE_OK;
+}
+
+static int apply_create_table_storage_statistics_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options,
+    struct planned_create_table *plan
+) {
+    const struct mylite_sql_ast_node *table_option = NULL;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid storage/statistics table plan");
+        return MYLITE_ERROR;
+    }
+    if (table_options == NULL) {
+        return MYLITE_OK;
+    }
+    if (table_options->kind != MYLITE_SQL_AST_TABLE_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    table_option = child_at(table_options, 0U);
+    while (rc == MYLITE_OK && table_option != NULL) {
+        rc = apply_table_storage_statistics_option(database, table_option, plan);
+        table_option = table_option->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_storage_statistics_combination(database, plan);
+    }
+
+    return rc;
+}
+
+static int apply_table_storage_statistics_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    if (table_option == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION) {
+        return apply_table_row_format_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_KEY_BLOCK_SIZE_OPTION) {
+        return apply_table_key_block_size_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_PACK_KEYS_OPTION) {
+        return apply_table_pack_keys_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_CHECKSUM_OPTION) {
+        return apply_table_checksum_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION) {
+        return apply_table_stats_persistent_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION) {
+        return apply_table_stats_auto_recalc_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION) {
+        return apply_table_stats_sample_pages_option(database, table_option, plan);
+    }
+
+    return MYLITE_OK;
+}
+
+static int apply_table_row_format_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    char row_format_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
+    int rc = copy_table_row_format_option_name(
+        database,
+        table_option,
+        row_format_name,
+        sizeof(row_format_name)
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (text_equals_ascii_case_insensitive(row_format_name, "DEFAULT")) {
+        plan->row_format_option[0] = '\0';
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format_name, "FIXED")) {
+        set_table_storage_engine_option_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+    if (text_equals_ascii_case_insensitive(row_format_name, "DYNAMIC")) {
+        memcpy(plan->row_format_option, "DYNAMIC", sizeof("DYNAMIC"));
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format_name, "COMPACT")) {
+        memcpy(plan->row_format_option, "COMPACT", sizeof("COMPACT"));
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format_name, "REDUNDANT")) {
+        memcpy(plan->row_format_option, "REDUNDANT", sizeof("REDUNDANT"));
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format_name, "COMPRESSED")) {
+        memcpy(plan->row_format_option, "COMPRESSED", sizeof("COMPRESSED"));
+        return MYLITE_OK;
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int apply_table_key_block_size_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    uint64_t value = 0U;
+    int rc = parse_table_option_unsigned_integer(database, child_at(table_option, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value != 0U && value != 1U && value != 2U && value != 4U &&
+        value != table_key_block_size_eight && value != table_key_block_size_sixteen) {
+        set_table_storage_engine_option_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+    plan->key_block_size = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static int apply_table_pack_keys_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    int64_t value = -1;
+    int rc =
+        parse_table_option_default_or_integer(database, child_at(table_option, 0U), -1, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value != -1 && value != 0 && value != 1) {
+        set_unsupported_error(database, "PACK_KEYS supports only DEFAULT, 0, or 1");
+        return MYLITE_ERROR;
+    }
+    plan->pack_keys = value;
+    return MYLITE_OK;
+}
+
+static int apply_table_checksum_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    uint64_t value = 0U;
+    int rc = parse_table_option_unsigned_integer(database, child_at(table_option, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    plan->checksum = value == 0U ? 0 : 1;
+    return MYLITE_OK;
+}
+
+static int apply_table_stats_persistent_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    int64_t value = -1;
+    int rc =
+        parse_table_option_default_or_integer(database, child_at(table_option, 0U), -1, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value != -1 && value != 0 && value != 1) {
+        set_unsupported_error(database, "STATS_PERSISTENT supports only DEFAULT, 0, or 1");
+        return MYLITE_ERROR;
+    }
+    plan->stats_persistent = value;
+    return MYLITE_OK;
+}
+
+static int apply_table_stats_auto_recalc_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    int64_t value = -1;
+    int rc =
+        parse_table_option_default_or_integer(database, child_at(table_option, 0U), -1, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value != -1 && value != 0 && value != 1) {
+        set_unsupported_error(database, "STATS_AUTO_RECALC supports only DEFAULT, 0, or 1");
+        return MYLITE_ERROR;
+    }
+    plan->stats_auto_recalc = value;
+    return MYLITE_OK;
+}
+
+static int apply_table_stats_sample_pages_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    uint64_t value = 0U;
+    int rc = MYLITE_OK;
+
+    if (table_option_value_is_default(child_at(table_option, 0U))) {
+        plan->stats_sample_pages = 0;
+        return MYLITE_OK;
+    }
+    rc = parse_table_option_unsigned_integer(database, child_at(table_option, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value == 0U || value > table_stats_sample_pages_max) {
+        set_unsupported_error(
+            database,
+            "STATS_SAMPLE_PAGES value is outside the valid range for stats_sample_pages"
+        );
+        return MYLITE_ERROR;
+    }
+    plan->stats_sample_pages = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static int copy_table_row_format_option_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    char *row_format_name,
+    size_t row_format_name_size
+) {
+    if (table_option == NULL || table_option->kind != MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return copy_identifier_text(
+        child_at(table_option, 0U),
+        row_format_name,
+        row_format_name_size,
+        database
+    );
+}
+
+static int parse_table_option_unsigned_integer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    if (out_value == NULL || value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (parse_unsigned_integer_literal(&value_node->span, out_value) != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "table option supports only unsigned decimal integer values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int parse_table_option_default_or_integer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    int64_t default_value,
+    int64_t *out_value
+) {
+    uint64_t value = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table_option_value_is_default(value_node)) {
+        *out_value = default_value;
+        return MYLITE_OK;
+    }
+    rc = parse_table_option_unsigned_integer(database, value_node, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value > (uint64_t)INT64_MAX) {
+        set_unsupported_error(database, "table option integer value is out of range");
+        return MYLITE_ERROR;
+    }
+    *out_value = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static bool table_option_value_is_default(const struct mylite_sql_ast_node *value_node) {
+    static const char default_text[] = "DEFAULT";
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_IDENTIFIER ||
+        value_node->span.text == NULL || value_node->span.length != sizeof(default_text) - 1U) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(default_text) - 1U; ++index) {
+        char byte = value_node->span.text[index];
+        if (byte >= 'a' && byte <= 'z') {
+            byte = (char)(byte - ('a' - 'A'));
+        }
+        if (byte != default_text[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool create_table_storage_statistics_option_is_valid(
+    const struct mylite_sql_ast_node *table_option
+) {
+    if (table_option == NULL) {
+        return false;
+    }
+    switch (table_option->kind) {
+    case MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION:
+    case MYLITE_SQL_AST_TABLE_KEY_BLOCK_SIZE_OPTION:
+    case MYLITE_SQL_AST_TABLE_PACK_KEYS_OPTION:
+    case MYLITE_SQL_AST_TABLE_CHECKSUM_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION:
+    case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int validate_create_table_storage_statistics_combination(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+) {
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (plan->key_block_size > 0 && plan->row_format_option[0] != '\0' &&
+        !text_equals_ascii_case_insensitive(plan->row_format_option, "COMPRESSED")) {
+        set_table_storage_engine_option_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 
@@ -52075,6 +52880,13 @@ static int insert_create_table_catalog_rows(
         plan->default_charset,
         plan->default_collation,
         plan->comment,
+        plan->row_format_option,
+        plan->key_block_size,
+        plan->pack_keys,
+        plan->checksum,
+        plan->stats_persistent,
+        plan->stats_auto_recalc,
+        plan->stats_sample_pages,
         created_time_utc_epoch,
         created_time_utc_epoch,
         out_table
@@ -52371,6 +53183,12 @@ static int build_temporary_table_descriptors(
         .schema_id = plan->target.schema.schema_id,
         .kind = MYLITE_CATALOG_TABLE_KIND_TEMPORARY,
         .auto_increment_next = plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
+        .key_block_size = plan->key_block_size,
+        .pack_keys = plan->pack_keys,
+        .checksum = plan->checksum,
+        .stats_persistent = plan->stats_persistent,
+        .stats_auto_recalc = plan->stats_auto_recalc,
+        .stats_sample_pages = plan->stats_sample_pages,
     };
     snprintf(out_table->table.name, sizeof(out_table->table.name), "%s", plan->target.table_name);
     snprintf(
@@ -52392,6 +53210,12 @@ static int build_temporary_table_descriptors(
         plan->default_collation
     );
     snprintf(out_table->table.comment, sizeof(out_table->table.comment), "%s", plan->comment);
+    snprintf(
+        out_table->table.row_format_option,
+        sizeof(out_table->table.row_format_option),
+        "%s",
+        plan->row_format_option
+    );
 
     rc = build_temporary_table_column_descriptors(database, plan, table_id, out_table, &column_ids);
     if (rc == MYLITE_OK) {
@@ -133025,7 +133849,7 @@ static int append_show_table_status(
         table->name,
         "InnoDB",
         "10",
-        "Dynamic",
+        status.row_format,
         status.row_count_text,
         status.average_row_length_text,
         "16384",
@@ -133038,7 +133862,7 @@ static int append_show_table_status(
         NULL,
         table->default_collation,
         NULL,
-        "",
+        status.create_options,
         table->comment,
     };
 
@@ -150610,6 +151434,29 @@ static void set_unknown_storage_engine_error(struct mylite_db *database, const c
         mylite_connection_diagnostics(database),
         mysql_error_unknown_storage_engine,
         "42000",
+        message
+    );
+}
+
+static void set_table_storage_engine_option_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Table storage engine for '%s' doesn't have this option",
+        table_name == NULL ? "" : table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_table_storage_engine_option,
+        "HY000",
         message
     );
 }

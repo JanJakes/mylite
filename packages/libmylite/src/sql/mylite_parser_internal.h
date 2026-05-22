@@ -530,6 +530,41 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
     struct mylite_sql_token comment_token,
     struct mylite_sql_ast_node *value
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_row_format_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token row_format_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_key_block_size_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token key_block_size_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_pack_keys_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token pack_keys_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_checksum_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token checksum_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_stats_persistent_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token stats_persistent_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_stats_auto_recalc_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token stats_auto_recalc_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_stats_sample_pages_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token stats_sample_pages_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_option_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *option

@@ -2154,6 +2154,18 @@ static int make_catalog_look_like_v1(sqlite3 *sqlite) {
         "ALTER TABLE _mylite_catalog_tables DROP COLUMN updated_time_utc_epoch"
     );
     failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN row_format_option");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN key_block_size");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN pack_keys");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN checksum");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_persistent");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_auto_recalc");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_sample_pages");
+    failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_charset");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_collation");
@@ -2196,6 +2208,18 @@ static int make_catalog_look_like_v2(sqlite3 *sqlite) {
         sqlite,
         "ALTER TABLE _mylite_catalog_tables DROP COLUMN updated_time_utc_epoch"
     );
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN row_format_option");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN key_block_size");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN pack_keys");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN checksum");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_persistent");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_auto_recalc");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_sample_pages");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_charset");
     failures +=

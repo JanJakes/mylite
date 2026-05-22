@@ -38,6 +38,9 @@ enum {
     exp_log_power_identifier_count = 7,
     char_function_variadic_argument_count = 5,
     reverse_table_option_count = 5,
+    storage_table_option_count = 7,
+    storage_stats_auto_recalc_option_index = 5,
+    storage_stats_sample_pages_option_index = 6,
 };
 
 static int test_empty_script(void);
@@ -11464,6 +11467,56 @@ static int test_create_table_comment_option_statements(void) {
         "combined comment literal"
     );
     failures += expect_span_text(child_at(comment_option, 0U), "'metadata'", "comment literal");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE storage_options (id INT) ROW_FORMAT=COMPACT, KEY_BLOCK_SIZE=0 "
+        "PACK_KEYS=DEFAULT CHECKSUM=2 STATS_PERSISTENT=1 STATS_AUTO_RECALC=0 "
+        "STATS_SAMPLE_PAGES=7;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 2U);
+    failures +=
+        expect_child_count(table_options, storage_table_option_count, "storage option child count");
+    failures += expect_node(
+        child_at(table_options, 0U),
+        MYLITE_SQL_AST_TABLE_ROW_FORMAT_OPTION,
+        "row format option"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(table_options, 0U), 0U), "COMPACT", "row format value");
+    failures += expect_node(
+        child_at(table_options, 1U),
+        MYLITE_SQL_AST_TABLE_KEY_BLOCK_SIZE_OPTION,
+        "key block size option"
+    );
+    failures += expect_node(
+        child_at(table_options, 2U),
+        MYLITE_SQL_AST_TABLE_PACK_KEYS_OPTION,
+        "pack keys option"
+    );
+    failures += expect_node(
+        child_at(table_options, 3U),
+        MYLITE_SQL_AST_TABLE_CHECKSUM_OPTION,
+        "checksum option"
+    );
+    failures += expect_node(
+        child_at(table_options, 4U),
+        MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION,
+        "stats persistent option"
+    );
+    failures += expect_node(
+        child_at(table_options, storage_stats_auto_recalc_option_index),
+        MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION,
+        "stats auto recalc option"
+    );
+    failures += expect_node(
+        child_at(table_options, storage_stats_sample_pages_option_index),
+        MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION,
+        "stats sample pages option"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -23501,7 +23554,7 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "CREATE TABLE t (id INT) ENGINE=InnoDB, DEFAULT CHARSET=utf8mb4;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

@@ -913,6 +913,9 @@ table_option_list(A) ::= table_option(B). {
 table_option_list(A) ::= table_option_list(B) table_option(C). {
     A = mylite_sql_parser_append_table_option(state, B, C);
 }
+table_option_list(A) ::= table_option_list(B) COMMA table_option(C). {
+    A = mylite_sql_parser_append_table_option(state, B, C);
+}
 
 table_option(A) ::= ENGINE(E) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_engine_option(state, E, N);
@@ -955,6 +958,59 @@ table_option(A) ::= COMMENT(T) equal_opt STRING(V). {
         state,
         T,
         mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+table_option(A) ::= ROW_FORMAT(T) equal_opt row_format_option_value(V). {
+    A = mylite_sql_parser_make_table_row_format_option(state, T, V);
+}
+table_option(A) ::= KEY_BLOCK_SIZE(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_key_block_size_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+table_option(A) ::= PACK_KEYS(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_pack_keys_option(state, T, V);
+}
+table_option(A) ::= CHECKSUM(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_checksum_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+table_option(A) ::= STATS_PERSISTENT(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_stats_persistent_option(state, T, V);
+}
+table_option(A) ::= STATS_AUTO_RECALC(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_stats_auto_recalc_option(state, T, V);
+}
+table_option(A) ::= STATS_SAMPLE_PAGES(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_stats_sample_pages_option(state, T, V);
+}
+
+row_format_option_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+row_format_option_value(A) ::= DYNAMIC(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+row_format_option_value(A) ::= COMPACT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+row_format_option_value(A) ::= REDUNDANT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+row_format_option_value(A) ::= COMPRESSED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+row_format_option_value(A) ::= FIXED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+table_default_or_integer_option_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+table_default_or_integer_option_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
 
 default_opt ::= .
@@ -5748,6 +5804,39 @@ identifier(A) ::= POLYGON(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIXED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ROW_FORMAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= KEY_BLOCK_SIZE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PACK_KEYS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CHECKSUM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STATS_PERSISTENT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STATS_AUTO_RECALC(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STATS_SAMPLE_PAGES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DYNAMIC(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COMPACT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= REDUNDANT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COMPRESSED(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELDS(T). {

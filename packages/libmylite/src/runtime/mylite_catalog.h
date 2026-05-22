@@ -9,7 +9,7 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 30
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 31
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 30
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
@@ -115,6 +115,13 @@ struct mylite_catalog_table_descriptor {
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
+    char row_format_option[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int64_t key_block_size;
+    int64_t pack_keys;
+    int64_t checksum;
+    int64_t stats_persistent;
+    int64_t stats_auto_recalc;
+    int64_t stats_sample_pages;
     bool fulltext_doc_id_initialized;
     int64_t created_time_utc_epoch;
     int64_t updated_time_utc_epoch;
@@ -315,6 +322,13 @@ int mylite_catalog_insert_table_in_mutation(
     const char *default_charset,
     const char *default_collation,
     const char *comment,
+    const char *row_format_option,
+    int64_t key_block_size,
+    int64_t pack_keys,
+    int64_t checksum,
+    int64_t stats_persistent,
+    int64_t stats_auto_recalc,
+    int64_t stats_sample_pages,
     int64_t created_time_utc_epoch,
     int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table

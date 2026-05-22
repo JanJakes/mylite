@@ -59,9 +59,11 @@ static const char sql_calc_found_rows_warning_message[] =
 static int test_found_rows_scalar_warnings(void);
 static int test_found_rows_select_limit_envelope(void);
 static int test_sql_calc_found_rows_selects(void);
+static int test_sql_calc_found_rows_joined_selects(void);
 static int test_found_rows_file_state_and_independent_handles(void);
 static int test_found_rows_unsupported_forms(void);
 static int prepare_fixture(mylite_db *database);
+static int prepare_join_fixture(mylite_db *database);
 static int expect_found_rows_value(mylite_db *database, struct expected_found_rows_value expected);
 static int expect_found_rows_state(mylite_db *database, struct expected_found_rows_state expected);
 static int expect_warning_rows(
@@ -77,8 +79,21 @@ static int expect_single_column_rows(
     size_t warning_count,
     const char *context
 );
+static int expect_two_column_rows(
+    const mylite_result *result,
+    const char *const (*values)[2],
+    size_t row_count,
+    size_t warning_count,
+    const char *context
+);
 static int expect_empty_result(
     const mylite_result *result,
+    size_t warning_count,
+    const char *context
+);
+static int expect_empty_column_result(
+    const mylite_result *result,
+    size_t column_count,
     size_t warning_count,
     const char *context
 );
@@ -113,6 +128,7 @@ int main(void) {
     failures += test_found_rows_scalar_warnings();
     failures += test_found_rows_select_limit_envelope();
     failures += test_sql_calc_found_rows_selects();
+    failures += test_sql_calc_found_rows_joined_selects();
     failures += test_found_rows_file_state_and_independent_handles();
     failures += test_found_rows_unsupported_forms();
 
@@ -371,6 +387,146 @@ static int test_sql_calc_found_rows_selects(void) {
     return failures;
 }
 
+static int test_sql_calc_found_rows_joined_selects(void) {
+    static const char *const inner_limit_rows[][2] = {{"1", "7"}};
+    static const char *const cartesian_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
+    static const char *const left_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
+    static const char *const ordinary_offset_rows[][2] = {{"1", "8"}};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "joined_sql_calc") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open joined sql calc found rows");
+    failures += prepare_join_fixture(database);
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id "
+        "FROM lefts JOIN rights ON lefts.k = rights.k "
+        "ORDER BY rights.id LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_two_column_rows(result, inner_limit_rows, 1U, 1U, "joined sql calc limit row");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_warning_rows(
+        database,
+        1U,
+        sql_calc_found_rows_warning_message,
+        "joined sql calc warning row"
+    );
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "2",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id "
+        "FROM lefts, rights "
+        "ORDER BY lefts.id, rights.id LIMIT 2",
+        &result
+    );
+    failures += expect_two_column_rows(
+        result,
+        cartesian_limit_rows,
+        2U,
+        1U,
+        "cartesian joined sql calc rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "9",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "cartesian joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id "
+        "FROM lefts, rights "
+        "WHERE lefts.k = rights.k "
+        "ORDER BY rights.id LIMIT 0",
+        &result
+    );
+    failures += expect_empty_column_result(result, 2U, 1U, "comma joined sql calc limit zero");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "2",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "comma joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id "
+        "FROM lefts LEFT JOIN rights ON lefts.k = rights.k "
+        "ORDER BY lefts.id, rights.id LIMIT 2",
+        &result
+    );
+    failures +=
+        expect_two_column_rows(result, left_limit_rows, 2U, 1U, "left joined sql calc rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "4",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "left joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT lefts.id, rights.id "
+        "FROM lefts JOIN rights ON lefts.k = rights.k "
+        "ORDER BY rights.id LIMIT 1, 1",
+        &result
+    );
+    failures +=
+        expect_two_column_rows(result, ordinary_offset_rows, 1U, 0U, "ordinary joined offset row");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "2",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "ordinary joined offset found rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_found_rows_file_state_and_independent_handles(void) {
     static const char *const selected_rows[] = {"1"};
     char first_path[test_path_capacity];
@@ -576,6 +732,30 @@ static int prepare_fixture(mylite_db *database) {
     return failures;
 }
 
+static int prepare_join_fixture(mylite_db *database) {
+    int failures = 0;
+
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE lefts (id INT NOT NULL, k INT NULL, v INT NULL)"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE rights (id INT NOT NULL, k INT NULL, w INT NULL)"
+    );
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO lefts VALUES (1, 10, 100), (2, 20, 200), (3, NULL, 300)"
+    );
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO rights VALUES (7, 10, 700), (8, 10, 800), (9, NULL, 900)"
+    );
+    return failures;
+}
+
 static int expect_found_rows_value(mylite_db *database, struct expected_found_rows_value expected) {
     static const char *const columns[] = {"FOUND_ROWS()"};
     const char *values[] = {expected.expected};
@@ -670,6 +850,28 @@ static int expect_single_column_rows(
     return failures;
 }
 
+static int expect_two_column_rows(
+    const mylite_result *result,
+    const char *const (*values)[2],
+    size_t row_count,
+    size_t warning_count,
+    const char *context
+) {
+    int failures = 0;
+
+    failures += expect_size(mylite_result_column_count(result), 2U, context);
+    failures += expect_size(mylite_result_row_count(result), row_count, context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += expect_size(mylite_result_warning_count(result), warning_count, context);
+    for (size_t row = 0U; row < row_count; ++row) {
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row, 0U), values[row][0], context);
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row, 1U), values[row][1], context);
+    }
+    return failures;
+}
+
 static int expect_empty_result(
     const mylite_result *result,
     size_t warning_count,
@@ -678,6 +880,21 @@ static int expect_empty_result(
     int failures = 0;
 
     failures += expect_size(mylite_result_column_count(result), 1U, context);
+    failures += expect_size(mylite_result_row_count(result), 0U, context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += expect_size(mylite_result_warning_count(result), warning_count, context);
+    return failures;
+}
+
+static int expect_empty_column_result(
+    const mylite_result *result,
+    size_t column_count,
+    size_t warning_count,
+    const char *context
+) {
+    int failures = 0;
+
+    failures += expect_size(mylite_result_column_count(result), column_count, context);
     failures += expect_size(mylite_result_row_count(result), 0U, context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, context);
     failures += expect_size(mylite_result_warning_count(result), warning_count, context);

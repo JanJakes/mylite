@@ -15,9 +15,11 @@ updates that state to the number of rows the supported descriptor-backed
 `SELECT` would have produced before applying `LIMIT`.
 
 This is not a general optimizer feature. The implementation remains
-descriptor-driven and MyLite-owned. It does not add `UNION`, joins, subqueries,
-full SELECT modifiers, full distinct/grouped found-row behavior, protocol
-metadata, statement-based replication behavior, or arbitrary SQLite pass-through.
+descriptor-driven and MyLite-owned. Its initial scope did not add `UNION`,
+joins, subqueries, full SELECT modifiers, full distinct/grouped found-row
+behavior, protocol metadata, statement-based replication behavior, or arbitrary
+SQLite pass-through. The joined-select subset is extended separately by
+`docs/specs/baseline-joined-select-sql-calc-found-rows/specs.md`.
 
 ## Compatibility Authority
 
@@ -108,8 +110,10 @@ paths with optional source alias, baseline `WHERE`, one-column `ORDER BY`, and
 existing `LIMIT` / `OFFSET` forms. It does not admit or execute
 `SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`, `DISTINCT`,
 `DISTINCTROW`, grouped aggregates, aggregate-only selects, `CREATE TABLE ...
-SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, joins, `UNION`, `TABLE`,
-subqueries, CTEs, lock clauses, or other select modifiers in this phase.
+SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, `UNION`, `TABLE`,
+subqueries, CTEs, lock clauses, or other select modifiers in this phase. The
+later joined-select slice admits the current two-source joined `SELECT`
+envelope without changing this single-table design.
 
 ### MyLite Lemon-Syntax Snippet
 

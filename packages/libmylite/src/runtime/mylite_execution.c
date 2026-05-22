@@ -35014,7 +35014,8 @@ static int reject_select_modifier_usage_if_needed(
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     bool has_descriptor_table_source = false;
 
-    if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) {
+    if (from_clause != NULL && (from_clause->kind == MYLITE_SQL_AST_FROM_TABLE ||
+                                from_clause->kind == MYLITE_SQL_AST_FROM_JOIN)) {
         has_descriptor_table_source = true;
     }
 
@@ -71610,10 +71611,6 @@ static int plan_joined_select(
 
     if (out_plan->is_distinct) {
         set_unsupported_error(database, "joined SELECT does not yet support DISTINCT");
-        return MYLITE_ERROR;
-    }
-    if (out_plan->calc_found_rows) {
-        set_unsupported_error(database, "joined SELECT does not yet support SQL_CALC_FOUND_ROWS");
         return MYLITE_ERROR;
     }
     while (optional_clause != NULL) {

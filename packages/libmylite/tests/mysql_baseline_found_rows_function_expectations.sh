@@ -179,6 +179,85 @@ expect_value "no limit calc visible row 1" "1" "$(printf '%s\n' "$calc_filtered"
 expect_value "no limit calc visible row 4" "4" "$(printf '%s\n' "$calc_filtered" | sed -n '8p')"
 expect_value "no limit calc found rows" "4" "$(printf '%s\n' "$calc_filtered" | sed -n '9p')"
 
+joined_calc=$(run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE lefts(id INT NOT NULL, k INT NULL, v INT NULL);
+     CREATE TABLE rights(id INT NOT NULL, k INT NULL, w INT NULL);
+     INSERT INTO lefts VALUES (1,10,100),(2,20,200),(3,NULL,300);
+     INSERT INTO rights VALUES (7,10,700),(8,10,800),(9,NULL,900);
+     SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id
+       FROM lefts JOIN rights ON lefts.k = rights.k
+       ORDER BY rights.id LIMIT 1;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id
+       FROM lefts, rights
+       WHERE lefts.k = rights.k
+       ORDER BY rights.id LIMIT 0;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id
+       FROM lefts, rights
+       ORDER BY lefts.id, rights.id LIMIT 2;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id
+       FROM lefts LEFT JOIN rights ON lefts.k = rights.k
+       ORDER BY lefts.id, rights.id LIMIT 2;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT lefts.id, rights.id
+       FROM lefts JOIN rights ON lefts.k = rights.k
+       ORDER BY rights.id LIMIT 1, 1;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();"
+)
+expect_value "joined sql calc visible row" "1	7" "$(printf '%s\n' "$joined_calc" | sed -n '1p')"
+expect_contains \
+    "joined sql calc warning" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '2p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value "joined sql calc found rows" "2	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '3p')"
+expect_contains \
+    "comma joined limit zero sql calc warning" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '4p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value \
+    "comma joined limit zero found rows" \
+    "2	1	-1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '5p')"
+expect_value \
+    "cartesian joined sql calc visible row 1" \
+    "1	7" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '6p')"
+expect_value \
+    "cartesian joined sql calc visible row 2" \
+    "1	8" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '7p')"
+expect_value \
+    "cartesian joined sql calc found rows" \
+    "9	1	-1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '8p')"
+expect_value \
+    "left joined sql calc visible row 1" \
+    "1	7" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '9p')"
+expect_value \
+    "left joined sql calc visible row 2" \
+    "1	8" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '10p')"
+expect_contains \
+    "left joined sql calc warning" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '11p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value "left joined sql calc found rows" "4	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '12p')"
+expect_value \
+    "ordinary joined offset visible row" \
+    "1	8" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '13p')"
+expect_value \
+    "ordinary joined offset found rows" \
+    "2	1	-1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '14p')"
+
 non_select=$(run_mysql \
     "USE ${DATABASE};
      SELECT SQL_CALC_FOUND_ROWS id FROM t ORDER BY id LIMIT 1;

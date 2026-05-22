@@ -475,6 +475,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"EXPORT", 0U},
         {"EXTENDED", 0U},
         {"EXTENT_SIZE", 0U},
+        {"EXTRACT", 0U},
         {"FACTOR", 0U},
         {"FAILED_LOGIN_ATTEMPTS", 0U},
         {"FALSE", MYLITE_SQL_KEYWORD_RESERVED},

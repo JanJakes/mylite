@@ -4190,6 +4190,30 @@ static int test_temporal_extract_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT EXTRACT(YEAR FROM d), EXTRACT(HOUR_SECOND FROM tm), "
+        "EXTRACT(MICROSECOND FROM dt) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_EXTRACT_FUNCTION, "extract year function");
+    failures += expect_child_count(expression, 2U, "extract year child count");
+    failures += expect_span_text(child_at(expression, 0U), "YEAR", "extract year unit");
+    failures += expect_span_text(child_at(expression, 1U), "d", "extract year argument");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_EXTRACT_FUNCTION, "extract hour_second function");
+    failures += expect_span_text(child_at(expression, 0U), "HOUR_SECOND", "extract composite unit");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_EXTRACT_FUNCTION, "extract microsecond function");
+    failures +=
+        expect_span_text(child_at(expression, 0U), "MICROSECOND", "extract unsupported unit");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT DAYOFMONTH();", MYLITE_SQL_PARSE_OK, &result);
     expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(
@@ -4229,7 +4253,7 @@ static int test_temporal_extract_functions(void) {
     failures += parse_sql(
         "CREATE TABLE temporal_extract_keywords(day INT, dayofmonth INT, dayofweek INT, "
         "dayofyear INT, last_day INT, hour INT, minute INT, month INT, second INT, year INT, "
-        "date DATE, time TIME);",
+        "date DATE, time TIME, extract INT, microsecond INT, quarter INT, week INT);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -4240,6 +4264,10 @@ static int test_temporal_extract_functions(void) {
     failures += parse_sql("SELECT TIME();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT HOUR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT EXTRACT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT EXTRACT(YEAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

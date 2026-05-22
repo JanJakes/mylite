@@ -12961,6 +12961,11 @@ static int temporal_extract_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int extract_function_kind_from_unit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit,
+    enum mylite_temporal_extract_kind *out_kind
+);
 static int sec_to_time_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -22009,6 +22014,18 @@ static int plan_row_scalar_temporal_extract_column(
     struct planned_row_scalar_expression *out_expression,
     enum mylite_temporal_extract_input_kind *out_input_kind
 );
+static int reject_date_column_temporal_extract_time_part(
+    struct mylite_db *database,
+    enum mylite_temporal_extract_kind extract_kind
+);
+static int reject_time_column_temporal_extract_date_part(
+    struct mylite_db *database,
+    enum mylite_temporal_extract_kind extract_kind
+);
+static int reject_unsupported_temporal_extract_column(
+    struct mylite_db *database,
+    enum mylite_temporal_extract_kind extract_kind
+);
 static int plan_row_scalar_sec_to_time_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -25720,6 +25737,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
+    case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -45193,6 +45211,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
+    case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -79054,6 +79073,7 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
+    case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -82165,6 +82185,7 @@ static int temporal_extract_function_value(
     struct session_scalar_cell *out_cell
 ) {
     enum mylite_temporal_extract_kind extract_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
+    const struct mylite_sql_ast_node *argument = NULL;
     char *owned_text = NULL;
     const char *text = NULL;
     size_t text_length = 0U;
@@ -82176,17 +82197,30 @@ static int temporal_extract_function_value(
     }
     *out_cell = (struct session_scalar_cell){0};
     expression = unwrap_parenthesized_expression(expression);
-    extract_kind = expression == NULL ? MYLITE_TEMPORAL_EXTRACT_DATE
-                                      : temporal_extract_function_kind(expression->kind);
-    if (expression == NULL || !is_temporal_extract_function_kind(expression->kind) ||
-        mylite_sql_ast_node_child_count(expression) != 1U) {
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            set_unsupported_error(database, "EXTRACT() supports exactly one unit and one value");
+            return MYLITE_ERROR;
+        }
+        rc = extract_function_kind_from_unit(database, child_at(expression, 0U), &extract_kind);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        argument = child_at(expression, 1U);
+    } else if (
+        expression != NULL && is_temporal_extract_function_kind(expression->kind) &&
+        mylite_sql_ast_node_child_count(expression) == 1U
+    ) {
+        extract_kind = temporal_extract_function_kind(expression->kind);
+        argument = child_at(expression, 0U);
+    } else {
         set_unsupported_error(database, "temporal extract functions support exactly one argument");
         return MYLITE_ERROR;
     }
 
     rc = evaluate_temporal_extract_scalar_argument(
         database,
-        child_at(expression, 0U),
+        argument,
         extract_kind,
         &owned_text,
         &text,
@@ -82210,6 +82244,90 @@ static int temporal_extract_function_value(
 
     free(owned_text);
     return rc;
+}
+
+static int extract_function_kind_from_unit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit,
+    enum mylite_temporal_extract_kind *out_kind
+) {
+    char unit_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (out_kind == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
+    rc = copy_identifier_text(unit, unit_name, sizeof(unit_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (text_equals_ascii_case_insensitive(unit_name, "YEAR")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_YEAR;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "QUARTER")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_QUARTER;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "MONTH")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_MONTH;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "DAY")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_DAY;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "HOUR")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "MINUTE")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "SECOND")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "YEAR_MONTH")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "DAY_HOUR")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_DAY_HOUR;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "DAY_MINUTE")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "DAY_SECOND")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_DAY_SECOND;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "HOUR_MINUTE")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "HOUR_SECOND")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "MINUTE_SECOND")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND;
+        return MYLITE_OK;
+    }
+
+    if (snprintf(message, sizeof(message), "EXTRACT() unit %s is not yet supported", unit_name) <
+        0) {
+        set_runtime_error(database, "failed to format EXTRACT() diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
 }
 
 static int sec_to_time_function_value(
@@ -98264,6 +98382,7 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
     case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFYEAR_FUNCTION:
@@ -99978,7 +100097,16 @@ static bool is_temporal_extract_projection_expression(
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
-    if (expression == NULL || !is_temporal_extract_function_kind(expression->kind)) {
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            return false;
+        }
+        return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
+    }
+    if (!is_temporal_extract_function_kind(expression->kind)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -117037,7 +117165,8 @@ static int plan_row_scalar_temporal_function_expression(
         *out_handled = true;
         return MYLITE_ERROR;
     }
-    if (is_temporal_extract_function_kind(expression->kind)) {
+    if (expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
+        is_temporal_extract_function_kind(expression->kind)) {
         *out_handled = true;
         return plan_row_scalar_temporal_extract_expression(
             database,
@@ -125079,13 +125208,29 @@ static int plan_row_scalar_temporal_extract_expression(
 ) {
     enum mylite_temporal_extract_kind extract_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
     enum mylite_temporal_extract_input_kind input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_STRING;
+    const struct mylite_sql_ast_node *argument = NULL;
     const char *extract_kind_name = NULL;
     const char *input_kind_name = NULL;
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || !is_temporal_extract_function_kind(expression->kind) ||
-        mylite_sql_ast_node_child_count(expression) != 1U) {
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            set_unsupported_error(database, "EXTRACT() supports exactly one unit and one value");
+            return MYLITE_ERROR;
+        }
+        rc = extract_function_kind_from_unit(database, child_at(expression, 0U), &extract_kind);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        argument = child_at(expression, 1U);
+    } else if (
+        expression != NULL && is_temporal_extract_function_kind(expression->kind) &&
+        mylite_sql_ast_node_child_count(expression) == 1U
+    ) {
+        extract_kind = temporal_extract_function_kind(expression->kind);
+        argument = child_at(expression, 0U);
+    } else {
         set_unsupported_error(database, "temporal extract functions support exactly one argument");
         return MYLITE_ERROR;
     }
@@ -125096,14 +125241,13 @@ static int plan_row_scalar_temporal_extract_expression(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    extract_kind = temporal_extract_function_kind(expression->kind);
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT;
     out_expression->temporal_extract_kind = extract_kind;
     out_expression->argument_count = 3U;
 
     rc = plan_row_scalar_temporal_extract_argument(
         database,
-        child_at(expression, 0U),
+        argument,
         extract_kind,
         has_source,
         source_context,
@@ -125294,27 +125438,12 @@ static int plan_row_scalar_temporal_extract_column(
     }
     if (column_descriptor_is_date(&column)) {
         if (mylite_temporal_extract_kind_is_time_part(extract_kind)) {
-            set_unsupported_error(
-                database,
-                "HOUR()/MINUTE()/SECOND() do not yet support DATE values"
-            );
-            return MYLITE_ERROR;
+            return reject_date_column_temporal_extract_time_part(database, extract_kind);
         }
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_DATE;
     } else if (column_descriptor_is_time(&column)) {
         if (mylite_temporal_extract_kind_is_date_part(extract_kind)) {
-            if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
-                set_unsupported_error(
-                    database,
-                    "calendar date functions do not yet support TIME values"
-                );
-            } else {
-                set_unsupported_error(
-                    database,
-                    "DATE()/YEAR()/MONTH()/DAY()/DAYOFMONTH() do not support TIME values"
-                );
-            }
-            return MYLITE_ERROR;
+            return reject_time_column_temporal_extract_date_part(database, extract_kind);
         }
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_TIME;
     } else if (column_descriptor_is_datetime(&column)) {
@@ -125331,25 +125460,66 @@ static int plan_row_scalar_temporal_extract_column(
         }
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_STRING;
     } else {
-        if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
-            set_unsupported_error(
-                database,
-                "calendar date functions support only string temporal literals, DATE, DATETIME, "
-                "TIMESTAMP descriptor columns, string descriptor columns, and NULL"
-            );
-        } else {
-            set_unsupported_error(
-                database,
-                "temporal extract functions support only DATE, TIME, DATETIME, TIMESTAMP, string, "
-                "and NULL values"
-            );
-        }
-        return MYLITE_ERROR;
+        return reject_unsupported_temporal_extract_column(database, extract_kind);
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
     return MYLITE_OK;
+}
+
+static int reject_date_column_temporal_extract_time_part(
+    struct mylite_db *database,
+    enum mylite_temporal_extract_kind extract_kind
+) {
+    if (extract_kind == MYLITE_TEMPORAL_EXTRACT_HOUR ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_MINUTE ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_SECOND) {
+        set_unsupported_error(database, "HOUR()/MINUTE()/SECOND() do not yet support DATE values");
+    } else {
+        set_unsupported_error(database, "EXTRACT() time units do not yet support DATE values");
+    }
+    return MYLITE_ERROR;
+}
+
+static int reject_time_column_temporal_extract_date_part(
+    struct mylite_db *database,
+    enum mylite_temporal_extract_kind extract_kind
+) {
+    if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
+        set_unsupported_error(database, "calendar date functions do not yet support TIME values");
+    } else if (
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_QUARTER ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH
+    ) {
+        set_unsupported_error(database, "EXTRACT() date units do not support TIME values");
+    } else {
+        set_unsupported_error(
+            database,
+            "DATE()/YEAR()/MONTH()/DAY()/DAYOFMONTH() do not support TIME values"
+        );
+    }
+    return MYLITE_ERROR;
+}
+
+static int reject_unsupported_temporal_extract_column(
+    struct mylite_db *database,
+    enum mylite_temporal_extract_kind extract_kind
+) {
+    if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
+        set_unsupported_error(
+            database,
+            "calendar date functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL"
+        );
+    } else {
+        set_unsupported_error(
+            database,
+            "temporal extract functions support only DATE, TIME, DATETIME, TIMESTAMP, string, "
+            "and NULL values"
+        );
+    }
+    return MYLITE_ERROR;
 }
 
 static int plan_row_scalar_sec_to_time_expression(
@@ -126822,6 +126992,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
             is_temporal_extract_function_kind(current->kind) ||
             is_string_length_function_kind(current->kind) ||
             is_string_codepoint_function_kind(current->kind) ||

@@ -34,6 +34,7 @@ struct expected_query {
 static int test_no_source_dual_and_do_temporal_extract(void);
 static int test_table_backed_temporal_extract_and_reopen(void);
 static int test_temporal_extract_diagnostics(void);
+static int test_extract_function(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -66,6 +67,7 @@ int main(void) {
     failures += test_no_source_dual_and_do_temporal_extract();
     failures += test_table_backed_temporal_extract_and_reopen();
     failures += test_temporal_extract_diagnostics();
+    failures += test_extract_function();
 
     return failures == 0 ? 0 : 1;
 }
@@ -497,6 +499,327 @@ static int test_temporal_extract_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "TIME() does not yet support string descriptor columns",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_extract_function(void) {
+    static const char *const columns_core[] = {
+        "EXTRACT(YEAR FROM '2019-07-02 01:02:03')",
+        "EXTRACT(MONTH FROM '2019-07-02 01:02:03')",
+        "EXTRACT(DAY FROM '2019-07-02 01:02:03')",
+        "EXTRACT(HOUR FROM '2019-07-02 01:02:03')",
+        "EXTRACT(MINUTE FROM '2019-07-02 01:02:03')",
+        "EXTRACT(SECOND FROM '2019-07-02 01:02:03')",
+        "EXTRACT(QUARTER FROM '2019-07-02 01:02:03')",
+        "EXTRACT(YEAR_MONTH FROM '2019-07-02 01:02:03')",
+        "EXTRACT(DAY_HOUR FROM '2019-07-02 01:02:03')",
+        "EXTRACT(DAY_MINUTE FROM '2019-07-02 01:02:03')",
+        "EXTRACT(DAY_SECOND FROM '2019-07-02 01:02:03')",
+        "EXTRACT(HOUR_MINUTE FROM '2019-07-02 01:02:03')",
+        "EXTRACT(HOUR_SECOND FROM '2019-07-02 01:02:03')",
+        "EXTRACT(MINUTE_SECOND FROM '2019-07-02 01:02:03')",
+        "EXTRACT(YEAR FROM NULL)",
+        "EXTRACT(HOUR FROM '-13:29:17')",
+        "EXTRACT(MINUTE FROM '-13:29:17')",
+        "EXTRACT(SECOND FROM '-13:29:17')",
+        "EXTRACT(HOUR_MINUTE FROM '-13:29:17')",
+        "EXTRACT(DAY_SECOND FROM '-13:29:17')",
+        "EXTRACT(MINUTE_SECOND FROM '-13:29:17')",
+    };
+    static const char *const values_core[] = {
+        "2019", "7",     "2",   "1",  "2",   "3",   "3",   "201907", "201",     "20102", "2010203",
+        "102",  "10203", "203", NULL, "-13", "-29", "-17", "-1329",  "-132917", "-2917",
+    };
+    static const char *const columns_dual[] = {
+        "EXTRACT(YEAR FROM '2019-07-02')",
+        "qtr",
+        "hm",
+    };
+    static const char *const values_dual[] = {"2019", "3", "102"};
+    static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_after_select[] = {"-1", "0"};
+    static const char *const values_after_do[] = {"0", "0"};
+    static const char *const columns_table[] = {
+        "id",
+        "EXTRACT(YEAR FROM d)",
+        "EXTRACT(QUARTER FROM dt)",
+        "EXTRACT(YEAR_MONTH FROM dt)",
+        "EXTRACT(DAY_SECOND FROM dt)",
+        "EXTRACT(YEAR FROM ts)",
+        "EXTRACT(DAY_SECOND FROM ts)",
+        "EXTRACT(HOUR FROM tm)",
+        "EXTRACT(HOUR FROM s)",
+        "EXTRACT(DAY_SECOND FROM tm)",
+        "EXTRACT(DAY_SECOND FROM s)",
+    };
+    static const char *const values_table[] = {
+        "1", "2019", "3",  "201907", "2132917", "2019", "2132917", "-13", "13", "-132917", "132917",
+        "2", NULL,   NULL, NULL,     NULL,      NULL,   NULL,      NULL,  NULL, NULL,      NULL,
+        "3", "0",    NULL, NULL,     NULL,      NULL,   NULL,      "13",  NULL, "132917",  NULL,
+    };
+    static const char *const columns_warnings[] = {"Level", "Code", "Message"};
+    static const char *const values_table_warnings[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'not-a-date'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'not-a-date'",
+    };
+    static const char *const columns_warning_count[] = {"@@warning_count"};
+    static const char *const values_warning_count[] = {"2"};
+    static const char *const columns_filtered[] = {"id", "EXTRACT(DAY_SECOND FROM tm)"};
+    static const char *const values_filtered[] = {"3", "132917", "2", NULL};
+    static const char *const columns_reopen[] = {
+        "EXTRACT(YEAR_MONTH FROM dt)",
+        "EXTRACT(HOUR FROM tm)",
+    };
+    static const char *const values_reopen[] = {"201907", "-13"};
+    static const char *const columns_invalid[] = {
+        "EXTRACT(YEAR FROM 'not-a-date')",
+        "EXTRACT(HOUR FROM 'not-a-date')",
+        "EXTRACT(DAY_SECOND FROM 'not-a-date')",
+        "EXTRACT(QUARTER FROM 'not-a-date')",
+    };
+    static const char *const values_invalid[] = {NULL, NULL, NULL, NULL};
+    static const char *const values_invalid_warnings[] = {
+        "Warning",
+        "1292",
+        "Incorrect datetime value: 'not-a-date'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'not-a-date'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'not-a-date'",
+        "Warning",
+        "1292",
+        "Incorrect datetime value: 'not-a-date'",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "extract", path, sizeof(path));
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXTRACT(YEAR FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(MONTH FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(DAY FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(HOUR FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(MINUTE FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(SECOND FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(QUARTER FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(YEAR_MONTH FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(DAY_HOUR FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(DAY_MINUTE FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(DAY_SECOND FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(HOUR_MINUTE FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(HOUR_SECOND FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(MINUTE_SECOND FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(YEAR FROM NULL), EXTRACT(HOUR FROM '-13:29:17'), "
+                   "EXTRACT(MINUTE FROM '-13:29:17'), EXTRACT(SECOND FROM '-13:29:17'), "
+                   "EXTRACT(HOUR_MINUTE FROM '-13:29:17'), "
+                   "EXTRACT(DAY_SECOND FROM '-13:29:17'), "
+                   "EXTRACT(MINUTE_SECOND FROM '-13:29:17')",
+            .columns = columns_core,
+            .column_count = sizeof(columns_core) / sizeof(columns_core[0]),
+            .values = values_core,
+            .row_count = 1U,
+            .context = "no-source extract",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXTRACT(YEAR FROM '2019-07-02'), "
+                   "EXTRACT(QUARTER FROM '2019-07-02') AS qtr, "
+                   "EXTRACT(HOUR_MINUTE FROM '01:02:03') AS hm FROM DUAL",
+            .columns = columns_dual,
+            .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
+            .values = values_dual,
+            .row_count = 1U,
+            .context = "dual extract",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_row_status,
+            .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
+            .values = values_after_select,
+            .row_count = 1U,
+            .context = "row count after extract select",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "DO EXTRACT(YEAR FROM '2019-07-02'), EXTRACT(HOUR FROM '-13:29:17'), "
+        "EXTRACT(YEAR FROM NULL)",
+        &result
+    );
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "extract do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "extract do rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "extract do affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "extract do warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_row_status,
+            .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
+            .values = values_after_do,
+            .row_count = 1U,
+            .context = "row count after extract do",
+        }
+    );
+
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE t(id INT, d DATE NULL, dt DATETIME NULL, ts TIMESTAMP NULL, "
+        "tm TIME NULL, s VARCHAR(32))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO t VALUES "
+        "(1,'2019-07-02','2019-07-02 13:29:17','2019-07-02 13:29:17','-13:29:17',"
+        "'13:29:17'),"
+        "(2,NULL,NULL,NULL,NULL,NULL),"
+        "(3,'0000-00-00',NULL,NULL,'13:29:17','not-a-date')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, EXTRACT(YEAR FROM d), EXTRACT(QUARTER FROM dt), "
+                   "EXTRACT(YEAR_MONTH FROM dt), EXTRACT(DAY_SECOND FROM dt), "
+                   "EXTRACT(YEAR FROM ts), EXTRACT(DAY_SECOND FROM ts), "
+                   "EXTRACT(HOUR FROM tm), EXTRACT(HOUR FROM s), "
+                   "EXTRACT(DAY_SECOND FROM tm), EXTRACT(DAY_SECOND FROM s) "
+                   "FROM t ORDER BY id",
+            .columns = columns_table,
+            .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
+            .values = values_table,
+            .row_count = 3U,
+            .context = "table-backed extract",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_table_warnings,
+            .row_count = 2U,
+            .context = "table-backed extract warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@warning_count",
+            .columns = columns_warning_count,
+            .column_count = sizeof(columns_warning_count) / sizeof(columns_warning_count[0]),
+            .values = values_warning_count,
+            .row_count = 1U,
+            .context = "table-backed extract warning count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, EXTRACT(DAY_SECOND FROM tm) FROM t WHERE id >= 1 "
+                   "ORDER BY id DESC LIMIT 2",
+            .columns = columns_filtered,
+            .column_count = sizeof(columns_filtered) / sizeof(columns_filtered[0]),
+            .values = values_filtered,
+            .row_count = 2U,
+            .context = "table-backed extract filtered ordered limited envelope",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += mylite_open(path, &database) == MYLITE_OK ? 0 : 1;
+    failures += execute_ok(database, "USE app", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXTRACT(YEAR_MONTH FROM dt), EXTRACT(HOUR FROM tm) FROM t WHERE id = 1",
+            .columns = columns_reopen,
+            .column_count = sizeof(columns_reopen) / sizeof(columns_reopen[0]),
+            .values = values_reopen,
+            .row_count = 1U,
+            .context = "reopened extract",
+        }
+    );
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXTRACT(YEAR FROM 'not-a-date'), "
+                   "EXTRACT(HOUR FROM 'not-a-date'), "
+                   "EXTRACT(DAY_SECOND FROM 'not-a-date'), "
+                   "EXTRACT(QUARTER FROM 'not-a-date')",
+            .columns = columns_invalid,
+            .column_count = sizeof(columns_invalid) / sizeof(columns_invalid[0]),
+            .values = values_invalid,
+            .row_count = 1U,
+            .context = "invalid extract values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_invalid_warnings,
+            .row_count = 4U,
+            .context = "invalid extract warnings",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT EXTRACT(MICROSECOND FROM '2003-01-02 10:30:00.000123')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "EXTRACT() unit MICROSECOND is not yet supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT EXTRACT(WEEK FROM '2019-07-02')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "EXTRACT() unit WEEK is not yet supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT EXTRACT(YEAR FROM 20190702)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "temporal extract functions support only string temporal literals",
         }
     );
 

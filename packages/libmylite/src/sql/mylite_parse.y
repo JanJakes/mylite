@@ -3670,6 +3670,10 @@ expression(A) ::= SEC_TO_TIME(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION, B, R);
 }
+expression(A) ::= EXTRACT(T) LPAREN extract_unit(U) FROM expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_EXTRACT_FUNCTION, U, B, R);
+}
 expression(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);
@@ -3709,6 +3713,67 @@ expression(A) ::= MINUTE(T) LPAREN expression(B) RPAREN(R). {
 expression(A) ::= SECOND(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_SECOND_FUNCTION, B, R);
+}
+
+extract_unit(A) ::= YEAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= QUARTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= DAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= WEEK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= YEAR_MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= DAY_HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= DAY_MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= DAY_SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= HOUR_MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= HOUR_SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= MINUTE_SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= DAY_MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= HOUR_MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= MINUTE_MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+extract_unit(A) ::= SECOND_MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 expression(A) ::= current_timestamp_value(T). {
     A = T;
@@ -6138,16 +6203,25 @@ identifier(A) ::= DAYOFWEEK(T). {
 identifier(A) ::= DAYOFYEAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= EXTRACT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= HOUR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LAST_DAY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= MINUTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= QUARTER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SECOND(T). {
@@ -6160,6 +6234,9 @@ identifier(A) ::= TIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TIMESTAMP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= WEEK(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= YEAR(T). {

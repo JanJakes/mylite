@@ -28,6 +28,9 @@ enum {
     time_text_max_length = 9,
     datetime_text_length = 19,
     integer_result_buffer_capacity = 32,
+    two_digit_scale = 100,
+    four_digit_scale = 10000,
+    six_digit_scale = 1000000,
     date_year_digit_count = 4,
     date_first_separator_index = 4,
     date_month_offset = 5,
@@ -143,6 +146,8 @@ static int format_time_result(
     char **out_text
 );
 static int format_integer_result(struct mylite_db *database, int value, char **out_text);
+static int signed_time_component(const struct temporal_time_parts *time, int component);
+static int signed_time_composite(const struct temporal_time_parts *time, int value);
 static int append_sec_to_time_truncation_warning(struct mylite_db *database, int64_t seconds);
 
 static bool parse_string_date_value(
@@ -213,12 +218,16 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "time";
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return "time_to_sec";
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
+        return "quarter";
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
         return "year";
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
         return "month";
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         return "day";
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
+        return "year_month";
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
         return "dayofweek";
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
@@ -227,10 +236,28 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "last_day";
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
         return "hour";
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
+        return "signed_hour";
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
         return "minute";
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
+        return "signed_minute";
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
         return "second";
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+        return "signed_second";
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+        return "day_hour";
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+        return "day_minute";
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+        return "day_second";
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+        return "hour_minute";
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+        return "hour_second";
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
+        return "minute_second";
     }
     return NULL;
 }
@@ -247,14 +274,25 @@ bool mylite_temporal_extract_kind_from_name(
         {"date", MYLITE_TEMPORAL_EXTRACT_DATE},
         {"time", MYLITE_TEMPORAL_EXTRACT_TIME},
         {"year", MYLITE_TEMPORAL_EXTRACT_YEAR},
+        {"quarter", MYLITE_TEMPORAL_EXTRACT_QUARTER},
         {"month", MYLITE_TEMPORAL_EXTRACT_MONTH},
         {"day", MYLITE_TEMPORAL_EXTRACT_DAY},
+        {"year_month", MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH},
         {"dayofweek", MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK},
         {"dayofyear", MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR},
         {"last_day", MYLITE_TEMPORAL_EXTRACT_LAST_DAY},
         {"hour", MYLITE_TEMPORAL_EXTRACT_HOUR},
+        {"signed_hour", MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR},
         {"minute", MYLITE_TEMPORAL_EXTRACT_MINUTE},
+        {"signed_minute", MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE},
         {"second", MYLITE_TEMPORAL_EXTRACT_SECOND},
+        {"signed_second", MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND},
+        {"day_hour", MYLITE_TEMPORAL_EXTRACT_DAY_HOUR},
+        {"day_minute", MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE},
+        {"day_second", MYLITE_TEMPORAL_EXTRACT_DAY_SECOND},
+        {"hour_minute", MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE},
+        {"hour_second", MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND},
+        {"minute_second", MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND},
         {"time_to_sec", MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC},
     };
 
@@ -281,11 +319,22 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return false;
     }
@@ -296,16 +345,27 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     switch (kind) {
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
         return true;
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return false;
     }
@@ -315,14 +375,25 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
 bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind kind) {
     switch (kind) {
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
         return true;
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
@@ -735,17 +806,38 @@ static int extract_date_part_value(
         return format_date_result(database, &date, request->out_text);
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
         return format_integer_result(database, date.year, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
+        return format_integer_result(
+            database,
+            date.month == 0 ? 0 : ((date.month + 2) / 3),
+            request->out_text
+        );
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
         return format_integer_result(database, date.month, request->out_text);
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         return format_integer_result(database, date.day, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
+        return format_integer_result(
+            database,
+            (date.year * two_digit_scale) + date.month,
+            request->out_text
+        );
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         break;
     }
@@ -782,11 +874,22 @@ static int extract_calendar_date_value(
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         break;
     }
@@ -849,6 +952,7 @@ static int extract_time_part_value(
 ) {
     struct temporal_time_parts time = {.negative = false};
     struct temporal_datetime_parts datetime = {0};
+    int day = 0;
     int rc = MYLITE_OK;
 
     if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME) {
@@ -863,6 +967,7 @@ static int extract_time_part_value(
         if (parse_datetime_text(request->value, request->value_length, &datetime) &&
             datetime_time_parts_are_valid(&datetime.time)) {
             time = datetime.time;
+            day = datetime.date.day;
         } else {
             rc = append_incorrect_temporal_warning(
                 database,
@@ -884,6 +989,12 @@ static int extract_time_part_value(
             *request->out_is_null = true;
             return rc;
         }
+    } else if (
+        parse_datetime_text(request->value, request->value_length, &datetime) &&
+        datetime_time_parts_are_valid(&datetime.time)
+    ) {
+        time = datetime.time;
+        day = datetime.date.day;
     } else if (!parse_string_time_value(request->value, request->value_length, &time)) {
         rc = append_incorrect_temporal_warning(
             database,
@@ -898,15 +1009,81 @@ static int extract_time_part_value(
     switch (request->extract_kind) {
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
         return format_integer_result(database, time.hour, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
+        return format_integer_result(
+            database,
+            signed_time_component(&time, time.hour),
+            request->out_text
+        );
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
         return format_integer_result(database, time.minute, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
+        return format_integer_result(
+            database,
+            signed_time_component(&time, time.minute),
+            request->out_text
+        );
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
         return format_integer_result(database, time.second, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+        return format_integer_result(
+            database,
+            signed_time_component(&time, time.second),
+            request->out_text
+        );
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+        return format_integer_result(
+            database,
+            signed_time_composite(&time, (day * two_digit_scale) + time.hour),
+            request->out_text
+        );
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+        return format_integer_result(
+            database,
+            signed_time_composite(
+                &time,
+                (day * four_digit_scale) + (time.hour * two_digit_scale) + time.minute
+            ),
+            request->out_text
+        );
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+        return format_integer_result(
+            database,
+            signed_time_composite(
+                &time,
+                (day * six_digit_scale) + (time.hour * four_digit_scale) +
+                    (time.minute * two_digit_scale) + time.second
+            ),
+            request->out_text
+        );
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+        return format_integer_result(
+            database,
+            signed_time_composite(&time, (time.hour * two_digit_scale) + time.minute),
+            request->out_text
+        );
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+        return format_integer_result(
+            database,
+            signed_time_composite(
+                &time,
+                (time.hour * four_digit_scale) + (time.minute * two_digit_scale) + time.second
+            ),
+            request->out_text
+        );
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
+        return format_integer_result(
+            database,
+            signed_time_composite(&time, (time.minute * two_digit_scale) + time.second),
+            request->out_text
+        );
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
@@ -1142,6 +1319,26 @@ static int format_integer_result(struct mylite_db *database, int value, char **o
     }
     memcpy(*out_text, buffer, (size_t)written + 1U);
     return MYLITE_OK;
+}
+
+static int signed_time_component(const struct temporal_time_parts *time, int component) {
+    if (time == NULL || component == 0) {
+        return component;
+    }
+    if (time->negative) {
+        return -component;
+    }
+    return component;
+}
+
+static int signed_time_composite(const struct temporal_time_parts *time, int value) {
+    if (time == NULL || value == 0) {
+        return value;
+    }
+    if (time->negative) {
+        return -value;
+    }
+    return value;
 }
 
 static int append_sec_to_time_truncation_warning(struct mylite_db *database, int64_t seconds) {

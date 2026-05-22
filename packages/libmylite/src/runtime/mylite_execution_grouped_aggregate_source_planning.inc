@@ -190,7 +190,7 @@ static int validate_grouped_qualified_wildcard_reference(
         for (size_t index = 0U; index < source_context->source_count; ++index) {
             if (joined_source_matches_qualified_wildcard_parts(
                     &source_context->sources[index],
-                    parts,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 matched = true;

@@ -3560,6 +3560,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(mylite_runtime_table_storage_statistics_options_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
   )
   target_include_directories(mylite_runtime_table_storage_statistics_options_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -4900,6 +4901,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(mylite_runtime_string_defaults_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
   )
   target_include_directories(mylite_runtime_string_defaults_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

@@ -213,7 +213,11 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
         for (size_t index = 0U; index < source_context->source_count; ++index) {
             const struct planned_select_source *source = &source_context->sources[index];
 
-            if (!joined_source_matches_qualified_wildcard_parts(source, parts, part_count)) {
+            if (!joined_source_matches_qualified_wildcard_parts(
+                    source,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    part_count
+                )) {
                 continue;
             }
             columns = source->columns;

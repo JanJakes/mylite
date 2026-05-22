@@ -343,7 +343,7 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT VERSION(), 'x'",
+        "SELECT VERSION(), 1.0",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

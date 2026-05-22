@@ -30,6 +30,7 @@
 #include "mylite_unix_timestamp.h"
 #include "sqlite3.h"
 
+#include <ctype.h>
 #include <float.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -433,6 +434,12 @@ enum {
     mysql_signed_int_display_length = 11,
     mysql_unsigned_int_display_length = 10,
     mysql_bigint_display_length = 20,
+    mysql_scalar_bigint_display_length = 21,
+    mysql_scalar_double_display_length = 23,
+    mysql_database_function_display_length = 256,
+    mysql_user_function_display_length = 1152,
+    mysql_version_function_display_length = 20,
+    mysql_json_type_display_length = 68,
     double_text_max_significant_digits = 17,
     double_text_capacity = 32,
     scalar_exact_decimal_part_capacity = literal_projection_max_significant_digits + 1,
@@ -626,6 +633,7 @@ static const double double_scientific_integer_threshold = 1.0e15;
 static const double logarithm_base_two = 2.0;
 static const double logarithm_base_ten = 10.0;
 static const uint64_t longtext_max_length = 4294967295ULL;
+static const uint64_t mysql_json_document_display_length = 4294967292ULL;
 static const uint64_t max_allowed_packet_default_value = 67108864ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
 static const uint64_t timeout_system_variable_max_value = 31536000ULL;
@@ -2880,9 +2888,11 @@ struct planned_row_scalar_exists_filter {
 struct planned_row_scalar_select {
     bool has_source;
     struct table_name_resolution source;
+    char source_alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct mylite_catalog_table_descriptor table;
     struct planned_row_scalar_select_item *items;
     size_t item_count;
+    bool source_has_alias;
     struct planned_row_scalar_exists_filter tableless_filter;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
@@ -12123,12 +12133,36 @@ static bool map_json_constructor_row_scalar_step_error(
 static int append_row_scalar_result_columns(
     struct mylite_db *database,
     mylite_result *result,
-    const struct planned_row_scalar_select *plan
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context
 );
 static int append_row_scalar_result_column(
     struct mylite_db *database,
     mylite_result *result,
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context,
     const struct planned_row_scalar_select_item *item
+);
+static int make_row_scalar_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context,
+    const struct planned_row_scalar_select_item *item,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static int make_row_scalar_column_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context,
+    const struct planned_row_scalar_select_item *item,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static int populate_row_scalar_expression_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
 );
 static int copy_row_scalar_result_column_name(
     struct mylite_db *database,
@@ -12627,6 +12661,79 @@ static int append_scalar_projection_columns_and_values(
     struct session_scalar_cell *cells,
     struct mylite_result_cell *values,
     size_t *out_column_count
+);
+
+struct scalar_binary_numeric_result_column_shape {
+    enum mylite_result_logical_type logical_type;
+    uint64_t display_length;
+    uint16_t decimals;
+    uint32_t extra_flags;
+    bool nullable;
+};
+
+struct scalar_connection_string_result_column_shape {
+    uint64_t display_length;
+    uint32_t extra_flags;
+    bool nullable;
+};
+
+static int append_scalar_projection_result_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *column_name,
+    mylite_result *result
+);
+static int make_scalar_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static int populate_scalar_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_scalar_function_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_scalar_string_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int scalar_integer_literal_result_column_shape(
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_binary_numeric_result_column_shape *out_shape
+);
+static int scalar_unsigned_integer_literal_result_column_shape(
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct scalar_binary_numeric_result_column_shape *out_shape
+);
+static int scalar_newdecimal_integer_literal_result_column_shape(
+    const struct mylite_sql_source_span *span,
+    struct scalar_binary_numeric_result_column_shape *out_shape
+);
+static int scalar_decimal_integer_significant_digit_count(
+    const struct mylite_sql_source_span *span,
+    size_t *out_significant_digit_count
+);
+static uint64_t scalar_connection_max_bytes_per_character(const struct mylite_db *database);
+static void populate_scalar_binary_numeric_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor,
+    struct scalar_binary_numeric_result_column_shape shape
+);
+static void populate_scalar_connection_string_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor,
+    struct scalar_connection_string_result_column_shape shape
+);
+static void populate_scalar_json_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
 );
 static struct mylite_result_cell session_scalar_cell_result_cell(
     const struct session_scalar_cell *cell
@@ -15411,6 +15518,9 @@ static int if_validation_stack_push(
     const struct mylite_sql_ast_node *expression
 );
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
+static bool is_scalar_projection_select_item_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_last_insert_id_set_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -22559,6 +22669,12 @@ static int load_result_column_metadata_context(
     const struct planned_select *plan,
     struct result_column_metadata_context *context
 );
+static int load_result_column_metadata_context_for_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct result_column_metadata_context *context
+);
+static struct mylite_result_column_descriptor unknown_result_column_descriptor(const char *label);
 static int append_select_result_column(
     struct mylite_db *database,
     mylite_result *result,
@@ -34728,7 +34844,8 @@ static int execute_select_statement(
     if (select_statement_is_scalar_projection_attempt(statement)) {
         set_unsupported_error(
             database,
-            "SELECT scalar projection supports only session scalar values, integer/boolean/NULL, "
+            "SELECT scalar projection supports only session scalar values, integer/boolean/string/"
+            "NULL, "
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
@@ -72789,6 +72906,10 @@ static int plan_row_scalar_select_source(
             out_source_context
         );
     }
+    if (rc == MYLITE_OK && out_source_context->has_alias) {
+        memcpy(out_plan->source_alias, out_source_context->alias, sizeof(out_plan->source_alias));
+        out_plan->source_has_alias = true;
+    }
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -76094,6 +76215,7 @@ static int execute_row_scalar_select_from_plan(
     mylite_result **out_result
 ) {
     sqlite3_stmt *statement = NULL;
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
     mylite_result *result = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
@@ -76104,7 +76226,16 @@ static int execute_row_scalar_select_from_plan(
         return rc;
     }
 
-    rc = append_row_scalar_result_columns(database, result, plan);
+    if (plan->has_source) {
+        rc = load_result_column_metadata_context_for_table(
+            database,
+            plan->table.table_id,
+            &metadata_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_result_columns(database, result, plan, &metadata_context);
+    }
     if (rc == MYLITE_OK) {
         rc = build_row_scalar_select_sql(plan, &sql);
     }
@@ -76127,6 +76258,7 @@ static int execute_row_scalar_select_from_plan(
     }
     rc = finalize_sqlite_statement(statement, rc);
     free(sql);
+    result_column_metadata_context_deinit(&metadata_context);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         if (rc == MYLITE_NOMEM) {
@@ -76305,12 +76437,19 @@ static bool map_json_constructor_row_scalar_step_error(
 static int append_row_scalar_result_columns(
     struct mylite_db *database,
     mylite_result *result,
-    const struct planned_row_scalar_select *plan
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context
 ) {
     int rc = MYLITE_OK;
 
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
-        rc = append_row_scalar_result_column(database, result, &plan->items[item_index]);
+        rc = append_row_scalar_result_column(
+            database,
+            result,
+            plan,
+            metadata_context,
+            &plan->items[item_index]
+        );
     }
 
     return rc;
@@ -76319,13 +76458,26 @@ static int append_row_scalar_result_columns(
 static int append_row_scalar_result_column(
     struct mylite_db *database,
     mylite_result *result,
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context,
     const struct planned_row_scalar_select_item *item
 ) {
     char *column_name = NULL;
+    struct mylite_result_column_descriptor descriptor;
     int rc = copy_row_scalar_result_column_name(database, item, &column_name);
 
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, column_name);
+        rc = make_row_scalar_result_column_descriptor(
+            database,
+            plan,
+            metadata_context,
+            item,
+            column_name,
+            &descriptor
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -76333,6 +76485,166 @@ static int append_row_scalar_result_column(
     free(column_name);
 
     return rc;
+}
+
+static int make_row_scalar_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context,
+    const struct planned_row_scalar_select_item *item,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    if (out_descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_descriptor = unknown_result_column_descriptor(label);
+    if (item == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return make_row_scalar_column_result_column_descriptor(
+            database,
+            plan,
+            metadata_context,
+            item,
+            label,
+            out_descriptor
+        );
+    }
+
+    return populate_row_scalar_expression_result_column_descriptor(
+        database,
+        &item->expression,
+        out_descriptor
+    );
+}
+
+static int make_row_scalar_column_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    const struct result_column_metadata_context *metadata_context,
+    const struct planned_row_scalar_select_item *item,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    const char *table_name = NULL;
+
+    if (plan == NULL || item == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_descriptor = unknown_result_column_descriptor(label);
+    if (metadata_context == NULL || !metadata_context->has_single_source_metadata) {
+        return MYLITE_OK;
+    }
+
+    table_name = plan->source.table_name;
+    if (plan->source_has_alias) {
+        table_name = plan->source_alias;
+    }
+    out_descriptor->schema_name = plan->source.schema.name;
+    out_descriptor->table_name = table_name;
+    out_descriptor->origin_schema_name = plan->source.schema.name;
+    out_descriptor->origin_table_name = plan->table.name;
+    out_descriptor->origin_column_name = item->expression.column.name;
+    out_descriptor->nullable = item->expression.column.is_nullable;
+
+    return populate_select_result_column_descriptor(
+        database,
+        &plan->table,
+        &item->expression.column,
+        metadata_context,
+        out_descriptor
+    );
+}
+
+static int populate_row_scalar_expression_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    if (expression == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_json_type_display_length,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+        populate_scalar_json_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        return MYLITE_OK;
+    }
+
+    return MYLITE_OK;
 }
 
 static int copy_row_scalar_result_column_name(
@@ -78281,13 +78593,28 @@ static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_no
     }
     while (select_item != NULL) {
         if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_scalar_projection_expression(child_at(select_item, 0U))) {
+            !is_scalar_projection_select_item_expression(child_at(select_item, 0U))) {
             return false;
         }
         select_item = select_item->next_sibling;
     }
 
     return true;
+}
+
+static bool is_scalar_projection_select_item_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return true;
+    }
+    return is_scalar_projection_expression(expression);
 }
 
 static bool select_statement_is_row_function_scalar_projection(
@@ -78528,10 +78855,7 @@ static int append_scalar_projection_columns_and_values(
             rc = copy_scalar_projection_column_name(database, expression, &column_name);
         }
         if (rc == MYLITE_OK) {
-            rc = mylite_result_append_column(result, column_name);
-            if (rc != MYLITE_OK) {
-                set_nomem_error(database);
-            }
+            rc = append_scalar_projection_result_column(database, expression, column_name, result);
         }
         free(column_name);
         if (rc == MYLITE_OK) {
@@ -78546,6 +78870,476 @@ static int append_scalar_projection_columns_and_values(
 
     *out_column_count = column_index;
     return rc;
+}
+
+static int append_scalar_projection_result_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *column_name,
+    mylite_result *result
+) {
+    struct mylite_result_column_descriptor descriptor;
+    int rc = make_scalar_result_column_descriptor(database, expression, column_name, &descriptor);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int make_scalar_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    const struct mylite_sql_ast_node *unwrapped = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_descriptor = unknown_result_column_descriptor(label);
+    unwrapped = unwrap_parenthesized_expression(expression);
+    if (unwrapped == NULL) {
+        return MYLITE_OK;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(unwrapped);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            const struct mylite_sql_ast_node *operand =
+                unwrap_parenthesized_expression(child_at(unwrapped, 0U));
+
+            if (operand != NULL && operand->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(operand) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+                return populate_scalar_literal_result_column_descriptor(
+                    database,
+                    unwrapped,
+                    out_descriptor
+                );
+            }
+        }
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_LITERAL) {
+        return populate_scalar_literal_result_column_descriptor(
+            database,
+            unwrapped,
+            out_descriptor
+        );
+    }
+
+    rc = populate_scalar_function_result_column_descriptor(database, unwrapped, out_descriptor);
+    return rc;
+}
+
+static int populate_scalar_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+        if (literal == NULL) {
+            return MYLITE_OK;
+        }
+    }
+    if (literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        struct scalar_binary_numeric_result_column_shape shape = {0};
+        int rc = scalar_integer_literal_result_column_shape(expression, &shape);
+
+        if (rc != MYLITE_OK) {
+            return MYLITE_OK;
+        }
+        populate_scalar_binary_numeric_result_column_descriptor(descriptor, shape);
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_tinyint_bool_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NULL,
+                .display_length = 0U,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return populate_scalar_string_literal_result_column_descriptor(
+            database,
+            literal,
+            descriptor
+        );
+    }
+
+    return MYLITE_OK;
+}
+
+static int populate_scalar_function_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    if (expression == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_database_function_display_length,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_user_function_display_length,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_version_function_display_length,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_approximate_decimals,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
+    case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
+    case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_json_type_display_length,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
+    case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
+        populate_scalar_json_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int populate_scalar_string_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    uint64_t max_bytes_per_character = scalar_connection_max_bytes_per_character(database);
+    uint64_t display_length = 0U;
+    int rc = decode_sql_string_literal_with_policy(
+        database,
+        literal,
+        "scalar metadata supports only ordinary string literals",
+        "scalar metadata does not support NUL bytes in string literals",
+        true,
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    free(text);
+    if (text_length > UINT64_MAX / max_bytes_per_character) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    display_length = (uint64_t)text_length * max_bytes_per_character;
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = false,
+        }
+    );
+    return MYLITE_OK;
+}
+
+static int scalar_integer_literal_result_column_shape(
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_binary_numeric_result_column_shape *out_shape
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+    bool is_negative = false;
+
+    if (unwrapped == NULL || out_shape == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(unwrapped);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        }
+        unwrapped = unwrap_parenthesized_expression(child_at(unwrapped, 0U));
+    }
+    return scalar_unsigned_integer_literal_result_column_shape(unwrapped, is_negative, out_shape);
+}
+
+static int scalar_unsigned_integer_literal_result_column_shape(
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct scalar_binary_numeric_result_column_shape *out_shape
+) {
+    uint64_t magnitude = 0U;
+    uint64_t display_length = 0U;
+    uint64_t signed_min_magnitude = (uint64_t)INT64_MAX + 1U;
+
+    if (out_shape == NULL || literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_ERROR;
+    }
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) == MYLITE_OK) {
+        if (is_negative && magnitude > signed_min_magnitude) {
+            return scalar_newdecimal_integer_literal_result_column_shape(&literal->span, out_shape);
+        }
+        display_length = (uint64_t)literal->span.length + 1U;
+        if (display_length > mysql_bigint_display_length) {
+            display_length = mysql_bigint_display_length;
+        }
+        *out_shape = (struct scalar_binary_numeric_result_column_shape){
+            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+            .display_length = display_length,
+            .decimals = 0U,
+            .extra_flags = (!is_negative && magnitude > (uint64_t)INT64_MAX)
+                               ? (uint32_t)MYLITE_RESULT_COLUMN_FLAG_UNSIGNED
+                               : 0U,
+            .nullable = false,
+        };
+        return MYLITE_OK;
+    }
+
+    return scalar_newdecimal_integer_literal_result_column_shape(&literal->span, out_shape);
+}
+
+static int scalar_newdecimal_integer_literal_result_column_shape(
+    const struct mylite_sql_source_span *span,
+    struct scalar_binary_numeric_result_column_shape *out_shape
+) {
+    size_t significant_digit_count = 0U;
+
+    if (out_shape == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (scalar_decimal_integer_significant_digit_count(span, &significant_digit_count) !=
+            MYLITE_OK ||
+        significant_digit_count == 0U ||
+        significant_digit_count > literal_projection_max_significant_digits) {
+        return MYLITE_ERROR;
+    }
+    *out_shape = (struct scalar_binary_numeric_result_column_shape){
+        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
+        .display_length = (uint64_t)significant_digit_count + 1U,
+        .decimals = 0U,
+        .extra_flags = 0U,
+        .nullable = false,
+    };
+    return MYLITE_OK;
+}
+
+static int scalar_decimal_integer_significant_digit_count(
+    const struct mylite_sql_source_span *span,
+    size_t *out_significant_digit_count
+) {
+    size_t first_significant_digit = 0U;
+
+    if (span == NULL || span->text == NULL || out_significant_digit_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    first_significant_digit = span->length;
+    for (size_t index = 0U; index < span->length; ++index) {
+        unsigned char byte = (unsigned char)span->text[index];
+
+        if (!isdigit(byte)) {
+            return MYLITE_ERROR;
+        }
+        if (byte != (unsigned char)'0' && first_significant_digit == span->length) {
+            first_significant_digit = index;
+        }
+    }
+    *out_significant_digit_count =
+        first_significant_digit == span->length ? 0U : span->length - first_significant_digit;
+    return MYLITE_OK;
+}
+
+static uint64_t scalar_connection_max_bytes_per_character(const struct mylite_db *database) {
+    const char *character_set_name =
+        database == NULL ? NULL : database->session.character_set_connection;
+    const struct character_set_descriptor *character_set =
+        character_set_by_name(character_set_name);
+    struct mylite_sql_source_span maxlen_span = {0};
+    uint64_t maxlen = 0U;
+
+    if (character_set == NULL) {
+        return 4U;
+    }
+    maxlen_span = (struct mylite_sql_source_span){
+        .text = character_set->maxlen,
+        .length = strlen(character_set->maxlen),
+    };
+    if (parse_unsigned_integer_literal(&maxlen_span, &maxlen) != MYLITE_OK || maxlen == 0U) {
+        return 4U;
+    }
+    return maxlen;
+}
+
+static void populate_scalar_binary_numeric_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor,
+    struct scalar_binary_numeric_result_column_shape shape
+) {
+    descriptor->logical_type = shape.logical_type;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = shape.display_length;
+    descriptor->decimals = shape.decimals;
+    descriptor->flags =
+        MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM | shape.extra_flags;
+    descriptor->nullable = shape.nullable;
+    if (!shape.nullable) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
+    }
+}
+
+static void populate_scalar_connection_string_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor,
+    struct scalar_connection_string_result_column_shape shape
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = shape.display_length;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = shape.extra_flags;
+    descriptor->nullable = shape.nullable;
+    if (!shape.nullable) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
+    }
+}
+
+static void populate_scalar_json_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_JSON;
+    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = mysql_json_document_display_length;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    descriptor->nullable = true;
 }
 
 static struct mylite_result_cell session_scalar_cell_result_cell(
@@ -99012,7 +99806,7 @@ static int literal_projection_value(
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "SELECT literal projection supports only integer, boolean, and NULL literals"
+            "SELECT literal projection supports only integer, boolean, string, and NULL literals"
         );
         return MYLITE_ERROR;
     }
@@ -99034,7 +99828,7 @@ static int literal_projection_value(
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
-            "SELECT literal projection supports only integer, boolean, and NULL literals"
+            "SELECT literal projection supports only integer, boolean, string, and NULL literals"
         );
         return MYLITE_ERROR;
     }
@@ -99059,10 +99853,27 @@ static int literal_projection_value(
         out_cell->value = "0";
         return MYLITE_OK;
     }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        int rc = decode_sql_string_literal_with_policy(
+            database,
+            literal,
+            "SELECT literal projection supports only ordinary string literals",
+            "SELECT literal projection does not support NUL bytes in string literals",
+            true,
+            &out_cell->owned_text,
+            &out_cell->value_size
+        );
+
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->owned_text;
+            out_cell->has_value_size = true;
+        }
+        return rc;
+    }
     if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
         set_unsupported_error(
             database,
-            "SELECT literal projection supports only integer, boolean, and NULL literals"
+            "SELECT literal projection supports only integer, boolean, string, and NULL literals"
         );
         return MYLITE_ERROR;
     }
@@ -130471,10 +131282,6 @@ static int load_result_column_metadata_context(
     const struct planned_select *plan,
     struct result_column_metadata_context *context
 ) {
-    struct mylite_catalog_column_descriptor *columns = NULL;
-    size_t column_count = 0U;
-    int rc = MYLITE_OK;
-
     if (context == NULL || plan == NULL) {
         return MYLITE_MISUSE;
     }
@@ -130482,20 +131289,31 @@ static int load_result_column_metadata_context(
         return MYLITE_OK;
     }
 
-    rc = load_table_columns(database, plan->table.table_id, &columns, &column_count);
+    return load_result_column_metadata_context_for_table(database, plan->table.table_id, context);
+}
+
+static int load_result_column_metadata_context_for_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct result_column_metadata_context *context
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (context == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = load_table_columns(database, table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
-            database,
-            plan->table.table_id,
-            columns,
-            column_count,
-            &context->primary_key
-        );
+        rc =
+            load_primary_key_info(database, table_id, columns, column_count, &context->primary_key);
     }
     if (rc == MYLITE_OK) {
         rc = load_table_index_infos(
             database,
-            plan->table.table_id,
+            table_id,
             columns,
             column_count,
             &context->indexes,
@@ -130510,6 +131328,24 @@ static int load_result_column_metadata_context(
 
     context->has_single_source_metadata = true;
     return MYLITE_OK;
+}
+
+static struct mylite_result_column_descriptor unknown_result_column_descriptor(const char *label) {
+    return (struct mylite_result_column_descriptor){
+        .label = label,
+        .schema_name = "",
+        .table_name = "",
+        .origin_schema_name = "",
+        .origin_table_name = "",
+        .origin_column_name = "",
+        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_UNKNOWN,
+        .flags = 0U,
+        .charset_id = 0U,
+        .collation_id = 0U,
+        .display_length = 0U,
+        .decimals = 0U,
+        .nullable = true,
+    };
 }
 
 static int make_select_result_column_descriptor(

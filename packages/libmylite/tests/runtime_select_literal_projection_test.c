@@ -21,6 +21,7 @@ enum {
     literal_significant_text_capacity = literal_significant_digit_count + 1,
     literal_rejected_text_capacity = literal_rejected_digit_count + 1,
     core_literal_column_count = 6,
+    core_literal_with_string_column_count = 8,
     mysql_error_parse = 1064,
 };
 
@@ -80,8 +81,9 @@ int main(void) {
 }
 
 static int test_literal_projection_values_and_file_safety(void) {
-    static const char *const columns_core[] = {"0001", "0001", "-0001", "NULL", "TRUE", "false"};
-    static const char *const values_core[] = {"1", "1", "-1", NULL, "1", "0"};
+    static const char *const columns_core[] =
+        {"0001", "0001", "-0001", "NULL", "TRUE", "false", "'x'", "\"y\""};
+    static const char *const values_core[] = {"1", "1", "-1", NULL, "1", "0", "x", "y"};
     static const char *const columns_dual_all[] = {"1", "1", "-1", "NULL", "TRUE", "FALSE"};
     static const char *const values_dual_all[] = {"1", "1", "-1", NULL, "1", "0"};
     static const char *const columns_aliases[] = {"one", "plus_one", "neg", "n", "t", "f"};
@@ -116,9 +118,9 @@ static int test_literal_projection_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT 0001, +0001, -0001, NULL, TRUE, false",
+            .sql = "SELECT 0001, +0001, -0001, NULL, TRUE, false, 'x', \"y\"",
             .columns = columns_core,
-            .column_count = core_literal_column_count,
+            .column_count = core_literal_with_string_column_count,
             .values = values_core,
             .row_count = 1U,
             .context = "core no-source literals",
@@ -235,15 +237,6 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
     digits82[literal_rejected_digit_count] = '\0';
 
     failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open diagnostics memory");
-    failures += execute_error(
-        database,
-        "SELECT 'x'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT scalar projection supports only session scalar values",
-        }
-    );
     failures += execute_error(
         database,
         "SELECT 1.0",

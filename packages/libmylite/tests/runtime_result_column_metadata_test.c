@@ -22,7 +22,31 @@ enum {
     mysql_int_display_length = 11,
     mysql_varchar_20_display_length = 80,
     mysql_varchar_10_display_length = 40,
+    mysql_scalar_bigint_display_length = 21,
+    mysql_scalar_double_display_length = 23,
+    mysql_database_function_display_length = 256,
+    mysql_user_function_display_length = 1152,
+    mysql_version_function_display_length = 20,
+    mysql_json_type_display_length = 68,
+    mysql_scalar_var_string_decimals = 31,
+    mysql_literal_string_abc_display_length = 12,
+    mysql_bigint_literal_display_length = 20,
+    mysql_large_integer_literal_display_length = 82,
+    mysql_session_scalar_column_count = 11,
+    mysql_user_function_first_column_index = 2,
+    mysql_version_column_index = 6,
+    mysql_row_count_column_index = 7,
+    mysql_last_insert_id_column_index = 8,
+    mysql_unseeded_rand_column_index = 9,
+    mysql_seeded_rand_column_index = 10,
+    mysql_json_scalar_column_count = 8,
+    mysql_json_document_first_column_index = 5,
+    mysql_row_scalar_column_count = 9,
+    mysql_row_json_type_column_index = 5,
+    mysql_row_json_document_first_column_index = 6,
 };
+
+static const uint64_t mysql_json_document_display_length = 4294967292ULL;
 
 struct expected_column_metadata {
     const char *label;
@@ -604,14 +628,33 @@ static int test_descriptor_result_column_metadata(void) {
 }
 
 static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
+    char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar metadata");
-    failures += execute_ok(database, "SELECT 1 AS one", &result);
+    if (make_test_path(path, sizeof(path), "scalar") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open scalar metadata");
+    failures += execute_ok(
+        database,
+        "SELECT 1 AS one, TRUE AS truthy, NULL AS nil, 'abc' AS str FROM DUAL",
+        &result
+    );
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 1U, "scalar column count");
+        enum {
+            not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                            MYLITE_RESULT_COLUMN_FLAG_NUM,
+            null_binary_numeric_flags =
+                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        };
+
+        failures += expect_size(mylite_result_column_count(result), 4U, "scalar column count");
+        failures += expect_size(mylite_result_row_count(result), 1U, "scalar row count");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "scalar warnings");
         failures += expect_column_metadata(
             result,
             0U,
@@ -622,16 +665,660 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 .origin_schema_name = "",
                 .origin_table_name = "",
                 .origin_column_name = "",
-                .type = MYLITE_RESULT_COLUMN_TYPE_UNKNOWN,
-                .flags = 0U,
-                .charset_id = 0U,
-                .collation_id = 0U,
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 2U,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "integer scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "truthy",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 1U,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "boolean scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            2U,
+            (struct expected_column_metadata){
+                .label = "nil",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_NULL,
+                .flags = null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
                 .display_length = 0U,
                 .decimals = 0U,
                 .nullable = 1,
             },
-            "scalar default metadata"
+            "NULL scalar metadata"
         );
+        failures += expect_column_metadata(
+            result,
+            3U,
+            (struct expected_column_metadata){
+                .label = "str",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_literal_string_abc_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 0,
+            },
+            "string scalar metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT 18446744073709551615 AS umax, -9223372036854775808 AS nmin, "
+        "-9223372036854775809 AS below_min FROM DUAL",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                            MYLITE_RESULT_COLUMN_FLAG_NUM,
+            not_null_unsigned_binary_numeric_flags =
+                MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        };
+
+        failures += expect_size(mylite_result_column_count(result), 3U, "integer boundary columns");
+        failures += expect_size(mylite_result_row_count(result), 1U, "integer boundary rows");
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "integer boundary warnings");
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "umax",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = not_null_unsigned_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_bigint_literal_display_length,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "unsigned max integer scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "nmin",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_bigint_literal_display_length,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "signed min integer scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            2U,
+            (struct expected_column_metadata){
+                .label = "below_min",
+                .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_bigint_literal_display_length,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "below signed min integer scalar metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT "
+        "999999999999999999999999999"
+        "999999999999999999999999999"
+        "999999999999999999999999999 AS big, -"
+        "999999999999999999999999999"
+        "999999999999999999999999999"
+        "999999999999999999999999999 AS neg_big FROM DUAL",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                            MYLITE_RESULT_COLUMN_FLAG_NUM,
+        };
+
+        static const char *const labels[] = {"big", "neg_big"};
+
+        failures += expect_size(mylite_result_column_count(result), 2U, "large integer columns");
+        failures += expect_size(mylite_result_row_count(result), 1U, "large integer rows");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "large integer warnings");
+        for (size_t index = 0U; index < 2U; ++index) {
+            failures += expect_column_metadata(
+                result,
+                index,
+                (struct expected_column_metadata){
+                    .label = labels[index],
+                    .schema_name = "",
+                    .table_name = "",
+                    .origin_schema_name = "",
+                    .origin_table_name = "",
+                    .origin_column_name = "",
+                    .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+                    .flags = not_null_binary_numeric_flags,
+                    .charset_id = mysql_collation_binary_id,
+                    .collation_id = mysql_collation_binary_id,
+                    .display_length = mysql_large_integer_literal_display_length,
+                    .decimals = 0U,
+                    .nullable = 0,
+                },
+                "large integer scalar metadata"
+            );
+        }
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT DATABASE(), SCHEMA(), USER(), SESSION_USER(), SYSTEM_USER(), CURRENT_USER(), "
+        "VERSION(), ROW_COUNT(), LAST_INSERT_ID(), RAND(), RAND(0) FROM DUAL",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                            MYLITE_RESULT_COLUMN_FLAG_NUM,
+            not_null_unsigned_binary_numeric_flags =
+                MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            mysql_session_scalar_column_count,
+            "session column count"
+        );
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "DATABASE()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = 0U,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_database_function_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "DATABASE scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "SCHEMA()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = 0U,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_database_function_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "SCHEMA scalar metadata"
+        );
+        {
+            static const char *const user_function_labels[] = {
+                "USER()",
+                "SESSION_USER()",
+                "SYSTEM_USER()",
+                "CURRENT_USER()",
+            };
+            static const char *const user_function_contexts[] = {
+                "USER scalar metadata",
+                "SESSION_USER scalar metadata",
+                "SYSTEM_USER scalar metadata",
+                "CURRENT_USER scalar metadata",
+            };
+
+            for (size_t index = 0U;
+                 index < sizeof(user_function_labels) / sizeof(user_function_labels[0]);
+                 ++index) {
+                failures += expect_column_metadata(
+                    result,
+                    mysql_user_function_first_column_index + index,
+                    (struct expected_column_metadata){
+                        .label = user_function_labels[index],
+                        .schema_name = "",
+                        .table_name = "",
+                        .origin_schema_name = "",
+                        .origin_table_name = "",
+                        .origin_column_name = "",
+                        .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                        .flags = 0U,
+                        .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                        .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                        .display_length = mysql_user_function_display_length,
+                        .decimals = mysql_scalar_var_string_decimals,
+                        .nullable = 1,
+                    },
+                    user_function_contexts[index]
+                );
+            }
+        }
+        failures += expect_column_metadata(
+            result,
+            mysql_version_column_index,
+            (struct expected_column_metadata){
+                .label = "VERSION()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_version_function_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 0,
+            },
+            "VERSION scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            mysql_row_count_column_index,
+            (struct expected_column_metadata){
+                .label = "ROW_COUNT()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "ROW_COUNT scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            mysql_last_insert_id_column_index,
+            (struct expected_column_metadata){
+                .label = "LAST_INSERT_ID()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = not_null_unsigned_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "LAST_INSERT_ID scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            mysql_unseeded_rand_column_index,
+            (struct expected_column_metadata){
+                .label = "RAND()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 0,
+            },
+            "RAND scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            mysql_seeded_rand_column_index,
+            (struct expected_column_metadata){
+                .label = "RAND(0)",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 0,
+            },
+            "seeded RAND scalar metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT JSON_VALID('{}') AS valid_json, JSON_TYPE('{}') AS json_type, "
+        "JSON_LENGTH('{}') AS json_length, JSON_CONTAINS('{}','{}') AS contains_json, "
+        "JSON_CONTAINS_PATH('{}','one','$') AS contains_path, "
+        "JSON_EXTRACT('{\"a\":1}','$.a') AS extracted_json, "
+        "JSON_ARRAY(1,'a') AS array_json, JSON_OBJECT('a',1) AS object_json FROM DUAL",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            nullable_binary_numeric_flags =
+                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            mysql_json_scalar_column_count,
+            "json scalar columns"
+        );
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "valid_json",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = nullable_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "JSON_VALID scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "json_type",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_json_type_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "JSON_TYPE scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            2U,
+            (struct expected_column_metadata){
+                .label = "json_length",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = nullable_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "JSON_LENGTH scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            3U,
+            (struct expected_column_metadata){
+                .label = "contains_json",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = nullable_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "JSON_CONTAINS scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            4U,
+            (struct expected_column_metadata){
+                .label = "contains_path",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                .flags = nullable_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "JSON_CONTAINS_PATH scalar metadata"
+        );
+        for (size_t index = mysql_json_document_first_column_index;
+             index < mysql_json_scalar_column_count;
+             ++index) {
+            static const char *const json_contexts[] = {
+                "JSON_EXTRACT scalar metadata",
+                "JSON_ARRAY scalar metadata",
+                "JSON_OBJECT scalar metadata",
+            };
+            static const char *const json_labels[] = {
+                "extracted_json",
+                "array_json",
+                "object_json",
+            };
+
+            failures += expect_column_metadata(
+                result,
+                index,
+                (struct expected_column_metadata){
+                    .label = json_labels[index - mysql_json_document_first_column_index],
+                    .type = MYLITE_RESULT_COLUMN_TYPE_JSON,
+                    .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                    .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                    .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                    .display_length = mysql_json_document_display_length,
+                    .decimals = mysql_scalar_var_string_decimals,
+                    .nullable = 1,
+                },
+                json_contexts[index - mysql_json_document_first_column_index]
+            );
+        }
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE js(id INT NOT NULL, j JSON, s VARCHAR(20), PRIMARY KEY(id))"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO js VALUES (1, '{\"a\":1}', '{\"a\":1}')");
+    failures += execute_ok(
+        database,
+        "SELECT id, JSON_VALID(j) AS valid_j, JSON_LENGTH(j) AS len_j, "
+        "JSON_CONTAINS(j,'1','$.a') AS c, JSON_CONTAINS_PATH(j,'one','$.a') AS cp, "
+        "JSON_TYPE(j) AS jt, JSON_EXTRACT(j,'$.a') AS je, JSON_ARRAY(id,s) AS ja, "
+        "JSON_OBJECT('a',id) AS jo FROM js AS src LIMIT 0",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            primary_id_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                               MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
+                               MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+                               MYLITE_RESULT_COLUMN_FLAG_PART_KEY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            nullable_binary_numeric_flags =
+                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            mysql_row_scalar_column_count,
+            "row-scalar columns"
+        );
+        failures += expect_size(mylite_result_row_count(result), 0U, "row-scalar metadata rows");
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "id",
+                .schema_name = "app",
+                .table_name = "src",
+                .origin_schema_name = "app",
+                .origin_table_name = "js",
+                .origin_column_name = "id",
+                .type = MYLITE_RESULT_COLUMN_TYPE_LONG,
+                .flags = primary_id_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_int_display_length,
+                .decimals = 0U,
+                .nullable = 0,
+            },
+            "row-scalar descriptor column metadata"
+        );
+        {
+            static const char *const json_numeric_labels[] = {
+                "valid_j",
+                "len_j",
+                "c",
+                "cp",
+            };
+            static const char *const json_numeric_contexts[] = {
+                "row-scalar JSON_VALID metadata",
+                "row-scalar JSON_LENGTH metadata",
+                "row-scalar JSON_CONTAINS metadata",
+                "row-scalar JSON_CONTAINS_PATH metadata",
+            };
+
+            for (size_t index = 0U;
+                 index < sizeof(json_numeric_labels) / sizeof(json_numeric_labels[0]);
+                 ++index) {
+                failures += expect_column_metadata(
+                    result,
+                    1U + index,
+                    (struct expected_column_metadata){
+                        .label = json_numeric_labels[index],
+                        .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+                        .flags = nullable_binary_numeric_flags,
+                        .charset_id = mysql_collation_binary_id,
+                        .collation_id = mysql_collation_binary_id,
+                        .display_length = mysql_scalar_bigint_display_length,
+                        .decimals = 0U,
+                        .nullable = 1,
+                    },
+                    json_numeric_contexts[index]
+                );
+            }
+        }
+        failures += expect_column_metadata(
+            result,
+            mysql_row_json_type_column_index,
+            (struct expected_column_metadata){
+                .label = "jt",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_json_type_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "row-scalar JSON_TYPE metadata"
+        );
+        {
+            static const char *const json_document_labels[] = {"je", "ja", "jo"};
+            static const char *const json_document_contexts[] = {
+                "row-scalar JSON_EXTRACT metadata",
+                "row-scalar JSON_ARRAY metadata",
+                "row-scalar JSON_OBJECT metadata",
+            };
+
+            for (size_t index = 0U;
+                 index < sizeof(json_document_labels) / sizeof(json_document_labels[0]);
+                 ++index) {
+                failures += expect_column_metadata(
+                    result,
+                    mysql_row_json_document_first_column_index + index,
+                    (struct expected_column_metadata){
+                        .label = json_document_labels[index],
+                        .type = MYLITE_RESULT_COLUMN_TYPE_JSON,
+                        .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                        .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                        .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                        .display_length = mysql_json_document_display_length,
+                        .decimals = mysql_scalar_var_string_decimals,
+                        .nullable = 1,
+                    },
+                    json_document_contexts[index]
+                );
+            }
+        }
     }
     mylite_result_free(result);
     result = NULL;
@@ -676,6 +1363,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
     }
     mylite_result_free(result);
     mylite_close(database);
+    remove_related_files(path);
 
     failures += expect_text(mylite_result_column_schema_name(NULL, 0U), NULL, "NULL schema");
     failures += expect_text(mylite_result_column_table_name(NULL, 0U), NULL, "NULL table");
@@ -785,27 +1473,27 @@ static int expect_column_metadata(
         expect_text(mylite_result_column_name(result, column_index), expected.label, context);
     failures += expect_text(
         mylite_result_column_schema_name(result, column_index),
-        expected.schema_name,
+        expected.schema_name == NULL ? "" : expected.schema_name,
         context
     );
     failures += expect_text(
         mylite_result_column_table_name(result, column_index),
-        expected.table_name,
+        expected.table_name == NULL ? "" : expected.table_name,
         context
     );
     failures += expect_text(
         mylite_result_column_origin_schema_name(result, column_index),
-        expected.origin_schema_name,
+        expected.origin_schema_name == NULL ? "" : expected.origin_schema_name,
         context
     );
     failures += expect_text(
         mylite_result_column_origin_table_name(result, column_index),
-        expected.origin_table_name,
+        expected.origin_table_name == NULL ? "" : expected.origin_table_name,
         context
     );
     failures += expect_text(
         mylite_result_column_origin_name(result, column_index),
-        expected.origin_column_name,
+        expected.origin_column_name == NULL ? "" : expected.origin_column_name,
         context
     );
     failures += expect_int(

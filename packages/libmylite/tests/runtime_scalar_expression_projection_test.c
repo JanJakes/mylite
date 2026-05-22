@@ -804,7 +804,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT 'x', IF(1,2,3)",
+        "SELECT 1.0, IF(1,2,3)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

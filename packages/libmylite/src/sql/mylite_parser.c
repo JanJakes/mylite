@@ -2754,6 +2754,63 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_statem
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_action_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *action
+) {
+    struct mylite_sql_source_span span =
+        action == NULL ? (struct mylite_sql_source_span){0} : action->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, action);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_alter_table_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *action
+) {
+    if (list == NULL) {
+        return mylite_sql_parser_make_alter_table_action_list(state, action);
+    }
+    if (action != NULL) {
+        mylite_sql_ast_node_append_child(list, action);
+        mylite_sql_ast_node_set_span(list, span_join(list->span, action->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_multi_action_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *actions
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (actions != NULL) {
+        span = span_join(span, actions->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, actions);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

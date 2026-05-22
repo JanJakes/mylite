@@ -1820,6 +1820,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "current_role_argument_count_error";
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
         return "alter_table_add_column_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT:
+        return "alter_table_multi_action_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST:
+        return "alter_table_action_list";
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
         return "alter_table_drop_column_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:

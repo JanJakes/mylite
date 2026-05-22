@@ -128,6 +128,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_alter_table_multi_action_statements(void);
 static int test_create_table_generated_column_statements(void);
 static int test_create_table_comment_option_statements(void);
 static int test_alter_table_comment_statements(void);
@@ -441,6 +442,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_alter_table_multi_action_statements();
     failures += test_create_table_generated_column_statements();
     failures += test_create_table_comment_option_statements();
     failures += test_alter_table_comment_statements();
@@ -11827,6 +11829,83 @@ static int test_table_lifecycle_statements(void) {
     return failures;
 }
 
+static int test_alter_table_multi_action_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *actions = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN first_added INT, ADD COLUMN second_added INT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter table multi add column statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter multi action statement child count");
+    failures += expect_span_text(child_at(statement, 0U), "simple_lifecycle", "alter multi table");
+    failures += expect_node(actions, MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST, "alter multi list");
+    failures += expect_child_count(actions, 2U, "alter multi add column action count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT,
+        "alter multi first add column action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT,
+        "alter multi second add column action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_idx ADD INDEX k_v (v), ADD INDEX k_id (id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi add index statement"
+    );
+    failures += expect_child_count(actions, 2U, "alter multi add index count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_idx DROP INDEX k_v, ADD INDEX k_id (id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi drop add index statement"
+    );
+    failures += expect_child_count(actions, 2U, "alter multi drop add count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT,
+        "alter multi first drop index action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT,
+        "alter multi second add index action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_create_table_generated_column_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -16555,13 +16634,6 @@ static int test_alter_table_add_index_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE add_idx ADD INDEX k_v (v), ADD INDEX k_id (id);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
         "ALTER TABLE add_idx ADD INDEX k_v USING BTREE (v);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -16851,13 +16923,6 @@ static int test_alter_table_drop_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE drop_idx DROP INDEX PRIMARY;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE drop_idx DROP INDEX k_v, ADD INDEX k_id (id);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -24413,13 +24478,6 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name ADD COLUMN added INT AFTER old_name.id;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name ADD COLUMN first_added INT, ADD COLUMN second_added INT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

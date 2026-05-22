@@ -462,15 +462,6 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP INDEX k_v, ADD INDEX k_id (id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "ALTER TABLE diag DROP INDEX k_v, ALGORITHM=BOGUS",
         (struct expected_sql_error){
             .code = mysql_error_parse,

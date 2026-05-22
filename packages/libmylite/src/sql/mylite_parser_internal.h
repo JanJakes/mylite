@@ -832,6 +832,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_statem
     struct mylite_sql_ast_node *position,
     struct mylite_sql_alter_table_options options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_action_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *action
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_alter_table_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *action
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_multi_action_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *actions
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

@@ -237,6 +237,9 @@ statement(A) ::= rename_table_statement(B). {
 statement(A) ::= alter_table_rename_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_multi_action_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_add_column_statement(B). {
     A = B;
 }
@@ -1479,6 +1482,133 @@ rename_table_pair(A) ::= table_name(S) TO(T) table_name(N). {
 alter_table_rename_statement(A) ::=
     ALTER(A1) TABLE table_name(S) RENAME table_rename_connector_opt table_name(T). {
     A = mylite_sql_parser_make_alter_table_rename_statement(state, A1, S, T);
+}
+
+alter_table_multi_action_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) alter_table_multi_action_list(L). {
+    A = mylite_sql_parser_make_alter_table_multi_action_statement(state, A1, T, L);
+}
+
+alter_table_multi_action_list(A) ::= alter_table_multi_first_action(L) alter_table_multi_action(N). {
+    A = mylite_sql_parser_append_alter_table_action(state, L, N);
+}
+alter_table_multi_action_list(A) ::=
+    alter_table_multi_action_list(L) COMMA alter_table_multi_action(N). {
+    A = mylite_sql_parser_append_alter_table_action(state, L, N);
+}
+
+alter_table_multi_first_action(A) ::=
+    ADD(A1) column_keyword_opt column_definition(C) column_position_opt(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_column_statement(
+            state,
+            A1,
+            NULL,
+            C,
+            P,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ADD(A1) secondary_index_definition(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ADD(A1) unique_index_definition(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ADD(A1) named_unique_constraint_definition(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= DROP(A1) INDEX identifier(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= DROP(A1) KEY identifier(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+
+alter_table_multi_action(A) ::=
+    ADD(A1) column_keyword_opt column_definition(C) column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_add_column_statement(
+        state,
+        A1,
+        NULL,
+        C,
+        P,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ADD(A1) secondary_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ADD(A1) unique_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ADD(A1) named_unique_constraint_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= DROP(A1) INDEX identifier(I). {
+    A = mylite_sql_parser_make_alter_table_drop_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= DROP(A1) KEY identifier(I). {
+    A = mylite_sql_parser_make_alter_table_drop_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
 }
 
 alter_table_add_column_statement(A) ::=

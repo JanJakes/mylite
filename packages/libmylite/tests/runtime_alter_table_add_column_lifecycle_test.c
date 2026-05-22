@@ -979,15 +979,6 @@ static int test_add_column_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers ADD COLUMN first_added INT, ADD COLUMN second_added INT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error",
-        }
-    );
-    failures += execute_error(
-        database,
         "ALTER TABLE numbers ADD COLUMN numbers.added INT",
         (struct expected_sql_error){
             .code = mysql_error_parse,

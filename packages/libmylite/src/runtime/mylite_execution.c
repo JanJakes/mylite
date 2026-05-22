@@ -1920,6 +1920,11 @@ struct planned_alter_table_add_column {
     char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+struct alter_table_action_statement_view {
+    struct mylite_sql_ast_node table_proxy;
+    struct mylite_sql_ast_node statement;
+};
+
 struct planned_alter_table_add_primary_key {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -8388,6 +8393,52 @@ static int execute_alter_table_add_column_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_multi_action_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
+static int execute_alter_table_multi_action_add_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
+static int execute_alter_table_multi_action_add_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
+static int execute_alter_table_multi_action_drop_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
+static void make_alter_table_action_statement_view(
+    const struct mylite_sql_ast_node *table_node,
+    struct alter_table_action_statement_view *out_view,
+    const struct mylite_sql_ast_node *action
+);
+static int reject_warning_producing_multi_action_add_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+);
+static int reject_unsupported_multi_action_add_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+);
 static int execute_alter_table_add_primary_key_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -10382,6 +10433,11 @@ static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 );
+static int alter_table_add_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_column *plan
+);
 static int reorder_catalog_columns_after_add(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -10623,6 +10679,12 @@ static int validate_create_table_secondary_index_kind(
 static int add_secondary_index_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
+);
+static int add_persistent_secondary_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_index *plan,
+    bool *out_physical_schema_changed
 );
 static int add_temporary_secondary_index_from_plan(
     struct mylite_db *database,
@@ -10937,6 +10999,12 @@ static int plan_drop_index(
 );
 static void planned_drop_index_deinit(struct planned_drop_index *plan);
 static int drop_index_from_plan(struct mylite_db *database, const struct planned_drop_index *plan);
+static int drop_persistent_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_drop_index *plan,
+    bool *out_physical_schema_changed
+);
 static int plan_alter_table_rename_index(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -26128,6 +26196,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
         return execute_create_index_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST:
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
         break;
@@ -26143,6 +26212,8 @@ static int execute_non_prepared_statement(
         return execute_rename_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
         return execute_alter_table_rename_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT:
+        return execute_alter_table_multi_action_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
         return execute_alter_table_add_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
@@ -28245,6 +28316,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
@@ -33148,6 +33220,269 @@ static int execute_alter_table_add_column_statement(
 
     planned_alter_table_add_column_deinit(&plan);
     return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_multi_action_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *table_node = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *actions = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *action = NULL;
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    mylite_result *result = NULL;
+    bool physical_schema_changed = false;
+    size_t action_count = 0U;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (actions == NULL || actions->kind != MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST) {
+        mylite_result_free(result);
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    action_count = mylite_sql_ast_node_child_count(actions);
+    if (action_count < 2U) {
+        mylite_result_free(result);
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    action = child_at(actions, 0U);
+    while (rc == MYLITE_OK && action != NULL) {
+        bool action_changed_physical_schema = false;
+
+        rc = execute_alter_table_multi_action(
+            database,
+            table_node,
+            action,
+            &mutation,
+            &action_changed_physical_schema
+        );
+        if (action_changed_physical_schema) {
+            physical_schema_changed = true;
+        }
+        action = action->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to execute multi-action ALTER TABLE");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    if (physical_schema_changed) {
+        ++database->session.sqlite_schema_generation;
+    }
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    if (action == NULL || out_physical_schema_changed == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    *out_physical_schema_changed = false;
+    switch (action->kind) {
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+        return execute_alter_table_multi_action_add_column(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+        return execute_alter_table_multi_action_add_index(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+        return execute_alter_table_multi_action_drop_index(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
+    default:
+        set_unsupported_error(database, "multi-action ALTER TABLE does not support this action");
+        return MYLITE_ERROR;
+    }
+}
+
+static int execute_alter_table_multi_action_add_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_alter_table_add_column plan = {0};
+    int rc = MYLITE_OK;
+
+    make_alter_table_action_statement_view(table_node, &view, action);
+    rc = plan_alter_table_add_column(database, &view.statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = reject_warning_producing_multi_action_add_column(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_add_column_in_mutation(database, mutation, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        *out_physical_schema_changed = true;
+    }
+
+    planned_alter_table_add_column_deinit(&plan);
+    return rc;
+}
+
+static int execute_alter_table_multi_action_add_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_alter_table_add_index plan = {0};
+    int rc = MYLITE_OK;
+
+    make_alter_table_action_statement_view(table_node, &view, action);
+    rc = plan_alter_table_add_index(database, &view.statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = reject_unsupported_multi_action_add_index(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = add_persistent_secondary_index_in_mutation(
+            database,
+            mutation,
+            &plan,
+            out_physical_schema_changed
+        );
+    }
+
+    planned_alter_table_add_index_deinit(&plan);
+    return rc;
+}
+
+static int execute_alter_table_multi_action_drop_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_drop_index plan = {0};
+    int rc = MYLITE_OK;
+
+    make_alter_table_action_statement_view(table_node, &view, action);
+    rc = plan_alter_table_drop_index(database, &view.statement, &plan);
+    if (rc == MYLITE_OK && plan.table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = drop_persistent_index_in_mutation(
+            database,
+            mutation,
+            &plan,
+            out_physical_schema_changed
+        );
+    }
+
+    planned_drop_index_deinit(&plan);
+    return rc;
+}
+
+static void make_alter_table_action_statement_view(
+    const struct mylite_sql_ast_node *table_node,
+    struct alter_table_action_statement_view *out_view,
+    const struct mylite_sql_ast_node *action
+) {
+    if (out_view == NULL) {
+        return;
+    }
+
+    *out_view = (struct alter_table_action_statement_view){0};
+    if (table_node != NULL) {
+        out_view->table_proxy = *table_node;
+        out_view->table_proxy.next_sibling = action == NULL ? NULL : action->first_child;
+        out_view->table_proxy.next_allocated = NULL;
+    }
+    if (action != NULL) {
+        out_view->statement = *action;
+        out_view->statement.first_child = &out_view->table_proxy;
+        out_view->statement.last_child =
+            action->last_child == NULL ? &out_view->table_proxy : action->last_child;
+        out_view->statement.next_sibling = NULL;
+        out_view->statement.next_allocated = NULL;
+    }
+}
+
+static int reject_warning_producing_multi_action_add_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+) {
+    if (plan != NULL && plan->zero_temporal_default_warnings.count > 0U) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE does not yet support warning-producing ADD COLUMN"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int reject_unsupported_multi_action_add_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+) {
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid multi-action add-index plan");
+        return MYLITE_ERROR;
+    }
+    if (plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE supports only persistent base tables"
+        );
+        return MYLITE_ERROR;
+    }
+    if (planned_add_index_is_fulltext(plan) || planned_add_index_is_spatial(plan) ||
+        plan->uses_hash_index_type) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE does not yet support warning-producing ADD INDEX"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int execute_alter_table_add_primary_key_statement(
@@ -45693,6 +46028,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return -1;
@@ -45968,6 +46304,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION:
     case MYLITE_SQL_AST_ORDER_BY_ITEM_LIST:
     case MYLITE_SQL_AST_ORDER_BY_ITEM:
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
@@ -55467,50 +55804,10 @@ static int alter_table_add_column_from_plan(
     const struct planned_alter_table_add_column *plan
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
-    struct mylite_catalog_column_descriptor inserted_column = {0};
     int rc = mylite_catalog_begin_mutation(database, &mutation);
 
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_insert_column_in_mutation(
-            database,
-            &mutation,
-            plan->table.table_id,
-            (int64_t)plan->column_count + 1,
-            plan->column.name,
-            plan->column.logical_type,
-            plan->column.physical_type,
-            plan->column.is_nullable,
-            true,
-            false,
-            plan->column.default_kind,
-            plan->column.default_integer,
-            plan->column.default_text,
-            plan->column.on_update_current_timestamp,
-            plan->column.character_set_name,
-            plan->column.collation_name,
-            plan->column.comment,
-            plan->column.is_generated,
-            plan->column.generated_kind,
-            plan->column.generation_expression,
-            plan->column.sqlite_generation_expression,
-            &inserted_column
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = reorder_catalog_columns_after_add(database, &mutation, plan, &inserted_column);
-    }
-    if (rc == MYLITE_OK) {
-        rc = execute_physical_alter_table_add_column(database, plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_update_table_identity_in_mutation(
-            database,
-            &mutation,
-            plan->table.table_id,
-            plan->table.schema_id,
-            plan->table.name,
-            NULL
-        );
+        rc = alter_table_add_column_in_mutation(database, &mutation, plan);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_commit_mutation(database, &mutation);
@@ -55524,6 +55821,63 @@ static int alter_table_add_column_from_plan(
     ++database->session.sqlite_schema_generation;
 
     return MYLITE_OK;
+}
+
+static int alter_table_add_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_column *plan
+) {
+    struct mylite_catalog_column_descriptor inserted_column = {0};
+    int rc = MYLITE_OK;
+
+    if (mutation == NULL || plan == NULL) {
+        set_runtime_error(database, "invalid add-column mutation plan");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_insert_column_in_mutation(
+        database,
+        mutation,
+        plan->table.table_id,
+        (int64_t)plan->column_count + 1,
+        plan->column.name,
+        plan->column.logical_type,
+        plan->column.physical_type,
+        plan->column.is_nullable,
+        true,
+        false,
+        plan->column.default_kind,
+        plan->column.default_integer,
+        plan->column.default_text,
+        plan->column.on_update_current_timestamp,
+        plan->column.character_set_name,
+        plan->column.collation_name,
+        plan->column.comment,
+        plan->column.is_generated,
+        plan->column.generated_kind,
+        plan->column.generation_expression,
+        plan->column.sqlite_generation_expression,
+        &inserted_column
+    );
+    if (rc == MYLITE_OK) {
+        rc = reorder_catalog_columns_after_add(database, mutation, plan, &inserted_column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_alter_table_add_column(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+
+    return rc;
 }
 
 static int reorder_catalog_columns_after_add(
@@ -57775,8 +58129,7 @@ static int add_secondary_index_from_plan(
     const struct planned_alter_table_add_index *plan
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
-    char index_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
-    int64_t index_id = 0;
+    bool physical_schema_changed = false;
     int rc = MYLITE_OK;
 
     if (plan->part_count == 0U || plan->index_name[0] == '\0') {
@@ -57798,15 +58151,60 @@ static int add_secondary_index_from_plan(
         rc = mylite_catalog_begin_mutation(database, &mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_allocate_index_id_in_mutation(database, &mutation, &index_id);
+        rc = add_persistent_secondary_index_in_mutation(
+            database,
+            &mutation,
+            plan,
+            &physical_schema_changed
+        );
     }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to add index");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    if (planned_add_index_is_fulltext(plan)) {
+        rc = append_fulltext_add_warning_if_needed(database, plan);
+    } else if (planned_add_index_is_spatial(plan)) {
+        rc = append_spatial_add_warning_if_needed(database, plan);
+    } else {
+        if (physical_schema_changed) {
+            ++database->session.sqlite_schema_generation;
+        }
+        rc = append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
+    }
+
+    return rc;
+}
+
+static int add_persistent_secondary_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_index *plan,
+    bool *out_physical_schema_changed
+) {
+    char index_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    int64_t index_id = 0;
+    int rc = MYLITE_OK;
+
+    if (mutation == NULL || plan == NULL || out_physical_schema_changed == NULL) {
+        set_runtime_error(database, "invalid persistent secondary-index mutation plan");
+        return MYLITE_ERROR;
+    }
+
+    *out_physical_schema_changed = false;
+    rc = mylite_catalog_allocate_index_id_in_mutation(database, mutation, &index_id);
     if (rc == MYLITE_OK) {
         rc = build_physical_index_name(index_id, index_physical_name, sizeof(index_physical_name));
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_insert_index_in_mutation(
             database,
-            &mutation,
+            mutation,
             index_id,
             plan->table.table_id,
             plan->index_name,
@@ -57832,7 +58230,7 @@ static int add_secondary_index_from_plan(
         }
         rc = mylite_catalog_insert_index_column_in_mutation(
             database,
-            &mutation,
+            mutation,
             index_id,
             plan->table.table_id,
             part->column.column_id,
@@ -57845,33 +58243,17 @@ static int add_secondary_index_from_plan(
     if (rc == MYLITE_OK && !planned_add_index_is_fulltext(plan) &&
         !planned_add_index_is_spatial(plan)) {
         rc = execute_physical_add_index(database, plan, index_physical_name);
+        *out_physical_schema_changed = rc == MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_update_table_identity_in_mutation(
             database,
-            &mutation,
+            mutation,
             plan->table.table_id,
             plan->table.schema_id,
             plan->table.name,
             NULL
         );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_commit_mutation(database, &mutation);
-    }
-    if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to add index");
-        mylite_catalog_rollback_mutation(database, &mutation);
-        return rc;
-    }
-
-    if (planned_add_index_is_fulltext(plan)) {
-        rc = append_fulltext_add_warning_if_needed(database, plan);
-    } else if (planned_add_index_is_spatial(plan)) {
-        rc = append_spatial_add_warning_if_needed(database, plan);
-    } else {
-        ++database->session.sqlite_schema_generation;
-        rc = append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
     }
 
     return rc;
@@ -59721,6 +60103,7 @@ static void planned_drop_index_deinit(struct planned_drop_index *plan) {
 
 static int drop_index_from_plan(struct mylite_db *database, const struct planned_drop_index *plan) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    bool physical_schema_changed = false;
     int rc = MYLITE_OK;
 
     if (plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
@@ -59749,26 +60132,7 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
     rc = mylite_catalog_begin_mutation(database, &mutation);
 
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_delete_index_in_mutation(
-            database,
-            &mutation,
-            plan->table.table_id,
-            plan->index.index.index_id
-        );
-    }
-    if (rc == MYLITE_OK && plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
-        plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
-        rc = execute_physical_drop_index(database, plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_update_table_identity_in_mutation(
-            database,
-            &mutation,
-            plan->table.table_id,
-            plan->table.schema_id,
-            plan->table.name,
-            NULL
-        );
+        rc = drop_persistent_index_in_mutation(database, &mutation, plan, &physical_schema_changed);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_commit_mutation(database, &mutation);
@@ -59779,12 +60143,50 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
         return rc;
     }
 
-    if (plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
-        plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+    if (physical_schema_changed) {
         ++database->session.sqlite_schema_generation;
     }
 
     return MYLITE_OK;
+}
+
+static int drop_persistent_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_drop_index *plan,
+    bool *out_physical_schema_changed
+) {
+    int rc = MYLITE_OK;
+
+    if (mutation == NULL || plan == NULL || out_physical_schema_changed == NULL) {
+        set_runtime_error(database, "invalid persistent drop-index mutation plan");
+        return MYLITE_ERROR;
+    }
+
+    *out_physical_schema_changed = false;
+    rc = mylite_catalog_delete_index_in_mutation(
+        database,
+        mutation,
+        plan->table.table_id,
+        plan->index.index.index_id
+    );
+    if (rc == MYLITE_OK && plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+        plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        rc = execute_physical_drop_index(database, plan);
+        *out_physical_schema_changed = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+
+    return rc;
 }
 
 static int plan_alter_table_rename_index(

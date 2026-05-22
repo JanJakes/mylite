@@ -48,7 +48,16 @@ enum {
     date_digit_radix = 10,
     date_hours_per_half_day = 12,
     time_hour_max = 23,
+    time_format_hour_max = 838,
     time_minute_second_max = 59,
+    time_format_minimum_hour_digit_count = 2,
+    time_format_maximum_hour_digit_count = 3,
+    time_format_suffix_length = 6,
+    time_format_minimum_text_length = 8,
+    time_format_maximum_text_length = 10,
+    time_format_minute_offset_after_hour = 1,
+    time_format_second_separator_offset_after_hour = 3,
+    time_format_second_offset_after_hour = 4,
     date_leap_year_quadrennial_cycle = 4,
     date_gregorian_century = 100,
     date_gregorian_era = 400,
@@ -79,6 +88,13 @@ struct date_format_time {
     int second;
 };
 
+struct time_format_parts {
+    bool negative;
+    int hour;
+    int minute;
+    int second;
+};
+
 struct date_format_input {
     const char *value;
     size_t value_length;
@@ -86,12 +102,21 @@ struct date_format_input {
 };
 
 static void date_format_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void time_format_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int date_format_sqlite_input_kind(
     sqlite3_context *context,
     sqlite3_value *value,
     enum mylite_date_format_input_kind *out_kind
 );
 static int date_format_sqlite_result(
+    sqlite3_context *context,
+    const char *value,
+    size_t value_length,
+    enum mylite_date_format_input_kind input_kind,
+    const char *format,
+    size_t format_length
+);
+static int time_format_sqlite_result(
     sqlite3_context *context,
     const char *value,
     size_t value_length,
@@ -107,10 +132,24 @@ static int format_date_value(
     size_t format_length,
     char **out_text
 );
+static int format_time_value(
+    struct mylite_db *database,
+    const struct time_format_parts *parts,
+    const char *format,
+    size_t format_length,
+    char **out_text,
+    bool *out_is_null
+);
 static int append_date_format_token(
     struct mylite_db *database,
     struct date_format_buffer *buffer,
     const struct date_format_parts *parts,
+    char token
+);
+static int append_time_format_token(
+    struct mylite_db *database,
+    struct date_format_buffer *buffer,
+    const struct time_format_parts *parts,
     char token
 );
 static int append_two_digit(struct date_format_buffer *buffer, int value);
@@ -128,6 +167,10 @@ static bool parse_date_format_input(
     const struct date_format_input *input,
     struct date_format_parts *out_parts
 );
+static bool parse_time_format_input(
+    const struct date_format_input *input,
+    struct time_format_parts *out_parts
+);
 static bool parse_date_text(
     const char *value,
     size_t value_length,
@@ -138,24 +181,44 @@ static bool parse_datetime_text(
     size_t value_length,
     struct date_format_parts *out_parts
 );
+static bool parse_datetime_time_text(
+    const char *value,
+    size_t value_length,
+    struct time_format_parts *out_parts
+);
+static bool parse_time_text(
+    const char *value,
+    size_t value_length,
+    struct time_format_parts *out_parts
+);
+static bool parse_fixed_digits(const char *text, size_t count, int *out_value);
 static bool parse_two_digits(const char *text, int *out_value);
 static bool parse_four_digits(const char *text, int *out_value);
 static bool date_parts_are_valid(const struct date_format_parts *parts);
 static bool date_time_parts_are_valid(const struct date_format_parts *parts);
+static bool time_format_parts_are_valid(const struct time_format_parts *parts);
 static bool is_leap_year(int year);
 static int days_in_month(int year, int month);
 static int day_of_year(const struct date_format_parts *parts);
 static int weekday_sunday_zero(const struct date_format_parts *parts);
 static int64_t days_from_civil(const struct date_format_parts *parts);
 static int date_format_hour_12(int hour);
+static int time_format_hour_12(int hour);
+static bool time_format_hour_is_am(int hour);
 static const char *month_name(int month);
 static const char *month_abbreviation(int month);
 static const char *weekday_name(int weekday);
 static const char *weekday_abbreviation(int weekday);
 static const char *ordinal_suffix(int day);
 static bool format_token_is_deferred_week_token(char token);
+static bool format_token_is_deferred_time_format_token(char token);
 static void set_date_format_unsupported_error(struct mylite_db *database, const char *message);
 static int append_incorrect_datetime_warning(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+);
+static int append_incorrect_time_warning(
     struct mylite_db *database,
     const char *value,
     size_t value_length
@@ -171,6 +234,8 @@ const char *mylite_date_format_input_kind_name(enum mylite_date_format_input_kin
         return "datetime";
     case MYLITE_DATE_FORMAT_INPUT_TIMESTAMP:
         return "timestamp";
+    case MYLITE_DATE_FORMAT_INPUT_TIME:
+        return "time";
     }
     return NULL;
 }
@@ -188,6 +253,7 @@ bool mylite_date_format_input_kind_from_name(
         {"date", MYLITE_DATE_FORMAT_INPUT_DATE},
         {"datetime", MYLITE_DATE_FORMAT_INPUT_DATETIME},
         {"timestamp", MYLITE_DATE_FORMAT_INPUT_TIMESTAMP},
+        {"time", MYLITE_DATE_FORMAT_INPUT_TIME},
     };
 
     if (name == NULL || out_kind == NULL) {
@@ -274,6 +340,81 @@ int mylite_date_format_value(
     return format_date_value(database, &parts, format, format_length, out_text);
 }
 
+int mylite_time_format_validate_format(
+    struct mylite_db *database,
+    const char *format,
+    size_t format_length
+) {
+    if (format == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < format_length; ++index) {
+        if (format[index] != '%') {
+            continue;
+        }
+        if (index + 1U >= format_length) {
+            continue;
+        }
+        ++index;
+        if (format_token_is_deferred_time_format_token(format[index])) {
+            set_date_format_unsupported_error(
+                database,
+                "TIME_FORMAT() supports only time format specifiers"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+int mylite_time_format_value(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length,
+    enum mylite_date_format_input_kind input_kind,
+    const char *format,
+    size_t format_length,
+    char **out_text,
+    bool *out_is_null
+) {
+    const struct date_format_input input = {
+        .value = value,
+        .value_length = value_length,
+        .input_kind = input_kind,
+    };
+    struct time_format_parts parts = {
+        .negative = false,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_null = false;
+    if (value == NULL || format == NULL || format_length == 0U) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_time_format_validate_format(database, format, format_length);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!parse_time_format_input(&input, &parts)) {
+        rc = append_incorrect_time_warning(database, value, value_length);
+        if (rc == MYLITE_OK) {
+            *out_is_null = true;
+        }
+        return rc;
+    }
+
+    return format_time_value(database, &parts, format, format_length, out_text, out_is_null);
+}
+
 int mylite_sqlite_register_date_format_function(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
@@ -283,6 +424,19 @@ int mylite_sqlite_register_date_format_function(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = date_format_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_time_format",
+            .argument_count = 3,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = time_format_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -330,6 +484,49 @@ static void date_format_sqlite_callback(sqlite3_context *context, int argc, sqli
     }
 
     if (date_format_sqlite_result(
+            context,
+            (const char *)value,
+            (size_t)value_length,
+            input_kind,
+            (const char *)format,
+            (size_t)format_length
+        ) != MYLITE_OK) {
+        return;
+    }
+}
+
+static void time_format_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    enum mylite_date_format_input_kind input_kind = MYLITE_DATE_FORMAT_INPUT_STRING;
+    const unsigned char *value = NULL;
+    const unsigned char *format = NULL;
+    int value_length = 0;
+    int format_length = 0;
+
+    if (context == NULL || argc != 3 || argv == NULL || argv[0] == NULL || argv[1] == NULL ||
+        argv[2] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite TIME_FORMAT callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL ||
+        sqlite3_value_type(argv[2]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    if (date_format_sqlite_input_kind(context, argv[2], &input_kind) != MYLITE_OK) {
+        return;
+    }
+
+    value = sqlite3_value_text(argv[0]);
+    format = sqlite3_value_text(argv[1]);
+    value_length = sqlite3_value_bytes(argv[0]);
+    format_length = sqlite3_value_bytes(argv[1]);
+    if (value == NULL || format == NULL || value_length < 0 || format_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    if (time_format_sqlite_result(
             context,
             (const char *)value,
             (size_t)value_length,
@@ -410,6 +607,52 @@ static int date_format_sqlite_result(
     return MYLITE_OK;
 }
 
+static int time_format_sqlite_result(
+    sqlite3_context *context,
+    const char *value,
+    size_t value_length,
+    enum mylite_date_format_input_kind input_kind,
+    const char *format,
+    size_t format_length
+) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+    char *result = NULL;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite TIME_FORMAT owner", -1);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_time_format_value(
+        database,
+        value,
+        value_length,
+        input_kind,
+        format,
+        format_length,
+        &result,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            sqlite3_result_error_nomem(context);
+        } else {
+            sqlite3_result_error(context, "MyLite TIME_FORMAT failed", -1);
+        }
+        free(result);
+        return rc;
+    }
+    if (is_null) {
+        sqlite3_result_null(context);
+    } else {
+        sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
+    }
+    free(result);
+    return MYLITE_OK;
+}
+
 static int format_date_value(
     struct mylite_db *database,
     const struct date_format_parts *parts,
@@ -435,6 +678,52 @@ static int format_date_value(
         }
         ++index;
         rc = append_date_format_token(database, &buffer, parts, format[index]);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_date_format_byte(&buffer, '\0');
+    }
+    if (rc == MYLITE_OK) {
+        *out_text = buffer.data;
+        buffer = (struct date_format_buffer){0};
+    }
+    date_format_buffer_deinit(&buffer);
+    return rc;
+}
+
+static int format_time_value(
+    struct mylite_db *database,
+    const struct time_format_parts *parts,
+    const char *format,
+    size_t format_length,
+    char **out_text,
+    bool *out_is_null
+) {
+    struct date_format_buffer buffer = {0};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_null = false;
+    if (parts == NULL || format == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (parts->negative) {
+        rc = append_date_format_byte(&buffer, '-');
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < format_length; ++index) {
+        if (format[index] != '%') {
+            rc = append_date_format_byte(&buffer, format[index]);
+            continue;
+        }
+        if (index + 1U >= format_length) {
+            rc = append_date_format_byte(&buffer, '%');
+            continue;
+        }
+        ++index;
+        rc = append_time_format_token(database, &buffer, parts, format[index]);
     }
     if (rc == MYLITE_OK) {
         rc = append_date_format_byte(&buffer, '\0');
@@ -523,8 +812,61 @@ static int append_date_format_token(
     }
 }
 
+static int append_time_format_token(
+    struct mylite_db *database,
+    struct date_format_buffer *buffer,
+    const struct time_format_parts *parts,
+    char token
+) {
+    const struct date_format_time time = {
+        .hour = parts->hour,
+        .minute = parts->minute,
+        .second = parts->second,
+    };
+    int hour12 = time_format_hour_12(parts->hour);
+
+    switch (token) {
+    case 'H':
+        return append_two_digit(buffer, parts->hour);
+    case 'k':
+        return append_unpadded_int(buffer, parts->hour);
+    case 'h':
+    case 'I':
+        return append_two_digit(buffer, hour12);
+    case 'l':
+        return append_unpadded_int(buffer, hour12);
+    case 'i':
+        return append_two_digit(buffer, parts->minute);
+    case 'S':
+    case 's':
+        return append_two_digit(buffer, parts->second);
+    case 'T':
+        return append_time_24(buffer, &time);
+    case 'r':
+        return append_time_12(buffer, &time);
+    case 'p':
+        if (time_format_hour_is_am(parts->hour)) {
+            return append_date_format_text(buffer, "AM");
+        }
+        return append_date_format_text(buffer, "PM");
+    case 'f':
+        return append_date_format_text(buffer, "000000");
+    case '%':
+        return append_date_format_byte(buffer, '%');
+    default:
+        if (format_token_is_deferred_time_format_token(token)) {
+            set_date_format_unsupported_error(
+                database,
+                "TIME_FORMAT() supports only time format specifiers"
+            );
+            return MYLITE_ERROR;
+        }
+        return append_date_format_byte(buffer, token);
+    }
+}
+
 static int append_two_digit(struct date_format_buffer *buffer, int value) {
-    char text[3];
+    char text[date_format_int_text_capacity];
     int written = snprintf(text, sizeof(text), "%02d", value);
 
     if (written < 0 || (size_t)written >= sizeof(text)) {
@@ -597,7 +939,11 @@ static int append_time_12(struct date_format_buffer *buffer, const struct date_f
         rc = append_two_digit(buffer, time->second);
     }
     if (rc == MYLITE_OK) {
-        rc = append_date_format_text(buffer, time->hour < date_hours_per_half_day ? " AM" : " PM");
+        if (time_format_hour_is_am(time->hour)) {
+            rc = append_date_format_text(buffer, " AM");
+        } else {
+            rc = append_date_format_text(buffer, " PM");
+        }
     }
     return rc;
 }
@@ -684,9 +1030,45 @@ static bool parse_date_format_input(
                 parse_datetime_text(input->value, input->value_length, out_parts)) != 0;
     case MYLITE_DATE_FORMAT_INPUT_DATE:
         return parse_date_text(input->value, input->value_length, out_parts);
+    case MYLITE_DATE_FORMAT_INPUT_TIME:
+        return false;
     case MYLITE_DATE_FORMAT_INPUT_DATETIME:
     case MYLITE_DATE_FORMAT_INPUT_TIMESTAMP:
         return parse_datetime_text(input->value, input->value_length, out_parts);
+    }
+    return false;
+}
+
+static bool parse_time_format_input(
+    const struct date_format_input *input,
+    struct time_format_parts *out_parts
+) {
+    struct date_format_parts date_parts = {0};
+
+    if (input == NULL || out_parts == NULL) {
+        return false;
+    }
+
+    switch (input->input_kind) {
+    case MYLITE_DATE_FORMAT_INPUT_STRING:
+        return (parse_time_text(input->value, input->value_length, out_parts) ||
+                parse_datetime_time_text(input->value, input->value_length, out_parts)) != 0;
+    case MYLITE_DATE_FORMAT_INPUT_DATE:
+        if (!parse_date_text(input->value, input->value_length, &date_parts)) {
+            return false;
+        }
+        *out_parts = (struct time_format_parts){
+            .negative = false,
+            .hour = 0,
+            .minute = 0,
+            .second = 0,
+        };
+        return true;
+    case MYLITE_DATE_FORMAT_INPUT_TIME:
+        return parse_time_text(input->value, input->value_length, out_parts);
+    case MYLITE_DATE_FORMAT_INPUT_DATETIME:
+    case MYLITE_DATE_FORMAT_INPUT_TIMESTAMP:
+        return parse_datetime_time_text(input->value, input->value_length, out_parts);
     }
     return false;
 }
@@ -741,6 +1123,86 @@ static bool parse_datetime_text(
     return true;
 }
 
+static bool parse_datetime_time_text(
+    const char *value,
+    size_t value_length,
+    struct time_format_parts *out_parts
+) {
+    struct date_format_parts datetime = {0};
+
+    if (!parse_datetime_text(value, value_length, &datetime) || out_parts == NULL) {
+        return false;
+    }
+    *out_parts = (struct time_format_parts){
+        .negative = false,
+        .hour = datetime.hour,
+        .minute = datetime.minute,
+        .second = datetime.second,
+    };
+    return true;
+}
+
+static bool parse_time_text(
+    const char *value,
+    size_t value_length,
+    struct time_format_parts *out_parts
+) {
+    struct time_format_parts parts = {.negative = false};
+    size_t offset = 0U;
+    size_t hour_digits = 0U;
+
+    if (value == NULL || out_parts == NULL) {
+        return false;
+    }
+    if (value_length > 0U && value[0] == '-') {
+        parts.negative = true;
+        offset = 1U;
+    }
+    if (value_length < offset + time_format_minimum_text_length ||
+        value_length > offset + time_format_maximum_text_length) {
+        return false;
+    }
+    hour_digits = value_length - offset - time_format_suffix_length;
+    if ((hour_digits != time_format_minimum_hour_digit_count &&
+         hour_digits != time_format_maximum_hour_digit_count) ||
+        value[offset + hour_digits] != ':' ||
+        value[offset + hour_digits + time_format_second_separator_offset_after_hour] != ':') {
+        return false;
+    }
+    if (!parse_fixed_digits(value + offset, hour_digits, &parts.hour) ||
+        !parse_fixed_digits(
+            value + offset + hour_digits + time_format_minute_offset_after_hour,
+            2U,
+            &parts.minute
+        ) ||
+        !parse_fixed_digits(
+            value + offset + hour_digits + time_format_second_offset_after_hour,
+            2U,
+            &parts.second
+        ) ||
+        !time_format_parts_are_valid(&parts)) {
+        return false;
+    }
+    *out_parts = parts;
+    return true;
+}
+
+static bool parse_fixed_digits(const char *text, size_t count, int *out_value) {
+    int value = 0;
+
+    if (text == NULL || out_value == NULL || count == 0U) {
+        return false;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        if (!isdigit((unsigned char)text[index])) {
+            return false;
+        }
+        value = (value * date_digit_radix) + (int)(text[index] - '0');
+    }
+    *out_value = value;
+    return true;
+}
+
 static bool parse_two_digits(const char *text, int *out_value) {
     if (text == NULL || out_value == NULL || !isdigit((unsigned char)text[0]) ||
         !isdigit((unsigned char)text[1])) {
@@ -782,6 +1244,15 @@ static bool date_time_parts_are_valid(const struct date_format_parts *parts) {
     return (parts->hour >= 0 && parts->hour <= time_hour_max && parts->minute >= 0 &&
             parts->minute <= time_minute_second_max && parts->second >= 0 &&
             parts->second <= time_minute_second_max) != 0;
+}
+
+static bool time_format_parts_are_valid(const struct time_format_parts *parts) {
+    if (parts == NULL || parts->hour < 0 || parts->hour > time_format_hour_max ||
+        parts->minute < 0 || parts->minute > time_minute_second_max || parts->second < 0 ||
+        parts->second > time_minute_second_max) {
+        return false;
+    }
+    return true;
 }
 
 static bool is_leap_year(int year) {
@@ -848,6 +1319,16 @@ static int date_format_hour_12(int hour) {
     int value = hour % date_hours_per_half_day;
 
     return value == 0 ? date_hours_per_half_day : value;
+}
+
+static int time_format_hour_12(int hour) {
+    return date_format_hour_12(hour);
+}
+
+static bool time_format_hour_is_am(int hour) {
+    int clock_hour = hour % (date_hours_per_half_day * 2);
+
+    return clock_hour < date_hours_per_half_day;
 }
 
 static const char *month_name(int month) {
@@ -933,6 +1414,13 @@ static bool format_token_is_deferred_week_token(char token) {
             token == 'x') != 0;
 }
 
+static bool format_token_is_deferred_time_format_token(char token) {
+    return (token == 'Y' || token == 'y' || token == 'm' || token == 'c' || token == 'd' ||
+            token == 'e' || token == 'a' || token == 'W' || token == 'b' || token == 'M' ||
+            token == 'D' || token == 'j' || token == 'w' ||
+            format_token_is_deferred_week_token(token)) != 0;
+}
+
 static void set_date_format_unsupported_error(struct mylite_db *database, const char *message) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -952,6 +1440,41 @@ static int append_incorrect_datetime_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
+        value_length > 200U ? 200 : (int)value_length,
+        value == NULL ? "" : value
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_incorrect_datetime_value,
+        "22007",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory"
+        );
+    }
+    return rc;
+}
+
+static int append_incorrect_time_warning(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect time value: '%.*s'",
         value_length > 200U ? 200 : (int)value_length,
         value == NULL ? "" : value
     );

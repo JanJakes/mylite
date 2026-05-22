@@ -71,6 +71,7 @@ static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_addtime_subtime_functions(void);
 static int test_date_format_function(void);
+static int test_time_format_function(void);
 static int test_datediff_function(void);
 static int test_unix_timestamp_function(void);
 static int test_from_unixtime_function(void);
@@ -386,6 +387,7 @@ int main(void) {
     failures += test_date_add_second_function();
     failures += test_addtime_subtime_functions();
     failures += test_date_format_function();
+    failures += test_time_format_function();
     failures += test_datediff_function();
     failures += test_unix_timestamp_function();
     failures += test_from_unixtime_function();
@@ -3679,6 +3681,112 @@ static int test_date_format_function(void) {
 
     failures += parse_sql(
         "CREATE TABLE date_format (date_format INT); SELECT date_format FROM date_format;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_time_format_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT TIME_FORMAT('100:00:00', '%H'), "
+        "Time_Format(option_value, '%H.%i') AS formatted FROM options;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_TIME_FORMAT_FUNCTION, "time_format function");
+    failures +=
+        expect_span_text(first_expression, "TIME_FORMAT('100:00:00', '%H')", "time_format span");
+    failures += expect_child_count(first_expression, 2U, "time_format child count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time_format value argument"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time_format format argument"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_TIME_FORMAT_FUNCTION,
+        "time_format second function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "time_format alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO TIME_FORMAT(NULL, '%H'), TIME_FORMAT('01:02:03', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "time_format do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_TIME_FORMAT_FUNCTION,
+        "do time_format null value"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_TIME_FORMAT_FUNCTION,
+        "do time_format null format"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TIME_FORMAT();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR,
+        "time_format zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TIME_FORMAT('01:02:03');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR,
+        "time_format one argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT TIME_FORMAT('01:02:03', '%H', 'extra');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR,
+        "time_format extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT TIME_FORMAT ('01:02:03', '%H') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE time_format (time_format INT); SELECT time_format FROM time_format;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

@@ -1018,6 +1018,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"TIMESTAMP", 0U},
         {"TIMESTAMPADD", 0U},
         {"TIMESTAMPDIFF", 0U},
+        {"TIME_FORMAT", 0U},
         {"TIME_TO_SEC", 0U},
         {"TINYBLOB", MYLITE_SQL_KEYWORD_RESERVED},
         {"TINYINT", MYLITE_SQL_KEYWORD_RESERVED},

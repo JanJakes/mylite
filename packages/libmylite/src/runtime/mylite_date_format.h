@@ -13,6 +13,7 @@ enum mylite_date_format_input_kind {
     MYLITE_DATE_FORMAT_INPUT_DATE = 1,
     MYLITE_DATE_FORMAT_INPUT_DATETIME = 2,
     MYLITE_DATE_FORMAT_INPUT_TIMESTAMP = 3,
+    MYLITE_DATE_FORMAT_INPUT_TIME = 4,
 };
 
 const char *mylite_date_format_input_kind_name(enum mylite_date_format_input_kind kind);
@@ -28,6 +29,21 @@ int mylite_date_format_validate_format(
     size_t format_length
 );
 int mylite_date_format_value(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length,
+    enum mylite_date_format_input_kind input_kind,
+    const char *format,
+    size_t format_length,
+    char **out_text,
+    bool *out_is_null
+);
+int mylite_time_format_validate_format(
+    struct mylite_db *database,
+    const char *format,
+    size_t format_length
+);
+int mylite_time_format_value(
     struct mylite_db *database,
     const char *value,
     size_t value_length,

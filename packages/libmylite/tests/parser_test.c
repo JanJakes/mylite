@@ -68,6 +68,7 @@ static int test_addtime_subtime_functions(void);
 static int test_date_format_function(void);
 static int test_datediff_function(void);
 static int test_unix_timestamp_function(void);
+static int test_time_second_conversion_functions(void);
 static int test_temporal_extract_functions(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
@@ -371,6 +372,7 @@ int main(void) {
     failures += test_date_format_function();
     failures += test_datediff_function();
     failures += test_unix_timestamp_function();
+    failures += test_time_second_conversion_functions();
     failures += test_temporal_extract_functions();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
@@ -3793,6 +3795,138 @@ static int test_unix_timestamp_function(void) {
     failures += parse_sql(
         "CREATE TABLE unix_timestamp (unix_timestamp INT); "
         "SELECT unix_timestamp FROM unix_timestamp;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_time_second_conversion_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT TIME_TO_SEC('00:39:38'), Sec_To_Time(2378) AS tm, TIME_TO_SEC(v) "
+        "FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION,
+        "time_to_sec literal function"
+    );
+    failures += expect_child_count(first_expression, 1U, "time_to_sec literal count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time_to_sec literal argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION,
+        "sec_to_time integer function"
+    );
+    failures += expect_child_count(second_expression, 1U, "sec_to_time integer count");
+    failures += expect_literal(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "sec_to_time integer argument"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "sec_to_time alias"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION,
+        "time_to_sec column function"
+    );
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "time_to_sec column argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT TIME_TO_SEC ('00:39:38') AS secs, SEC_TO_TIME (2378) AS tm FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DO TIME_TO_SEC('00:00:01'), SEC_TO_TIME(1);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "time second do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION,
+        "do time_to_sec"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION,
+        "do sec_to_time"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TIME_TO_SEC();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR,
+        "time_to_sec zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT TIME_TO_SEC('00:00:01', '00:00:02');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR,
+        "time_to_sec extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SEC_TO_TIME();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR,
+        "sec_to_time zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SEC_TO_TIME(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR,
+        "sec_to_time extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE time_second_keywords(time_to_sec INT, sec_to_time INT); "
+        "SELECT time_to_sec, sec_to_time FROM time_second_keywords;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

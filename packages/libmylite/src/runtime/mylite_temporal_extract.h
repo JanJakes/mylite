@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 enum mylite_temporal_extract_kind {
     MYLITE_TEMPORAL_EXTRACT_DATE = 0,
@@ -20,6 +21,7 @@ enum mylite_temporal_extract_kind {
     MYLITE_TEMPORAL_EXTRACT_MINUTE = 8,
     MYLITE_TEMPORAL_EXTRACT_SECOND = 9,
     MYLITE_TEMPORAL_EXTRACT_TIME = 10,
+    MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC = 11,
 };
 
 enum mylite_temporal_extract_input_kind {
@@ -53,6 +55,13 @@ int mylite_temporal_extract_value(
     size_t value_length,
     enum mylite_temporal_extract_kind extract_kind,
     enum mylite_temporal_extract_input_kind input_kind,
+    char **out_text,
+    bool *out_is_null
+);
+int mylite_sec_to_time_value(
+    struct mylite_db *database,
+    int64_t seconds,
+    bool is_null,
     char **out_text,
     bool *out_is_null
 );

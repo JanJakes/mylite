@@ -880,6 +880,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "date_function";
     case MYLITE_SQL_AST_TIME_FUNCTION:
         return "time_function";
+    case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
+        return "time_to_sec_function";
+    case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
+        return "time_to_sec_argument_count_error";
+    case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+        return "sec_to_time_function";
+    case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
+        return "sec_to_time_argument_count_error";
     case MYLITE_SQL_AST_YEAR_FUNCTION:
         return "year_function";
     case MYLITE_SQL_AST_MONTH_FUNCTION:

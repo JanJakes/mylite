@@ -40,7 +40,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `PERIOD_ADD()` | ❌ | Add a period to a year-month |
 | `PERIOD_DIFF()` | ❌ | Return number of months between periods |
 | `QUARTER()` | ❌ | Return quarter from a date argument |
-| `SEC_TO_TIME()` | ❌ | Converts seconds to 'hh:mm:ss' format |
+| `SEC_TO_TIME()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `SEC_TO_TIME(value)` over `NULL`, signed-64 integer and boolean literals, and integer-family descriptor columns physically stored in the current signed-64 range, returning time text or `NULL`; values beyond MySQL's `TIME` range clip to `838:59:59` / `-838:59:59` with warning 1292; no string seconds, decimal/fractional seconds, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
 | `SECOND()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `SECOND(value)` over the same current `HOUR()` input subset, returning an integer part or `NULL` |
 | `STR_TO_DATE()` | ❌ | Convert a string to a date |
 | `SUBDATE()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `SUBDATE(value, INTERVAL signed_integer_or_NULL SECOND)` alias of the current `DATE_SUB()` interval-second slice; row-backed invalid temporal values return `NULL` with warning 1292 and row overflow returns `NULL` with warning 1441; no non-interval forms, other units, interval expressions, predicates, DML assignments, defaults, generated columns, or general temporal arithmetic |
@@ -48,7 +48,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `SYSDATE()` | ❌ | Return time at which the function executes |
 | `TIME()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `TIME(value)` over `NULL`, canonical time/datetime string literals, and descriptor `DATE` / `TIME` / `DATETIME` / `TIMESTAMP` columns, returning time text or `NULL`; invalid literal inputs return `NULL` with warning 1292; no fractional seconds, numeric temporal coercion, date-only string coercion, string descriptor columns, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
 | `TIME_FORMAT()` | ❌ | Format as time |
-| `TIME_TO_SEC()` | ❌ | Return argument converted to seconds |
+| `TIME_TO_SEC()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `TIME_TO_SEC(value)` over `NULL`, canonical time/datetime strings, descriptor `DATE` / `TIME` / `DATETIME` / `TIMESTAMP` columns, and nonbinary string-family descriptor columns, returning signed whole seconds or `NULL`; `DATE` descriptor inputs return `0`, invalid admitted strings warn 1292, and negative time values return negative seconds; no numeric temporal coercion, fractional seconds, date-only string coercion parity, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
 | `TIMEDIFF()` | ❌ | Subtract time |
 | `TIMESTAMP()` | ❌ | One-arg cast or two-arg sum |
 | `TIMESTAMPADD()` | ❌ | Add an interval to a datetime expression |

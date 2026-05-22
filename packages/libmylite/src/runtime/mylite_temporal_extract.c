@@ -5,6 +5,7 @@
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -40,6 +41,9 @@ enum {
     time_second_separator_offset_after_hour = 3,
     time_second_offset_after_hour = 4,
     time_minute_second_digit_count = 2,
+    time_to_sec_seconds_per_minute = 60,
+    time_to_sec_seconds_per_hour = 3600,
+    sec_to_time_second_abs_max = 3020399,
     leap_quadrennial_year_cycle = 4,
     leap_century_year_cycle = 100,
     leap_quadricentennial_year_cycle = 400,
@@ -80,6 +84,7 @@ static void temporal_extract_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void sec_to_time_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int temporal_extract_sqlite_kind(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -97,6 +102,7 @@ static int temporal_extract_sqlite_result(
     enum mylite_temporal_extract_kind extract_kind,
     enum mylite_temporal_extract_input_kind input_kind
 );
+static int sec_to_time_sqlite_result(sqlite3_context *context, int64_t seconds);
 
 static int extract_date_part_value(
     struct mylite_db *database,
@@ -118,6 +124,10 @@ static int extract_time_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 );
+static int extract_time_to_sec_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
 static int extract_time_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
@@ -133,6 +143,7 @@ static int format_time_result(
     char **out_text
 );
 static int format_integer_result(struct mylite_db *database, int value, char **out_text);
+static int append_sec_to_time_truncation_warning(struct mylite_db *database, int64_t seconds);
 
 static bool parse_string_date_value(
     const char *value,
@@ -200,6 +211,8 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "date";
     case MYLITE_TEMPORAL_EXTRACT_TIME:
         return "time";
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+        return "time_to_sec";
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
         return "year";
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
@@ -242,6 +255,7 @@ bool mylite_temporal_extract_kind_from_name(
         {"hour", MYLITE_TEMPORAL_EXTRACT_HOUR},
         {"minute", MYLITE_TEMPORAL_EXTRACT_MINUTE},
         {"second", MYLITE_TEMPORAL_EXTRACT_SECOND},
+        {"time_to_sec", MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC},
     };
 
     if (name == NULL || out_kind == NULL) {
@@ -272,6 +286,7 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return false;
     }
     return false;
@@ -291,6 +306,7 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return false;
     }
     return false;
@@ -310,6 +326,7 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return false;
     }
     return false;
@@ -394,6 +411,55 @@ int mylite_temporal_extract_value(
     return extract_time_part_value(database, &request);
 }
 
+int mylite_sec_to_time_value(
+    struct mylite_db *database,
+    int64_t seconds,
+    bool is_null,
+    char **out_text,
+    bool *out_is_null
+) {
+    struct temporal_time_parts time = {.negative = false};
+    int64_t magnitude = seconds;
+    bool clipped = false;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_null = false;
+    if (is_null) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    if (seconds < 0) {
+        time.negative = true;
+        if (seconds < -((int64_t)sec_to_time_second_abs_max)) {
+            magnitude = sec_to_time_second_abs_max;
+            clipped = true;
+        } else {
+            magnitude = -seconds;
+        }
+    } else if (seconds > sec_to_time_second_abs_max) {
+        magnitude = sec_to_time_second_abs_max;
+        clipped = true;
+    }
+
+    if (clipped) {
+        rc = append_sec_to_time_truncation_warning(database, seconds);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    time.hour = (int)(magnitude / time_to_sec_seconds_per_hour);
+    magnitude %= time_to_sec_seconds_per_hour;
+    time.minute = (int)(magnitude / time_to_sec_seconds_per_minute);
+    time.second = (int)(magnitude % time_to_sec_seconds_per_minute);
+    return format_time_result(database, &time, out_text);
+}
+
 int mylite_sqlite_register_temporal_extract_function(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
@@ -403,6 +469,19 @@ int mylite_sqlite_register_temporal_extract_function(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = temporal_extract_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_sec_to_time",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = sec_to_time_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -461,6 +540,23 @@ static void temporal_extract_sqlite_callback(
     }
 }
 
+static void sec_to_time_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite SEC_TO_TIME callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_INTEGER) {
+        sqlite3_result_error(context, "invalid MyLite SEC_TO_TIME input", -1);
+        return;
+    }
+
+    (void)sec_to_time_sqlite_result(context, sqlite3_value_int64(argv[0]));
+}
+
 static int temporal_extract_sqlite_kind(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -504,6 +600,36 @@ static int temporal_extract_sqlite_input_kind(
         sqlite3_result_error(context, "invalid MyLite temporal extract input kind", -1);
         return MYLITE_ERROR;
     }
+    return MYLITE_OK;
+}
+
+static int sec_to_time_sqlite_result(sqlite3_context *context, int64_t seconds) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+    char *result = NULL;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite SEC_TO_TIME owner", -1);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_sec_to_time_value(database, seconds, false, &result, &is_null);
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            sqlite3_result_error_nomem(context);
+        } else {
+            sqlite3_result_error(context, "MyLite SEC_TO_TIME failed", -1);
+        }
+        free(result);
+        return rc;
+    }
+    if (is_null) {
+        sqlite3_result_null(context);
+    } else {
+        sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
+    }
+    free(result);
     return MYLITE_OK;
 }
 
@@ -620,6 +746,7 @@ static int extract_date_part_value(
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         break;
     }
     return MYLITE_ERROR;
@@ -660,6 +787,7 @@ static int extract_calendar_date_value(
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         break;
     }
     return MYLITE_ERROR;
@@ -726,10 +854,14 @@ static int extract_time_part_value(
     if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME) {
         return extract_time_value(database, request);
     }
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC) {
+        return extract_time_to_sec_value(database, request);
+    }
 
     if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
         request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
-        if (parse_datetime_text(request->value, request->value_length, &datetime)) {
+        if (parse_datetime_text(request->value, request->value_length, &datetime) &&
+            datetime_time_parts_are_valid(&datetime.time)) {
             time = datetime.time;
         } else {
             rc = append_incorrect_temporal_warning(
@@ -778,9 +910,79 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         break;
     }
     return MYLITE_ERROR;
+}
+
+static int extract_time_to_sec_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    struct temporal_time_parts time = {.negative = false};
+    struct temporal_datetime_parts datetime = {0};
+    int total_seconds = 0;
+    int rc = MYLITE_OK;
+
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATE) {
+        struct temporal_date_parts date = {0};
+
+        if (!parse_date_text(request->value, request->value_length, &date)) {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+        return format_integer_result(database, 0, request->out_text);
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
+        request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
+        if (parse_datetime_text(request->value, request->value_length, &datetime) &&
+            datetime_time_parts_are_valid(&datetime.time)) {
+            time = datetime.time;
+        } else {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+    } else if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIME) {
+        if (!parse_time_text(request->value, request->value_length, &time)) {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+    } else if (!parse_string_time_value(request->value, request->value_length, &time)) {
+        rc = append_incorrect_temporal_warning(
+            database,
+            "Truncated incorrect time value",
+            request->value,
+            request->value_length
+        );
+        *request->out_is_null = true;
+        return rc;
+    }
+
+    total_seconds = (time.hour * time_to_sec_seconds_per_hour) +
+                    (time.minute * time_to_sec_seconds_per_minute) + time.second;
+    if (time.negative) {
+        total_seconds = -total_seconds;
+    }
+    return format_integer_result(database, total_seconds, request->out_text);
 }
 
 static int extract_time_value(
@@ -942,6 +1144,21 @@ static int format_integer_result(struct mylite_db *database, int value, char **o
     return MYLITE_OK;
 }
 
+static int append_sec_to_time_truncation_warning(struct mylite_db *database, int64_t seconds) {
+    char value_text[integer_result_buffer_capacity];
+    int written = snprintf(value_text, sizeof(value_text), "%" PRId64, seconds);
+
+    if (written < 0 || (size_t)written >= sizeof(value_text)) {
+        return MYLITE_ERROR;
+    }
+    return append_incorrect_temporal_warning(
+        database,
+        "Truncated incorrect time value",
+        value_text,
+        (size_t)written
+    );
+}
+
 static bool parse_string_date_value(
     const char *value,
     size_t value_length,
@@ -986,7 +1203,8 @@ static bool parse_string_time_value(
     if (parse_time_text(value, value_length, out_time)) {
         return true;
     }
-    if (parse_datetime_text(value, value_length, &datetime)) {
+    if (parse_datetime_text(value, value_length, &datetime) &&
+        datetime_time_parts_are_valid(&datetime.time)) {
         *out_time = datetime.time;
         return true;
     }

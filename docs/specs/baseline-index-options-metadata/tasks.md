@@ -5,21 +5,21 @@
   warnings, and diagnostics.
 - [x] Specify the limited grammar, descriptor ownership, catalog migration,
   runtime semantics, metadata rendering, and unsupported surfaces.
-- [ ] Add MySQL-runtime expectation script covering successful metadata,
+- [x] Add MySQL-runtime expectation script covering successful metadata,
   hash fallback warnings, visibility, fulltext comments, and diagnostics.
-- [ ] Extend parser/AST support for the admitted index-option grammar.
-- [ ] Extend catalog descriptors and migrations for index comments and explicit
+- [x] Extend parser/AST support for the admitted index-option grammar.
+- [x] Extend catalog descriptors and migrations for index comments and explicit
   BTREE render state.
-- [ ] Extend create-table, alter-add-index, and create-index planning/execution
+- [x] Extend create-table, alter-add-index, and create-index planning/execution
   to resolve and persist options.
-- [ ] Render descriptor comments/options through `SHOW CREATE TABLE`,
+- [x] Render descriptor comments/options through `SHOW CREATE TABLE`,
   `SHOW INDEX`, and `INFORMATION_SCHEMA.STATISTICS`.
-- [ ] Add fast C runtime coverage for success, diagnostics, persistence,
+- [x] Add fast C runtime coverage for success, diagnostics, persistence,
   cloning, independent handles, and file-format safety.
-- [ ] Update `COMPATIBILITY.md` and index/show/metadata compatibility docs with
+- [x] Update `COMPATIBILITY.md` and index/show/metadata compatibility docs with
   exact limited wording.
-- [ ] Run focused parser/runtime tests, the MySQL expectation script,
+- [x] Run focused parser/runtime tests, the MySQL expectation script,
   `cmake --build --preset dev`, and `cmake --workflow --preset check`.
-- [ ] Review the final diff for catalog authority, MySQL behavior, warning
+- [x] Review the final diff for catalog authority, MySQL behavior, warning
   counts, physical SQLite boundaries, cleanup on failure, scope control, docs,
   and test relevance.

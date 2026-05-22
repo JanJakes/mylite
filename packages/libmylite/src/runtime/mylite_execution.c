@@ -1936,6 +1936,7 @@ struct planned_alter_table_add_index {
     char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
     bool show_create_explicit_btree;
     bool uses_hash_index_type;
+    int64_t affected_rows;
 };
 
 struct planned_alter_table_add_foreign_key {
@@ -1987,6 +1988,7 @@ struct planned_drop_index {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct loaded_index_info index;
+    int64_t affected_rows;
 };
 
 struct planned_rename_index {
@@ -10503,7 +10505,7 @@ static int resolve_fulltext_add_index_target(
     const char *base_only_error,
     struct planned_alter_table_add_index *plan
 );
-static int resolve_persistent_add_index_target(
+static int resolve_non_fulltext_add_index_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
     const char *base_only_error,
@@ -10511,6 +10513,10 @@ static int resolve_persistent_add_index_target(
 );
 static bool planned_add_index_is_fulltext(const struct planned_alter_table_add_index *plan);
 static bool planned_add_index_is_spatial(const struct planned_alter_table_add_index *plan);
+static int reject_temporary_spatial_add_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+);
 static void planned_alter_table_add_index_deinit(struct planned_alter_table_add_index *plan);
 static int extract_alter_table_add_index_nodes(
     struct mylite_db *database,
@@ -10545,6 +10551,10 @@ static int validate_create_table_secondary_index_kind(
     enum mylite_catalog_index_kind *out_effective_index_kind
 );
 static int add_secondary_index_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+);
+static int add_temporary_secondary_index_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
 );
@@ -10984,6 +10994,7 @@ static int execute_physical_drop_index(
     struct mylite_db *database,
     const struct planned_drop_index *plan
 );
+static int execute_physical_drop_index_by_name(struct mylite_db *database, const char *name);
 static int plan_alter_table_drop_primary_key(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -31601,12 +31612,14 @@ static int execute_create_index_statement(
     if (rc == MYLITE_OK) {
         rc = add_secondary_index_from_plan(database, &plan);
     }
-    planned_alter_table_add_index_deinit(&plan);
     if (rc != MYLITE_OK) {
+        planned_alter_table_add_index_deinit(&plan);
         mylite_result_free(result);
         return rc;
     }
 
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_add_index_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -32485,12 +32498,14 @@ static int execute_alter_table_add_index_statement(
     if (rc == MYLITE_OK) {
         rc = add_secondary_index_from_plan(database, &plan);
     }
-    planned_alter_table_add_index_deinit(&plan);
     if (rc != MYLITE_OK) {
+        planned_alter_table_add_index_deinit(&plan);
         mylite_result_free(result);
         return rc;
     }
 
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_add_index_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -32573,6 +32588,7 @@ static int execute_alter_table_drop_index_statement(
         return rc;
     }
 
+    mylite_result_set_affected_rows(result, plan.affected_rows);
     planned_drop_index_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
@@ -32725,6 +32741,7 @@ static int execute_drop_index_statement(
         return rc;
     }
 
+    mylite_result_set_affected_rows(result, plan.affected_rows);
     planned_drop_index_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
@@ -44968,6 +44985,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return -1;
@@ -44991,11 +45015,6 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT:
-    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
@@ -45003,10 +45022,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
-    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
-    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
@@ -55564,6 +55581,9 @@ static int plan_alter_table_add_index(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_temporary_spatial_add_index(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_loaded_add_index_kind_options(
             database,
             out_plan,
@@ -55611,6 +55631,9 @@ static int plan_alter_table_add_index(
     }
     if (rc == MYLITE_OK && out_plan->is_unique) {
         rc = validate_create_unique_index_existing_rows(database, out_plan);
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
     loaded_index_infos_deinit(&indexes, &index_count);
@@ -55724,6 +55747,9 @@ static int plan_create_index(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_temporary_spatial_add_index(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_loaded_add_index_kind_options(
             database,
             out_plan,
@@ -55771,6 +55797,9 @@ static int plan_create_index(
     }
     if (rc == MYLITE_OK && out_plan->is_unique) {
         rc = validate_create_unique_index_existing_rows(database, out_plan);
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
     loaded_index_infos_deinit(&indexes, &index_count);
@@ -56278,7 +56307,7 @@ static int resolve_add_index_target(
         return resolve_fulltext_add_index_target(database, table_node, base_only_error, plan);
     }
 
-    return resolve_persistent_add_index_target(database, table_node, base_only_error, plan);
+    return resolve_non_fulltext_add_index_target(database, table_node, base_only_error, plan);
 }
 
 static int resolve_fulltext_add_index_target(
@@ -56305,33 +56334,20 @@ static int resolve_fulltext_add_index_target(
     return MYLITE_OK;
 }
 
-static int resolve_persistent_add_index_target(
+static int resolve_non_fulltext_add_index_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
     const char *base_only_error,
     struct planned_alter_table_add_index *plan
 ) {
-    int rc = resolve_writable_table_name(database, table_node, &plan->target);
+    int rc =
+        resolve_visible_writable_table_reference(database, table_node, &plan->target, &plan->table);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (mylite_catalog_name_is_reserved(plan->target.table_name)) {
-        set_reserved_name_error(database, "table", plan->target.table_name);
-        return MYLITE_ERROR;
-    }
-
-    rc = mylite_catalog_read_table_by_name(
-        database,
-        plan->target.schema.schema_id,
-        plan->target.table_name,
-        &plan->table
-    );
-    if (rc != MYLITE_OK) {
-        set_table_does_not_exist_error(database, plan->target.schema.name, plan->target.table_name);
-        return MYLITE_ERROR;
-    }
-    if (plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         set_unsupported_error(database, base_only_error);
         return MYLITE_ERROR;
     }
@@ -56359,6 +56375,19 @@ static bool planned_add_index_is_spatial(const struct planned_alter_table_add_in
     }
 
     return false;
+}
+
+static int reject_temporary_spatial_add_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+) {
+    if (plan == NULL || plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY ||
+        !planned_add_index_is_spatial(plan)) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, "Temporary SPATIAL indexes are not yet supported");
+    return MYLITE_ERROR;
 }
 
 static int extract_alter_table_add_index_nodes(
@@ -57045,6 +57074,9 @@ static int add_secondary_index_from_plan(
         set_runtime_error(database, "invalid secondary-index plan");
         return MYLITE_ERROR;
     }
+    if (plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        return add_temporary_secondary_index_from_plan(database, plan);
+    }
 
     rc = reserve_fulltext_add_warning_if_needed(database, plan);
     if (rc == MYLITE_OK) {
@@ -57134,6 +57166,110 @@ static int add_secondary_index_from_plan(
     }
 
     return rc;
+}
+
+static int add_temporary_secondary_index_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+) {
+    struct mylite_catalog_index_descriptor index = {0};
+    struct mylite_catalog_index_column_descriptor *index_columns = NULL;
+    char index_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    int64_t index_id = 0;
+    bool physical_index_created = false;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY ||
+        plan->part_count == 0U || plan->index_name[0] == '\0') {
+        set_runtime_error(database, "invalid temporary secondary-index plan");
+        return MYLITE_ERROR;
+    }
+    if (plan->part_count > SIZE_MAX / sizeof(*index_columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = reserve_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_allocate_index_identity(
+            &database->session.temporary_catalog,
+            &index_id,
+            index_physical_name,
+            sizeof(index_physical_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        index_columns = calloc(plan->part_count, sizeof(*index_columns));
+        if (index_columns == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        index = (struct mylite_catalog_index_descriptor){
+            .index_id = index_id,
+            .table_id = plan->table.table_id,
+            .kind = plan->kind,
+            .is_unique = plan->is_unique,
+            .is_visible = plan->is_visible,
+            .show_create_explicit_btree = plan->show_create_explicit_btree,
+        };
+        snprintf(index.name, sizeof(index.name), "%s", plan->index_name);
+        snprintf(index.physical_name, sizeof(index.physical_name), "%s", index_physical_name);
+        snprintf(index.comment, sizeof(index.comment), "%s", plan->comment);
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+        int64_t index_column_id = 0;
+
+        if (part->column.column_id >= 0) {
+            set_runtime_error(database, "invalid temporary secondary-index key part");
+            rc = MYLITE_ERROR;
+            break;
+        }
+        rc = mylite_temporary_catalog_allocate_index_column_id(
+            &database->session.temporary_catalog,
+            &index_column_id
+        );
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        index_columns[part_index] = (struct mylite_catalog_index_column_descriptor){
+            .index_column_id = index_column_id,
+            .index_id = index_id,
+            .table_id = plan->table.table_id,
+            .column_id = part->column.column_id,
+            .ordinal_position = (int64_t)part_index + 1,
+            .has_prefix_length = part->index_column.has_prefix_length,
+            .prefix_length = part->index_column.prefix_length,
+            .sort_direction = part->index_column.sort_direction,
+        };
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_add_index(database, plan, index_physical_name);
+        physical_index_created = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_append_index(
+            &database->session.temporary_catalog,
+            plan->table.table_id,
+            &index,
+            index_columns,
+            plan->part_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        if (physical_index_created) {
+            (void)execute_physical_drop_index_by_name(database, index_physical_name);
+        }
+        free(index_columns);
+        set_internal_error_if_clear(database, rc, "failed to add temporary index");
+        return rc;
+    }
+
+    free(index_columns);
+    ++database->session.sqlite_schema_generation;
+    return append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
 }
 
 static int reserve_fulltext_add_warning_if_needed(
@@ -58782,31 +58918,17 @@ static int plan_drop_index(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_drop_index){0};
-    rc = resolve_writable_table_name(database, nodes.table_name_node, &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
+    rc = resolve_visible_writable_table_reference(
+        database,
+        nodes.table_name_node,
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = copy_identifier_text(nodes.index_name_node, index_name, sizeof(index_name), database);
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_read_table_by_name(
-            database,
-            out_plan->target.schema.schema_id,
-            out_plan->target.table_name,
-            &out_plan->table
-        );
-        if (rc != MYLITE_OK) {
-            set_table_does_not_exist_error(
-                database,
-                out_plan->target.schema.name,
-                out_plan->target.table_name
-            );
-            rc = MYLITE_ERROR;
-        }
-    }
-    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
         int written = snprintf(
             message,
@@ -58864,12 +58986,15 @@ static int plan_drop_index(
             index_count
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && out_plan->table.table_id >= 0) {
         rc = reject_index_used_by_foreign_key(database, &indexes[resolved_index].index);
     }
     if (rc == MYLITE_OK) {
         out_plan->index = indexes[resolved_index];
         indexes[resolved_index] = (struct loaded_index_info){0};
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
     loaded_index_infos_deinit(&indexes, &index_count);
@@ -58887,7 +59012,32 @@ static void planned_drop_index_deinit(struct planned_drop_index *plan) {
 
 static int drop_index_from_plan(struct mylite_db *database, const struct planned_drop_index *plan) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
-    int rc = mylite_catalog_begin_mutation(database, &mutation);
+    int rc = MYLITE_OK;
+
+    if (plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        if (plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+            plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+            rc = execute_physical_drop_index(database, plan);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_temporary_catalog_remove_index_by_id(
+                &database->session.temporary_catalog,
+                plan->table.table_id,
+                plan->index.index.index_id
+            );
+        }
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to drop temporary index");
+            return rc;
+        }
+        if (plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+            plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+            ++database->session.sqlite_schema_generation;
+        }
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
 
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_delete_index_in_mutation(
@@ -60011,8 +60161,12 @@ static int execute_physical_drop_index(
     struct mylite_db *database,
     const struct planned_drop_index *plan
 ) {
+    return execute_physical_drop_index_by_name(database, plan->index.index.physical_name);
+}
+
+static int execute_physical_drop_index_by_name(struct mylite_db *database, const char *name) {
     char *sql = NULL;
-    int rc = build_drop_index_sql(plan->index.index.physical_name, &sql);
+    int rc = build_drop_index_sql(name, &sql);
 
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);

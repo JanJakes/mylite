@@ -10,6 +10,10 @@ static int reserve_temporary_tables(
     struct mylite_temporary_catalog *catalog,
     size_t required_capacity
 );
+static struct mylite_temporary_catalog_table *find_table_by_id_mutable(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id
+);
 static const struct mylite_temporary_catalog_table *find_table_by_id(
     const struct mylite_temporary_catalog *catalog,
     int64_t table_id
@@ -241,6 +245,124 @@ int mylite_temporary_catalog_update_table_comment(
     return MYLITE_ERROR;
 }
 
+int mylite_temporary_catalog_append_index(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    const struct mylite_catalog_index_descriptor *index,
+    const struct mylite_catalog_index_column_descriptor *index_columns,
+    size_t index_column_count
+) {
+    struct mylite_temporary_catalog_table *table = NULL;
+    struct mylite_catalog_index_descriptor *indexes = NULL;
+    struct mylite_catalog_index_column_descriptor *columns = NULL;
+
+    if (catalog == NULL || index == NULL || table_id >= 0 || index->index_id >= 0 ||
+        index->table_id != table_id || (index_column_count > 0U && index_columns == NULL)) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t part_index = 0U; part_index < index_column_count; ++part_index) {
+        if (index_columns[part_index].index_column_id >= 0 ||
+            index_columns[part_index].index_id != index->index_id ||
+            index_columns[part_index].table_id != table_id) {
+            return MYLITE_MISUSE;
+        }
+    }
+
+    table = find_table_by_id_mutable(catalog, table_id);
+    if (table == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index_index = 0U; index_index < table->index_count; ++index_index) {
+        if (table->indexes[index_index].index_id == index->index_id ||
+            strcmp(table->indexes[index_index].name, index->name) == 0) {
+            return MYLITE_ERROR;
+        }
+    }
+    if (table->index_count == SIZE_MAX ||
+        table->index_count + 1U > SIZE_MAX / sizeof(*table->indexes) ||
+        index_column_count > SIZE_MAX - table->index_column_count ||
+        table->index_column_count + index_column_count > SIZE_MAX / sizeof(*table->index_columns)) {
+        return MYLITE_NOMEM;
+    }
+
+    indexes = realloc(table->indexes, (table->index_count + 1U) * sizeof(*table->indexes));
+    if (indexes == NULL) {
+        return MYLITE_NOMEM;
+    }
+    table->indexes = indexes;
+    if (index_column_count > 0U) {
+        columns = realloc(
+            table->index_columns,
+            (table->index_column_count + index_column_count) * sizeof(*table->index_columns)
+        );
+        if (columns == NULL) {
+            return MYLITE_NOMEM;
+        }
+        table->index_columns = columns;
+    }
+
+    table->indexes[table->index_count] = *index;
+    ++table->index_count;
+    for (size_t part_index = 0U; part_index < index_column_count; ++part_index) {
+        table->index_columns[table->index_column_count + part_index] = index_columns[part_index];
+    }
+    table->index_column_count += index_column_count;
+    return MYLITE_OK;
+}
+
+int mylite_temporary_catalog_remove_index_by_id(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    int64_t index_id
+) {
+    struct mylite_temporary_catalog_table *table = NULL;
+    size_t index_position = 0U;
+    bool found = false;
+    size_t write_position = 0U;
+
+    if (catalog == NULL || table_id >= 0 || index_id >= 0) {
+        return MYLITE_MISUSE;
+    }
+
+    table = find_table_by_id_mutable(catalog, table_id);
+    if (table == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (; index_position < table->index_count; ++index_position) {
+        if (table->indexes[index_position].index_id == index_id) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = index_position + 1U; index < table->index_count; ++index) {
+        table->indexes[index - 1U] = table->indexes[index];
+    }
+    --table->index_count;
+    if (table->indexes != NULL) {
+        table->indexes[table->index_count] = (struct mylite_catalog_index_descriptor){0};
+    }
+
+    for (size_t read_position = 0U; read_position < table->index_column_count; ++read_position) {
+        if (table->index_columns[read_position].index_id == index_id) {
+            continue;
+        }
+        if (write_position != read_position) {
+            table->index_columns[write_position] = table->index_columns[read_position];
+        }
+        ++write_position;
+    }
+    for (size_t clear_position = write_position; clear_position < table->index_column_count;
+         ++clear_position) {
+        table->index_columns[clear_position] = (struct mylite_catalog_index_column_descriptor){0};
+    }
+    table->index_column_count = write_position;
+    return MYLITE_OK;
+}
+
 int mylite_temporary_catalog_try_read_table_by_name(
     const struct mylite_temporary_catalog *catalog,
     const char *schema_name,
@@ -433,6 +555,21 @@ static int reserve_temporary_tables(
     catalog->tables = tables;
     catalog->table_capacity = capacity;
     return MYLITE_OK;
+}
+
+static struct mylite_temporary_catalog_table *find_table_by_id_mutable(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id
+) {
+    if (catalog == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < catalog->table_count; ++index) {
+        if (catalog->tables[index].table.table_id == table_id) {
+            return &catalog->tables[index];
+        }
+    }
+    return NULL;
 }
 
 static const struct mylite_temporary_catalog_table *find_table_by_id(

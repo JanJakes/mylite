@@ -73,6 +73,18 @@ int mylite_temporary_catalog_update_table_comment(
     int64_t table_id,
     const char *comment
 );
+int mylite_temporary_catalog_append_index(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    const struct mylite_catalog_index_descriptor *index,
+    const struct mylite_catalog_index_column_descriptor *index_columns,
+    size_t index_column_count
+);
+int mylite_temporary_catalog_remove_index_by_id(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    int64_t index_id
+);
 
 int mylite_temporary_catalog_try_read_table_by_name(
     const struct mylite_temporary_catalog *catalog,

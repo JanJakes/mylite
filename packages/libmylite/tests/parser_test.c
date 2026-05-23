@@ -73,6 +73,7 @@ static int test_addtime_subtime_functions(void);
 static int test_date_format_function(void);
 static int test_time_format_function(void);
 static int test_datediff_function(void);
+static int test_timediff_function(void);
 static int test_timestampdiff_function(void);
 static int test_unix_timestamp_function(void);
 static int test_from_unixtime_function(void);
@@ -391,6 +392,7 @@ int main(void) {
     failures += test_date_format_function();
     failures += test_time_format_function();
     failures += test_datediff_function();
+    failures += test_timediff_function();
     failures += test_timestampdiff_function();
     failures += test_unix_timestamp_function();
     failures += test_from_unixtime_function();
@@ -3931,6 +3933,120 @@ static int test_datediff_function(void) {
 
     failures += parse_sql(
         "CREATE TABLE datediff (datediff INT); SELECT datediff FROM datediff;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_timediff_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT TIMEDIFF('01:02:03', '00:00:01'), "
+        "TimeDiff(started_at, finished_at) AS elapsed FROM options;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_TIMEDIFF_FUNCTION, "timediff");
+    failures +=
+        expect_span_text(first_expression, "TIMEDIFF('01:02:03', '00:00:01')", "timediff span");
+    failures += expect_child_count(first_expression, 2U, "timediff child count");
+    failures +=
+        expect_literal(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "left");
+    failures +=
+        expect_literal(child_at(first_expression, 1U), MYLITE_SQL_AST_LITERAL_STRING, "right");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_TIMEDIFF_FUNCTION,
+        "timediff column function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "timediff column left"
+    );
+    failures += expect_node(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "timediff column right"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "timediff alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO TIMEDIFF(NULL, 'bad');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "timediff do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_TIMEDIFF_FUNCTION, "do timediff");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT TIMEDIFF(), TIMEDIFF('01:02:03'), TIMEDIFF('01:02:03','00:00:01','x');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR,
+        "timediff no arg count"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR,
+        "timediff one arg count"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR,
+        "timediff three arg count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT TIMEDIFF ('01:02:03', '00:00:01') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "SELECT TIMEDIFF ('01:02:03', '00:00:01') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE timediff (timediff INT); SELECT timediff FROM timediff;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "CREATE TABLE timediff (timediff INT); SELECT timediff FROM timediff;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

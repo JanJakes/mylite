@@ -868,6 +868,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "subtime_function";
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
         return "subtime_argument_count_error";
+    case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
+        return "timediff_function";
+    case MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR:
+        return "timediff_argument_count_error";
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:

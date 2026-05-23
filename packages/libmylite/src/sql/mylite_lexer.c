@@ -1018,6 +1018,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"THREAD_PRIORITY", 0U},
         {"TIES", 0U},
         {"TIME", 0U},
+        {"TIMEDIFF", 0U},
         {"TIMESTAMP", 0U},
         {"TIMESTAMPADD", 0U},
         {"TIMESTAMPDIFF", 0U},

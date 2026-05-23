@@ -245,6 +245,26 @@ expect_output \
 "SELECT id, TIMEDIFF(d,d2), TIMEDIFF(tm,tm2), TIMEDIFF(dt,dt2), "\
 "TIMEDIFF(dt,ts), TIMEDIFF(d,dt), TIMEDIFF(tm,dt), @@warning_count FROM t ORDER BY id;"
 
+row_warning_expected=$(cat <<EXPECTED
+1	NULL
+2	NULL
+1
+Warning	1292	Truncated incorrect time value: 'bad'
+1	838:59:59
+1
+Warning	1292	Truncated incorrect time value: '840:02:02'
+EXPECTED
+)
+expect_output \
+    "row backed timediff warnings" \
+    "$row_warning_expected" \
+    "USE ${DATABASE}; DO 0; "\
+"SELECT id, TIMEDIFF(tm,'bad') FROM t ORDER BY id; "\
+"SHOW COUNT(*) WARNINGS; SHOW WARNINGS; "\
+"DO 0; "\
+"SELECT id, TIMEDIFF(tm,'-838:59:59') FROM t WHERE id = 1; "\
+"SHOW COUNT(*) WARNINGS; SHOW WARNINGS;"
+
 expect_error \
     "timediff no args parameter count" \
     1582 \

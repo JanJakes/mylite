@@ -22,6 +22,7 @@
 #include "mylite_string_trim.h"
 #include "mylite_string_unhex.h"
 #include "mylite_temporal_extract.h"
+#include "mylite_timediff.h"
 #include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
 #include "mylite_uuid.h"
@@ -46,6 +47,7 @@ static int initialize_function_registration_surface(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
 );
+static int initialize_temporal_core_function_registration_surface(sqlite3 *sqlite);
 static int initialize_collation_registration_surface(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
@@ -216,13 +218,7 @@ static int initialize_function_registration_surface(
         rc = mylite_sqlite_register_group_concat_aggregate_function(sqlite);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_date_format_function(sqlite);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_date_interval_second_function(sqlite);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_datediff_function(sqlite);
+        rc = initialize_temporal_core_function_registration_surface(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_integer_arithmetic_functions(sqlite);
@@ -232,6 +228,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_timestampdiff_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_timediff_function(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_unix_timestamp_function(sqlite);
@@ -288,6 +287,18 @@ static int initialize_function_registration_surface(
     state->function_registration_surface_is_initialized = true;
 
     return MYLITE_OK;
+}
+
+static int initialize_temporal_core_function_registration_surface(sqlite3 *sqlite) {
+    int rc = mylite_sqlite_register_date_format_function(sqlite);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_date_interval_second_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_datediff_function(sqlite);
+    }
+    return rc;
 }
 
 static int initialize_collation_registration_surface(

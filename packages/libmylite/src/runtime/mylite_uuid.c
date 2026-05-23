@@ -11,6 +11,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+
+static const uint64_t uuid_unix_epoch_offset_100ns = 122192928000000000ULL;
 
 enum {
     mysql_error_incorrect_string_value = 1411,
@@ -42,6 +45,20 @@ enum {
     uuid_low_nibble_mask = 0x0f,
     uuid_printable_minimum = 0x20,
     uuid_printable_maximum = 0x7e,
+    uuid_100ns_per_second = 10000000,
+    uuid_clock_sequence_mask = 0x3fff,
+    uuid_clock_sequence_high_mask = 0x3f,
+    uuid_version_time_based = 0x1000,
+    uuid_variant_rfc4122 = 0x80,
+    uuid_node_multicast_bit = 0x01,
+    uuid_time_mid_shift = 32U,
+    uuid_time_high_shift = 48U,
+    uuid_time_high_mask = 0x0fffU,
+    uuid_clock_sequence_high_shift = 8U,
+    uuid_uint32_high_shift = 24U,
+    uuid_uint32_mid_shift = 16U,
+    uuid_uint32_low_shift = 8U,
+    uuid_uint16_high_shift = 8U,
 };
 
 struct sqlite_uuid_function_values {
@@ -56,6 +73,12 @@ struct sqlite_value_byte_result {
     bool ok;
 };
 
+struct uuid_generation_fields {
+    uint64_t timestamp_100ns;
+    uint16_t clock_sequence;
+};
+
+static void uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void is_uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void uuid_to_bin_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void bin_to_uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -73,6 +96,16 @@ static struct sqlite_value_byte_result sqlite_value_bytes(
     char decimal_text[sqlite_integer_text_capacity]
 );
 static bool sqlite_swap_flag(sqlite3_value *value);
+static void initialize_uuid_generation_state(struct mylite_db *database);
+static uint64_t next_uuid_timestamp_100ns(struct mylite_db *database);
+static uint64_t current_uuid_timestamp_100ns(void);
+static void populate_uuid_bytes(
+    struct uuid_generation_fields fields,
+    const unsigned char node[MYLITE_SESSION_UUID_NODE_SIZE],
+    unsigned char out_bytes[MYLITE_UUID_BINARY_SIZE]
+);
+static void store_uuid_uint32(unsigned char *destination, uint32_t value);
+static void store_uuid_uint16(unsigned char *destination, uint16_t value);
 static bool parse_uuid_string(
     const void *input,
     size_t input_size,
@@ -212,8 +245,46 @@ int mylite_uuid_set_incorrect_string_error(
     return MYLITE_ERROR;
 }
 
+int mylite_uuid_generate(struct mylite_db *database, char out_text[MYLITE_UUID_TEXT_SIZE + 1U]) {
+    unsigned char bytes[MYLITE_UUID_BINARY_SIZE];
+    uint64_t timestamp = 0U;
+
+    if (database == NULL || out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    if (!database->session.uuid_state_initialized) {
+        initialize_uuid_generation_state(database);
+    }
+
+    timestamp = next_uuid_timestamp_100ns(database);
+    populate_uuid_bytes(
+        (struct uuid_generation_fields){
+            .timestamp_100ns = timestamp,
+            .clock_sequence = database->session.uuid_clock_sequence,
+        },
+        database->session.uuid_node,
+        bytes
+    );
+    format_uuid_string(bytes, out_text);
+    return MYLITE_OK;
+}
+
 int mylite_sqlite_register_uuid_functions(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_uuid",
+            .argument_count = 0,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = uuid_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
         {
             .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
             .name = "_mylite_is_uuid",
@@ -286,6 +357,36 @@ int mylite_sqlite_register_uuid_functions(sqlite3 *sqlite) {
         registrations,
         sizeof(registrations) / sizeof(registrations[0])
     );
+}
+
+static void uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct mylite_db *database = NULL;
+    char output[MYLITE_UUID_TEXT_SIZE + 1U];
+    int rc = MYLITE_OK;
+
+    (void)argv;
+    if (context == NULL || argc != 0) {
+        sqlite3_result_error(context, "invalid MyLite UUID callback", -1);
+        return;
+    }
+
+    database = mylite_sqlite_bootstrap_owner_from_context(context);
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite UUID owner", -1);
+        return;
+    }
+
+    rc = mylite_uuid_generate(database, output);
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "MyLite UUID failed", -1);
+        return;
+    }
+
+    sqlite3_result_text(context, output, MYLITE_UUID_TEXT_SIZE, SQLITE_TRANSIENT);
 }
 
 static void is_uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -501,6 +602,72 @@ static bool sqlite_swap_flag(sqlite3_value *value) {
         return false;
     }
     return sqlite3_value_int64(value) != 0;
+}
+
+static void initialize_uuid_generation_state(struct mylite_db *database) {
+    uint16_t sequence = 0U;
+
+    sqlite3_randomness((int)sizeof(sequence), &sequence);
+    sqlite3_randomness((int)sizeof(database->session.uuid_node), database->session.uuid_node);
+    database->session.uuid_clock_sequence = (uint16_t)(sequence & uuid_clock_sequence_mask);
+    database->session.uuid_node[0] |= uuid_node_multicast_bit;
+    database->session.uuid_state_initialized = true;
+}
+
+static uint64_t next_uuid_timestamp_100ns(struct mylite_db *database) {
+    uint64_t timestamp = current_uuid_timestamp_100ns();
+
+    if (timestamp <= database->session.uuid_last_timestamp_100ns) {
+        timestamp = database->session.uuid_last_timestamp_100ns + 1U;
+    }
+    database->session.uuid_last_timestamp_100ns = timestamp;
+    return timestamp;
+}
+
+static uint64_t current_uuid_timestamp_100ns(void) {
+    time_t seconds = time(NULL);
+
+    if (seconds < (time_t)0) {
+        seconds = (time_t)0;
+    }
+    return uuid_unix_epoch_offset_100ns + ((uint64_t)seconds * uuid_100ns_per_second);
+}
+
+static void populate_uuid_bytes(
+    struct uuid_generation_fields fields,
+    const unsigned char node[MYLITE_SESSION_UUID_NODE_SIZE],
+    unsigned char out_bytes[MYLITE_UUID_BINARY_SIZE]
+) {
+    uint32_t time_low = (uint32_t)(fields.timestamp_100ns & UINT32_MAX);
+    uint16_t time_mid = (uint16_t)((fields.timestamp_100ns >> uuid_time_mid_shift) & UINT16_MAX);
+    uint16_t time_high =
+        (uint16_t)((fields.timestamp_100ns >> uuid_time_high_shift) & uuid_time_high_mask);
+
+    memset(out_bytes, 0, MYLITE_UUID_BINARY_SIZE);
+    store_uuid_uint32(out_bytes + uuid_time_low_offset, time_low);
+    store_uuid_uint16(out_bytes + uuid_time_mid_offset, time_mid);
+    store_uuid_uint16(
+        out_bytes + uuid_time_high_offset,
+        (uint16_t)(time_high | uuid_version_time_based)
+    );
+    out_bytes[uuid_tail_offset] =
+        (unsigned char)(uuid_variant_rfc4122 |
+                        ((fields.clock_sequence >> uuid_clock_sequence_high_shift) &
+                         uuid_clock_sequence_high_mask));
+    out_bytes[uuid_tail_offset + 1U] = (unsigned char)(fields.clock_sequence & UINT8_MAX);
+    memcpy(out_bytes + uuid_node_offset, node, MYLITE_SESSION_UUID_NODE_SIZE);
+}
+
+static void store_uuid_uint32(unsigned char *destination, uint32_t value) {
+    destination[0] = (unsigned char)((value >> uuid_uint32_high_shift) & UINT8_MAX);
+    destination[1] = (unsigned char)((value >> uuid_uint32_mid_shift) & UINT8_MAX);
+    destination[2] = (unsigned char)((value >> uuid_uint32_low_shift) & UINT8_MAX);
+    destination[3] = (unsigned char)(value & UINT8_MAX);
+}
+
+static void store_uuid_uint16(unsigned char *destination, uint16_t value) {
+    destination[0] = (unsigned char)((value >> uuid_uint16_high_shift) & UINT8_MAX);
+    destination[1] = (unsigned char)(value & UINT8_MAX);
 }
 
 static bool parse_uuid_string(

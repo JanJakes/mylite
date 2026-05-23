@@ -1071,6 +1071,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"UTC_DATE", MYLITE_SQL_KEYWORD_RESERVED},
         {"UTC_TIME", MYLITE_SQL_KEYWORD_RESERVED},
         {"UTC_TIMESTAMP", MYLITE_SQL_KEYWORD_RESERVED},
+        {"UUID", 0U},
         {"UUID_TO_BIN", 0U},
         {"VALIDATION", 0U},
         {"VALUE", 0U},

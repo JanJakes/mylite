@@ -28,6 +28,7 @@ enum {
     MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY = MYLITE_SESSION_USER_VARIABLE_NAME_MAX_BYTES + 1,
     MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE = 28800,
     MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE = 1024,
+    MYLITE_SESSION_UUID_NODE_SIZE = 6,
 };
 
 #define MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT                                                       \
@@ -138,6 +139,7 @@ struct mylite_session_state {
     uint64_t interactive_timeout;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
+    uint64_t uuid_last_timestamp_100ns;
     struct mylite_session_savepoint *savepoints;
     size_t savepoint_count;
     size_t savepoint_capacity;
@@ -155,6 +157,8 @@ struct mylite_session_state {
     int64_t active_statement_time;
     struct mylite_temporary_catalog temporary_catalog;
     int time_zone_offset_minutes;
+    unsigned char uuid_node[MYLITE_SESSION_UUID_NODE_SIZE];
+    uint16_t uuid_clock_sequence;
     enum mylite_transaction_isolation session_transaction_isolation;
     enum mylite_transaction_access_mode session_transaction_access_mode;
     enum mylite_transaction_isolation next_transaction_isolation;
@@ -172,6 +176,7 @@ struct mylite_session_state {
     bool next_transaction_access_mode_from_system_variable;
     bool active_transaction_read_only;
     bool has_timestamp_override;
+    bool uuid_state_initialized;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
     char current_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
     char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];

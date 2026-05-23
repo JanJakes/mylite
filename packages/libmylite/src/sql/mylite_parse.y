@@ -4593,6 +4593,10 @@ expression(A) ::= UNHEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_UNHEX_FUNCTION, B, R);
 }
+expression(A) ::= UUID(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UUID_FUNCTION, R);
+}
 expression(A) ::= IS_UUID(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_IS_UUID_FUNCTION, B, R);
@@ -5067,6 +5071,10 @@ expression(A) ::= UNHEX(T) LPAREN expression(B) COMMA function_argument_list(C) 
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= UUID(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR, B, R);
 }
 expression(A) ::= IS_UUID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -6550,6 +6558,9 @@ identifier(A) ::= HEX(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UNHEX(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UUID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= IS_UUID(T). {

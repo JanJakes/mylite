@@ -2849,6 +2849,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID = 53,
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE = 54,
     PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF = 55,
+    PLANNED_ROW_SCALAR_EXPRESSION_UUID = 56,
 };
 
 enum {
@@ -13498,6 +13499,10 @@ static void populate_scalar_connection_string_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor,
     struct scalar_connection_string_result_column_shape shape
 );
+static void populate_uuid_string_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor,
+    bool nullable
+);
 static void populate_scalar_json_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor
@@ -14839,6 +14844,11 @@ static int unhex_function_value(
     struct session_scalar_cell *out_cell
 );
 static int uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int uuid_generate_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
@@ -22927,6 +22937,29 @@ static int plan_row_scalar_uuid_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int validate_row_scalar_uuid_expression_arity(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t child_count
+);
+static int plan_row_scalar_uuid_source_argument_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_sql_ast_node *swap_argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    bool *out_handled
+);
+static bool is_row_scalar_uuid_nested_function_argument(const struct mylite_sql_ast_node *argument);
+static int plan_row_scalar_constant_uuid_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_uuid_nested_expression(
     struct mylite_db *database,
     const struct row_scalar_uuid_column_expression_request *request,
@@ -27878,6 +27911,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
@@ -49482,6 +49517,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
@@ -81889,6 +81926,9 @@ static int populate_row_scalar_expression_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+        populate_uuid_string_result_column_descriptor(descriptor, true);
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;
@@ -84110,7 +84150,8 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         !text_equals_ascii_case_insensitive(column_name, "log10") &&
         !text_equals_ascii_case_insensitive(column_name, "log2") &&
         !text_equals_ascii_case_insensitive(column_name, "pow") &&
-        !text_equals_ascii_case_insensitive(column_name, "power")) {
+        !text_equals_ascii_case_insensitive(column_name, "power") &&
+        !text_equals_ascii_case_insensitive(column_name, "uuid")) {
         return MYLITE_OK;
     }
 
@@ -84504,6 +84545,9 @@ static int populate_scalar_function_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+        populate_uuid_string_result_column_descriptor(descriptor, true);
+        return MYLITE_OK;
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;
@@ -84754,6 +84798,22 @@ static void populate_scalar_connection_string_result_column_descriptor(
     descriptor->flags = shape.extra_flags;
     descriptor->nullable = shape.nullable;
     if (!shape.nullable) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
+    }
+}
+
+static void populate_uuid_string_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor,
+    bool nullable
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor->charset_id = mysql_collation_utf8mb3_general_ci_id;
+    descriptor->collation_id = mysql_collation_utf8mb3_general_ci_id;
+    descriptor->display_length = MYLITE_UUID_TEXT_SIZE;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = 0U;
+    descriptor->nullable = nullable;
+    if (!nullable) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
     }
 }
@@ -85474,6 +85534,8 @@ static const char *argument_count_error_node_function_name(
         return "HEX";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         return "UNHEX";
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+        return "UUID";
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
         return "IS_UUID";
     case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
@@ -85837,6 +85899,11 @@ static int session_scalar_value(
         return unhex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UNHEX");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+        return uuid_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UUID");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
@@ -88637,6 +88704,11 @@ static int string_length_session_scalar_argument_value(
     case MYLITE_SQL_AST_RAND_FUNCTION:
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
         return rand_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+        return uuid_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return current_timestamp_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
@@ -93649,6 +93721,7 @@ static int charset_collation_scalar_result(
         }
         break;
     }
+    case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
         return charset_collation_select_result(
@@ -93765,6 +93838,9 @@ static int coercibility_non_concat_scalar_result(
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
         *out_result = "3";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+        *out_result = "4";
         return MYLITE_OK;
     case MYLITE_SQL_AST_RAND_FUNCTION:
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION: {
@@ -94154,6 +94230,7 @@ static int validate_charset_collation_concat_argument(
     }
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
         return MYLITE_OK;
     case MYLITE_SQL_AST_RAND_FUNCTION:
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION: {
@@ -98649,6 +98726,8 @@ static int uuid_function_value(
     }
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+        return uuid_generate_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
         return is_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
@@ -98661,6 +98740,34 @@ static int uuid_function_value(
 
     set_uuid_unsupported_error(database, "UUID conversion");
     return MYLITE_ERROR;
+}
+
+static int uuid_generate_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    char uuid_text[MYLITE_UUID_TEXT_SIZE + 1U];
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UUID_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 0U) {
+        set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_uuid_generate(database, uuid_text);
+    if (rc == MYLITE_OK) {
+        rc = duplicate_text(database, uuid_text, &out_cell->owned_text);
+    }
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->owned_text;
+    }
+    return rc;
 }
 
 static int is_uuid_function_value(
@@ -99965,6 +100072,15 @@ static int uuid_scalar_argument_value(
 ) {
     if (out_cell == NULL || out_handled == NULL) {
         return MYLITE_MISUSE;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        *out_handled = false;
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION) {
+        *out_handled = true;
+        return uuid_generate_function_value(database, expression, out_cell);
     }
     return hex_scalar_argument_value(database, expression, out_cell, out_handled);
 }
@@ -108006,6 +108122,8 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_RAND_FUNCTION:
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
@@ -109239,6 +109357,8 @@ static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expr
 
     child_count = mylite_sql_ast_node_child_count(expression);
     switch (expression->kind) {
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+        return child_count == 0U;
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
         if (child_count != 1U) {
             return false;
@@ -109299,6 +109419,7 @@ static bool is_uuid_value_projection_argument_supported(
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -133076,7 +133197,7 @@ static int plan_row_scalar_uuid_expression(
 ) {
     const struct mylite_sql_ast_node *argument = NULL;
     const struct mylite_sql_ast_node *swap_argument = NULL;
-    struct session_scalar_cell cell = {0};
+    bool handled_source_expression = false;
     size_t child_count = 0U;
     int rc = MYLITE_OK;
 
@@ -133086,24 +133207,87 @@ static int plan_row_scalar_uuid_expression(
         return MYLITE_ERROR;
     }
     child_count = mylite_sql_ast_node_child_count(expression);
-    if (expression->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION && child_count != 1U) {
-        set_native_function_parameter_count_error(database, "IS_UUID");
-        return MYLITE_ERROR;
+    rc = validate_row_scalar_uuid_expression_arity(database, expression, child_count);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    if ((expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
-         expression->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION) &&
-        child_count != 1U && child_count != 2U) {
-        set_native_function_parameter_count_error(
-            database,
-            expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ? "UUID_TO_BIN" : "BIN_TO_UUID"
-        );
-        return MYLITE_ERROR;
+    if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION) {
+        if (has_source) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UUID;
+            out_expression->argument_count = 0U;
+            out_expression->arguments = NULL;
+            return MYLITE_OK;
+        }
     }
 
     argument = unwrap_parenthesized_expression(child_at(expression, 0U));
     swap_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    rc = plan_row_scalar_uuid_source_argument_expression(
+        database,
+        expression,
+        argument,
+        swap_argument,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression,
+        &handled_source_expression
+    );
+    if (rc != MYLITE_OK || handled_source_expression) {
+        return rc;
+    }
+
+    return plan_row_scalar_constant_uuid_expression(database, expression, out_expression);
+}
+
+static int validate_row_scalar_uuid_expression_arity(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t child_count
+) {
+    if (expression->kind == MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION && child_count != 0U) {
+        set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION && child_count != 1U) {
+        set_native_function_parameter_count_error(database, "IS_UUID");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION && child_count != 1U &&
+        child_count != 2U) {
+        set_native_function_parameter_count_error(database, "UUID_TO_BIN");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION && child_count != 1U &&
+        child_count != 2U) {
+        set_native_function_parameter_count_error(database, "BIN_TO_UUID");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_uuid_source_argument_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_sql_ast_node *swap_argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    bool *out_handled
+) {
+    *out_handled = false;
+
     if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
                              argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        *out_handled = true;
         if (!has_source) {
             return uuid_unknown_column_argument(database, argument);
         }
@@ -133120,10 +133304,9 @@ static int plan_row_scalar_uuid_expression(
             out_expression
         );
     }
-    if (has_source && argument != NULL &&
-        (argument->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
-         argument->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
-         argument->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION)) {
+    if (has_source && expression->kind != MYLITE_SQL_AST_UUID_FUNCTION &&
+        is_row_scalar_uuid_nested_function_argument(argument)) {
+        *out_handled = true;
         return plan_row_scalar_uuid_nested_expression(
             database,
             &(struct row_scalar_uuid_column_expression_request){
@@ -133137,6 +133320,30 @@ static int plan_row_scalar_uuid_expression(
             out_expression
         );
     }
+    return MYLITE_OK;
+}
+
+static bool is_row_scalar_uuid_nested_function_argument(
+    const struct mylite_sql_ast_node *argument
+) {
+    if (argument == NULL) {
+        return false;
+    }
+    if (argument->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
+        argument->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+        argument->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION) {
+        return true;
+    }
+    return false;
+}
+
+static int plan_row_scalar_constant_uuid_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
 
     if (!is_uuid_projection_expression(expression)) {
         set_uuid_unsupported_error(database, "UUID conversion");
@@ -133376,6 +133583,8 @@ static int plan_row_scalar_binary_string_expression(
     *out_handled = true;
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
@@ -135020,6 +135229,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -135097,6 +135307,18 @@ static int plan_row_scalar_non_concat_expression(
             return MYLITE_ERROR;
         }
         return plan_row_scalar_session_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR) {
+        return plan_row_scalar_uuid_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
@@ -139075,6 +139297,7 @@ static bool row_scalar_expression_contains_row_function(
                   MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
             current->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION ||
@@ -154215,6 +154438,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -155192,6 +155416,7 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_hex_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -155272,6 +155497,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -155412,6 +155638,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -155786,8 +156013,9 @@ static int append_row_scalar_uuid_expression_sql(
         expression == NULL ? NULL : row_scalar_uuid_sql_function_name(expression->kind);
     int rc = MYLITE_OK;
 
-    if (function_name == NULL || expression->argument_count == 0U ||
-        expression->arguments == NULL || expression->argument_count > 2U) {
+    if (function_name == NULL || expression->argument_count > 2U ||
+        (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
 
@@ -155829,6 +156057,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_uuid_leaf_argument_sql(string, argument, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -155901,8 +156130,9 @@ static int append_row_scalar_uuid_inner_expression_sql(
         expression == NULL ? NULL : row_scalar_uuid_sql_function_name(expression->kind);
     int rc = MYLITE_OK;
 
-    if (function_name == NULL || expression->argument_count == 0U ||
-        expression->arguments == NULL || expression->argument_count > 2U) {
+    if (function_name == NULL || expression->argument_count > 2U ||
+        (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
 
@@ -155993,6 +156223,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -156010,6 +156241,8 @@ static int append_row_scalar_uuid_leaf_argument_sql(
 
 static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_expression_kind kind) {
     switch (kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+        return "_mylite_uuid";
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
         return "_mylite_is_uuid";
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -157183,6 +157416,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -157384,6 +157618,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -157459,6 +157694,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -157867,6 +158103,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -157946,6 +158183,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -164202,6 +164440,7 @@ static int bind_row_scalar_expression_parameters(
         return bind_row_scalar_hex_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return bind_row_scalar_unhex_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -164286,6 +164525,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -164403,6 +164643,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -165099,6 +165340,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -165285,6 +165527,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -165355,6 +165598,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -165512,8 +165756,9 @@ static int bind_row_scalar_uuid_expression_parameters(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count == 0U || expression->arguments == NULL ||
-        expression->argument_count > 2U) {
+    if (expression == NULL || expression->argument_count > 2U ||
+        (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
 
@@ -165543,6 +165788,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return bind_row_scalar_uuid_leaf_argument_parameters(statement, argument, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -165617,8 +165863,9 @@ static int bind_row_scalar_uuid_inner_expression_parameters(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count == 0U || expression->arguments == NULL ||
-        expression->argument_count > 2U) {
+    if (expression == NULL || expression->argument_count > 2U ||
+        (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
 
@@ -165697,6 +165944,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:

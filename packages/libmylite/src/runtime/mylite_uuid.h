@@ -34,6 +34,7 @@ int mylite_uuid_set_incorrect_string_error(
     size_t input_size,
     const char *function_name
 );
+int mylite_uuid_generate(struct mylite_db *database, char out_text[MYLITE_UUID_TEXT_SIZE + 1U]);
 int mylite_sqlite_register_uuid_functions(sqlite3 *sqlite);
 
 #endif

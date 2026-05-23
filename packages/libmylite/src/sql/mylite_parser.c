@@ -7583,6 +7583,7 @@ static bool map_keyword_token(
         {"HEX", MYLITE_SQL_PARSE_HEX},
         {"UNHEX", MYLITE_SQL_PARSE_UNHEX},
         {"IS_UUID", MYLITE_SQL_PARSE_IS_UUID},
+        {"UUID", MYLITE_SQL_PARSE_UUID},
         {"UUID_TO_BIN", MYLITE_SQL_PARSE_UUID_TO_BIN},
         {"BIN_TO_UUID", MYLITE_SQL_PARSE_BIN_TO_UUID},
         {"AVG", MYLITE_SQL_PARSE_AVG},

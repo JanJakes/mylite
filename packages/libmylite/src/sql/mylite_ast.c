@@ -886,6 +886,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "datediff_argument_count_error";
     case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
         return "timestampdiff_function";
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
+        return "timestampadd_function";
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
         return "unix_timestamp_function";
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:

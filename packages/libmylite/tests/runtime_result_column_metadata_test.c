@@ -29,6 +29,8 @@ enum {
     mysql_version_function_display_length = 20,
     mysql_json_type_display_length = 68,
     mysql_scalar_var_string_decimals = 31,
+    mysql_datetime_display_length = 19,
+    mysql_temporal_function_string_display_length = 116,
     mysql_literal_string_abc_display_length = 12,
     mysql_bigint_literal_display_length = 20,
     mysql_large_integer_literal_display_length = 82,
@@ -357,7 +359,7 @@ static int test_descriptor_result_column_metadata(void) {
             .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
             .charset_id = mysql_collation_binary_id,
             .collation_id = mysql_collation_binary_id,
-            .display_length = 19U,
+            .display_length = mysql_datetime_display_length,
             .decimals = 0U,
             .nullable = 1,
         },
@@ -372,7 +374,7 @@ static int test_descriptor_result_column_metadata(void) {
             .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
             .charset_id = mysql_collation_binary_id,
             .collation_id = mysql_collation_binary_id,
-            .display_length = 19U,
+            .display_length = mysql_datetime_display_length,
             .decimals = 0U,
             .nullable = 1,
         },
@@ -588,6 +590,88 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(
+        database,
+        "SELECT TIMESTAMPADD(SECOND, 1, dt) AS d_shift, "
+        "TIMESTAMPADD(SECOND, 1, dttm) AS dttm_shift, "
+        "TIMESTAMPADD(SECOND, 1, ts) AS ts_shift, "
+        "TIMESTAMPADD(SECOND, 1, v) AS v_shift FROM meta LIMIT 0",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            timestampadd_row_column_count = 4,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            timestampadd_row_column_count,
+            "row TIMESTAMPADD metadata column count"
+        );
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "d_shift",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_datetime_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row TIMESTAMPADD DATE metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "dttm_shift",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_datetime_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row TIMESTAMPADD DATETIME metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            2U,
+            (struct expected_column_metadata){
+                .label = "ts_shift",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_datetime_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row TIMESTAMPADD TIMESTAMP metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            3U,
+            (struct expected_column_metadata){
+                .label = "v_shift",
+                .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
+                .flags = 0U,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_temporal_function_string_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "row TIMESTAMPADD string metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
     mylite_close(database);
     database = NULL;
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -736,6 +820,56 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 .nullable = 0,
             },
             "string scalar metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT TIMESTAMPADD(SECOND, 1, '2008-01-02') AS shifted, "
+        "DATE_ADD('2008-01-02', INTERVAL 1 SECOND) AS added FROM DUAL",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            date_interval_scalar_column_count = 2,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            date_interval_scalar_column_count,
+            "date interval scalar column count"
+        );
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "shifted",
+                .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
+                .flags = 0U,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_temporal_function_string_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "TIMESTAMPADD scalar string metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "added",
+                .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
+                .flags = 0U,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_temporal_function_string_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "DATE_ADD scalar string metadata"
         );
     }
     mylite_result_free(result);

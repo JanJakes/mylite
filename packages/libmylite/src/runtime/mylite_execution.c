@@ -451,6 +451,7 @@ enum {
     mysql_user_function_display_length = 1152,
     mysql_version_function_display_length = 20,
     mysql_json_type_display_length = 68,
+    mysql_temporal_string_function_display_length = 29,
     double_text_max_significant_digits = 17,
     double_text_capacity = 32,
     scalar_exact_decimal_part_capacity = literal_projection_max_significant_digits + 1,
@@ -12769,6 +12770,11 @@ static int populate_row_scalar_expression_result_column_descriptor(
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static int populate_row_scalar_date_interval_second_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
 static int copy_row_scalar_result_column_name(
     struct mylite_db *database,
     const struct planned_row_scalar_select_item *item,
@@ -13465,6 +13471,13 @@ static int populate_scalar_literal_result_column_descriptor(
 static int populate_scalar_function_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_scalar_temporal_string_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_scalar_datetime_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 );
 static int populate_scalar_string_literal_result_column_descriptor(
@@ -15355,6 +15368,21 @@ static bool date_format_numeric_equal_format_is_supported(const char *format, si
 static bool is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind kind);
 static const char *date_interval_second_function_name(enum mylite_sql_ast_node_kind kind);
 static bool date_interval_second_function_subtracts(enum mylite_sql_ast_node_kind kind);
+static int validate_date_interval_second_function_shape(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name
+);
+static int timestampadd_second_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit
+);
+static const struct mylite_sql_ast_node *date_interval_second_temporal_node(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *date_interval_second_interval_node(
+    const struct mylite_sql_ast_node *expression
+);
 static int set_date_interval_second_unsupported_error(
     struct mylite_db *database,
     const char *function_name,
@@ -27618,6 +27646,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
@@ -49223,6 +49252,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
@@ -81976,6 +82006,12 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
         populate_scalar_json_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+        return populate_row_scalar_date_interval_second_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
@@ -82012,7 +82048,6 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
@@ -82024,6 +82059,47 @@ static int populate_row_scalar_expression_result_column_descriptor(
     }
 
     return MYLITE_OK;
+}
+
+static int populate_row_scalar_date_interval_second_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct planned_row_scalar_expression *input_kind_argument = NULL;
+    enum mylite_date_interval_second_input_kind input_kind =
+        MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING;
+
+    if (expression == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression->argument_count <= 1U || expression->arguments == NULL) {
+        populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    }
+    input_kind_argument = &expression->arguments[1];
+    if (input_kind_argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
+        input_kind_argument->value.is_null || !input_kind_argument->value.is_text ||
+        !mylite_date_interval_second_input_kind_from_name(
+            input_kind_argument->value.text,
+            input_kind_argument->value.text_length,
+            &input_kind
+        )) {
+        populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    }
+
+    switch (input_kind) {
+    case MYLITE_DATE_INTERVAL_SECOND_INPUT_DATE:
+    case MYLITE_DATE_INTERVAL_SECOND_INPUT_DATETIME:
+    case MYLITE_DATE_INTERVAL_SECOND_INPUT_TIMESTAMP:
+        populate_scalar_datetime_result_column_descriptor(descriptor);
+        return MYLITE_OK;
+    case MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING:
+    default:
+        populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    }
 }
 
 static int copy_row_scalar_result_column_name(
@@ -84595,9 +84671,42 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
         populate_scalar_json_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
+        populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
     default:
         return MYLITE_OK;
     }
+}
+
+static void populate_scalar_temporal_string_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
+    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = mysql_temporal_string_function_display_length *
+                                 scalar_connection_max_bytes_per_character(database);
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = 0U;
+    descriptor->nullable = true;
+}
+
+static void populate_scalar_datetime_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DATETIME;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = datetime_text_length;
+    descriptor->decimals = 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    descriptor->nullable = true;
 }
 
 static int populate_scalar_string_literal_result_column_descriptor(
@@ -85951,6 +86060,7 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
         return date_interval_second_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
@@ -102482,14 +102592,15 @@ static int date_interval_second_value(
         return set_date_interval_second_unsupported_shape_error(database, function_name);
     }
     function_name = date_interval_second_function_name(expression->kind);
-    if (mylite_sql_ast_node_child_count(expression) != 2U) {
-        return set_date_interval_second_unsupported_shape_error(database, function_name);
+    rc = validate_date_interval_second_function_shape(database, expression, function_name);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     rc = date_interval_second_temporal_argument(
         database,
         function_name,
-        child_at(expression, 0U),
+        date_interval_second_temporal_node(expression),
         &input,
         &temporal_is_null
     );
@@ -102499,7 +102610,7 @@ static int date_interval_second_value(
     rc = date_interval_second_interval_argument(
         database,
         function_name,
-        child_at(expression, 1U),
+        date_interval_second_interval_node(expression),
         &interval_seconds,
         &interval_is_null
     );
@@ -102529,6 +102640,7 @@ static bool is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind 
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
         return true;
     default:
         return false;
@@ -102543,6 +102655,8 @@ static const char *date_interval_second_function_name(enum mylite_sql_ast_node_k
         return "ADDDATE";
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
         return "SUBDATE";
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
+        return "TIMESTAMPADD";
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     default:
         return "DATE_ADD";
@@ -102552,6 +102666,62 @@ static const char *date_interval_second_function_name(enum mylite_sql_ast_node_k
 static bool date_interval_second_function_subtracts(enum mylite_sql_ast_node_kind kind) {
     return (kind == MYLITE_SQL_AST_DATE_SUB_FUNCTION || kind == MYLITE_SQL_AST_SUBDATE_FUNCTION) !=
            0;
+}
+
+static int validate_date_interval_second_function_shape(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name
+) {
+    size_t child_count = 0U;
+
+    if (expression == NULL || function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        if (child_count != 3U) {
+            return set_date_interval_second_unsupported_shape_error(database, function_name);
+        }
+        return timestampadd_second_unit_from_ast(database, child_at(expression, 0U));
+    }
+    if (child_count != 2U) {
+        return set_date_interval_second_unsupported_shape_error(database, function_name);
+    }
+    return MYLITE_OK;
+}
+
+static int timestampadd_second_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit
+) {
+    char unit_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = copy_identifier_text(unit, unit_name, sizeof(unit_name), database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "SECOND") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_SECOND")) {
+        return MYLITE_OK;
+    }
+    set_unsupported_error(database, "TIMESTAMPADD() supports only SECOND and SQL_TSI_SECOND units");
+    return MYLITE_ERROR;
+}
+
+static const struct mylite_sql_ast_node *date_interval_second_temporal_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        return child_at(expression, 2U);
+    }
+    return child_at(expression, 0U);
+}
+
+static const struct mylite_sql_ast_node *date_interval_second_interval_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    return child_at(expression, 1U);
 }
 
 static int set_date_interval_second_unsupported_error(
@@ -109935,8 +110105,12 @@ static bool is_date_interval_second_projection_expression(
     if (expression == NULL || !is_date_interval_second_function_kind(expression->kind)) {
         return false;
     }
-    if (mylite_sql_ast_node_child_count(expression) != 2U) {
-        return false;
+    if (expression->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 3U) {
+            return false;
+        }
+        return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL &&
+                child_at(expression, 2U) != NULL) != 0;
     }
     return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
 }
@@ -110627,6 +110801,7 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
@@ -136646,12 +136821,15 @@ static int plan_row_scalar_date_interval_second_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || !is_date_interval_second_function_kind(expression->kind) ||
-        mylite_sql_ast_node_child_count(expression) != 2U) {
+    if (expression == NULL || !is_date_interval_second_function_kind(expression->kind)) {
         set_native_function_parameter_count_error(database, function_name);
         return MYLITE_ERROR;
     }
     function_name = date_interval_second_function_name(expression->kind);
+    rc = validate_date_interval_second_function_shape(database, expression, function_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     out_expression->arguments =
         (struct planned_row_scalar_expression *)calloc(4U, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
@@ -136663,7 +136841,7 @@ static int plan_row_scalar_date_interval_second_expression(
 
     rc = plan_row_scalar_date_interval_second_temporal_argument(
         database,
-        child_at(expression, 0U),
+        date_interval_second_temporal_node(expression),
         function_name,
         has_source,
         source_context,
@@ -136680,7 +136858,7 @@ static int plan_row_scalar_date_interval_second_expression(
     if (rc == MYLITE_OK) {
         rc = plan_row_scalar_date_interval_second_interval_argument(
             database,
-            child_at(expression, 1U),
+            date_interval_second_interval_node(expression),
             function_name,
             &out_expression->arguments[2]
         );

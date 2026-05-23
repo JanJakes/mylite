@@ -4058,6 +4058,11 @@ expression(A) ::=
     A = mylite_sql_parser_make_three_argument_function(
         state, T, MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION, U, B, C, R);
 }
+expression(A) ::=
+    TIMESTAMPADD(T) LPAREN timestampdiff_unit(U) COMMA expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION, U, B, C, R);
+}
 expression(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
@@ -6429,6 +6434,9 @@ identifier(A) ::= DATEDIFF(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TIMESTAMPDIFF(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TIMESTAMPADD(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SQL_TSI_DAY(T). {

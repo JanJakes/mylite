@@ -74,6 +74,7 @@ static int test_date_format_function(void);
 static int test_time_format_function(void);
 static int test_datediff_function(void);
 static int test_timediff_function(void);
+static int test_timestampadd_second_function(void);
 static int test_timestampdiff_function(void);
 static int test_unix_timestamp_function(void);
 static int test_from_unixtime_function(void);
@@ -395,6 +396,7 @@ int main(void) {
     failures += test_time_format_function();
     failures += test_datediff_function();
     failures += test_timediff_function();
+    failures += test_timestampadd_second_function();
     failures += test_timestampdiff_function();
     failures += test_unix_timestamp_function();
     failures += test_from_unixtime_function();
@@ -4166,6 +4168,137 @@ static int test_timestampdiff_function(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT TIMESTAMPDIFF(DAY_HOUR, '2008-01-01', '2008-01-02');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_timestampadd_second_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT TIMESTAMPADD(SECOND, 1, '2008-01-02'), "
+        "timestampadd(SQL_TSI_SECOND, +1, created_at) AS shifted FROM options;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION, "timestampadd");
+    failures += expect_span_text(
+        first_expression,
+        "TIMESTAMPADD(SECOND, 1, '2008-01-02')",
+        "timestampadd span"
+    );
+    failures += expect_child_count(first_expression, 3U, "timestampadd child count");
+    failures +=
+        expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "timestampadd unit");
+    failures += expect_span_text(child_at(first_expression, 0U), "SECOND", "timestampadd unit");
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "timestampadd interval"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestampadd temporal"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION,
+        "timestampadd column function"
+    );
+    failures +=
+        expect_span_text(child_at(second_expression, 0U), "SQL_TSI_SECOND", "alias unit span");
+    failures += expect_node(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "signed timestampadd interval"
+    );
+    failures += expect_node(
+        child_at(second_expression, 2U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "timestampadd column temporal"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "timestampadd alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DO TIMESTAMPADD(SECOND, NULL, '2008-01-01');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "timestampadd do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION,
+        "do timestampadd"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT TIMESTAMPADD (SECOND, 1, '2008-01-02') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION,
+        "timestampadd whitespace"
+    );
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "timestampadd dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE timestampadd (timestampadd INT); SELECT timestampadd FROM timestampadd;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT TIMESTAMPADD(MINUTE, 1, '2008-01-02');", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TIMESTAMPADD();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TIMESTAMPADD(SECOND);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT TIMESTAMPADD(SECOND, 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT TIMESTAMPADD(SECOND, 1, '2008-01-02', 'extra');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT TIMESTAMPADD('SECOND', 1, '2008-01-02');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT TIMESTAMPADD(SQL_TSI_MICROSECOND, 1, '2008-01-02');",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

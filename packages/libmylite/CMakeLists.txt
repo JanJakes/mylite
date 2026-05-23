@@ -806,6 +806,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_date_add_second_test)
 
+  add_executable(mylite_runtime_timestampadd_second_function_test
+    tests/runtime_timestampadd_second_function_test.c
+  )
+  target_link_libraries(mylite_runtime_timestampadd_second_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_timestampadd_second_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_timestampadd_second_function_test)
+
   add_executable(mylite_runtime_addtime_subtime_functions_test
     tests/runtime_addtime_subtime_functions_test.c
   )
@@ -3845,6 +3856,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.date_add_second
     COMMAND mylite_runtime_date_add_second_test
+  )
+  add_test(
+    NAME libmylite.runtime.timestampadd_second_function
+    COMMAND mylite_runtime_timestampadd_second_function_test
   )
   add_test(
     NAME libmylite.runtime.addtime_subtime_functions

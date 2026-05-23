@@ -1630,6 +1630,14 @@ enum temporal_text_kind {
     TEMPORAL_TEXT_DEFERRED = 5,
 };
 
+enum temporal_storage_truncation {
+    TEMPORAL_STORAGE_TRUNCATION_NONE = 0,
+    TEMPORAL_STORAGE_TRUNCATION_NOTE = 1,
+    TEMPORAL_STORAGE_TRUNCATION_WARNING = 2,
+};
+
+struct temporal_predicate_normalization_input;
+
 enum planned_index_type_option {
     PLANNED_INDEX_TYPE_DEFAULT = 0,
     PLANNED_INDEX_TYPE_BTREE = 1,
@@ -20194,6 +20202,22 @@ static int canonicalize_date_text(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_relaxed_date_storage_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static bool normalize_date_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text,
+    enum temporal_storage_truncation *out_truncation
+);
+static bool datetime_storage_time_is_midnight(const char *text);
+static char *copy_temporal_text(struct mylite_db *database, const char *text, size_t text_length);
 static int canonicalize_time_text(
     struct mylite_db *database,
     char *text,
@@ -20210,6 +20234,35 @@ static int canonicalize_datetime_text(
     const char *column_name,
     size_t row_number,
     bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_relaxed_datetime_storage_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    int target_offset_minutes,
+    struct planned_value *out_value
+);
+static int canonicalize_timestamp_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_relaxed_timestamp_storage_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    int target_offset_minutes,
     struct planned_value *out_value
 );
 static bool session_sql_mode_is_strict(const struct mylite_db *database);
@@ -27051,6 +27104,12 @@ static int append_incorrect_date_predicate_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name
+);
+static int append_incorrect_date_value_note(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
 );
 static int append_bad_null_warning(struct mylite_db *database, const char *column_name);
 static int append_no_default_warning(struct mylite_db *database, const char *column_name);
@@ -79531,7 +79590,7 @@ static int convert_date_literal(
         return rc;
     }
 
-    return canonicalize_date_text(
+    return convert_relaxed_date_storage_text(
         database,
         text,
         text_length,
@@ -79540,6 +79599,136 @@ static int convert_date_literal(
         ignore_errors,
         out_value
     );
+}
+
+static int convert_relaxed_date_storage_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char normalized[date_text_length + 1U];
+    char *copy = NULL;
+    struct temporal_predicate_normalization_input normalization = {0};
+    enum temporal_storage_truncation truncation = TEMPORAL_STORAGE_TRUNCATION_NONE;
+    int rc = MYLITE_OK;
+
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes =
+        database == NULL ? 0 : database->session.time_zone_offset_minutes;
+    if (normalize_date_storage_text(&normalization, normalized, &truncation)) {
+        if (truncation == TEMPORAL_STORAGE_TRUNCATION_WARNING && !ignore_errors &&
+            temporal_sql_mode_is_strict(database)) {
+            set_incorrect_date_value_error(database, text, column_name, row_number);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        copy = copy_temporal_text(database, normalized, date_text_length);
+        if (copy == NULL) {
+            free(text);
+            return MYLITE_NOMEM;
+        }
+        rc = canonicalize_date_text(
+            database,
+            copy,
+            date_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        if (rc != MYLITE_OK) {
+            free(text);
+            return rc;
+        }
+        if (truncation == TEMPORAL_STORAGE_TRUNCATION_NOTE) {
+            if (temporal_sql_mode_is_strict(database)) {
+                rc = append_incorrect_date_value_note(database, text, column_name, row_number);
+            } else {
+                rc = append_data_truncated_note(database, column_name, row_number);
+            }
+        } else if (truncation == TEMPORAL_STORAGE_TRUNCATION_WARNING) {
+            rc = append_data_truncated_warning(database, column_name, row_number);
+        }
+        free(text);
+        return rc;
+    }
+
+    return canonicalize_date_text(
+        database,
+        text,
+        text_length,
+        column_name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static bool normalize_date_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text,
+    enum temporal_storage_truncation *out_truncation
+) {
+    char normalized_datetime[datetime_text_length + 1U];
+    const char *text = input == NULL ? NULL : input->text;
+
+    if (input == NULL || text == NULL || out_text == NULL || out_truncation == NULL) {
+        return false;
+    }
+
+    if (input->text_length == datetime_text_length &&
+        (text[datetime_date_time_separator_offset] == ' ' ||
+         text[datetime_date_time_separator_offset] == 'T')) {
+        memcpy(normalized_datetime, text, datetime_text_length);
+        normalized_datetime[datetime_date_time_separator_offset] = ' ';
+        normalized_datetime[datetime_text_length] = '\0';
+        if (!datetime_text_has_canonical_shape(normalized_datetime, datetime_text_length)) {
+            return false;
+        }
+        memcpy(out_text, normalized_datetime, date_text_length);
+        out_text[date_text_length] = '\0';
+        if (datetime_storage_time_is_midnight(text)) {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NONE;
+        } else {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NOTE;
+        }
+        return date_text_has_canonical_shape(out_text, date_text_length);
+    }
+
+    if (normalize_iso_temporal_predicate_text(input, normalized_datetime)) {
+        memcpy(out_text, normalized_datetime, date_text_length);
+        out_text[date_text_length] = '\0';
+        if (datetime_storage_time_is_midnight(text)) {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NONE;
+        } else {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NOTE;
+        }
+        return date_text_has_canonical_shape(out_text, date_text_length);
+    }
+    if (!normalize_z_temporal_predicate_text(text, input->text_length, normalized_datetime)) {
+        return false;
+    }
+
+    memcpy(out_text, normalized_datetime, date_text_length);
+    out_text[date_text_length] = '\0';
+    *out_truncation = TEMPORAL_STORAGE_TRUNCATION_WARNING;
+    return date_text_has_canonical_shape(out_text, date_text_length);
+}
+
+static bool datetime_storage_time_is_midnight(const char *text) {
+    if (text == NULL) {
+        return false;
+    }
+    return (text[datetime_hour_text_offset] == '0' && text[datetime_hour_text_offset + 1U] == '0' &&
+            text[datetime_minute_text_offset] == '0' &&
+            text[datetime_minute_text_offset + 1U] == '0' &&
+            text[datetime_second_text_offset] == '0' &&
+            text[datetime_second_text_offset + 1U] == '0') != 0;
 }
 
 static int canonicalize_date_text(
@@ -79749,13 +79938,14 @@ static int convert_datetime_literal(
         return rc;
     }
 
-    return canonicalize_datetime_text(
+    return convert_relaxed_datetime_storage_text(
         database,
         text,
         text_length,
         column->name,
         row_number,
         ignore_errors,
+        database == NULL ? 0 : database->session.time_zone_offset_minutes,
         out_value
     );
 }
@@ -79793,6 +79983,99 @@ static int convert_timestamp_literal(
         return rc;
     }
 
+    return convert_relaxed_timestamp_storage_text(
+        database,
+        text,
+        text_length,
+        column->name,
+        row_number,
+        ignore_errors,
+        0,
+        out_value
+    );
+}
+
+static int convert_relaxed_datetime_storage_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    int target_offset_minutes,
+    struct planned_value *out_value
+) {
+    char normalized[datetime_text_length + 1U];
+    char *copy = NULL;
+    struct temporal_predicate_normalization_input normalization = {0};
+    int rc = MYLITE_OK;
+
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes = target_offset_minutes;
+    if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (normalize_z_temporal_predicate_text(text, text_length, normalized)) {
+        if (!ignore_errors && temporal_sql_mode_is_strict(database)) {
+            set_incorrect_datetime_value_error(database, text, column_name, row_number);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            free(text);
+            return MYLITE_NOMEM;
+        }
+        rc = canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_data_truncated_warning(database, column_name, row_number);
+        }
+        free(text);
+        return rc;
+    }
+
+    return canonicalize_datetime_text(
+        database,
+        text,
+        text_length,
+        column_name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int canonicalize_timestamp_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
     if (timestamp_text_is_canonical_valid(text, text_length)) {
         return assign_text_value(database, text, text_length, out_value);
     }
@@ -79812,24 +80095,106 @@ static int convert_timestamp_literal(
             return make_timestamp_zero_with_warning(
                 database,
                 text,
-                column->name,
+                column_name,
                 row_number,
                 out_value
             );
         }
     } else if (ignore_errors || !temporal_sql_mode_is_strict(database)) {
-        return make_timestamp_zero_with_warning(
+        return make_timestamp_zero_with_warning(database, text, column_name, row_number, out_value);
+    }
+
+    set_incorrect_datetime_value_error(database, text, column_name, row_number);
+    free(text);
+    return MYLITE_ERROR;
+}
+
+static int convert_relaxed_timestamp_storage_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    int target_offset_minutes,
+    struct planned_value *out_value
+) {
+    char normalized[datetime_text_length + 1U];
+    char *copy = NULL;
+    struct temporal_predicate_normalization_input normalization = {0};
+    int rc = MYLITE_OK;
+
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes = target_offset_minutes;
+    if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_timestamp_text(
             database,
-            text,
-            column->name,
+            copy,
+            datetime_text_length,
+            column_name,
             row_number,
+            ignore_errors,
             out_value
         );
     }
+    if (normalize_z_temporal_predicate_text(text, text_length, normalized)) {
+        if (!ignore_errors && temporal_sql_mode_is_strict(database)) {
+            set_incorrect_datetime_value_error(database, text, column_name, row_number);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            free(text);
+            return MYLITE_NOMEM;
+        }
+        rc = canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_data_truncated_warning(database, column_name, row_number);
+        }
+        free(text);
+        return rc;
+    }
 
-    set_incorrect_datetime_value_error(database, text, column->name, row_number);
-    free(text);
-    return MYLITE_ERROR;
+    return canonicalize_timestamp_text(
+        database,
+        text,
+        text_length,
+        column_name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static char *copy_temporal_text(struct mylite_db *database, const char *text, size_t text_length) {
+    char *copy = NULL;
+
+    if (text == NULL) {
+        return NULL;
+    }
+    copy = malloc(text_length + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return NULL;
+    }
+    memcpy(copy, text, text_length);
+    copy[text_length] = '\0';
+    return copy;
 }
 
 static int convert_year_literal(
@@ -170207,6 +170572,38 @@ static int append_incorrect_date_predicate_warning(
     rc = mylite_diagnostics_append_warning(
         mylite_connection_diagnostics(database),
         mysql_warning_truncated_incorrect_temporal,
+        "22007",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_incorrect_date_value_note(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect date value: '%s' for column '%s' at row %zu",
+        value_text,
+        column_name,
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_note(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_date_value,
         "22007",
         message
     );

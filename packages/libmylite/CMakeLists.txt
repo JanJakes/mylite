@@ -3309,6 +3309,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_zero_temporal_sql_modes_test)
 
+  add_executable(mylite_runtime_relaxed_temporal_dml_literals_test
+    tests/runtime_relaxed_temporal_dml_literals_test.c
+  )
+  target_link_libraries(mylite_runtime_relaxed_temporal_dml_literals_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_relaxed_temporal_dml_literals_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_relaxed_temporal_dml_literals_test)
+
   add_executable(mylite_runtime_current_timestamp_defaults_test
     tests/runtime_current_timestamp_defaults_test.c
   )
@@ -4749,6 +4760,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.zero_temporal_sql_modes
     COMMAND mylite_runtime_zero_temporal_sql_modes_test
+  )
+  add_test(
+    NAME libmylite.runtime.relaxed_temporal_dml_literals
+    COMMAND mylite_runtime_relaxed_temporal_dml_literals_test
   )
   add_test(
     NAME libmylite.runtime.current_timestamp_defaults

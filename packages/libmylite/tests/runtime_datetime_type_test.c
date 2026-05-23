@@ -918,7 +918,7 @@ static int test_datetime_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT IGNORE INTO dates VALUES (1, '2024-01-02T03:04:05')",
+        "INSERT IGNORE INTO dates VALUES (1, '2024-01-02T03:04:05+1:00')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

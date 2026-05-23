@@ -258,6 +258,8 @@ static int test_table_backed_str_to_date_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_nested_null_short_circuit[] = {"STR_TO_DATE(NULL, n + 1)"};
+    static const char *const values_nested_null_short_circuit[] = {NULL, NULL, NULL, NULL};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -302,6 +304,19 @@ static int test_table_backed_str_to_date_and_reopen(void) {
             .row_count = 4U,
             .warning_count = 0U,
             .context = "table str_to_date null short circuit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STR_TO_DATE(NULL, n + 1) FROM t ORDER BY id",
+            .columns = columns_nested_null_short_circuit,
+            .column_count = sizeof(columns_nested_null_short_circuit) /
+                            sizeof(columns_nested_null_short_circuit[0]),
+            .values = values_nested_null_short_circuit,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .context = "table str_to_date nested null short circuit",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -352,6 +367,18 @@ static int test_str_to_date_warnings_and_sql_modes(void) {
         "STR_TO_DATE('PM 11', '%p %h')",
     };
     static const char *const values_orphan_meridiem[] = {NULL, NULL};
+    static const char *const columns_allow_invalid[] = {
+        "STR_TO_DATE('2024-02-31', '%Y-%m-%d')",
+        "STR_TO_DATE('2024-13-01', '%Y-%m-%d')",
+        "STR_TO_DATE('2024-00-01', '%Y-%m-%d')",
+    };
+    static const char *const values_allow_invalid[] = {"2024-02-31", NULL, "2024-00-01"};
+    static const char *const columns_allow_invalid_nozero[] = {
+        "STR_TO_DATE('2024-02-31', '%Y-%m-%d')",
+        "STR_TO_DATE('2024-00-01', '%Y-%m-%d')",
+        "STR_TO_DATE('0000-00-00', '%Y-%m-%d')",
+    };
+    static const char *const values_allow_invalid_nozero[] = {"2024-02-31", NULL, "0000-00-00"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -434,6 +461,38 @@ static int test_str_to_date_warnings_and_sql_modes(void) {
             .context = "no zero in date str_to_date warning",
         }
     );
+    failures += execute_ok(database, "SET SESSION sql_mode = 'ALLOW_INVALID_DATES'", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STR_TO_DATE('2024-02-31', '%Y-%m-%d'), "
+                   "STR_TO_DATE('2024-13-01', '%Y-%m-%d'), "
+                   "STR_TO_DATE('2024-00-01', '%Y-%m-%d')",
+            .columns = columns_allow_invalid,
+            .column_count = sizeof(columns_allow_invalid) / sizeof(columns_allow_invalid[0]),
+            .values = values_allow_invalid,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "allow invalid dates str_to_date",
+        }
+    );
+    failures +=
+        execute_ok(database, "SET SESSION sql_mode = 'ALLOW_INVALID_DATES,NO_ZERO_IN_DATE'", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STR_TO_DATE('2024-02-31', '%Y-%m-%d'), "
+                   "STR_TO_DATE('2024-00-01', '%Y-%m-%d'), "
+                   "STR_TO_DATE('0000-00-00', '%Y-%m-%d')",
+            .columns = columns_allow_invalid_nozero,
+            .column_count =
+                sizeof(columns_allow_invalid_nozero) / sizeof(columns_allow_invalid_nozero[0]),
+            .values = values_allow_invalid_nozero,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "allow invalid dates no zero in date str_to_date",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -499,6 +558,33 @@ static int test_str_to_date_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT STR_TO_DATE(NULL, missing) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STR_TO_DATE(NULL, missing + 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STR_TO_DATE(missing + 1, NULL) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STR_TO_DATE(NULL, missing + 1)",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",

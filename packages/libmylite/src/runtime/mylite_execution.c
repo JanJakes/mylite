@@ -15614,6 +15614,10 @@ static int str_to_date_string_or_null_argument(
 );
 static bool str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression);
 static bool str_to_date_child_is_identifier_reference(const struct mylite_sql_ast_node *expression);
+static int str_to_date_set_unknown_identifier_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
 static int time_format_string_or_null_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -23797,6 +23801,14 @@ static int plan_row_scalar_str_to_date_null_short_circuit(
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_str_to_date_resolve_short_circuit_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int plan_row_scalar_str_to_date_resolve_short_circuit_references(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -104706,15 +104718,17 @@ static int str_to_date_function_arguments(
     value_expression = child_at(expression, 0U);
     format_expression = child_at(expression, 1U);
     if (str_to_date_child_is_null_literal(value_expression)) {
-        if (str_to_date_child_is_identifier_reference(format_expression)) {
-            return date_add_set_unknown_identifier_error(database, format_expression);
+        rc = str_to_date_set_unknown_identifier_reference(database, format_expression);
+        if (rc != MYLITE_OK) {
+            return rc;
         }
         *out_value_is_null = true;
         return MYLITE_OK;
     }
     if (str_to_date_child_is_null_literal(format_expression)) {
-        if (str_to_date_child_is_identifier_reference(value_expression)) {
-            return date_add_set_unknown_identifier_error(database, value_expression);
+        rc = str_to_date_set_unknown_identifier_reference(database, value_expression);
+        if (rc != MYLITE_OK) {
+            return rc;
         }
         *out_format_is_null = true;
         return MYLITE_OK;
@@ -104758,6 +104772,45 @@ static bool str_to_date_child_is_identifier_reference(
     expression = unwrap_parenthesized_expression(expression);
     return (expression != NULL && (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
                                    expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) != 0;
+}
+
+static int str_to_date_set_unknown_identifier_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (stack.count != 0U) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (str_to_date_child_is_identifier_reference(current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return date_add_set_unknown_identifier_error(database, current);
+        }
+
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t index = child_count; index > 0U; --index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, index - 1U))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return MYLITE_OK;
 }
 
 static int date_format_string_or_null_argument(
@@ -139543,13 +139596,13 @@ static int plan_row_scalar_str_to_date_null_short_circuit(
         return MYLITE_OK;
     }
 
-    if (str_to_date_child_is_identifier_reference(value_expression)) {
-        reference_expression = value_expression;
-    } else if (str_to_date_child_is_identifier_reference(format_expression)) {
+    if (str_to_date_child_is_null_literal(value_expression)) {
         reference_expression = format_expression;
+    } else if (str_to_date_child_is_null_literal(format_expression)) {
+        reference_expression = value_expression;
     }
     if (reference_expression != NULL) {
-        rc = plan_row_scalar_str_to_date_resolve_short_circuit_reference(
+        rc = plan_row_scalar_str_to_date_resolve_short_circuit_references(
             database,
             reference_expression,
             has_source,
@@ -139610,6 +139663,56 @@ static int plan_row_scalar_str_to_date_resolve_short_circuit_reference(
         table_column_count,
         &column
     );
+}
+
+static int plan_row_scalar_str_to_date_resolve_short_circuit_references(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (str_to_date_child_is_identifier_reference(current)) {
+            rc = plan_row_scalar_str_to_date_resolve_short_circuit_reference(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count
+            );
+            continue;
+        }
+
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t index = child_count; rc == MYLITE_OK && index > 0U; --index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, index - 1U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
 }
 
 static int plan_row_scalar_str_to_date_value_argument(

@@ -1824,6 +1824,7 @@ static bool str_to_date_date_parts_are_valid(
 ) {
     bool no_zero_date = false;
     bool no_zero_in_date = false;
+    bool allow_invalid_dates = false;
 
     if (year < str_to_date_year_minimum || year > str_to_date_year_maximum || month < 0 ||
         month > date_months_per_year || day < 0 || day > date_days_per_longest_month) {
@@ -1833,6 +1834,8 @@ static bool str_to_date_date_parts_are_valid(
         no_zero_date = (database->session.sql_mode & MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE) != 0U;
         no_zero_in_date =
             (database->session.sql_mode & MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE) != 0U;
+        allow_invalid_dates =
+            (database->session.sql_mode & MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES) != 0U;
     }
     if (no_zero_date && (year == 0 || month == 0 || day == 0)) {
         return false;
@@ -1841,6 +1844,9 @@ static bool str_to_date_date_parts_are_valid(
         return false;
     }
     if (month == 0 || day == 0) {
+        return true;
+    }
+    if (allow_invalid_dates) {
         return true;
     }
     if (year == 0 && month == date_february && day == date_leap_day) {

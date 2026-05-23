@@ -166,6 +166,32 @@ expect_output \
 "STR_TO_DATE('2024-00-01','%Y-%m-%d'); SHOW WARNINGS;" \
     "$DATABASE"
 
+allow_invalid_expected=$(cat <<EXPECTED
+2024-02-31	NULL	2024-00-01
+Warning	1411	Incorrect datetime value: '2024-13-01' for function str_to_date
+EXPECTED
+)
+expect_output \
+    "str_to_date allow invalid dates warnings" \
+    "$allow_invalid_expected" \
+    "SET SESSION sql_mode = 'ALLOW_INVALID_DATES'; SELECT "\
+"STR_TO_DATE('2024-02-31','%Y-%m-%d'), STR_TO_DATE('2024-13-01','%Y-%m-%d'), "\
+"STR_TO_DATE('2024-00-01','%Y-%m-%d'); SHOW WARNINGS;" \
+    "$DATABASE"
+
+allow_invalid_nozero_expected=$(cat <<EXPECTED
+2024-02-31	NULL	0000-00-00
+Warning	1411	Incorrect datetime value: '2024-00-01' for function str_to_date
+EXPECTED
+)
+expect_output \
+    "str_to_date allow invalid dates no zero in date warnings" \
+    "$allow_invalid_nozero_expected" \
+    "SET SESSION sql_mode = 'ALLOW_INVALID_DATES,NO_ZERO_IN_DATE'; SELECT "\
+"STR_TO_DATE('2024-02-31','%Y-%m-%d'), STR_TO_DATE('2024-00-01','%Y-%m-%d'), "\
+"STR_TO_DATE('0000-00-00','%Y-%m-%d'); SHOW WARNINGS;" \
+    "$DATABASE"
+
 run_mysql \
     "SET SESSION sql_mode = ''; CREATE TABLE t(id INT, v VARCHAR(32), body TEXT, n INT); "\
 "INSERT INTO t VALUES (1, '2024-01-02', '09:30:17', 1), "\
@@ -203,6 +229,19 @@ expect_output \
     "SELECT STR_TO_DATE(n,NULL), STR_TO_DATE(NULL,v) FROM t ORDER BY id; SHOW WARNINGS;" \
     "$DATABASE"
 
+nested_table_null_expected=$(cat <<EXPECTED
+NULL
+NULL
+NULL
+NULL
+EXPECTED
+)
+expect_output \
+    "table str_to_date nested null short circuit" \
+    "$nested_table_null_expected" \
+    "SELECT STR_TO_DATE(NULL,n + 1) FROM t ORDER BY id; SHOW WARNINGS;" \
+    "$DATABASE"
+
 expect_error \
     "str_to_date rejects zero arguments" \
     1582 \
@@ -225,6 +264,22 @@ expect_error \
     42000 \
     "Incorrect parameter count in the call to native function 'STR_TO_DATE'" \
     "SELECT STR_TO_DATE('a', 'b', 'c');" \
+    "$DATABASE"
+
+expect_error \
+    "str_to_date resolves nested missing format column before null short circuit" \
+    1054 \
+    42S22 \
+    "Unknown column 'missing' in 'field list'" \
+    "SELECT STR_TO_DATE(NULL, missing + 1) FROM t;" \
+    "$DATABASE"
+
+expect_error \
+    "str_to_date resolves nested missing value column before null short circuit" \
+    1054 \
+    42S22 \
+    "Unknown column 'missing' in 'field list'" \
+    "SELECT STR_TO_DATE(missing + 1, NULL) FROM t;" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_str_to_date_function_expectations: ok"

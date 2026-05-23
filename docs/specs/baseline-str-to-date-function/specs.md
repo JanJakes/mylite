@@ -35,7 +35,8 @@ internals, or restrictively licensed sources.
 Runtime probes establish the baseline expectations:
 
 - `STR_TO_DATE(str, format)` returns `NULL` with no warning if either argument
-  is `NULL`, after normal name resolution for referenced columns.
+  is `NULL`, after normal name resolution for referenced columns, including
+  identifiers nested inside otherwise short-circuited expressions.
 - Wrong arity raises `1582 / 42000`.
 - The result is rendered as a date when only date parts are present, a time
   when only time parts are present, and a datetime when both date and time
@@ -61,6 +62,10 @@ Runtime probes establish the baseline expectations:
   `NO_ZERO_IN_DATE`, zero month or day parts return `NULL` with warning `1411`
   unless the entire date is `0000-00-00`; zero years with nonzero month and day
   are accepted.
+- With `ALLOW_INVALID_DATES`, date results whose year, month, and day fields
+  are individually in range but do not form a real calendar date are returned as
+  text instead of `NULL`; `NO_ZERO_DATE` and `NO_ZERO_IN_DATE` restrictions
+  still apply to zero parts before this relaxed calendar validation.
 - `STRICT_TRANS_TABLES` alone does not reject zero parts for this scalar
   function.
 
@@ -160,8 +165,9 @@ Planning and execution:
 8. Fill unspecified parts with zero. Apply MySQL-compatible two-digit year
    mapping for `%y` and one- or two-digit `%Y`.
 9. Return `NULL` with warning `1411 / HY000` for mismatches, invalid field
-   ranges, invalid combined calendar dates, and zero date parts according to
-   MySQL's `NO_ZERO_DATE` and `NO_ZERO_IN_DATE` scalar-function behavior.
+   ranges, invalid combined calendar dates unless `ALLOW_INVALID_DATES` is
+   active, and zero date parts according to MySQL's `NO_ZERO_DATE` and
+   `NO_ZERO_IN_DATE` scalar-function behavior.
 10. Return the parsed value and append warning `1292 / 22007` when the format
     matched but the input has trailing extra characters.
 11. Generate row-scalar SQLite SQL only from descriptor-planned expressions,
@@ -232,9 +238,9 @@ Fast C tests must cover:
 - literal prefix matching and mismatch warnings;
 - trailing extra input warnings;
 - `NULL` arguments, including unsupported-value/format short-circuit cases
-  after normal name resolution;
-- zero-date behavior under `sql_mode = ''`, `NO_ZERO_DATE`, and
-  `NO_ZERO_IN_DATE`;
+  after normal name resolution, including nested identifier references;
+- zero-date behavior under `sql_mode = ''`, `NO_ZERO_DATE`, `NO_ZERO_IN_DATE`,
+  and `ALLOW_INVALID_DATES`;
 - invalid month/day and invalid combined calendar dates;
 - orphaned and preceding `%p` meridiem markers;
 - row-scalar projection over descriptor-backed `VARCHAR` and `TEXT` columns,

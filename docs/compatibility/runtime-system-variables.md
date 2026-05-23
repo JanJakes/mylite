@@ -173,7 +173,7 @@ Performance Schema variable tables remain unsupported.
 | `default_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_storage_engine` with no scope, `session`, `local`, or `global`; returns MyLite's fixed embedded permanent-table default `InnoDB`; no `SET`, mutable global/session state, engine substitution, temporary-table defaults, alternate engines, plugins |
 | `default_table_encryption` | ❌ | Value, scope, SET, diagnostics |
 | `default_tmp_storage_engine` | ❌ | Value, scope, SET, diagnostics |
-| `default_week_format` | ❌ | Value, scope, SET, diagnostics |
+| `default_week_format` | ❌ | Value, scope, SET, diagnostics; the limited one-argument `WEEK()` function currently uses MySQL mode 0 rather than a mutable session value |
 | `delay_key_write` | ❌ | Value, scope, SET, diagnostics |
 | `delayed_insert_limit` | ❌ | Value, scope, SET, diagnostics |
 | `delayed_insert_timeout` | ❌ | Value, scope, SET, diagnostics |

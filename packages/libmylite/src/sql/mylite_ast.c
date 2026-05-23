@@ -904,6 +904,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "from_unixtime_argument_count_error";
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
         return "extract_function";
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+        return "week_function";
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+        return "weekday_function";
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+        return "weekday_argument_count_error";
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+        return "weekofyear_function";
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+        return "weekofyear_argument_count_error";
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
+        return "yearweek_function";
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
+        return "yearweek_argument_count_error";
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
         return "quarter_function";
     case MYLITE_SQL_AST_YEAR_FUNCTION:

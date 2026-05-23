@@ -9,13 +9,13 @@
   modes, omitted mode behavior, zero and partial dates, labels, warnings, row
   count, and syntax errors.
 - [x] Add MySQL-runtime expectation script for the selected feature surface.
-- [ ] Extend lexer/parser/AST support for the four functions and wrong arities.
-- [ ] Extend the MyLite-owned temporal scalar runtime helper with week
+- [x] Extend lexer/parser/AST support for the four functions and wrong arities.
+- [x] Extend the MyLite-owned temporal scalar runtime helper with week
   calculations and mode-aware execution.
-- [ ] Wire scalar and row-scalar analyzer/planner/execution paths.
-- [ ] Add focused C runtime tests and parser coverage.
-- [ ] Update compatibility documentation.
-- [ ] Run focused build/tests and MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote
+- [x] Wire scalar and row-scalar analyzer/planner/execution paths.
+- [x] Add focused C runtime tests and parser coverage.
+- [x] Update compatibility documentation.
+- [x] Run focused build/tests and MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote
   `main`.

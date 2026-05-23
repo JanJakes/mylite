@@ -165,6 +165,20 @@ expect_output \
 "SELECT @@warning_count;" \
     "$DATABASE"
 
+mode_boundary_expected=$(cat <<EXPECTED
+7	7	200807	200807
+EXPECTED
+)
+expect_output \
+    "signed boundary week mode literals" \
+    "$mode_boundary_expected" \
+    "SET SESSION sql_mode = ''; "\
+"SELECT WEEK('2008-02-20', 9223372036854775807), "\
+"WEEK('2008-02-20', -9223372036854775808), "\
+"YEARWEEK('2008-02-20', 9223372036854775807), "\
+"YEARWEEK('2008-02-20', -9223372036854775808);" \
+    "$DATABASE"
+
 default_mode_expected=$(cat <<EXPECTED
 1	8	7	200807	200807
 7	52	0	199952	199952

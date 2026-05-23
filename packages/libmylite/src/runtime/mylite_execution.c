@@ -255,6 +255,7 @@ enum {
     generated_default_display_text_capacity = (MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY * 2) + 16,
     integer_expression_default_text_initial_capacity = 16,
     integer_expression_default_text_growth_factor = 2,
+    week_temporal_mode_count = 8,
     decimal_default_precision = 10,
     decimal_default_scale = 0,
     decimal_max_precision = 65,
@@ -13831,6 +13832,13 @@ static int temporal_extract_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int resolve_temporal_extract_call(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_temporal_extract_kind *out_extract_kind,
+    const struct mylite_sql_ast_node **out_argument,
+    int *out_mode
+);
 static int extract_function_kind_from_unit(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *unit,
@@ -13858,6 +13866,11 @@ static int evaluate_from_unixtime_scalar_argument(
     int64_t *out_seconds,
     bool *out_is_null
 );
+static int evaluate_week_temporal_mode_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int *out_mode
+);
 static int sec_to_time_scalar_integer_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
@@ -13869,6 +13882,12 @@ static int from_unixtime_scalar_integer_literal_value(
     const struct mylite_sql_ast_node *literal,
     bool is_negative,
     int64_t *out_seconds
+);
+static int week_temporal_mode_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    int *out_mode
 );
 static int evaluate_temporal_extract_scalar_argument(
     struct mylite_db *database,
@@ -27094,6 +27113,13 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -47701,6 +47727,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -83658,6 +83691,12 @@ static const char *argument_count_error_node_function_name(
         return "DAYOFYEAR";
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         return "LAST_DAY";
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+        return "WEEKDAY";
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+        return "WEEKOFYEAR";
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
+        return "YEARWEEK";
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         return "CURRENT_TIMESTAMP";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
@@ -84074,10 +84113,23 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "LAST_DAY");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "WEEKDAY");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "WEEKOFYEAR");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "YEARWEEK");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -87841,6 +87893,7 @@ static int temporal_extract_function_value(
 ) {
     enum mylite_temporal_extract_kind extract_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
     const struct mylite_sql_ast_node *argument = NULL;
+    int mode = 0;
     char *owned_text = NULL;
     const char *text = NULL;
     size_t text_length = 0U;
@@ -87851,26 +87904,10 @@ static int temporal_extract_function_value(
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
-    expression = unwrap_parenthesized_expression(expression);
-    if (expression != NULL && expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION) {
-        if (mylite_sql_ast_node_child_count(expression) != 2U) {
-            set_unsupported_error(database, "EXTRACT() supports exactly one unit and one value");
-            return MYLITE_ERROR;
-        }
-        rc = extract_function_kind_from_unit(database, child_at(expression, 0U), &extract_kind);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        argument = child_at(expression, 1U);
-    } else if (
-        expression != NULL && is_temporal_extract_function_kind(expression->kind) &&
-        mylite_sql_ast_node_child_count(expression) == 1U
-    ) {
-        extract_kind = temporal_extract_function_kind(expression->kind);
-        argument = child_at(expression, 0U);
-    } else {
-        set_unsupported_error(database, "temporal extract functions support exactly one argument");
-        return MYLITE_ERROR;
+
+    rc = resolve_temporal_extract_call(database, expression, &extract_kind, &argument, &mode);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     rc = evaluate_temporal_extract_scalar_argument(
@@ -87889,6 +87926,7 @@ static int temporal_extract_function_value(
             text_length,
             extract_kind,
             MYLITE_TEMPORAL_EXTRACT_INPUT_STRING,
+            mode,
             &out_cell->owned_text,
             &is_null
         );
@@ -87899,6 +87937,75 @@ static int temporal_extract_function_value(
 
     free(owned_text);
     return rc;
+}
+
+static int resolve_temporal_extract_call(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_temporal_extract_kind *out_extract_kind,
+    const struct mylite_sql_ast_node **out_argument,
+    int *out_mode
+) {
+    size_t child_count = 0U;
+    enum mylite_temporal_extract_kind extract_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
+    int mode = 0;
+    int rc = MYLITE_OK;
+
+    if (out_extract_kind == NULL || out_argument == NULL || out_mode == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_extract_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
+    *out_argument = NULL;
+    *out_mode = 0;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "temporal extract functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            set_unsupported_error(database, "EXTRACT() supports exactly one unit and one value");
+            return MYLITE_ERROR;
+        }
+        rc = extract_function_kind_from_unit(database, child_at(expression, 0U), &extract_kind);
+        if (rc == MYLITE_OK) {
+            *out_extract_kind = extract_kind;
+            *out_argument = child_at(expression, 1U);
+        }
+        return rc;
+    }
+    if (!is_temporal_extract_function_kind(expression->kind)) {
+        set_unsupported_error(database, "temporal extract functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count != 1U && child_count != 2U) {
+        set_unsupported_error(database, "temporal extract functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    extract_kind = temporal_extract_function_kind(expression->kind);
+    if (child_count == 2U) {
+        if (extract_kind != MYLITE_TEMPORAL_EXTRACT_WEEK &&
+            extract_kind != MYLITE_TEMPORAL_EXTRACT_YEARWEEK) {
+            const char *function_name =
+                extract_kind == MYLITE_TEMPORAL_EXTRACT_WEEKDAY ? "WEEKDAY" : "WEEKOFYEAR";
+
+            set_native_function_parameter_count_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        rc = evaluate_week_temporal_mode_argument(database, child_at(expression, 1U), &mode);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    *out_extract_kind = extract_kind;
+    *out_argument = child_at(expression, 0U);
+    *out_mode = mode;
+    return MYLITE_OK;
 }
 
 static int extract_function_kind_from_unit(
@@ -88307,11 +88414,16 @@ static int evaluate_temporal_extract_scalar_argument(
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
     const int is_calendar_date = (int)mylite_temporal_extract_kind_is_calendar_date(extract_kind);
+    const int is_week_temporal = (int)mylite_temporal_extract_kind_is_week_temporal(extract_kind);
     const char *unsupported_message =
         "temporal extract functions support only string temporal literals and NULL";
     const char *nul_message = "temporal extract literals do not support NUL bytes";
 
-    if (is_calendar_date != 0) {
+    if (is_week_temporal != 0) {
+        unsupported_message = "week temporal functions support only string temporal literals and "
+                              "NULL";
+        nul_message = "week temporal function literals do not support NUL bytes";
+    } else if (is_calendar_date != 0) {
         unsupported_message =
             "calendar date functions support only string temporal literals and NULL";
         nul_message = "calendar date function literals do not support NUL bytes";
@@ -88363,6 +88475,120 @@ static int evaluate_temporal_extract_scalar_argument(
     }
 }
 
+static int evaluate_week_temporal_mode_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int *out_mode
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_mode == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_mode = 0;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "WEEK() and YEARWEEK() mode support is limited to integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if ((operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) ||
+            literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "WEEK() and YEARWEEK() mode support is limited to integer, boolean, and NULL "
+                "literals"
+            );
+            return MYLITE_ERROR;
+        }
+        return week_temporal_mode_integer_literal_value(
+            database,
+            literal,
+            operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+            out_mode
+        );
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "WEEK() and YEARWEEK() mode support is limited to integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_mode = 0;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_mode = 1;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_mode = 0;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "WEEK() and YEARWEEK() mode support is limited to integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return week_temporal_mode_integer_literal_value(database, expression, false, out_mode);
+}
+
+static int week_temporal_mode_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    int *out_mode
+) {
+    uint64_t magnitude = 0U;
+    int64_t value = 0;
+
+    if (literal == NULL || out_mode == NULL ||
+        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "WEEK() and YEARWEEK() mode literals must fit the signed "
+            "64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        value = INT64_MIN;
+    } else if (is_negative) {
+        value = -(int64_t)magnitude;
+    } else {
+        value = (int64_t)magnitude;
+    }
+    *out_mode = (int)(value % week_temporal_mode_count);
+    if (*out_mode < 0) {
+        *out_mode += week_temporal_mode_count;
+    }
+    return MYLITE_OK;
+}
+
 static enum mylite_temporal_extract_kind temporal_extract_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 ) {
@@ -88375,6 +88601,14 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
         return MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC;
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_QUARTER;
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_WEEK;
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_WEEKDAY;
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR;
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_YEARWEEK;
     case MYLITE_SQL_AST_YEAR_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_YEAR;
     case MYLITE_SQL_AST_MONTH_FUNCTION:
@@ -88405,6 +88639,10 @@ static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -105030,6 +105268,13 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LAST_DAY_FUNCTION:
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
@@ -124313,6 +124558,12 @@ static const char *calendar_date_argument_count_error_function_name(
         return "DAYOFYEAR";
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         return "LAST_DAY";
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+        return "WEEKDAY";
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+        return "WEEKOFYEAR";
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
+        return "YEARWEEK";
     default:
         return NULL;
     }
@@ -132992,39 +133243,23 @@ static int plan_row_scalar_temporal_extract_expression(
     const struct mylite_sql_ast_node *argument = NULL;
     const char *extract_kind_name = NULL;
     const char *input_kind_name = NULL;
+    int mode = 0;
     int rc = MYLITE_OK;
 
-    expression = unwrap_parenthesized_expression(expression);
-    if (expression != NULL && expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION) {
-        if (mylite_sql_ast_node_child_count(expression) != 2U) {
-            set_unsupported_error(database, "EXTRACT() supports exactly one unit and one value");
-            return MYLITE_ERROR;
-        }
-        rc = extract_function_kind_from_unit(database, child_at(expression, 0U), &extract_kind);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        argument = child_at(expression, 1U);
-    } else if (
-        expression != NULL && is_temporal_extract_function_kind(expression->kind) &&
-        mylite_sql_ast_node_child_count(expression) == 1U
-    ) {
-        extract_kind = temporal_extract_function_kind(expression->kind);
-        argument = child_at(expression, 0U);
-    } else {
-        set_unsupported_error(database, "temporal extract functions support exactly one argument");
-        return MYLITE_ERROR;
+    rc = resolve_temporal_extract_call(database, expression, &extract_kind, &argument, &mode);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(3U, sizeof(*out_expression->arguments));
+        (struct planned_row_scalar_expression *)calloc(4U, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT;
     out_expression->temporal_extract_kind = extract_kind;
-    out_expression->argument_count = 3U;
+    out_expression->argument_count = 4U;
 
     rc = plan_row_scalar_temporal_extract_argument(
         database,
@@ -133047,6 +133282,11 @@ static int plan_row_scalar_temporal_extract_expression(
         rc = copy_text_value(database, input_kind_name, &out_expression->arguments[2].value);
         out_expression->arguments[2].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     }
+    if (rc == MYLITE_OK) {
+        out_expression->arguments[3].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[3].value =
+            (struct planned_value){.is_null = false, .integer = mode};
+    }
     return rc;
 }
 
@@ -133062,11 +133302,16 @@ static int plan_row_scalar_temporal_extract_argument(
     enum mylite_temporal_extract_input_kind *out_input_kind
 ) {
     const int is_calendar_date = (int)mylite_temporal_extract_kind_is_calendar_date(extract_kind);
+    const int is_week_temporal = (int)mylite_temporal_extract_kind_is_week_temporal(extract_kind);
     const char *unsupported_argument_message =
         "temporal extract functions support only string temporal literals, descriptor columns, and "
         "NULL";
 
-    if (is_calendar_date != 0) {
+    if (is_week_temporal != 0) {
+        unsupported_argument_message =
+            "week temporal functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
+    } else if (is_calendar_date != 0) {
         unsupported_argument_message =
             "calendar date functions support only string temporal literals, DATE, DATETIME, "
             "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
@@ -133142,6 +133387,7 @@ static int plan_row_scalar_temporal_extract_literal_value(
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
     const int is_calendar_date = (int)mylite_temporal_extract_kind_is_calendar_date(extract_kind);
+    const int is_week_temporal = (int)mylite_temporal_extract_kind_is_week_temporal(extract_kind);
     const char *unsupported_message =
         "temporal extract functions support only string temporal literals, descriptor columns, and "
         "NULL";
@@ -133150,7 +133396,12 @@ static int plan_row_scalar_temporal_extract_literal_value(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (is_calendar_date != 0) {
+    if (is_week_temporal != 0) {
+        unsupported_message =
+            "week temporal functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
+        nul_message = "week temporal function literals do not support NUL bytes";
+    } else if (is_calendar_date != 0) {
         unsupported_message =
             "calendar date functions support only string temporal literals, DATE, DATETIME, "
             "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
@@ -133267,7 +133518,9 @@ static int reject_time_column_temporal_extract_date_part(
     struct mylite_db *database,
     enum mylite_temporal_extract_kind extract_kind
 ) {
-    if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
+    if (mylite_temporal_extract_kind_is_week_temporal(extract_kind)) {
+        set_unsupported_error(database, "week temporal functions do not yet support TIME values");
+    } else if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
         set_unsupported_error(database, "calendar date functions do not yet support TIME values");
     } else if (extract_kind == MYLITE_TEMPORAL_EXTRACT_QUARTER) {
         set_unsupported_error(
@@ -133289,7 +133542,13 @@ static int reject_unsupported_temporal_extract_column(
     struct mylite_db *database,
     enum mylite_temporal_extract_kind extract_kind
 ) {
-    if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
+    if (mylite_temporal_extract_kind_is_week_temporal(extract_kind)) {
+        set_unsupported_error(
+            database,
+            "week temporal functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL"
+        );
+    } else if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
         set_unsupported_error(
             database,
             "calendar date functions support only string temporal literals, DATE, DATETIME, "
@@ -152140,12 +152399,13 @@ static int append_row_scalar_temporal_extract_expression_sql(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count != 3U || expression->arguments == NULL) {
+    if (expression == NULL || expression->argument_count == 0U || expression->arguments == NULL) {
         return MYLITE_ERROR;
     }
 
     rc = dynamic_string_append(string, "_mylite_temporal_extract(");
-    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 3U; ++argument_index) {
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
         if (argument_index != 0U) {
             rc = dynamic_string_append(string, ", ");
         }
@@ -160123,10 +160383,11 @@ static int bind_row_scalar_temporal_extract_expression_parameters(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count != 3U) {
+    if (expression == NULL || expression->argument_count == 0U) {
         return MYLITE_ERROR;
     }
-    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 3U; ++argument_index) {
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
         rc = bind_row_scalar_non_concat_expression_parameters(
             statement,
             &expression->arguments[argument_index],

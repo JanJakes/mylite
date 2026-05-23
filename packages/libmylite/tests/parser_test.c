@@ -210,6 +210,7 @@ static int test_select_locking_clause(void);
 static int test_select_all_clause(void);
 static int test_select_union_clause(void);
 static int test_table_statement(void);
+static int test_values_statement(void);
 static int test_select_table_alias_clause(void);
 static int test_select_inner_join_clause(void);
 static int test_select_item_alias_clause(void);
@@ -535,6 +536,7 @@ int main(void) {
     failures += test_select_all_clause();
     failures += test_select_union_clause();
     failures += test_table_statement();
+    failures += test_values_statement();
     failures += test_select_table_alias_clause();
     failures += test_select_inner_join_clause();
     failures += test_select_item_alias_clause();
@@ -22897,6 +22899,133 @@ static int test_table_statement(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_values_statement(void) {
+    enum {
+        values_first_row_child_count = 7U,
+        values_false_child_index = 5U,
+        values_default_child_index = 6U,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *rows = NULL;
+    const struct mylite_sql_ast_node *first_row = NULL;
+    const struct mylite_sql_ast_node *second_row = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "VALUES ROW(1, -2, NULL, 'a', TRUE, FALSE, DEFAULT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 0U);
+    first_row = child_at(rows, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_VALUES_STATEMENT, "values statement");
+    failures += expect_node(rows, MYLITE_SQL_AST_VALUES_ROW_LIST, "values row list");
+    failures += expect_node(first_row, MYLITE_SQL_AST_VALUES_ROW, "values first row");
+    failures +=
+        expect_child_count(first_row, values_first_row_child_count, "values row child count");
+    failures += expect_literal(child_at(first_row, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "integer");
+    failures += expect_operator(
+        child_at(first_row, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "negative integer"
+    );
+    failures += expect_literal(child_at(first_row, 2U), MYLITE_SQL_AST_LITERAL_NULL, "null");
+    failures += expect_literal(child_at(first_row, 3U), MYLITE_SQL_AST_LITERAL_STRING, "string");
+    failures += expect_literal(child_at(first_row, 4U), MYLITE_SQL_AST_LITERAL_TRUE, "true");
+    failures += expect_literal(
+        child_at(first_row, values_false_child_index),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "false"
+    );
+    failures += expect_node(
+        child_at(first_row, values_default_child_index),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "default value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "VALUES ROW(1), ROW(2) ORDER BY column_0 DESC, 1 ASC LIMIT 1, 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 0U);
+    first_row = child_at(rows, 0U);
+    second_row = child_at(rows, 1U);
+    order_clause = child_at(statement, 1U);
+    order_items = child_at(order_clause, 0U);
+    limit_clause = child_at(statement, 2U);
+    failures += expect_child_count(rows, 2U, "values row count");
+    failures += expect_span_text(child_at(first_row, 0U), "1", "first values row");
+    failures += expect_span_text(child_at(second_row, 0U), "2", "second values row");
+    failures += expect_node(order_items, MYLITE_SQL_AST_ORDER_BY_ITEM_LIST, "values order list");
+    failures +=
+        expect_span_text(child_at(child_at(order_items, 0U), 0U), "column_0", "values order name");
+    failures += expect_order_direction(
+        child_at(child_at(order_items, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "values order desc"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(order_items, 1U), 0U), "1", "values order ordinal");
+    failures += expect_order_direction(
+        child_at(child_at(order_items, 1U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "values order asc"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "values comma limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "1", "values comma limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "VALUES ROW('a') ORDER BY `column_0` LIMIT 1 OFFSET 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = child_at(statement, 1U);
+    limit_clause = child_at(statement, 2U);
+    failures += expect_span_text(child_at(order_clause, 0U), "`column_0`", "quoted values order");
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "values offset limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "0", "values offset limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("VALUES ROW();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    rows = child_at(statement, 0U);
+    failures += expect_child_count(child_at(rows, 0U), 0U, "empty values row parses");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(1) AS v;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(1) WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(1) LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(ABS(1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(?);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(0x1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("VALUES ROW(b'1');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

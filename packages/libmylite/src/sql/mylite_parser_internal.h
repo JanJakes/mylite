@@ -214,6 +214,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_compound_select_statement(
     struct mylite_sql_ast_node *first_select,
     struct mylite_sql_ast_node *terms
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_values_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token values_token,
+    struct mylite_sql_ast_node *rows,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_union_term_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *term
@@ -2047,7 +2054,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *row
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_values_row_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *row
+);
 struct mylite_sql_ast_node *mylite_sql_parser_append_insert_row(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *row
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_values_row(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,
     struct mylite_sql_ast_node *row
@@ -2056,7 +2072,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_values(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *value
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_values_row_values(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_append_insert_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *row,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_values_value(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *row,
     struct mylite_sql_ast_node *value
@@ -2064,6 +2089,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_insert_value(
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_values_row(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token row_token,
     struct mylite_sql_ast_node *values,
     struct mylite_sql_token right_paren
 );

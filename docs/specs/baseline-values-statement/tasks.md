@@ -12,16 +12,16 @@
   performance notes, and test plan.
 - [x] Add MySQL-runtime expectation script for user-visible behavior.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Extend AST/parser support for standalone `VALUES` without admitting
+- [x] Extend AST/parser support for standalone `VALUES` without admitting
   unrelated query-expression grammar.
-- [ ] Add parser tests for accepted and rejected `VALUES` forms.
-- [ ] Add runtime support for literal row conversion, result construction,
+- [x] Add parser tests for accepted and rejected `VALUES` forms.
+- [x] Add runtime support for literal row conversion, result construction,
   order-designator validation, limit slicing, and diagnostics.
-- [ ] Add focused runtime C tests for success paths, diagnostics, result
+- [x] Add focused runtime C tests for success paths, diagnostics, result
   metadata, no-schema execution, cleanup, and unsupported forms.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused parser/runtime tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review final diff for MySQL behavior, result metadata, performance,
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused parser/runtime tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review final diff for MySQL behavior, result metadata, performance,
   cleanup, scope control, and compatibility accuracy.
-- [ ] Commit and push the implementation slice.
+- [x] Commit and push the implementation slice.

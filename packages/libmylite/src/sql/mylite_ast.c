@@ -1590,6 +1590,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_values_reference";
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
         return "replace_values_statement";
+    case MYLITE_SQL_AST_VALUES_STATEMENT:
+        return "values_statement";
+    case MYLITE_SQL_AST_VALUES_ROW_LIST:
+        return "values_row_list";
+    case MYLITE_SQL_AST_VALUES_ROW:
+        return "values_row";
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
         return "replace_set_statement";
     case MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT:

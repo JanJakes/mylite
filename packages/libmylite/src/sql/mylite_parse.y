@@ -107,6 +107,9 @@ statement(A) ::= select_statement(B). {
 statement(A) ::= table_statement(B). {
     A = B;
 }
+statement(A) ::= values_statement(B). {
+    A = B;
+}
 statement(A) ::= use_statement(B). {
     A = B;
 }
@@ -2976,6 +2979,107 @@ comma_table_sources(A) ::= comma_table_sources(LT) COMMA table_source(RT). {
 
 table_statement(A) ::= TABLE(T) table_name(N) table_order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_table_statement(state, T, N, O, L);
+}
+
+values_statement(A) ::= VALUES(V) values_row_constructor_list(R) values_order_clause_opt(O)
+    limit_clause_opt(L). {
+    A = mylite_sql_parser_make_values_statement(state, V, R, O, L);
+}
+
+values_row_constructor_list(A) ::= values_row_constructor(R). {
+    A = mylite_sql_parser_make_values_row_list(state, R);
+}
+values_row_constructor_list(A) ::= values_row_constructor_list(L) COMMA values_row_constructor(R). {
+    A = mylite_sql_parser_append_values_row(state, L, R);
+}
+
+values_row_constructor(A) ::= ROW(T) LPAREN values_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_values_row(state, T, V, R);
+}
+values_row_constructor(A) ::= ROW(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_values_row(
+        state,
+        T,
+        mylite_sql_parser_make_values_row_values(state, NULL),
+        R
+    );
+}
+
+values_value_list(A) ::= values_value(V). {
+    A = mylite_sql_parser_make_values_row_values(state, V);
+}
+values_value_list(A) ::= values_value_list(L) COMMA values_value(V). {
+    A = mylite_sql_parser_append_values_value(state, L, V);
+}
+
+values_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+values_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+values_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+values_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+values_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+values_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+values_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+values_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_dml_default_value(state, T);
+}
+
+values_order_clause_opt(A) ::= . {
+    A = NULL;
+}
+values_order_clause_opt(A) ::=
+    ORDER(O) BY values_order_key(K) order_direction_opt(D) values_order_tail_opt(T). {
+    A = mylite_sql_parser_make_select_order_by_clause(
+        state,
+        O,
+        (struct mylite_sql_parser_select_order_by_parts){
+            .first_order_key = K,
+            .first_direction = D,
+            .tail_items = T,
+        }
+    );
+}
+
+values_order_tail_opt(A) ::= . {
+    A = NULL;
+}
+values_order_tail_opt(A) ::= COMMA values_order_item_list(L). {
+    A = L;
+}
+
+values_order_item_list(A) ::= values_order_item(I). {
+    A = mylite_sql_parser_make_order_by_item_list(state, I);
+}
+values_order_item_list(A) ::= values_order_item_list(L) COMMA values_order_item(I). {
+    A = mylite_sql_parser_append_order_by_item(state, L, I);
+}
+
+values_order_item(A) ::= values_order_key(K) order_direction_opt(D). {
+    A = mylite_sql_parser_make_order_by_item(state, K, D);
+}
+
+values_order_key(A) ::= qualified_identifier(K). {
+    A = K;
+}
+values_order_key(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
 
 table_index_hints_opt(A) ::= . {

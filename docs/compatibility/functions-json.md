@@ -24,7 +24,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_OBJECTAGG()` | ❌ | Return result set as a single JSON object |
 | `JSON_OVERLAPS()` | ❌ | Shared JSON keys/elements |
 | `JSON_PRETTY()` | ❌ | Print a JSON document in human-readable format |
-| `JSON_QUOTE()` | ❌ | Quote JSON document |
+| `JSON_QUOTE()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar string quoting over SQL string literals, `NULL`, and nonbinary string descriptor columns; returns JSON string literal text for non-`NULL` strings and SQL `NULL` for SQL `NULL`; no binary strings, JSON/numeric/boolean/temporal inputs, arbitrary expressions, predicates, expression ordering, DML assignment expressions, or protocol metadata beyond limited scalar/row-scalar result-column metadata |
 | `JSON_REMOVE()` | ❌ | Remove data from JSON document |
 | `JSON_REPLACE()` | ❌ | Replace values in JSON document |
 | `JSON_SCHEMA_VALID()` | ❌ | JSON Schema validation boolean |

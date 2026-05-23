@@ -9,4 +9,4 @@
 - [x] Add runtime and parser C tests.
 - [x] Update compatibility docs.
 - [x] Run focused MySQL expectation, build, CTest, and full check workflow.
-- [ ] Review, commit atomically, push, and continue to the next baseline slice.
+- [x] Review, commit atomically, push, and continue to the next baseline slice.

@@ -23,4 +23,4 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review final diff for MySQL behavior, warning surface, descriptor
   authority, performance, cleanup, scope control, and compatibility accuracy.
-- [ ] Commit and push the slice.
+- [x] Commit and push the slice.

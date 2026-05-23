@@ -287,7 +287,7 @@ Performance Schema variable tables remain unsupported.
 | `hostname` | ❌ | Value, scope, SET, diagnostics |
 | `identity` | ❌ | Value, scope, SET, diagnostics |
 | `immediate_server_version` | ❌ | Value, scope, SET, diagnostics |
-| `information_schema_stats_expiry` | ❌ | Value, scope, SET, diagnostics |
+| `information_schema_stats_expiry` | 🟡 | Limited handle-local session scalar reads and `SHOW VARIABLES` rows; session/local/unqualified `SET` assignment for `DEFAULT`, integer literals with optional unary sign, booleans, and integer user variables; values below `0` clamp to `0`, values above `31536000` clamp to `31536000`, and clamping emits warning `1292`. Global reads expose fixed `86400` and mutable global assignment is limited to exact no-op `DEFAULT`/`86400` forms; no actual information-schema statistics cache, shared cross-session statistics state, `ANALYZE TABLE` interaction, startup options, persisted variables, privileges, `SET_VAR` hints, or Performance Schema variable tables |
 | `init_connect` | ❌ | Value, scope, SET, diagnostics |
 | `init_file` | ❌ | Value, scope, SET, diagnostics |
 | `init_replica` | ❌ | Value, scope, SET, diagnostics |

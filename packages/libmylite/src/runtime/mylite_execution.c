@@ -664,6 +664,9 @@ static const uint64_t max_allowed_packet_default_value = 67108864ULL;
 static const uint64_t group_concat_max_len_default_value =
     MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE;
 static const uint64_t group_concat_max_len_minimum_value = 4ULL;
+static const uint64_t information_schema_stats_expiry_default_value =
+    MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE;
+static const uint64_t information_schema_stats_expiry_max_value = 31536000ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
 static const uint64_t timeout_system_variable_max_value = 31536000ULL;
 static const uint64_t scalar_integer_cast_int64_min_magnitude = 9223372036854775808ULL;
@@ -7469,6 +7472,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_READ_ONLY = 53,
     SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY = 54,
     SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY = 55,
+    SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY = 56,
 };
 
 struct system_variable_component {
@@ -7516,6 +7520,7 @@ struct set_session_snapshot {
     uint64_t auto_increment_offset;
     uint64_t sql_select_limit;
     uint64_t group_concat_max_len;
+    uint64_t information_schema_stats_expiry;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     int64_t timestamp_override;
@@ -7566,6 +7571,10 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
     {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
     {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
+    {"information_schema_stats_expiry",
+     SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY,
+     true,
+     true},
     {"innodb_read_only", SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY, true, true},
     {"interactive_timeout", SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT, true, true},
     {"lower_case_file_system", SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
@@ -8070,6 +8079,12 @@ static int apply_set_group_concat_max_len_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_information_schema_stats_expiry_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int apply_set_timeout_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -8176,6 +8191,11 @@ static int apply_set_group_concat_max_len_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_information_schema_stats_expiry_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
 static int apply_set_timeout_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -8218,6 +8238,20 @@ static int parse_set_group_concat_max_len_value(
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
 );
+static int parse_set_information_schema_stats_expiry_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_information_schema_stats_expiry_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
 static int parse_set_sql_select_limit_cell_value(
     struct mylite_db *database,
     const char *variable_name,
@@ -8226,6 +8260,13 @@ static int parse_set_sql_select_limit_cell_value(
     uint64_t *out_value
 );
 static int parse_set_group_concat_max_len_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_set_information_schema_stats_expiry_cell_value(
     struct mylite_db *database,
     const char *variable_name,
     const struct session_scalar_cell *value,
@@ -16558,6 +16599,10 @@ static int system_variable_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
+);
+static uint64_t information_schema_stats_expiry_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
 );
 static int database_character_set_system_variable_value(
     struct mylite_db *database,
@@ -30943,6 +30988,9 @@ static int apply_set_integer_system_variable_value(
     if (target->kind == SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
         return apply_set_group_concat_max_len_value(database, target, value_node);
     }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
+        return apply_set_information_schema_stats_expiry_value(database, target, value_node);
+    }
     if (is_timeout_system_variable_kind(target->kind)) {
         return apply_set_timeout_system_variable_value(database, target, value_node);
     }
@@ -31953,6 +32001,7 @@ static int copy_set_session_snapshot(
     out_snapshot->auto_increment_offset = session->auto_increment_offset;
     out_snapshot->sql_select_limit = session->sql_select_limit;
     out_snapshot->group_concat_max_len = session->group_concat_max_len;
+    out_snapshot->information_schema_stats_expiry = session->information_schema_stats_expiry;
     out_snapshot->wait_timeout = session->wait_timeout;
     out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->timestamp_override = session->timestamp_override;
@@ -32052,6 +32101,7 @@ static void restore_set_session_snapshot(
     session->auto_increment_offset = snapshot->auto_increment_offset;
     session->sql_select_limit = snapshot->sql_select_limit;
     session->group_concat_max_len = snapshot->group_concat_max_len;
+    session->information_schema_stats_expiry = snapshot->information_schema_stats_expiry;
     session->wait_timeout = snapshot->wait_timeout;
     session->interactive_timeout = snapshot->interactive_timeout;
     session->timestamp_override = snapshot->timestamp_override;
@@ -32149,6 +32199,14 @@ static int apply_set_system_variable_cell_value(
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
         return apply_set_group_concat_max_len_cell_value(database, target, value, value_kind);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
+        return apply_set_information_schema_stats_expiry_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
     }
     if (is_timeout_system_variable_kind(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
@@ -33330,6 +33388,219 @@ static int parse_set_group_concat_max_len_cell_value(
     }
 
     return MYLITE_OK;
+}
+
+static int apply_set_information_schema_stats_expiry_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = information_schema_stats_expiry_default_value;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid information_schema_stats_expiry target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            information_schema_stats_expiry_default_value,
+            "SET information_schema_stats_expiry supports only fixed no-op global assignments"
+        );
+    }
+
+    rc =
+        parse_set_information_schema_stats_expiry_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.information_schema_stats_expiry = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_information_schema_stats_expiry_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool negative = false;
+    char value_text[integer_text_capacity];
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid information_schema_stats_expiry output");
+        return MYLITE_ERROR;
+    }
+    *out_value = information_schema_stats_expiry_default_value;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        *out_value = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        *out_value = 0U;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
+    return parse_information_schema_stats_expiry_integer(
+        database,
+        variable_name,
+        &literal_node->span,
+        negative,
+        value_text,
+        out_value
+    );
+}
+
+static int parse_information_schema_stats_expiry_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+) {
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid information_schema_stats_expiry output");
+        return MYLITE_ERROR;
+    }
+    if (negative) {
+        *out_value = 0U;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+    if (unsigned_span == NULL ||
+        parse_unsigned_integer_literal(unsigned_span, &magnitude) != MYLITE_OK) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (magnitude > information_schema_stats_expiry_max_value) {
+        *out_value = information_schema_stats_expiry_max_value;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+
+    *out_value = magnitude;
+    return MYLITE_OK;
+}
+
+static int apply_set_information_schema_stats_expiry_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    uint64_t stats_expiry = information_schema_stats_expiry_default_value;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(
+            database,
+            "SET GLOBAL information_schema_stats_expiry assignment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_information_schema_stats_expiry_cell_value(
+        database,
+        target->name,
+        value,
+        value_kind,
+        &stats_expiry
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.information_schema_stats_expiry = stats_expiry;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_information_schema_stats_expiry_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+) {
+    struct mylite_sql_source_span unsigned_span = {0};
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool negative = false;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid information_schema_stats_expiry output");
+        return MYLITE_ERROR;
+    }
+    *out_value = information_schema_stats_expiry_default_value;
+    if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    if (value->has_value_size) {
+        text_size = value->value_size;
+    } else {
+        text_size = strlen(text);
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        ++text;
+        --text_size;
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    return parse_information_schema_stats_expiry_integer(
+        database,
+        variable_name,
+        &unsigned_span,
+        negative,
+        value->value,
+        out_value
+    );
 }
 
 static int apply_set_timeout_system_variable_value(
@@ -102198,6 +102469,13 @@ static int hex_numeric_system_variable_value(
             out_value->integer = database->session.group_concat_max_len;
         }
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_value->integer = information_schema_stats_expiry_default_value;
+        } else {
+            out_value->integer = database->session.information_schema_stats_expiry;
+        }
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         out_value->integer = foreign_key_checks_system_variable_uint64_value(
             database,
@@ -110729,6 +111007,15 @@ static int system_variable_value(
             database->session.group_concat_max_len,
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+        return format_session_scalar_uint64_value(
+            database,
+            information_schema_stats_expiry_system_variable_value(
+                database,
+                system_variable_expression_has_global_scope(expression)
+            ),
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         return format_session_scalar_uint64_value(
             database,
@@ -110836,6 +111123,16 @@ static int system_variable_value(
         out_cell->value = out_cell->integer_text;
     }
     return rc;
+}
+
+static uint64_t information_schema_stats_expiry_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope) {
+        return information_schema_stats_expiry_default_value;
+    }
+    return database->session.information_schema_stats_expiry;
 }
 
 static int database_character_set_system_variable_value(
@@ -111210,6 +111507,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_GTID_MODE:
     case SESSION_SYSTEM_VARIABLE_GTID_OWNED:
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
     case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
@@ -111367,6 +111665,14 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             database->session.group_concat_max_len,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+        return format_show_system_variable_uint64_value(
+            database,
+            information_schema_stats_expiry_system_variable_value(database, global_scope),
             integer_buffer,
             integer_buffer_size,
             out_value

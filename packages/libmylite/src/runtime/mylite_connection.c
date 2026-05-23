@@ -353,6 +353,8 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->sql_select_limit = UINT64_MAX;
     session->group_concat_max_len = MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE;
     session->group_concat_value_ordinal = 0U;
+    session->information_schema_stats_expiry =
+        MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE;
     session->wait_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->interactive_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->catalog_generation = 0U;

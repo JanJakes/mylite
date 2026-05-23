@@ -28,6 +28,7 @@ enum {
     MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY = MYLITE_SESSION_USER_VARIABLE_NAME_MAX_BYTES + 1,
     MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE = 28800,
     MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE = 1024,
+    MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE = 86400,
     MYLITE_SESSION_UUID_NODE_SIZE = 6,
 };
 
@@ -135,6 +136,7 @@ struct mylite_session_state {
     uint64_t sql_select_limit;
     uint64_t group_concat_max_len;
     uint64_t group_concat_value_ordinal;
+    uint64_t information_schema_stats_expiry;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     uint64_t catalog_generation;

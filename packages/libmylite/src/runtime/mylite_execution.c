@@ -123,6 +123,7 @@ enum {
     mysql_error_select_reduced = 1222,
     mysql_error_not_view = 1347,
     mysql_error_session_variable_only = 1238,
+    mysql_error_global_variable_only = 1229,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
     mysql_error_unknown_collation = 1273,
@@ -7405,6 +7406,9 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 50,
     SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP = 51,
     SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN = 52,
+    SESSION_SYSTEM_VARIABLE_READ_ONLY = 53,
+    SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY = 54,
+    SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY = 55,
 };
 
 struct system_variable_component {
@@ -7502,10 +7506,12 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
     {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
     {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
+    {"innodb_read_only", SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY, true, true},
     {"interactive_timeout", SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT, true, true},
     {"lower_case_file_system", SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
     {"lower_case_table_names", SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
     {"max_allowed_packet", SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
+    {"read_only", SESSION_SYSTEM_VARIABLE_READ_ONLY, true, true},
     {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
     {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
     {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
@@ -7524,6 +7530,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT, true, true},
     {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER, true, true},
     {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS, true, true},
+    {"super_read_only", SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY, true, true},
     {"system_time_zone", SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE, true, true},
     {"timestamp", SESSION_SYSTEM_VARIABLE_TIMESTAMP, true, false},
     {"time_zone", SESSION_SYSTEM_VARIABLE_TIME_ZONE, true, true},
@@ -7987,6 +7994,10 @@ static int apply_set_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static bool reject_invalid_read_only_system_variable_cell_target(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
 static int apply_set_sql_select_limit_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -8050,6 +8061,7 @@ static bool set_system_variable_fixed_boolean_value(
     enum session_system_variable_kind kind,
     bool *out_value
 );
+static bool is_global_read_only_toggle_system_variable(enum session_system_variable_kind kind);
 static int validate_set_fixed_boolean_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -16559,6 +16571,10 @@ static bool system_variable_component_equals(
 static bool system_variable_component_is_empty(const struct system_variable_component *component);
 static void set_session_variable_only_error(struct mylite_db *database, const char *variable_name);
 static void set_global_variable_only_error(struct mylite_db *database, const char *variable_name);
+static void set_global_variable_set_global_required_error(
+    struct mylite_db *database,
+    const char *variable_name
+);
 static void set_unknown_system_variable_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -30130,9 +30146,17 @@ static int apply_set_system_variable_assignment(
         return rc;
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
-        target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES) {
+        target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
+        target.kind == SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY) {
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
+    }
+    if (is_global_read_only_toggle_system_variable(target.kind)) {
+        if (target.scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            set_global_variable_set_global_required_error(database, target.name);
+            return MYLITE_ERROR;
+        }
+        return validate_set_fixed_boolean_value(database, value_node, false);
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
         target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
@@ -31363,6 +31387,9 @@ static int apply_set_system_variable_cell_value(
     if (target == NULL || value == NULL) {
         return MYLITE_MISUSE;
     }
+    if (reject_invalid_read_only_system_variable_cell_target(database, target)) {
+        return MYLITE_ERROR;
+    }
     if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
         if (value->value == NULL) {
             set_unsupported_error(
@@ -31426,6 +31453,23 @@ static int apply_set_system_variable_cell_value(
         "SET system variable assignments from user variables are not supported for this variable"
     );
     return MYLITE_ERROR;
+}
+
+static bool reject_invalid_read_only_system_variable_cell_target(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+) {
+    if (target->kind == SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
+    if (is_global_read_only_toggle_system_variable(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+
+    return false;
 }
 
 static int apply_set_sql_select_limit_cell_value(
@@ -31696,11 +31740,22 @@ static bool set_system_variable_fixed_boolean_value(
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
     case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
         *out_value = false;
         return true;
     default:
         return false;
     }
+}
+
+static bool is_global_read_only_toggle_system_variable(enum session_system_variable_kind kind) {
+    if (kind == SESSION_SYSTEM_VARIABLE_READ_ONLY ||
+        kind == SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY) {
+        return true;
+    }
+
+    return false;
 }
 
 static int validate_set_fixed_boolean_value(
@@ -106633,6 +106688,9 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
@@ -107082,9 +107140,12 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_GTID_MODE:
     case SESSION_SYSTEM_VARIABLE_GTID_OWNED:
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
     case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
         return true;
@@ -107104,8 +107165,11 @@ static bool system_variable_kind_allows_session_scope(enum session_system_variab
     case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
     case SESSION_SYSTEM_VARIABLE_GTID_MODE:
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
         return false;
     default:
         return true;
@@ -107256,7 +107320,10 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
+    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
         *out_value = "OFF";
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_WARNING_COUNT:
@@ -166062,6 +166129,30 @@ static void set_global_variable_only_error(struct mylite_db *database, const cha
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_session_variable_only,
+        "HY000",
+        message
+    );
+}
+
+static void set_global_variable_set_global_required_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Variable '%s' is a GLOBAL variable and should be set with SET GLOBAL",
+        variable_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_global_variable_only,
         "HY000",
         message
     );

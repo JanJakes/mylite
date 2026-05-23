@@ -124,6 +124,12 @@ read_only_system_noop=$(
 )
 expect_value "read_only system global zero no-op" "0${TAB}0${TAB}0${TAB}0" "$read_only_system_noop"
 
+read_only_false_noop=$(
+    run_mysql \
+        "SET GLOBAL read_only = FALSE; SELECT @@read_only, @@warning_count, @@error_count, ROW_COUNT();"
+)
+expect_value "read_only global false no-op" "0${TAB}0${TAB}0${TAB}0" "$read_only_false_noop"
+
 read_only_default=$(
     run_mysql \
         "SET GLOBAL read_only = DEFAULT; SELECT @@read_only, @@warning_count, @@error_count, ROW_COUNT();"
@@ -141,6 +147,12 @@ super_read_only_system_noop=$(
         "SET @@GLOBAL.super_read_only = 0; SELECT @@super_read_only, @@warning_count, @@error_count, ROW_COUNT();"
 )
 expect_value "super_read_only system global zero no-op" "0${TAB}0${TAB}0${TAB}0" "$super_read_only_system_noop"
+
+super_read_only_false_noop=$(
+    run_mysql \
+        "SET GLOBAL super_read_only = FALSE; SELECT @@super_read_only, @@warning_count, @@error_count, ROW_COUNT();"
+)
+expect_value "super_read_only global false no-op" "0${TAB}0${TAB}0${TAB}0" "$super_read_only_false_noop"
 
 super_read_only_default=$(
     run_mysql \

@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 52,
-    global_variable_row_count = 48,
+    session_variable_row_count = 55,
+    global_variable_row_count = 51,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -133,10 +133,12 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"innodb_read_only", "OFF"},
         {"interactive_timeout", "28800"},
         {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
         {"max_allowed_packet", "67108864"},
+        {"read_only", "OFF"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -152,6 +154,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"sql_select_limit", "18446744073709551615"},
         {"sql_slave_skip_counter", "0"},
         {"sql_warnings", "OFF"},
+        {"super_read_only", "OFF"},
         {"system_time_zone", "UTC"},
         {"timestamp", "1700000000.000000"},
         {"time_zone", "SYSTEM"},
@@ -186,10 +189,12 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"innodb_read_only", "OFF"},
         {"interactive_timeout", "28800"},
         {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
         {"max_allowed_packet", "67108864"},
+        {"read_only", "OFF"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -204,6 +209,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"sql_select_limit", "18446744073709551615"},
         {"sql_slave_skip_counter", "0"},
         {"sql_warnings", "OFF"},
+        {"super_read_only", "OFF"},
         {"system_time_zone", "UTC"},
         {"time_zone", "SYSTEM"},
         {"transaction_isolation", "REPEATABLE-READ"},
@@ -368,6 +374,33 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "67108864",
         },
         "show global variables max allowed packet"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES LIKE 'read_only'",
+        (struct expected_variable_row){
+            .name = "read_only",
+            .value = "OFF",
+        },
+        "show variables read only"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW GLOBAL VARIABLES WHERE Variable_name = 'super_read_only'",
+        (struct expected_variable_row){
+            .name = "super_read_only",
+            .value = "OFF",
+        },
+        "show global variables super read only"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES LIKE 'innodb_read_only'",
+        (struct expected_variable_row){
+            .name = "innodb_read_only",
+            .value = "OFF",
+        },
+        "show variables innodb read only"
     );
     failures += expect_single_row(
         database,
@@ -684,6 +717,30 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .context = "lower_case_table_names scalar quoted name",
         }
     );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@read_only",
+            .expected = "0",
+            .context = "read_only scalar default",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@GLOBAL.super_read_only",
+            .expected = "0",
+            .context = "super_read_only scalar global",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@global.`innodb_read_only`",
+            .expected = "0",
+            .context = "innodb_read_only scalar quoted global",
+        }
+    );
 
     mylite_close(database);
     return failures;
@@ -901,6 +958,33 @@ static int test_show_variables_diagnostics(void) {
             .code = mysql_error_session_variable_only,
             .sqlstate = "HY000",
             .message_part = "Variable 'lower_case_file_system' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@SESSION.read_only",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'read_only' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@LOCAL.super_read_only",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'super_read_only' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@SESSION.innodb_read_only",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'innodb_read_only' is a GLOBAL variable",
         }
     );
     failures += execute_error(

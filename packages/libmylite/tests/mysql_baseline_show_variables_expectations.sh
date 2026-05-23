@@ -120,10 +120,12 @@ supported_session_rows=$(run_mysql "
       'sql_quote_show_create',
       'foreign_key_checks',
       'group_concat_max_len',
+      'innodb_read_only',
       'interactive_timeout',
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
+      'read_only',
       'transaction_isolation',
       'transaction_read_only',
       'unique_checks',
@@ -142,6 +144,7 @@ supported_session_rows=$(run_mysql "
       'sql_require_primary_key',
       'sql_replica_skip_counter',
       'sql_slave_skip_counter',
+      'super_read_only',
       'wait_timeout'
     );" | normalize_tsv)
 expect_value "supported session rows" "autocommit|ON
@@ -159,10 +162,12 @@ default_storage_engine|InnoDB
 error_count|0
 foreign_key_checks|ON
 group_concat_max_len|1024
+innodb_read_only|OFF
 interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
+read_only|OFF
 sql_auto_is_null|OFF
 sql_big_selects|ON
 sql_buffer_result|OFF
@@ -178,6 +183,7 @@ sql_safe_updates|OFF
 sql_select_limit|18446744073709551615
 sql_slave_skip_counter|0
 sql_warnings|OFF
+super_read_only|OFF
 transaction_isolation|REPEATABLE-READ
 transaction_read_only|OFF
 unique_checks|ON
@@ -208,10 +214,12 @@ supported_global_rows=$(run_mysql "
       'sql_quote_show_create',
       'foreign_key_checks',
       'group_concat_max_len',
+      'innodb_read_only',
       'interactive_timeout',
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
+      'read_only',
       'transaction_isolation',
       'transaction_read_only',
       'unique_checks',
@@ -230,6 +238,7 @@ supported_global_rows=$(run_mysql "
       'sql_require_primary_key',
       'sql_replica_skip_counter',
       'sql_slave_skip_counter',
+      'super_read_only',
       'wait_timeout'
     );" | normalize_tsv)
 expect_value "supported global rows" "autocommit|ON
@@ -246,10 +255,12 @@ collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 foreign_key_checks|ON
 group_concat_max_len|1024
+innodb_read_only|OFF
 interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
+read_only|OFF
 sql_auto_is_null|OFF
 sql_big_selects|ON
 sql_buffer_result|OFF
@@ -264,6 +275,7 @@ sql_safe_updates|OFF
 sql_select_limit|18446744073709551615
 sql_slave_skip_counter|0
 sql_warnings|OFF
+super_read_only|OFF
 transaction_isolation|REPEATABLE-READ
 transaction_read_only|OFF
 unique_checks|ON

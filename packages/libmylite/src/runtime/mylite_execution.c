@@ -29,6 +29,7 @@
 #include "mylite_temporal_extract.h"
 #include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
+#include "mylite_uuid.h"
 #include "sqlite3.h"
 
 #include <ctype.h>
@@ -2836,6 +2837,9 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC = 48,
     PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT = 49,
     PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF = 50,
+    PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID = 51,
+    PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN = 52,
+    PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID = 53,
 };
 
 enum {
@@ -2935,6 +2939,12 @@ struct planned_row_scalar_expression {
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
+};
+
+struct row_scalar_uuid_column_expression_request {
+    const struct mylite_sql_ast_node *function_expression;
+    const struct mylite_sql_ast_node *value_argument;
+    const struct mylite_sql_ast_node *swap_argument;
 };
 
 struct row_scalar_integer_arithmetic_plan_frame {
@@ -14756,6 +14766,26 @@ static int unhex_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int is_uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int uuid_to_bin_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int bin_to_uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int char_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -14853,6 +14883,69 @@ static int stage_unhex_incorrect_string_warning(
     const void *input,
     size_t input_size
 );
+static int uuid_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int uuid_direct_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int uuid_to_bin_nested_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int uuid_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int uuid_unary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int uuid_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+);
+static int uuid_swap_flag_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_swap
+);
+static int uuid_swap_flag_unary_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_swap
+);
+static int uuid_unknown_column_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static void set_uuid_unsupported_error(struct mylite_db *database, const char *function_name);
 static int format_hex_bytes(
     struct mylite_db *database,
     const unsigned char *bytes,
@@ -16309,6 +16402,10 @@ static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node 
 static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_uuid_value_projection_argument_supported(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_char_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_char_projection_argument_supported(const struct mylite_sql_ast_node *expression);
@@ -22705,6 +22802,36 @@ static bool unhex_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_uuid_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_uuid_nested_expression(
+    struct mylite_db *database,
+    const struct row_scalar_uuid_column_expression_request *request,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_uuid_column_expression(
+    struct mylite_db *database,
+    const struct row_scalar_uuid_column_expression_request *request,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool uuid_column_descriptor_is_supported(
+    struct mylite_db *database,
+    enum mylite_sql_ast_node_kind function_kind,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_char_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -24902,6 +25029,28 @@ static int append_row_scalar_unhex_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_uuid_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_uuid_argument_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *argument,
+    size_t argument_index,
+    size_t *next_parameter
+);
+static int append_row_scalar_uuid_inner_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_uuid_leaf_argument_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *argument,
+    size_t *next_parameter
+);
+static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_expression_kind kind);
 static int append_row_scalar_string_slice_operand_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -26072,6 +26221,27 @@ static int bind_row_scalar_hex_expression_parameters(
 static int bind_row_scalar_unhex_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_uuid_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_uuid_argument_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *argument,
+    size_t argument_index,
+    int *parameter_index
+);
+static int bind_row_scalar_uuid_inner_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_uuid_leaf_argument_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *argument,
     int *parameter_index
 );
 static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan);
@@ -27524,6 +27694,12 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CHAR_FUNCTION:
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
@@ -38217,6 +38393,7 @@ static bool compound_expression_uses_binary_collation(
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_CHAR_FUNCTION:
         return true;
     default:
@@ -49072,6 +49249,12 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CHAR_FUNCTION:
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
@@ -81285,12 +81468,33 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
                 .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
                 .display_length = mysql_scalar_bigint_display_length,
                 .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = MYLITE_UUID_BINARY_SIZE;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = MYLITE_UUID_TEXT_SIZE,
                 .extra_flags = 0U,
                 .nullable = true,
             }
@@ -83387,6 +83591,7 @@ static bool select_statement_is_row_function_scalar_projection(
         if (is_string_metadata_projection_expression(expression) ||
             is_hex_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
+            is_uuid_projection_expression(expression) ||
             is_char_projection_expression(expression) ||
             is_json_introspection_projection_expression(expression) ||
             is_json_extract_projection_expression(expression) ||
@@ -83847,12 +84052,33 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
                 .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
                 .display_length = mysql_scalar_bigint_display_length,
                 .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = MYLITE_UUID_BINARY_SIZE;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = MYLITE_UUID_TEXT_SIZE,
                 .extra_flags = 0U,
                 .nullable = true,
             }
@@ -84791,6 +85017,12 @@ static const char *argument_count_error_node_function_name(
         return "HEX";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         return "UNHEX";
+    case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
+        return "IS_UUID";
+    case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
+        return "UUID_TO_BIN";
+    case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:
+        return "BIN_TO_UUID";
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
         return "QUOTE";
     case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -85135,6 +85367,19 @@ static int session_scalar_value(
         return unhex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UNHEX");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+        return uuid_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "IS_UUID");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UUID_TO_BIN");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "BIN_TO_UUID");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CHAR_FUNCTION:
         return char_function_value(database, expression, out_cell);
@@ -97650,6 +97895,220 @@ static int unhex_function_value(
     return MYLITE_OK;
 }
 
+static int uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_uuid_unsupported_error(database, "UUID conversion");
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+        return is_uuid_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+        return uuid_to_bin_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+        return bin_to_uuid_function_value(database, expression, out_cell);
+    default:
+        break;
+    }
+
+    set_uuid_unsupported_error(database, "UUID conversion");
+    return MYLITE_ERROR;
+}
+
+static int is_uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const unsigned char *bytes = NULL;
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_IS_UUID_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "IS_UUID");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    rc = uuid_argument_bytes(
+        database,
+        argument,
+        out_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_bytes);
+        return rc;
+    }
+
+    out_cell->value = "0";
+    if (mylite_uuid_string_is_valid(bytes, byte_count)) {
+        out_cell->value = "1";
+    }
+    free(owned_bytes);
+    return MYLITE_OK;
+}
+
+static int uuid_to_bin_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *swap_argument = NULL;
+    const unsigned char *bytes = NULL;
+    unsigned char uuid_bytes[MYLITE_UUID_BINARY_SIZE];
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    bool is_null = false;
+    bool swap = false;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+        (mylite_sql_ast_node_child_count(expression) != 1U &&
+         mylite_sql_ast_node_child_count(expression) != 2U)) {
+        set_native_function_parameter_count_error(database, "UUID_TO_BIN");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    swap_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    rc = uuid_argument_bytes(
+        database,
+        argument,
+        out_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc == MYLITE_OK && swap_argument != NULL) {
+        rc = uuid_swap_flag_value(database, swap_argument, &swap);
+    }
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_bytes);
+        return rc;
+    }
+
+    rc = mylite_uuid_string_to_binary(bytes, byte_count, swap, uuid_bytes, &valid);
+    if (rc != MYLITE_OK) {
+        free(owned_bytes);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+    if (!valid) {
+        rc = mylite_uuid_set_incorrect_string_error(database, bytes, byte_count, "uuid_to_bin");
+        free(owned_bytes);
+        return rc;
+    }
+
+    out_cell->owned_text = (char *)malloc(MYLITE_UUID_BINARY_SIZE + 1U);
+    if (out_cell->owned_text == NULL) {
+        free(owned_bytes);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(out_cell->owned_text, uuid_bytes, MYLITE_UUID_BINARY_SIZE);
+    out_cell->owned_text[MYLITE_UUID_BINARY_SIZE] = '\0';
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = MYLITE_UUID_BINARY_SIZE;
+    out_cell->has_value_size = true;
+    free(owned_bytes);
+    return MYLITE_OK;
+}
+
+static int bin_to_uuid_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *swap_argument = NULL;
+    const unsigned char *bytes = NULL;
+    char uuid_text[MYLITE_UUID_TEXT_SIZE + 1U];
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    bool is_null = false;
+    bool swap = false;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION ||
+        (mylite_sql_ast_node_child_count(expression) != 1U &&
+         mylite_sql_ast_node_child_count(expression) != 2U)) {
+        set_native_function_parameter_count_error(database, "BIN_TO_UUID");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    swap_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    rc = uuid_argument_bytes(
+        database,
+        argument,
+        out_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc == MYLITE_OK && swap_argument != NULL) {
+        rc = uuid_swap_flag_value(database, swap_argument, &swap);
+    }
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_bytes);
+        return rc;
+    }
+
+    rc = mylite_uuid_binary_to_string(bytes, byte_count, swap, uuid_text, &valid);
+    if (rc != MYLITE_OK) {
+        free(owned_bytes);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+    if (!valid) {
+        rc = mylite_uuid_set_incorrect_string_error(database, bytes, byte_count, "bin_to_uuid");
+        free(owned_bytes);
+        return rc;
+    }
+
+    rc = duplicate_text(database, uuid_text, &out_cell->owned_text);
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->owned_text;
+    }
+    free(owned_bytes);
+    return rc;
+}
+
 static int char_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -98426,6 +98885,469 @@ static int stage_unhex_incorrect_string_warning(
     }
     cell->has_staged_unhex_incorrect_string_warning = true;
     return MYLITE_OK;
+}
+
+static int uuid_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION) {
+        return uuid_to_bin_nested_argument_bytes(
+            database,
+            expression,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+    return uuid_direct_argument_bytes(
+        database,
+        expression,
+        cell,
+        out_bytes,
+        out_byte_count,
+        out_owned_bytes,
+        out_is_null
+    );
+}
+
+static int uuid_direct_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    struct session_scalar_cell scalar_cell = {0};
+    bool handled_scalar = false;
+    int rc = MYLITE_OK;
+
+    if (cell == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_owned_bytes = NULL;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_uuid_unsupported_error(database, "UUID conversion");
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return uuid_literal_argument_bytes(
+            database,
+            expression,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return uuid_unary_argument_bytes(
+            database,
+            expression,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return uuid_unknown_column_argument(database, expression);
+    }
+
+    rc = uuid_scalar_argument_value(database, expression, &scalar_cell, &handled_scalar);
+    if (rc != MYLITE_OK || handled_scalar) {
+        if (rc == MYLITE_OK && scalar_cell.value == NULL) {
+            *out_is_null = true;
+        } else if (rc == MYLITE_OK) {
+            char *copy = NULL;
+            size_t byte_count = strlen(scalar_cell.value);
+
+            if (scalar_cell.has_value_size) {
+                byte_count = scalar_cell.value_size;
+            }
+
+            if (byte_count == SIZE_MAX) {
+                set_nomem_error(database);
+                session_scalar_cell_deinit(&scalar_cell);
+                return MYLITE_NOMEM;
+            }
+            copy = (char *)malloc(byte_count + 1U);
+            if (copy == NULL) {
+                set_nomem_error(database);
+                session_scalar_cell_deinit(&scalar_cell);
+                return MYLITE_NOMEM;
+            }
+            if (byte_count != 0U) {
+                memcpy(copy, scalar_cell.value, byte_count);
+            }
+            copy[byte_count] = '\0';
+            *out_owned_bytes = copy;
+            *out_bytes = (const unsigned char *)copy;
+            *out_byte_count = byte_count;
+        }
+        session_scalar_cell_deinit(&scalar_cell);
+        return rc;
+    }
+    session_scalar_cell_deinit(&scalar_cell);
+
+    set_uuid_unsupported_error(database, "UUID conversion");
+    return MYLITE_ERROR;
+}
+
+static int uuid_to_bin_nested_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    struct session_scalar_cell cell = {0};
+    const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *swap_argument = NULL;
+    const unsigned char *argument_bytes = NULL;
+    unsigned char uuid_bytes[MYLITE_UUID_BINARY_SIZE];
+    char *owned_argument_bytes = NULL;
+    char *owned_result_bytes = NULL;
+    size_t argument_byte_count = 0U;
+    bool argument_is_null = false;
+    bool swap = false;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_owned_bytes = NULL;
+    *out_is_null = false;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+        (mylite_sql_ast_node_child_count(expression) != 1U &&
+         mylite_sql_ast_node_child_count(expression) != 2U)) {
+        set_native_function_parameter_count_error(database, "UUID_TO_BIN");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    swap_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    rc = uuid_direct_argument_bytes(
+        database,
+        argument,
+        &cell,
+        &argument_bytes,
+        &argument_byte_count,
+        &owned_argument_bytes,
+        &argument_is_null
+    );
+    if (rc == MYLITE_OK && swap_argument != NULL) {
+        rc = uuid_swap_flag_value(database, swap_argument, &swap);
+    }
+    if (rc != MYLITE_OK || argument_is_null) {
+        free(owned_argument_bytes);
+        session_scalar_cell_deinit(&cell);
+        *out_is_null = argument_is_null;
+        return rc;
+    }
+
+    rc =
+        mylite_uuid_string_to_binary(argument_bytes, argument_byte_count, swap, uuid_bytes, &valid);
+    if (rc != MYLITE_OK) {
+        free(owned_argument_bytes);
+        session_scalar_cell_deinit(&cell);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+    if (!valid) {
+        rc = mylite_uuid_set_incorrect_string_error(
+            database,
+            argument_bytes,
+            argument_byte_count,
+            "uuid_to_bin"
+        );
+        free(owned_argument_bytes);
+        session_scalar_cell_deinit(&cell);
+        return rc;
+    }
+    free(owned_argument_bytes);
+    session_scalar_cell_deinit(&cell);
+
+    owned_result_bytes = (char *)malloc(MYLITE_UUID_BINARY_SIZE + 1U);
+    if (owned_result_bytes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(owned_result_bytes, uuid_bytes, MYLITE_UUID_BINARY_SIZE);
+    owned_result_bytes[MYLITE_UUID_BINARY_SIZE] = '\0';
+    *out_owned_bytes = owned_result_bytes;
+    *out_bytes = (const unsigned char *)owned_result_bytes;
+    *out_byte_count = MYLITE_UUID_BINARY_SIZE;
+    return MYLITE_OK;
+}
+
+static int uuid_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_bytes =
+            (const unsigned char *)(literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ? "1" : "0");
+        *out_byte_count = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        rc = copy_source_span_text(database, &literal->span, out_owned_bytes);
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+            *out_byte_count = strlen(*out_owned_bytes);
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal_with_policy(
+            database,
+            literal,
+            "UUID conversion functions support only string, hex, integer, boolean, NULL, and "
+            "supported scalar arguments",
+            "UUID conversion string literal is invalid",
+            true,
+            out_owned_bytes,
+            out_byte_count
+        );
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        rc = decode_binary_hex_literal(database, literal, out_owned_bytes, out_byte_count);
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+        }
+        return rc;
+    }
+
+    set_uuid_unsupported_error(database, "UUID conversion");
+    return MYLITE_ERROR;
+}
+
+static int uuid_unary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || out_bytes == NULL || out_byte_count == NULL ||
+        out_owned_bytes == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_uuid_unsupported_error(database, "UUID conversion");
+        return MYLITE_ERROR;
+    }
+
+    literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_uuid_unsupported_error(database, "UUID conversion");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_source_span_text(
+        database,
+        operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ? &literal->span : &expression->span,
+        out_owned_bytes
+    );
+    if (rc == MYLITE_OK) {
+        *out_bytes = (const unsigned char *)*out_owned_bytes;
+        *out_byte_count = strlen(*out_owned_bytes);
+        *out_is_null = false;
+    }
+    return rc;
+}
+
+static int uuid_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+) {
+    if (out_cell == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    return hex_scalar_argument_value(database, expression, out_cell, out_handled);
+}
+
+static int uuid_swap_flag_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_swap
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+
+    if (out_swap == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_swap = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_uuid_unsupported_error(database, "UUID conversion swap flag");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return uuid_swap_flag_unary_value(database, expression, out_swap);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_uuid_unsupported_error(database, "UUID conversion swap flag");
+        return MYLITE_ERROR;
+    }
+
+    literal = expression;
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_NULL:
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        *out_swap = false;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        *out_swap = true;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+            set_uuid_unsupported_error(database, "UUID conversion swap flag");
+            return MYLITE_ERROR;
+        }
+        *out_swap = magnitude != 0U;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_uuid_unsupported_error(database, "UUID conversion swap flag");
+    return MYLITE_ERROR;
+}
+
+static int uuid_swap_flag_unary_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_swap
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    uint64_t magnitude = 0U;
+
+    if (expression == NULL || out_swap == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_swap = false;
+
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_uuid_unsupported_error(database, "UUID conversion swap flag");
+        return MYLITE_ERROR;
+    }
+    literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        set_uuid_unsupported_error(database, "UUID conversion swap flag");
+        return MYLITE_ERROR;
+    }
+
+    *out_swap = magnitude != 0U;
+    return MYLITE_OK;
+}
+
+static int uuid_unknown_column_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            column_name,
+            sizeof(column_name)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    set_unknown_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
+static void set_uuid_unsupported_error(struct mylite_db *database, const char *function_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "%s supports only supported UUID conversion scalar arguments",
+        function_name == NULL ? "UUID conversion" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_unsupported_error(database, "UUID conversion argument shape is not supported");
+        return;
+    }
+    set_unsupported_error(database, message);
 }
 
 static int format_hex_bytes(
@@ -107409,6 +108331,7 @@ static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *exp
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression) {
     return (is_hex_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
+            is_uuid_projection_expression(expression) ||
             is_char_projection_expression(expression)) != 0;
 }
 
@@ -107542,6 +108465,103 @@ static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *exp
     default:
         return false;
     }
+}
+
+static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+        if (child_count != 1U) {
+            return false;
+        }
+        argument = child_at(expression, 0U);
+        return is_uuid_value_projection_argument_supported(argument);
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+        if (child_count != 1U && child_count != 2U) {
+            return false;
+        }
+        argument = child_at(expression, 0U);
+        if (!is_uuid_value_projection_argument_supported(argument)) {
+            return false;
+        }
+        if (child_count == 1U) {
+            return true;
+        }
+        return child_at(expression, 1U) != NULL;
+    default:
+        break;
+    }
+
+    return false;
+}
+
+static bool is_uuid_value_projection_argument_supported(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+        return true;
+    default:
+        break;
+    }
+    return false;
 }
 
 static bool is_char_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -131045,6 +132065,301 @@ static bool unhex_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_uuid_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *swap_argument = NULL;
+    struct session_scalar_cell cell = {0};
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_uuid_unsupported_error(database, "UUID conversion");
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION && child_count != 1U) {
+        set_native_function_parameter_count_error(database, "IS_UUID");
+        return MYLITE_ERROR;
+    }
+    if ((expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+         expression->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION) &&
+        child_count != 1U && child_count != 2U) {
+        set_native_function_parameter_count_error(
+            database,
+            expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ? "UUID_TO_BIN" : "BIN_TO_UUID"
+        );
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    swap_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                             argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        if (!has_source) {
+            return uuid_unknown_column_argument(database, argument);
+        }
+        return plan_row_scalar_uuid_column_expression(
+            database,
+            &(struct row_scalar_uuid_column_expression_request){
+                .function_expression = expression,
+                .value_argument = argument,
+                .swap_argument = swap_argument,
+            },
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && argument != NULL &&
+        (argument->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
+         argument->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+         argument->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION)) {
+        return plan_row_scalar_uuid_nested_expression(
+            database,
+            &(struct row_scalar_uuid_column_expression_request){
+                .function_expression = expression,
+                .value_argument = argument,
+                .swap_argument = swap_argument,
+            },
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    if (!is_uuid_projection_expression(expression)) {
+        set_uuid_unsupported_error(database, "UUID conversion");
+        return MYLITE_ERROR;
+    }
+
+    rc = uuid_function_value(database, expression, &cell);
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        if (cell.value == NULL) {
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        } else if (cell.has_value_size) {
+            rc = copy_blob_value(database, cell.value, cell.value_size, &out_expression->value);
+        } else {
+            rc = copy_text_value(database, cell.value, &out_expression->value);
+        }
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int plan_row_scalar_uuid_nested_expression(
+    struct mylite_db *database,
+    const struct row_scalar_uuid_column_expression_request *request,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *nested_argument = NULL;
+    const struct mylite_sql_ast_node *nested_swap_argument = NULL;
+    bool swap = false;
+    size_t nested_child_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (request == NULL || request->function_expression == NULL ||
+        request->value_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    nested_child_count = mylite_sql_ast_node_child_count(request->value_argument);
+    if (request->value_argument->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION &&
+        nested_child_count != 1U) {
+        set_native_function_parameter_count_error(database, "IS_UUID");
+        return MYLITE_ERROR;
+    }
+    if ((request->value_argument->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+         request->value_argument->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION) &&
+        nested_child_count != 1U && nested_child_count != 2U) {
+        set_native_function_parameter_count_error(
+            database,
+            request->value_argument->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ? "UUID_TO_BIN"
+                                                                                 : "BIN_TO_UUID"
+        );
+        return MYLITE_ERROR;
+    }
+
+    nested_argument = unwrap_parenthesized_expression(child_at(request->value_argument, 0U));
+    nested_swap_argument = unwrap_parenthesized_expression(child_at(request->value_argument, 1U));
+    if (nested_argument == NULL || (nested_argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                                    nested_argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT nested UUID conversion supports only one descriptor column "
+            "argument"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->argument_count = request->swap_argument == NULL ? 1U : 2U;
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(out_expression->argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    if (request->function_expression->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID;
+    } else if (request->function_expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN;
+    } else {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID;
+    }
+
+    rc = plan_row_scalar_uuid_column_expression(
+        database,
+        &(struct row_scalar_uuid_column_expression_request){
+            .function_expression = request->value_argument,
+            .value_argument = nested_argument,
+            .swap_argument = nested_swap_argument,
+        },
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK && request->swap_argument != NULL) {
+        rc = uuid_swap_flag_value(database, request->swap_argument, &swap);
+    }
+    if (rc == MYLITE_OK && request->swap_argument != NULL) {
+        out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[1].value.integer = 0;
+        if (swap) {
+            out_expression->arguments[1].value.integer = 1;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_uuid_column_expression(
+    struct mylite_db *database,
+    const struct row_scalar_uuid_column_expression_request *request,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    bool swap = false;
+    int rc = MYLITE_OK;
+
+    if (request == NULL || request->function_expression == NULL ||
+        request->value_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = resolve_descriptor_column_reference(
+        database,
+        request->value_argument,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT UUID conversion supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!uuid_column_descriptor_is_supported(
+            database,
+            request->function_expression->kind,
+            &column
+        )) {
+        return MYLITE_ERROR;
+    }
+    if (request->swap_argument != NULL) {
+        rc = uuid_swap_flag_value(database, request->swap_argument, &swap);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    out_expression->argument_count = request->swap_argument == NULL ? 1U : 2U;
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(out_expression->argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    if (request->function_expression->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID;
+    } else if (request->function_expression->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN;
+    } else {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID;
+    }
+    out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->arguments[0].column = column;
+    if (request->swap_argument != NULL) {
+        out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[1].value.integer = 0;
+        if (swap) {
+            out_expression->arguments[1].value.integer = 1;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool uuid_column_descriptor_is_supported(
+    struct mylite_db *database,
+    enum mylite_sql_ast_node_kind function_kind,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (function_kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
+        function_kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION) {
+        if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+            return true;
+        }
+        if (column_descriptor_is_string_family(column) ||
+            column_descriptor_is_binary_string_family(column)) {
+            return true;
+        }
+        set_unsupported_error(
+            database,
+            "IS_UUID() and UUID_TO_BIN() support only integer, nonbinary string, and binary "
+            "string columns"
+        );
+        return false;
+    }
+
+    if (function_kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION) {
+        if (column_descriptor_is_string_family(column) ||
+            column_descriptor_is_binary_string_family(column)) {
+            return true;
+        }
+        set_unsupported_error(
+            database,
+            "BIN_TO_UUID() supports only nonbinary string and binary string columns"
+        );
+        return false;
+    }
+
+    set_uuid_unsupported_error(database, "UUID conversion");
+    return false;
+}
+
 static int plan_row_scalar_binary_string_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -131061,6 +132376,18 @@ static int plan_row_scalar_binary_string_expression(
     *out_handled = true;
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+        return plan_row_scalar_uuid_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     case MYLITE_SQL_AST_HEX_FUNCTION:
         return plan_row_scalar_hex_expression(
             database,
@@ -132691,6 +134018,9 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         break;
     }
@@ -136503,6 +137833,9 @@ static bool row_scalar_expression_contains_row_function(
                   MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_CHAR_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION ||
             is_charset_collation_function_kind(current->kind)) {
@@ -151598,6 +152931,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -151629,6 +152963,8 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         break;
     }
@@ -152562,6 +153898,10 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_hex_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        return append_row_scalar_uuid_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         return append_row_scalar_char_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -152635,6 +153975,11 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+        break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        return append_row_scalar_uuid_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -152768,6 +154113,10 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+        break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -153128,6 +154477,297 @@ static int append_row_scalar_unhex_expression_sql(
         rc = dynamic_string_append_char(string, ')');
     }
     return rc;
+}
+
+static int append_row_scalar_uuid_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name =
+        expression == NULL ? NULL : row_scalar_uuid_sql_function_name(expression->kind);
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || expression->argument_count == 0U ||
+        expression->arguments == NULL || expression->argument_count > 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_uuid_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                argument_index,
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_uuid_argument_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *argument,
+    size_t argument_index,
+    size_t *next_parameter
+) {
+    if (argument == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return append_row_scalar_uuid_leaf_argument_sql(string, argument, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        if (argument_index == 0U) {
+            return append_row_scalar_uuid_inner_expression_sql(string, argument, next_parameter);
+        }
+        break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+    return MYLITE_ERROR;
+}
+
+static int append_row_scalar_uuid_inner_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name =
+        expression == NULL ? NULL : row_scalar_uuid_sql_function_name(expression->kind);
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || expression->argument_count == 0U ||
+        expression->arguments == NULL || expression->argument_count > 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_uuid_leaf_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_uuid_leaf_argument_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *argument,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (argument == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return dynamic_string_append_quoted_identifier(string, argument->column.name);
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+    return MYLITE_ERROR;
+}
+
+static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_expression_kind kind) {
+    switch (kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+        return "_mylite_is_uuid";
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+        return "_mylite_uuid_to_bin";
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        return "_mylite_bin_to_uuid";
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        return NULL;
+    }
+    return NULL;
 }
 
 static int append_row_scalar_char_expression_sql(
@@ -154182,6 +155822,9 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -154378,6 +156021,9 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         break;
     }
@@ -154448,6 +156094,9 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         break;
     }
@@ -154851,6 +156500,9 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         break;
     }
@@ -154925,6 +156577,9 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -161110,6 +162765,10 @@ static int bind_row_scalar_expression_parameters(
         return bind_row_scalar_hex_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return bind_row_scalar_unhex_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        return bind_row_scalar_uuid_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         return bind_row_scalar_char_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -161187,6 +162846,11 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+        break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        return bind_row_scalar_uuid_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -161298,6 +162962,9 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -161954,6 +163621,9 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -162135,6 +163805,9 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         break;
     }
@@ -162200,6 +163873,9 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -162345,6 +164021,209 @@ static int bind_row_scalar_unhex_expression_parameters(
         &expression->arguments[0],
         parameter_index
     );
+}
+
+static int bind_row_scalar_uuid_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count == 0U || expression->arguments == NULL ||
+        expression->argument_count > 2U) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = bind_row_scalar_uuid_argument_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            argument_index,
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_row_scalar_uuid_argument_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *argument,
+    size_t argument_index,
+    int *parameter_index
+) {
+    if (argument == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return bind_row_scalar_uuid_leaf_argument_parameters(statement, argument, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+        if (argument_index == 0U) {
+            return bind_row_scalar_uuid_inner_expression_parameters(
+                statement,
+                argument,
+                parameter_index
+            );
+        }
+        break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+    return MYLITE_ERROR;
+}
+
+static int bind_row_scalar_uuid_inner_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count == 0U || expression->arguments == NULL ||
+        expression->argument_count > 2U) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = bind_row_scalar_uuid_leaf_argument_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_row_scalar_uuid_leaf_argument_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *argument,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (argument == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = bind_planned_value_parameter(statement, *parameter_index, &argument->value);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+    return MYLITE_ERROR;
 }
 
 static int bind_row_scalar_char_expression_parameters(

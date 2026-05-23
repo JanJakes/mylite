@@ -24,6 +24,7 @@
 #include "mylite_temporal_extract.h"
 #include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
+#include "mylite_uuid.h"
 #include "sqlite3.h"
 
 #include <stddef.h>
@@ -270,6 +271,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_unhex_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_uuid_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_regexp_functions(sqlite);

@@ -121,12 +121,20 @@ expect_output \
     "$DATABASE"
 
 run_mysql \
-    "CREATE TABLE t(id INT, s VARCHAR(64), b VARBINARY(32)); "\
+    "CREATE TABLE t(id INT, s VARCHAR(64), b VARBINARY(32), fixed_bin BINARY(16), "\
+"txt TEXT, blob_value BLOB); "\
 "INSERT INTO t VALUES "\
-"(1, '6ccd780c-baba-1026-9564-5b8c656024db', X'6CCD780CBABA102695645B8C656024DB'), "\
-"(2, '6ccd780cbaba102695645b8c656024db', X'1026BABA6CCD780C95645B8C656024DB'), "\
-"(3, '{6ccd780c-baba-1026-9564-5b8c656024db}', 'abcdefghijklmnop'), "\
-"(4, NULL, NULL);" \
+"(1, '6ccd780c-baba-1026-9564-5b8c656024db', X'6CCD780CBABA102695645B8C656024DB', "\
+"X'6CCD780CBABA102695645B8C656024DB', '6ccd780c-baba-1026-9564-5b8c656024db', "\
+"X'6CCD780CBABA102695645B8C656024DB'), "\
+"(2, '6ccd780cbaba102695645b8c656024db', X'1026BABA6CCD780C95645B8C656024DB', "\
+"X'6CCD780CBABA102695645B8C656024DB', '6ccd780c-baba-1026-9564-5b8c656024db', "\
+"X'6CCD780CBABA102695645B8C656024DB'), "\
+"(3, '{6ccd780c-baba-1026-9564-5b8c656024db}', 'abcdefghijklmnop', "\
+"X'6CCD780CBABA102695645B8C656024DB', '6ccd780c-baba-1026-9564-5b8c656024db', "\
+"X'6CCD780CBABA102695645B8C656024DB'), "\
+"(4, NULL, NULL, X'6CCD780CBABA102695645B8C656024DB', "\
+"'6ccd780c-baba-1026-9564-5b8c656024db', X'6CCD780CBABA102695645B8C656024DB');" \
     "$DATABASE" >/dev/null
 
 table_expected=$(cat <<EXPECTED
@@ -162,6 +170,18 @@ expect_output \
     "table uuid row envelope" \
     "$limited_expected" \
     "SELECT id, IS_UUID(s), BIN_TO_UUID(b) FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
+    "$DATABASE"
+
+families_expected=$(cat <<EXPECTED
+1	6ccd780c-baba-1026-9564-5b8c656024db	6ccd780c-baba-1026-9564-5b8c656024db	6ccd780c-baba-1026-9564-5b8c656024db	6ccd780c-baba-1026-9564-5b8c656024db
+EXPECTED
+)
+expect_output \
+    "table uuid descriptor families and nesting" \
+    "$families_expected" \
+    "SELECT IS_UUID(txt), BIN_TO_UUID(fixed_bin), BIN_TO_UUID(blob_value), "\
+"BIN_TO_UUID(UUID_TO_BIN(s)), BIN_TO_UUID(UUID_TO_BIN(s, 1), 1) "\
+"FROM t WHERE id = 1;" \
     "$DATABASE"
 
 do_expected=$(cat <<EXPECTED

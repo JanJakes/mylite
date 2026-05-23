@@ -1178,6 +1178,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "unhex_function";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         return "unhex_argument_count_error";
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+        return "is_uuid_function";
+    case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
+        return "is_uuid_argument_count_error";
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+        return "uuid_to_bin_function";
+    case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
+        return "uuid_to_bin_argument_count_error";
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+        return "bin_to_uuid_function";
+    case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:
+        return "bin_to_uuid_argument_count_error";
     case MYLITE_SQL_AST_DEFAULT_FUNCTION:
         return "default_function";
     case MYLITE_SQL_AST_ASCII_FUNCTION:

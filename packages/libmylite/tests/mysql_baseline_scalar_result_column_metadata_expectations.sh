@@ -134,6 +134,7 @@ json_output=$(run_mysql_type_info \
 "SELECT JSON_VALID('{}') AS valid_json, JSON_TYPE('{}') AS json_type, "\
 "JSON_LENGTH('{}') AS json_length, JSON_CONTAINS('{}','{}') AS contains_json, "\
 "JSON_CONTAINS_PATH('{}','one','$') AS contains_path, "\
+"JSON_QUOTE('abc') AS quoted_json, "\
 "JSON_EXTRACT('{\"a\":1}','$.a') AS extracted_json, JSON_ARRAY(1,'a') AS array_json, "\
 "JSON_OBJECT('a',1) AS object_json FROM DUAL;" \
     "$DATABASE")
@@ -147,12 +148,15 @@ expect_contains "json type length" 'Length:     68' "$json_output"
 expect_contains "json type flags" 'Flags:      BINARY ' "$json_output"
 expect_contains "json length label" 'Field   3:  `json_length`' "$json_output"
 expect_contains "json contains path label" 'Field   5:  `contains_path`' "$json_output"
-expect_contains "json extract label" 'Field   6:  `extracted_json`' "$json_output"
+expect_contains "json quote label" 'Field   6:  `quoted_json`' "$json_output"
+expect_contains "json quote type" 'Type:       VAR_STRING' "$json_output"
+expect_contains "json quote flags" 'Flags:      BINARY ' "$json_output"
+expect_contains "json extract label" 'Field   7:  `extracted_json`' "$json_output"
 expect_contains "json extract type" 'Type:       JSON' "$json_output"
 expect_contains "json extract length" 'Length:     4294967292' "$json_output"
 expect_contains "json extract flags" 'Flags:      BINARY ' "$json_output"
-expect_contains "json array label" 'Field   7:  `array_json`' "$json_output"
-expect_contains "json object label" 'Field   8:  `object_json`' "$json_output"
+expect_contains "json array label" 'Field   8:  `array_json`' "$json_output"
+expect_contains "json object label" 'Field   9:  `object_json`' "$json_output"
 
 row_scalar_output=$(run_mysql_type_info \
     "USE ${DATABASE}; SET NAMES utf8mb4; "\
@@ -160,7 +164,8 @@ row_scalar_output=$(run_mysql_type_info \
 "INSERT INTO t VALUES (1, '{\"a\":1}', '{\"a\":1}'); "\
 "SELECT id, JSON_VALID(j) AS valid_j, JSON_LENGTH(j) AS len_j, "\
 "JSON_CONTAINS(j,'1','$.a') AS c, JSON_CONTAINS_PATH(j,'one','$.a') AS cp, "\
-"JSON_TYPE(j) AS jt, JSON_EXTRACT(j,'$.a') AS je, JSON_ARRAY(id,s) AS ja, "\
+"JSON_TYPE(j) AS jt, JSON_QUOTE(s) AS jq, JSON_EXTRACT(j,'$.a') AS je, "\
+"JSON_ARRAY(id,s) AS ja, "\
 "JSON_OBJECT('a',id) AS jo FROM t AS src LIMIT 0;" \
     "$DATABASE")
 
@@ -175,9 +180,10 @@ expect_contains "row scalar json contains label" 'Field   4:  `c`' "$row_scalar_
 expect_contains "row scalar json contains length" 'Length:     21' "$row_scalar_output"
 expect_contains "row scalar json contains path label" 'Field   5:  `cp`' "$row_scalar_output"
 expect_contains "row scalar json type label" 'Field   6:  `jt`' "$row_scalar_output"
-expect_contains "row scalar json extract label" 'Field   7:  `je`' "$row_scalar_output"
-expect_contains "row scalar json array label" 'Field   8:  `ja`' "$row_scalar_output"
-expect_contains "row scalar json object label" 'Field   9:  `jo`' "$row_scalar_output"
+expect_contains "row scalar json quote label" 'Field   7:  `jq`' "$row_scalar_output"
+expect_contains "row scalar json extract label" 'Field   8:  `je`' "$row_scalar_output"
+expect_contains "row scalar json array label" 'Field   9:  `ja`' "$row_scalar_output"
+expect_contains "row scalar json object label" 'Field  10:  `jo`' "$row_scalar_output"
 expect_contains "row scalar metadata warning count" '0 rows in set' "$row_scalar_output"
 
 printf '%s\n' "mysql_baseline_scalar_result_column_metadata_expectations: ok"

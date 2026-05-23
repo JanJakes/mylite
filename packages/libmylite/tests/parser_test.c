@@ -2559,11 +2559,14 @@ static int test_json_extract_functions(void) {
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_item = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_item = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
     const struct mylite_sql_ast_node *operator_expression = NULL;
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT JSON_EXTRACT('{\"a\":1}', '$.a'), JSON_UNQUOTE('\"x\"') AS value FROM DUAL;",
+        "SELECT JSON_EXTRACT('{\"a\":1}', '$.a'), JSON_UNQUOTE('\"x\"') AS value, "
+        "JSON_QUOTE('abc') AS quoted FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -2572,6 +2575,8 @@ static int test_json_extract_functions(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     second_item = child_at(select_list, 1U);
     second_expression = child_at(second_item, 0U);
+    third_item = child_at(select_list, 2U);
+    third_expression = child_at(third_item, 0U);
     failures += expect_node(
         first_expression,
         MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION,
@@ -2599,6 +2604,17 @@ static int test_json_extract_functions(void) {
     failures += expect_child_count(second_expression, 1U, "json_unquote argument count");
     failures +=
         expect_node(child_at(second_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "json_unquote alias");
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_JSON_QUOTE_FUNCTION, "json_quote function");
+    failures += expect_span_text(third_expression, "JSON_QUOTE('abc')", "json_quote span");
+    failures += expect_child_count(third_expression, 1U, "json_quote argument count");
+    failures += expect_literal(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "json_quote string argument"
+    );
+    failures +=
+        expect_node(child_at(third_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "json_quote alias");
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "json from dual");
     mylite_sql_parse_result_deinit(&result);
 
@@ -2680,8 +2696,27 @@ static int test_json_extract_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT JSON_QUOTE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR,
+        "json_quote zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_QUOTE('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR,
+        "json_quote many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "CREATE TABLE json_extract (json_unquote INT); SELECT json_unquote FROM json_extract;",
+        "CREATE TABLE json_extract (json_unquote INT, json_quote INT); "
+        "SELECT json_unquote, json_quote FROM json_extract;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

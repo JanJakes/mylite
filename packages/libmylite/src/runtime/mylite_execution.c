@@ -168,6 +168,7 @@ enum {
     mysql_error_json_null_member_name = 3158,
     mysql_error_illegal_user_variable_name = 3061,
     mysql_error_json_unquote_incorrect_type = 3064,
+    mysql_error_json_quote_incorrect_type = 3064,
     mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_error_foreign_key_cascade_duplicate = 1761,
@@ -2782,7 +2783,9 @@ struct joined_select_ast {
 
 struct joined_select_temp_nodes {
     const struct mylite_sql_ast_node **source_nodes;
+    size_t source_node_count;
     const struct mylite_sql_ast_node **join_condition_nodes;
+    size_t join_condition_node_count;
 };
 
 enum planned_row_scalar_expression_kind {
@@ -2840,6 +2843,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID = 51,
     PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN = 52,
     PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID = 53,
+    PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE = 54,
 };
 
 enum {
@@ -12569,6 +12573,7 @@ static int reject_unsupported_multi_source_join_edges(
 static int plan_joined_select_conditions(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *const *join_condition_nodes,
+    size_t join_condition_node_count,
     struct planned_select *out_plan
 );
 static int plan_joined_select_source(
@@ -13677,6 +13682,11 @@ static int json_type_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int json_quote_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int json_unquote_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -13768,6 +13778,14 @@ static int json_unquote_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int json_quote_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     char **out_owned_text,
     const char **out_text,
     size_t *out_text_length,
@@ -16458,6 +16476,7 @@ static bool is_json_introspection_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_json_unquote_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_json_quote_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_construction_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -22594,6 +22613,16 @@ static int plan_row_scalar_json_type_expression(
     enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_json_quote_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_json_unquote_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -22744,6 +22773,29 @@ static int plan_row_scalar_json_unquote_argument(
     size_t table_column_count,
     enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_quote_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_quote_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool json_quote_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
 );
 static int plan_row_scalar_json_text_column(
     struct mylite_db *database,
@@ -24873,6 +24925,11 @@ static int append_row_scalar_json_unquote_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_json_quote_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_json_unquote_extract_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -26163,6 +26220,11 @@ static int bind_row_scalar_json_unquote_expression_parameters(
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
+static int bind_row_scalar_json_quote_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
 static int bind_row_scalar_json_introspection_argument_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -26481,6 +26543,7 @@ static void set_invalid_json_path_error(struct mylite_db *database, size_t posit
 static void set_invalid_json_data_type_error(struct mylite_db *database, const char *function_name);
 static void set_invalid_json_one_or_all_error(struct mylite_db *database);
 static void set_json_unquote_incorrect_type_error(struct mylite_db *database);
+static void set_json_quote_incorrect_type_error(struct mylite_db *database);
 static void set_json_binary_charset_error(struct mylite_db *database);
 static void set_json_null_member_name_error(struct mylite_db *database);
 static void set_no_database_error(struct mylite_db *database);
@@ -27619,6 +27682,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
@@ -49174,6 +49239,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
@@ -75970,7 +76037,12 @@ static int plan_joined_select(
         rc = reject_unsupported_multi_source_join_edges(database, out_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_joined_select_conditions(database, temp_nodes.join_condition_nodes, out_plan);
+        rc = plan_joined_select_conditions(
+            database,
+            temp_nodes.join_condition_nodes,
+            temp_nodes.join_condition_node_count,
+            out_plan
+        );
     }
     if (rc == MYLITE_OK) {
         out_plan->join_condition = out_plan->join_conditions[0];
@@ -76029,6 +76101,8 @@ static int prepare_joined_select_plan(
     }
 
     out_plan->join_count = out_plan->source_count - 1U;
+    temp_nodes->source_node_count = out_plan->source_count;
+    temp_nodes->join_condition_node_count = out_plan->join_count;
     out_plan->sources = calloc(out_plan->source_count, sizeof(*out_plan->sources));
     out_plan->join_kinds = calloc(out_plan->join_count, sizeof(*out_plan->join_kinds));
     out_plan->join_conditions = calloc(out_plan->join_count, sizeof(*out_plan->join_conditions));
@@ -76089,7 +76163,9 @@ static int collect_joined_select_parts(
     size_t join_index = 0U;
 
     if (node == NULL || out_plan == NULL || temp_nodes == NULL ||
-        temp_nodes->source_nodes == NULL || temp_nodes->join_condition_nodes == NULL) {
+        temp_nodes->source_nodes == NULL || temp_nodes->join_condition_nodes == NULL ||
+        temp_nodes->source_node_count != out_plan->source_count ||
+        temp_nodes->join_condition_node_count != out_plan->join_count) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -76105,6 +76181,11 @@ static int collect_joined_select_parts(
         }
 
         --join_index;
+        if (join_index + 1U >= temp_nodes->source_node_count ||
+            join_index >= temp_nodes->join_condition_node_count) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
         temp_nodes->source_nodes[join_index + 1U] = right_source;
         out_plan->join_kinds[join_index] = mylite_sql_ast_node_join_kind(node);
         temp_nodes->join_condition_nodes[join_index] = child_at(node, 2U);
@@ -76174,14 +76255,16 @@ static int reject_unsupported_multi_source_join_edges(
 static int plan_joined_select_conditions(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *const *join_condition_nodes,
+    size_t join_condition_node_count,
     struct planned_select *out_plan
 ) {
-    if (join_condition_nodes == NULL || out_plan == NULL) {
+    if (join_condition_nodes == NULL || out_plan == NULL ||
+        join_condition_node_count != out_plan->join_count) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    for (size_t join_index = 0U; join_index < out_plan->join_count; ++join_index) {
+    for (size_t join_index = 0U; join_index < join_condition_node_count; ++join_index) {
         struct select_source_context edge_source_context = {0};
         int rc = init_join_select_source_context(
             out_plan->sources,
@@ -81299,6 +81382,10 @@ static bool map_json_type_row_scalar_step_error(struct mylite_db *database, cons
         set_json_unquote_incorrect_type_error(database);
         return true;
     }
+    if (strcmp(message, "Incorrect type for argument to JSON_QUOTE()") == 0) {
+        set_json_quote_incorrect_type_error(database);
+        return true;
+    }
     if (strcmp(message, "Invalid JSON text in JSON_UNQUOTE()") == 0) {
         set_invalid_json_function_text_error(database, 0U);
         return true;
@@ -81506,6 +81593,17 @@ static int populate_row_scalar_expression_result_column_descriptor(
             descriptor,
             (struct scalar_connection_string_result_column_shape){
                 .display_length = mysql_json_type_display_length,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_json_document_display_length,
                 .extra_flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
                 .nullable = true,
             }
@@ -84095,6 +84193,17 @@ static int populate_scalar_function_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_json_document_display_length,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
@@ -84963,6 +85072,8 @@ static const char *argument_count_error_node_function_name(
         return "JSON_LENGTH";
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
         return "JSON_TYPE";
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
+        return "JSON_QUOTE";
     case MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR:
         return "JSON_UNQUOTE";
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
@@ -85234,6 +85345,11 @@ static int session_scalar_value(
         return json_type_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_TYPE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+        return json_quote_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_QUOTE");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
         return json_unquote_function_value(database, expression, out_cell);
@@ -86743,6 +86859,57 @@ static int json_type_function_value(
     return rc;
 }
 
+static int json_quote_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    char *owned_argument = NULL;
+    char *result_text = NULL;
+    const char *argument = NULL;
+    size_t argument_length = 0U;
+    size_t result_length = 0U;
+    bool argument_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_QUOTE_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "JSON_QUOTE");
+        return MYLITE_ERROR;
+    }
+
+    rc = json_quote_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &owned_argument,
+        &argument,
+        &argument_length,
+        &argument_is_null
+    );
+    if (rc == MYLITE_OK && argument_is_null) {
+        out_cell->value = NULL;
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_json_quote_string(argument, argument_length, &result_text, &result_length);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (rc == MYLITE_OK) {
+            (void)result_length;
+            out_cell->owned_text = result_text;
+            out_cell->value = out_cell->owned_text;
+            result_text = NULL;
+        }
+    }
+
+    free(result_text);
+    free(owned_argument);
+    return rc;
+}
+
 static int json_unquote_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -87650,6 +87817,91 @@ static int json_unquote_scalar_argument(
         database,
         "JSON_UNQUOTE() supports only string, NULL, and JSON_EXTRACT() arguments"
     );
+    return MYLITE_ERROR;
+}
+
+static int json_quote_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_owned_text == NULL || out_text == NULL || out_text_length == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "JSON_QUOTE() supports only string and NULL arguments");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t part_count = 0U;
+        int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            int rc = decode_sql_string_literal(
+                database,
+                expression,
+                "JSON_QUOTE() supports only string literals",
+                "JSON_QUOTE() string literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            *out_is_null = true;
+            return MYLITE_OK;
+        }
+        set_json_quote_incorrect_type_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        set_json_quote_incorrect_type_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CAST_BINARY_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION) {
+        set_json_binary_charset_error(database);
+        return MYLITE_ERROR;
+    }
+
+    set_unsupported_error(database, "JSON_QUOTE() supports only string and NULL arguments");
     return MYLITE_ERROR;
 }
 
@@ -98659,6 +98911,8 @@ static int hex_scalar_argument_value(
         return convert_using_charset_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
         return json_extract_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+        return json_quote_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
         return json_unquote_function_value(database, expression, out_cell);
     default:
@@ -108067,6 +108321,7 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
             is_json_extract_projection_expression(expression) ||
             is_json_introspection_projection_expression(expression) ||
             is_json_unquote_projection_expression(expression) ||
+            is_json_quote_projection_expression(expression) ||
             is_json_construction_projection_expression(expression) ||
             is_date_format_numeric_equal_expression(expression)) != 0;
 }
@@ -108398,6 +108653,7 @@ static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
         return true;
     default:
@@ -108556,6 +108812,7 @@ static bool is_uuid_value_projection_argument_supported(
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
         return true;
     default:
@@ -109229,6 +109486,16 @@ static bool is_json_unquote_projection_expression(const struct mylite_sql_ast_no
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION) {
+        return false;
+    }
+    return (mylite_sql_ast_node_child_count(expression) == 1U &&
+            child_at(expression, 0U) != NULL) != 0;
+}
+
+static bool is_json_quote_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_QUOTE_FUNCTION) {
         return false;
     }
     return (mylite_sql_ast_node_child_count(expression) == 1U &&
@@ -126993,6 +127260,8 @@ static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expr
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
@@ -127100,6 +127369,20 @@ static int plan_row_scalar_json_expression(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
         return plan_row_scalar_json_type_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_QUOTE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+        return plan_row_scalar_json_quote_expression(
             database,
             expression,
             has_source,
@@ -130799,6 +131082,47 @@ static int plan_row_scalar_json_type_expression(
     return rc;
 }
 
+static int plan_row_scalar_json_quote_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_QUOTE_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "JSON_QUOTE");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE;
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_json_quote_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        column_diagnostic_context,
+        &out_expression->arguments[0]
+    );
+    return rc;
+}
+
 static int plan_row_scalar_json_unquote_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -131726,6 +132050,140 @@ static int plan_row_scalar_json_unquote_argument(
         "JSON_UNQUOTE() supports only string, NULL, and descriptor column arguments"
     );
     return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_json_quote_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "JSON_QUOTE() supports only string, NULL, and nonbinary string descriptor column "
+            "arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_json_quote_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            return plan_row_scalar_literal_value(database, expression, out_expression);
+        }
+        set_json_quote_incorrect_type_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        set_json_quote_incorrect_type_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CAST_BINARY_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION) {
+        set_json_binary_charset_error(database);
+        return MYLITE_ERROR;
+    }
+
+    set_unsupported_error(
+        database,
+        "JSON_QUOTE() supports only string, NULL, and nonbinary string descriptor column arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_json_quote_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        column_diagnostic_context,
+        "row-scalar SELECT JSON_QUOTE() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!json_quote_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool json_quote_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_string_family(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_json_binary_charset_error(database);
+        return false;
+    }
+    if (column != NULL) {
+        set_json_quote_incorrect_type_error(database);
+        return false;
+    }
+
+    set_unsupported_error(database, "JSON_QUOTE() supports only nonbinary string columns");
+    return false;
 }
 
 static int plan_row_scalar_json_text_column(
@@ -134010,6 +134468,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
@@ -137823,6 +138282,8 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_TYPE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_QUOTE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_ARRAY_FUNCTION ||
@@ -152930,6 +153391,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -153870,6 +154332,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_json_extract_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
         return append_row_scalar_json_unquote_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+        return append_row_scalar_json_quote_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
         return append_row_scalar_json_unquote_extract_expression_sql(
             string,
@@ -153967,6 +154431,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -154105,6 +154570,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -154572,6 +155038,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -154683,6 +155150,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -154750,6 +155218,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -155735,6 +156204,31 @@ static int append_row_scalar_json_unquote_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_json_quote_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_json_quote(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_json_unquote_extract_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -155814,6 +156308,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -156013,6 +156508,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
@@ -156086,6 +156582,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
@@ -156492,6 +156989,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -156569,6 +157067,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -162742,6 +163241,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+        return bind_row_scalar_json_quote_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
         return bind_row_scalar_json_length_expression_parameters(
             statement,
@@ -162838,6 +163343,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -162954,6 +163460,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -163556,6 +164063,21 @@ static int bind_row_scalar_json_unquote_expression_parameters(
     );
 }
 
+static int bind_row_scalar_json_quote_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+}
+
 static int bind_row_scalar_json_introspection_argument_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -163613,6 +164135,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -163797,6 +164320,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -163865,6 +164389,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -164106,6 +164631,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -164203,6 +164729,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -165878,6 +166405,15 @@ static void set_json_unquote_incorrect_type_error(struct mylite_db *database) {
         mysql_error_json_unquote_incorrect_type,
         "HY000",
         "Incorrect type for argument 1 in function JSON_UNQUOTE."
+    );
+}
+
+static void set_json_quote_incorrect_type_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_json_quote_incorrect_type,
+        "HY000",
+        "Incorrect type for argument 1 in function json_quote."
     );
 }
 

@@ -888,6 +888,39 @@ int mylite_json_unquote(
     return rc;
 }
 
+int mylite_json_quote_string(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length
+) {
+    struct json_writer writer = {0};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = emit_string(&writer, text, text_length);
+    if (rc == MYLITE_OK) {
+        size_t result_length = writer.length;
+
+        *out_text = writer_take(&writer);
+        if (*out_text == NULL) {
+            rc = MYLITE_NOMEM;
+        } else {
+            *out_text_length = result_length;
+        }
+    }
+    writer_deinit(&writer);
+    return rc;
+}
+
 static const char *json_value_type_name(const struct json_value *value) {
     if (value == NULL) {
         return NULL;

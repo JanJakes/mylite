@@ -100,6 +100,12 @@ int mylite_json_unquote(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_quote_string(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length
+);
 int mylite_json_array_from_sql_values(
     const struct mylite_json_sql_value *values,
     size_t value_count,

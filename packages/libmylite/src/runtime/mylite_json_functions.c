@@ -39,6 +39,7 @@ static void json_contains_path_sqlite_callback(
 );
 static void json_extract_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_type_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_unquote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_valid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -203,6 +204,20 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_type_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_quote",
+            .argument_count = 1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_quote_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -730,6 +745,50 @@ static void json_type_sqlite_callback(sqlite3_context *context, int argc, sqlite
         return;
     }
     sqlite3_result_text(context, type, -1, SQLITE_TRANSIENT);
+}
+
+static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const unsigned char *text = NULL;
+    int text_length = 0;
+    char *result = NULL;
+    size_t result_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_QUOTE callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Incorrect type for argument to JSON_QUOTE()", -1);
+        return;
+    }
+
+    text = sqlite3_value_text(argv[0]);
+    text_length = sqlite3_value_bytes(argv[0]);
+    if (text == NULL || text_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_quote_string((const char *)text, (size_t)text_length, &result, &result_length);
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "MyLite JSON_QUOTE failed", -1);
+        return;
+    }
+    if (result_length > (size_t)INT_MAX) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_text(context, result, (int)result_length, free);
 }
 
 static void json_unquote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {

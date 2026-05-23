@@ -7,13 +7,13 @@
 - [x] Write the independently authored feature specification and compatibility
   scope.
 - [x] Add MySQL-runtime expectation artifact for the user-visible behavior.
-- [ ] Add lexer/parser/AST support for `JSON_QUOTE()` and wrong-arity markers.
-- [ ] Add MyLite JSON string-quote helper reusing the existing JSON writer.
-- [ ] Register `_mylite_json_quote()` through the public SQLite scalar function
+- [x] Add lexer/parser/AST support for `JSON_QUOTE()` and wrong-arity markers.
+- [x] Add MyLite JSON string-quote helper reusing the existing JSON writer.
+- [x] Register `_mylite_json_quote()` through the public SQLite scalar function
   API.
-- [ ] Add scalar and row-scalar planning, execution, parameter binding,
+- [x] Add scalar and row-scalar planning, execution, parameter binding,
   diagnostics, and result metadata.
-- [ ] Add parser, runtime, metadata, and compatibility tests.
-- [ ] Run focused JSON/parser/runtime verification, the MySQL expectation
+- [x] Add parser, runtime, metadata, and compatibility tests.
+- [x] Run focused JSON/parser/runtime verification, the MySQL expectation
   script, and `cmake --workflow --preset check`.
-- [ ] Self-review, commit, request subagent review, amend if needed, and push.
+- [x] Self-review, commit, request subagent review, amend if needed, and push.

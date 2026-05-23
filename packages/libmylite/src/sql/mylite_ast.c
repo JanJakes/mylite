@@ -1362,6 +1362,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_unquote_function";
     case MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR:
         return "json_unquote_argument_count_error";
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+        return "json_quote_function";
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
+        return "json_quote_argument_count_error";
     case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
         return "json_array_function";
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:

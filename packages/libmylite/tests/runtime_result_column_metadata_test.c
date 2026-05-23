@@ -39,11 +39,13 @@ enum {
     mysql_last_insert_id_column_index = 8,
     mysql_unseeded_rand_column_index = 9,
     mysql_seeded_rand_column_index = 10,
-    mysql_json_scalar_column_count = 8,
-    mysql_json_document_first_column_index = 5,
-    mysql_row_scalar_column_count = 9,
+    mysql_json_scalar_column_count = 9,
+    mysql_json_quote_column_index = 5,
+    mysql_json_document_first_column_index = 6,
+    mysql_row_scalar_column_count = 10,
     mysql_row_json_type_column_index = 5,
-    mysql_row_json_document_first_column_index = 6,
+    mysql_row_json_quote_column_index = 6,
+    mysql_row_json_document_first_column_index = 7,
 };
 
 static const uint64_t mysql_json_document_display_length = 4294967292ULL;
@@ -1066,6 +1068,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         "SELECT JSON_VALID('{}') AS valid_json, JSON_TYPE('{}') AS json_type, "
         "JSON_LENGTH('{}') AS json_length, JSON_CONTAINS('{}','{}') AS contains_json, "
         "JSON_CONTAINS_PATH('{}','one','$') AS contains_path, "
+        "JSON_QUOTE('abc') AS quoted_json, "
         "JSON_EXTRACT('{\"a\":1}','$.a') AS extracted_json, "
         "JSON_ARRAY(1,'a') AS array_json, JSON_OBJECT('a',1) AS object_json FROM DUAL",
         &result
@@ -1156,6 +1159,21 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
             },
             "JSON_CONTAINS_PATH scalar metadata"
         );
+        failures += expect_column_metadata(
+            result,
+            mysql_json_quote_column_index,
+            (struct expected_column_metadata){
+                .label = "quoted_json",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_json_document_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "JSON_QUOTE scalar metadata"
+        );
         for (size_t index = mysql_json_document_first_column_index;
              index < mysql_json_scalar_column_count;
              ++index) {
@@ -1202,7 +1220,8 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         database,
         "SELECT id, JSON_VALID(j) AS valid_j, JSON_LENGTH(j) AS len_j, "
         "JSON_CONTAINS(j,'1','$.a') AS c, JSON_CONTAINS_PATH(j,'one','$.a') AS cp, "
-        "JSON_TYPE(j) AS jt, JSON_EXTRACT(j,'$.a') AS je, JSON_ARRAY(id,s) AS ja, "
+        "JSON_TYPE(j) AS jt, JSON_QUOTE(s) AS jq, JSON_EXTRACT(j,'$.a') AS je, "
+        "JSON_ARRAY(id,s) AS ja, "
         "JSON_OBJECT('a',id) AS jo FROM js AS src LIMIT 0",
         &result
     );
@@ -1290,6 +1309,21 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 .nullable = 1,
             },
             "row-scalar JSON_TYPE metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            mysql_row_json_quote_column_index,
+            (struct expected_column_metadata){
+                .label = "jq",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_json_document_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "row-scalar JSON_QUOTE metadata"
         );
         {
             static const char *const json_document_labels[] = {"je", "ja", "jo"};

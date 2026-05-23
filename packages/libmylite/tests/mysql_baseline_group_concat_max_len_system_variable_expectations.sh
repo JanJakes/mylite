@@ -74,6 +74,7 @@ session8	8	1024	8	8	0
 default_again	1024	0
 local_plus7	7
 direct9	9
+direct_local10	10
 user12	12
 max	18446744073709551615
 EXPECTED
@@ -93,6 +94,8 @@ expect_output \
 "SELECT 'local_plus7', @@group_concat_max_len; "\
 "SET @@session.group_concat_max_len = 9; "\
 "SELECT 'direct9', @@group_concat_max_len; "\
+"SET @@local.group_concat_max_len = 10; "\
+"SELECT 'direct_local10', @@group_concat_max_len; "\
 "SET @gcm = 12; "\
 "SET group_concat_max_len = @gcm; "\
 "SELECT 'user12', @@group_concat_max_len; "\

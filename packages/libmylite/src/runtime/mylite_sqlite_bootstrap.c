@@ -4,6 +4,7 @@
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
+#include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
 #include "mylite_regexp.h"
@@ -209,6 +210,9 @@ static int initialize_function_registration_surface(
 
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_bitwise_aggregate_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_group_concat_aggregate_function(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_date_format_function(sqlite);

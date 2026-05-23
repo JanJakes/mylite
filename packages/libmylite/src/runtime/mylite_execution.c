@@ -639,6 +639,9 @@ static const double logarithm_base_ten = 10.0;
 static const uint64_t longtext_max_length = 4294967295ULL;
 static const uint64_t mysql_json_document_display_length = 4294967292ULL;
 static const uint64_t max_allowed_packet_default_value = 67108864ULL;
+static const uint64_t group_concat_max_len_default_value =
+    MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE;
+static const uint64_t group_concat_max_len_minimum_value = 4ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
 static const uint64_t timeout_system_variable_max_value = 31536000ULL;
 static const uint64_t scalar_integer_cast_int64_min_magnitude = 9223372036854775808ULL;
@@ -7372,6 +7375,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT = 49,
     SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 50,
     SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP = 51,
+    SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN = 52,
 };
 
 struct system_variable_component {
@@ -7418,6 +7422,7 @@ struct set_session_snapshot {
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
     uint64_t sql_select_limit;
+    uint64_t group_concat_max_len;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     int64_t timestamp_override;
@@ -7463,6 +7468,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
      true,
      true},
     {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS, true, true},
+    {"group_concat_max_len", SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN, true, true},
     {"gtid_executed", SESSION_SYSTEM_VARIABLE_GTID_EXECUTED, true, true},
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
     {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
@@ -7958,6 +7964,12 @@ static int apply_set_sql_select_limit_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_group_concat_max_len_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int apply_set_timeout_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -8058,10 +8070,21 @@ static int apply_set_sql_select_limit_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_group_concat_max_len_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
 static int apply_set_timeout_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_integer_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
 );
 static int apply_timeout_system_variable_value(
     struct mylite_db *database,
@@ -8088,7 +8111,20 @@ static int parse_set_sql_select_limit_value(
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
 );
+static int parse_set_group_concat_max_len_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
 static int parse_set_sql_select_limit_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_set_group_concat_max_len_cell_value(
     struct mylite_db *database,
     const char *variable_name,
     const struct session_scalar_cell *value,
@@ -29641,6 +29677,7 @@ static int apply_set_system_variable_assignment(
     const struct mylite_sql_ast_node *target_node = NULL;
     const struct mylite_sql_ast_node *value_node = NULL;
     bool expected_boolean_value = false;
+    bool handled = false;
     int rc = MYLITE_OK;
 
     if (assignment == NULL || (assignment->kind != MYLITE_SQL_AST_SET_ASSIGNMENT &&
@@ -29683,22 +29720,13 @@ static int apply_set_system_variable_assignment(
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET) {
-        return apply_set_max_allowed_packet_value(database, &target, value_node);
-    }
     if (target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
         target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
         return apply_set_transaction_system_variable_value(database, &target, value_node);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT ||
-        target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
-        return apply_set_auto_increment_step_value(database, &target, value_node);
-    }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
-        return apply_set_sql_select_limit_value(database, &target, value_node);
-    }
-    if (is_timeout_system_variable_kind(target.kind)) {
-        return apply_set_timeout_system_variable_value(database, &target, value_node);
+    rc = apply_set_integer_system_variable_value(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         return apply_set_foreign_key_checks_value(database, &target, value_node);
@@ -29722,6 +29750,37 @@ static int apply_set_system_variable_assignment(
 
     set_read_only_system_variable_error(database, target.name);
     return MYLITE_ERROR;
+}
+
+static int apply_set_integer_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = true;
+    if (target->kind == SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET) {
+        return apply_set_max_allowed_packet_value(database, target, value_node);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT ||
+        target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+        return apply_set_auto_increment_step_value(database, target, value_node);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
+        return apply_set_sql_select_limit_value(database, target, value_node);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
+        return apply_set_group_concat_max_len_value(database, target, value_node);
+    }
+    if (is_timeout_system_variable_kind(target->kind)) {
+        return apply_set_timeout_system_variable_value(database, target, value_node);
+    }
+
+    *out_handled = false;
+    return MYLITE_OK;
 }
 
 static int apply_set_user_variable_assignment(
@@ -30725,6 +30784,7 @@ static int copy_set_session_snapshot(
     out_snapshot->auto_increment_increment = session->auto_increment_increment;
     out_snapshot->auto_increment_offset = session->auto_increment_offset;
     out_snapshot->sql_select_limit = session->sql_select_limit;
+    out_snapshot->group_concat_max_len = session->group_concat_max_len;
     out_snapshot->wait_timeout = session->wait_timeout;
     out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->timestamp_override = session->timestamp_override;
@@ -30823,6 +30883,7 @@ static void restore_set_session_snapshot(
     session->auto_increment_increment = snapshot->auto_increment_increment;
     session->auto_increment_offset = snapshot->auto_increment_offset;
     session->sql_select_limit = snapshot->sql_select_limit;
+    session->group_concat_max_len = snapshot->group_concat_max_len;
     session->wait_timeout = snapshot->wait_timeout;
     session->interactive_timeout = snapshot->interactive_timeout;
     session->timestamp_override = snapshot->timestamp_override;
@@ -30914,6 +30975,9 @@ static int apply_set_system_variable_cell_value(
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_cell_value(database, target, value, value_kind);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
+        return apply_set_group_concat_max_len_cell_value(database, target, value, value_kind);
     }
     if (is_timeout_system_variable_kind(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
@@ -31879,6 +31943,186 @@ static int parse_set_sql_select_limit_cell_value(
     }
     if (negative) {
         *out_value = 0U;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value->value
+        );
+    }
+
+    return MYLITE_OK;
+}
+
+static int apply_set_group_concat_max_len_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = group_concat_max_len_default_value;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid group_concat_max_len system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(
+            database,
+            "SET GLOBAL group_concat_max_len assignment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_group_concat_max_len_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.group_concat_max_len = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_group_concat_max_len_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    char value_text[integer_text_capacity];
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid group_concat_max_len output");
+        return MYLITE_ERROR;
+    }
+    *out_value = group_concat_max_len_default_value;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        magnitude = 1U;
+    } else if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        magnitude = 0U;
+    } else if (
+        literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK
+    ) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
+    if (negative || magnitude < group_concat_max_len_minimum_value) {
+        *out_value = group_concat_max_len_minimum_value;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+
+    *out_value = magnitude;
+    return MYLITE_OK;
+}
+
+static int apply_set_group_concat_max_len_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    uint64_t group_concat_max_len = group_concat_max_len_default_value;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(
+            database,
+            "SET GLOBAL group_concat_max_len assignment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_group_concat_max_len_cell_value(
+        database,
+        target->name,
+        value,
+        value_kind,
+        &group_concat_max_len
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.group_concat_max_len = group_concat_max_len;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_group_concat_max_len_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+) {
+    struct mylite_sql_source_span unsigned_span = {0};
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool negative = false;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid group_concat_max_len output");
+        return MYLITE_ERROR;
+    }
+    *out_value = group_concat_max_len_default_value;
+    if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    if (value->has_value_size) {
+        text_size = value->value_size;
+    } else {
+        text_size = strlen(text);
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        ++text;
+        --text_size;
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    if (parse_unsigned_integer_literal(&unsigned_span, out_value) != MYLITE_OK) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (negative || *out_value < group_concat_max_len_minimum_value) {
+        *out_value = group_concat_max_len_minimum_value;
         return append_truncated_incorrect_system_variable_warning(
             database,
             variable_name,
@@ -75806,6 +76050,11 @@ static int plan_grouped_aggregate_group_columns(
     size_t group_count = grouped_aggregate_group_key_count(group_clause);
     int rc = MYLITE_OK;
 
+    if (group_count == 0U) {
+        set_unsupported_error(database, "GROUP BY requires one descriptor group column");
+        return MYLITE_ERROR;
+    }
+
     out_plan->groups = calloc(group_count, sizeof(*out_plan->groups));
     if (out_plan->groups == NULL) {
         set_nomem_error(database);
@@ -81341,6 +81590,9 @@ static int read_column_aggregate_from_source(
     if (rc == MYLITE_OK) {
         rc = bind_column_aggregate_parameters(statement, plan);
     }
+    if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
+        database->session.group_concat_value_ordinal = 0U;
+    }
     if (rc == MYLITE_OK) {
         rc = step_column_aggregate_statement(database, statement, plan, result);
     }
@@ -81366,6 +81618,14 @@ static int read_grouped_aggregate_from_source(
     }
     if (rc == MYLITE_OK) {
         rc = bind_grouped_aggregate_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        for (size_t index = 0U; index < plan->aggregate_count; ++index) {
+            if (plan->aggregates[index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+                database->session.group_concat_value_ordinal = 0U;
+                break;
+            }
+        }
     }
     while (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
@@ -96355,6 +96615,13 @@ static int hex_numeric_system_variable_value(
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_value->integer = group_concat_max_len_default_value;
+        } else {
+            out_value->integer = database->session.group_concat_max_len;
+        }
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         out_value->integer = foreign_key_checks_system_variable_uint64_value(
             database,
@@ -103826,6 +104093,19 @@ static int system_variable_value(
             ),
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+        if (system_variable_expression_has_global_scope(expression)) {
+            return format_session_scalar_uint64_value(
+                database,
+                group_concat_max_len_default_value,
+                out_cell
+            );
+        }
+        return format_session_scalar_uint64_value(
+            database,
+            database->session.group_concat_max_len,
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         return format_session_scalar_uint64_value(
             database,
@@ -104295,6 +104575,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
     case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
@@ -104437,6 +104718,23 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             timeout_system_variable_value(database, kind, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+        if (global_scope) {
+            return format_show_system_variable_uint64_value(
+                database,
+                group_concat_max_len_default_value,
+                integer_buffer,
+                integer_buffer_size,
+                out_value
+            );
+        }
+        return format_show_system_variable_uint64_value(
+            database,
+            database->session.group_concat_max_len,
             integer_buffer,
             integer_buffer_size,
             out_value
@@ -153682,7 +153980,7 @@ static int append_group_concat_call_sql(
     bool has_separator,
     size_t *next_parameter
 ) {
-    int rc = dynamic_string_append(string, "group_concat(");
+    int rc = dynamic_string_append(string, "_mylite_group_concat(");
 
     if (rc == MYLITE_OK) {
         rc = append_descriptor_column_name_sql_for_source(

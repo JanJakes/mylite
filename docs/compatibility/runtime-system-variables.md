@@ -206,7 +206,7 @@ Performance Schema variable tables remain unsupported.
 | `generated_random_password_length` | ❌ | Value, scope, SET, diagnostics |
 | `global_connection_memory_limit` | ❌ | Value, scope, SET, diagnostics |
 | `global_connection_memory_tracking` | ❌ | Value, scope, SET, diagnostics |
-| `group_concat_max_len` | ❌ | Value, scope, SET, diagnostics |
+| `group_concat_max_len` | 🟡 | Limited scalar `SELECT @@group_concat_max_len` with no scope, `session`, `local`, or fixed `global`; `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, unsigned integer, unary-signed integer, `TRUE`/`FALSE`, and integer user-variable values. Values below `4` clamp to `4` with warning `1292`; unsupported string, decimal, `NULL`, overflow, and string user-variable values fail with MySQL-compatible diagnostics. Supported `GROUP_CONCAT()` output is capped in bytes and emits warning `1260` when truncated. Global reads remain fixed at `1024`; no mutable global state, startup/persisted values, `SET_VAR` hints, Performance Schema variable tables, binary metadata threshold behavior, or broader aggregate syntax |
 | `group_replication_advertise_recovery_endpoints` | ❌ | Value, scope, SET, diagnostics |
 | `group_replication_allow_local_lower_version_join` | ❌ | Value, scope, SET, diagnostics |
 | `group_replication_auto_increment_increment` | ❌ | Value, scope, SET, diagnostics |

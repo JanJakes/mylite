@@ -119,6 +119,7 @@ supported_session_rows=$(run_mysql "
       'autocommit',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'group_concat_max_len',
       'interactive_timeout',
       'lower_case_file_system',
       'lower_case_table_names',
@@ -157,6 +158,7 @@ collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 error_count|0
 foreign_key_checks|ON
+group_concat_max_len|1024
 interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
@@ -205,6 +207,7 @@ supported_global_rows=$(run_mysql "
       'autocommit',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'group_concat_max_len',
       'interactive_timeout',
       'lower_case_file_system',
       'lower_case_table_names',
@@ -242,6 +245,7 @@ collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 foreign_key_checks|ON
+group_concat_max_len|1024
 interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0

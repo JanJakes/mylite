@@ -2652,12 +2652,14 @@ enum predicate_sql_work_item_kind {
     PREDICATE_SQL_WORK_NODE = 0,
     PREDICATE_SQL_WORK_OPERATOR = 1,
     PREDICATE_SQL_WORK_CLOSE = 2,
+    PREDICATE_SQL_WORK_TEXT = 3,
 };
 
 struct predicate_sql_work_item {
     enum predicate_sql_work_item_kind kind;
     size_t node_index;
     enum mylite_sql_ast_operator operator_kind;
+    const char *text;
 };
 
 struct planned_select_order_item {
@@ -2996,8 +2998,10 @@ struct planned_row_scalar_select_item {
 
 struct planned_row_scalar_exists_filter {
     bool has_filter;
+    bool has_scalar_predicate;
     bool negate;
     struct planned_exists_subquery subquery;
+    struct planned_select_predicate predicate;
 };
 
 struct planned_row_scalar_select {
@@ -12697,6 +12701,20 @@ static int plan_row_scalar_select_exists_filter(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause,
     struct planned_row_scalar_select *out_plan
+);
+static bool row_scalar_select_where_is_exists_filter(
+    const struct mylite_sql_ast_node *where_clause
+);
+static int plan_row_scalar_select_scalar_filter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    struct planned_row_scalar_select *out_plan
+);
+static bool planned_row_scalar_tableless_filter_is_supported(
+    const struct planned_select_predicate *predicate
+);
+static bool planned_row_scalar_tableless_filter_node_is_supported(
+    const struct planned_select_predicate_node *node
 );
 static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan);
 static int execute_row_scalar_select_from_plan(
@@ -25476,6 +25494,11 @@ static int append_predicate_sql_work_operator(
 static int append_predicate_sql_work_close(
     struct predicate_sql_work_item **items,
     size_t *item_count
+);
+static int append_predicate_sql_work_text(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    const char *text
 );
 static int append_predicate_sql_work_item(
     struct predicate_sql_work_item **items,
@@ -77066,15 +77089,18 @@ static int plan_row_scalar_select_tableless_filter(
     if (clauses->order_clause != NULL || clauses->limit_clause != NULL) {
         set_unsupported_error(
             database,
-            "row-scalar SELECT FROM DUAL supports only WHERE EXISTS filtering"
+            "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE filtering"
         );
         return MYLITE_ERROR;
     }
     if (clauses->where_clause == NULL) {
         return MYLITE_OK;
     }
+    if (row_scalar_select_where_is_exists_filter(clauses->where_clause)) {
+        return plan_row_scalar_select_exists_filter(database, clauses->where_clause, out_plan);
+    }
 
-    return plan_row_scalar_select_exists_filter(database, clauses->where_clause, out_plan);
+    return plan_row_scalar_select_scalar_filter(database, clauses->where_clause, out_plan);
 }
 
 static int plan_row_scalar_select_exists_filter(
@@ -77089,7 +77115,7 @@ static int plan_row_scalar_select_exists_filter(
     if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
         set_unsupported_error(
             database,
-            "row-scalar SELECT FROM DUAL supports only WHERE EXISTS filtering"
+            "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE filtering"
         );
         return MYLITE_ERROR;
     }
@@ -77102,7 +77128,7 @@ static int plan_row_scalar_select_exists_filter(
     if (predicate == NULL || predicate->kind != MYLITE_SQL_AST_EXISTS_PREDICATE) {
         set_unsupported_error(
             database,
-            "row-scalar SELECT FROM DUAL supports only WHERE EXISTS filtering"
+            "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE filtering"
         );
         return MYLITE_ERROR;
     }
@@ -77123,6 +77149,109 @@ static int plan_row_scalar_select_exists_filter(
     return rc;
 }
 
+static bool row_scalar_select_where_is_exists_filter(
+    const struct mylite_sql_ast_node *where_clause
+) {
+    const struct mylite_sql_ast_node *predicate = NULL;
+
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        return false;
+    }
+    predicate = unwrap_parenthesized_predicate(child_at(where_clause, 0U));
+    if (predicate != NULL && predicate->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        predicate = unwrap_parenthesized_predicate(child_at(predicate, 0U));
+    }
+
+    return (predicate != NULL && predicate->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) != 0;
+}
+
+static int plan_row_scalar_select_scalar_filter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    struct planned_row_scalar_select *out_plan
+) {
+    const struct mylite_sql_ast_node *predicate = NULL;
+    int rc = MYLITE_OK;
+
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE filtering"
+        );
+        return MYLITE_ERROR;
+    }
+
+    predicate = child_at(where_clause, 0U);
+    rc = plan_select_predicate_node_without_exists(
+        database,
+        predicate,
+        NULL,
+        NULL,
+        0U,
+        NULL,
+        &out_plan->tableless_filter.predicate
+    );
+    if (rc == MYLITE_OK &&
+        !planned_row_scalar_tableless_filter_is_supported(&out_plan->tableless_filter.predicate)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE filtering"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->tableless_filter.has_filter = true;
+        out_plan->tableless_filter.has_scalar_predicate = true;
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit_without_exists(&out_plan->tableless_filter.predicate);
+    }
+
+    return rc;
+}
+
+static bool planned_row_scalar_tableless_filter_is_supported(
+    const struct planned_select_predicate *predicate
+) {
+    if (!planned_select_predicate_has_expression(predicate)) {
+        return false;
+    }
+
+    for (size_t node_index = 0U; node_index < predicate->node_count; ++node_index) {
+        if (!planned_row_scalar_tableless_filter_node_is_supported(&predicate->nodes[node_index])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool planned_row_scalar_tableless_filter_node_is_supported(
+    const struct planned_select_predicate_node *node
+) {
+    if (node == NULL) {
+        return false;
+    }
+
+    switch (node->kind) {
+    case PLANNED_SELECT_PREDICATE_AND:
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND;
+    case PLANNED_SELECT_PREDICATE_OR:
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR;
+    case PLANNED_SELECT_PREDICATE_XOR:
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR;
+    case PLANNED_SELECT_PREDICATE_NOT:
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT;
+    case PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH:
+    case PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON:
+    case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL:
+        return (node->row_scalar_expression != NULL &&
+                node->row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) != 0;
+    default:
+        return false;
+    }
+}
+
 static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan) {
     if (plan == NULL) {
         return;
@@ -77132,7 +77261,9 @@ static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *p
         planned_row_scalar_expression_deinit(&plan->items[item_index].expression);
     }
     free(plan->items);
-    if (plan->tableless_filter.has_filter) {
+    if (plan->tableless_filter.has_filter && plan->tableless_filter.has_scalar_predicate) {
+        planned_select_predicate_deinit_without_exists(&plan->tableless_filter.predicate);
+    } else if (plan->tableless_filter.has_filter) {
         planned_exists_subquery_deinit(&plan->tableless_filter.subquery);
     }
     planned_select_predicate_deinit(&plan->predicate);
@@ -81314,12 +81445,17 @@ static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_item = NULL;
+    bool has_dual_source =
+        (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) != 0;
     bool has_table_source =
         (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) != 0;
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
         select_list_is_wildcard(select_list)) {
         return false;
+    }
+    if (has_dual_source && child_at(statement, 2U) != NULL) {
+        return true;
     }
 
     select_item = child_at(select_list, 0U);
@@ -154893,6 +155029,13 @@ static int append_row_scalar_tableless_filter_sql(
     }
 
     rc = dynamic_string_append(string, " WHERE ");
+    if (rc == MYLITE_OK && plan->tableless_filter.has_scalar_predicate) {
+        return append_select_predicate_expression_sql_without_exists(
+            string,
+            &plan->tableless_filter.predicate,
+            next_parameter
+        );
+    }
     if (rc == MYLITE_OK && plan->tableless_filter.negate) {
         rc = dynamic_string_append(string, "NOT ");
     }
@@ -158855,6 +158998,8 @@ static int append_select_predicate_expression_work_item(
         return dynamic_string_append_char(string, ')');
     case PREDICATE_SQL_WORK_OPERATOR:
         return append_select_predicate_logical_operator_sql(string, item.operator_kind);
+    case PREDICATE_SQL_WORK_TEXT:
+        return dynamic_string_append(string, item.text);
     case PREDICATE_SQL_WORK_NODE:
         return append_select_predicate_expression_node_sql(
             string,
@@ -158882,6 +159027,8 @@ static int append_select_predicate_expression_work_item_without_exists(
         return dynamic_string_append_char(string, ')');
     case PREDICATE_SQL_WORK_OPERATOR:
         return append_select_predicate_logical_operator_sql(string, item.operator_kind);
+    case PREDICATE_SQL_WORK_TEXT:
+        return dynamic_string_append(string, item.text);
     case PREDICATE_SQL_WORK_NODE:
         return append_select_predicate_expression_node_sql_without_exists(
             string,
@@ -158908,10 +159055,6 @@ static int append_select_predicate_logical_operator_sql(
         operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
         return dynamic_string_append(string, " AND ");
     }
-    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR) {
-        return dynamic_string_append(string, " <> ");
-    }
-
     return MYLITE_ERROR;
 }
 
@@ -158973,7 +159116,29 @@ static int append_select_predicate_logical_node_sql(
     struct predicate_sql_work_item **items,
     size_t *item_count
 ) {
-    int rc = dynamic_string_append_char(string, '(');
+    int rc = MYLITE_OK;
+
+    if (node->kind == PLANNED_SELECT_PREDICATE_XOR) {
+        rc = dynamic_string_append(string, "((NOT NOT ");
+        if (rc == MYLITE_OK) {
+            rc = append_predicate_sql_work_close(items, item_count);
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_predicate_sql_work_close(items, item_count);
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_predicate_sql_work_node(items, item_count, node->right_index);
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_predicate_sql_work_text(items, item_count, ") <> (NOT NOT ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_predicate_sql_work_node(items, item_count, node->left_index);
+        }
+        return rc;
+    }
+
+    rc = dynamic_string_append_char(string, '(');
 
     if (rc == MYLITE_OK) {
         rc = append_predicate_sql_work_close(items, item_count);
@@ -159786,6 +159951,21 @@ static int append_predicate_sql_work_close(
         items,
         item_count,
         (struct predicate_sql_work_item){.kind = PREDICATE_SQL_WORK_CLOSE}
+    );
+}
+
+static int append_predicate_sql_work_text(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    const char *text
+) {
+    return append_predicate_sql_work_item(
+        items,
+        item_count,
+        (struct predicate_sql_work_item){
+            .kind = PREDICATE_SQL_WORK_TEXT,
+            .text = text,
+        }
     );
 }
 
@@ -160957,7 +161137,8 @@ static int handle_generated_range_constraint_violation(
         return MYLITE_OK;
     }
     if (!generated_range_constraint_column_index(physical_name, &column_index) ||
-        column_index >= columns.column_count || !columns.columns[column_index].is_generated) {
+        columns.columns == NULL || column_index >= columns.column_count ||
+        !columns.columns[column_index].is_generated) {
         return MYLITE_OK;
     }
 
@@ -163678,7 +163859,16 @@ static int bind_row_scalar_select_parameters_at(
     if (rc == MYLITE_OK && plan->has_source && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
     }
-    if (rc == MYLITE_OK && !plan->has_source && plan->tableless_filter.has_filter) {
+    if (rc == MYLITE_OK && !plan->has_source && plan->tableless_filter.has_filter &&
+        plan->tableless_filter.has_scalar_predicate) {
+        rc = bind_select_predicate_parameters_without_exists(
+            statement,
+            &plan->tableless_filter.predicate,
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && !plan->has_source && plan->tableless_filter.has_filter &&
+        !plan->tableless_filter.has_scalar_predicate) {
         rc = bind_select_exists_predicate_parameters(
             statement,
             &plan->tableless_filter.subquery,

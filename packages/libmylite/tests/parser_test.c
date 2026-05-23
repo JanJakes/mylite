@@ -23041,6 +23041,25 @@ static int test_insert_select_statement(void) {
 
     failures += parse_sql(
         "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT 1, 'ok' FROM DUAL WHERE 1 = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert select dual scalar where statement"
+    );
+    failures += expect_node(
+        first_child_kind(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "insert select dual scalar where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
         "SELECT id, amount FROM app.source_a UNION ALL SELECT id, amount FROM app.source_b;",
         MYLITE_SQL_PARSE_OK,
         &result

@@ -330,6 +330,8 @@ static int test_replace_select_row_scalar_sources(void) {
         "10",
         "2",
         "20",
+        "3",
+        "30",
     };
     static const char *const zero_rows[] = {"0"};
     static const char *const pk_rows[] = {
@@ -416,14 +418,24 @@ static int test_replace_select_row_scalar_sources(void) {
         "WHERE EXISTS(SELECT * FROM filter_target WHERE id = 1)",
         1
     );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO filter_target(id, v) SELECT 3, 30 FROM DUAL WHERE 1 = 1",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO filter_target(id, v) SELECT 4, 40 FROM DUAL WHERE NULL",
+        0
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
             .sql = "SELECT id, v FROM filter_target ORDER BY id",
             .values = filter_rows,
             .column_count = 2U,
-            .row_count = 2U,
-            .context = "dual exists replace select rows",
+            .row_count = 3U,
+            .context = "dual scalar and exists replace select rows",
         }
     );
 

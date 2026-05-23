@@ -18,6 +18,7 @@ enum {
     test_path_capacity = 1024,
     sql_capacity = 2048,
     copied_query_column_count = 9,
+    dual_source_inserted_row_count = 14,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -360,19 +361,13 @@ static int test_insert_select_success_persistence_and_visibility(void) {
 
 static int test_insert_select_dual_source_values_and_diagnostics(void) {
     static const char *const inserted_rows[] = {
-        "1",
-        "dual",
-        "7",
-        "2",
-        "nosource",
-        "7",
-        "3",
-        "exists-app",
-        "7",
-        "5",
-        "not-exists",
-        "7",
+        "1",  "dual",        "7", "2",  "nosource",     "7", "3",  "exists-app", "7",
+        "5",  "not-exists",  "7", "7",  "literal-true", "7", "10", "comparison", "7",
+        "11", "null-safe",   "7", "12", "logical",      "7", "13", "is-true",    "7",
+        "14", "is-false",    "7", "15", "is-null",      "7", "16", "is-unknown", "7",
+        "17", "is-not-true", "7", "18", "xor",          "7",
     };
+    static const char *const select_visible[] = {"visible"};
     static const char *const zero_rows[] = {"0"};
     static const char *const last_insert_one[] = {"1"};
     static const char *const last_insert_two[] = {"2"};
@@ -459,6 +454,73 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
         "WHERE NOT EXISTS (SELECT 1 FROM guard WHERE id = 1)",
         0
     );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 7, 'literal-true' FROM DUAL WHERE 1",
+        1
+    );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO dst(id, label) SELECT 8, 'skip' FROM DUAL WHERE 0", 0);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 9, 'skip' FROM DUAL WHERE NULL",
+        0
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 10, 'comparison' FROM DUAL WHERE 1 = 1",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 11, 'null-safe' FROM DUAL WHERE NULL <=> NULL",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 12, 'logical' FROM DUAL WHERE NOT 0 AND (1 OR 0)",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 13, 'is-true' FROM DUAL WHERE 1 IS TRUE",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 14, 'is-false' FROM DUAL WHERE 0 IS FALSE",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 15, 'is-null' FROM DUAL WHERE NULL IS NULL",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 16, 'is-unknown' FROM DUAL WHERE NULL IS UNKNOWN",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 17, 'is-not-true' FROM DUAL WHERE 0 IS NOT TRUE",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 18, 'xor' FROM DUAL WHERE 1 XOR 0",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 19, 'skip' FROM DUAL WHERE 1 IS UNKNOWN",
+        0
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 20, 'skip' FROM DUAL WHERE 1 XOR 2",
+        0
+    );
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
         failures += expect_uint64(
@@ -481,8 +543,28 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
             .sql = "SELECT id, label, must FROM dst ORDER BY id",
             .values = inserted_rows,
             .column_count = 3U,
-            .row_count = 4U,
+            .row_count = dual_source_inserted_row_count,
             .context = "insert select dual source rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 'visible' FROM DUAL WHERE 1 = 1",
+            .values = select_visible,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "top-level dual scalar where true",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 'hidden' FROM DUAL WHERE 0",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "top-level dual scalar where false",
         }
     );
 
@@ -499,6 +581,8 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
         "WHERE NOT EXISTS (SELECT 1 FROM guard WHERE id = 1)",
         0
     );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO required_target(id) SELECT 10 FROM DUAL WHERE 0", 0);
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -538,6 +622,15 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "INSERT INTO required_target(id, must) SELECT 14 FROM DUAL WHERE 0",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
         "INSERT INTO required_target SELECT * FROM DUAL",
         (struct expected_sql_error){
             .code = mysql_error_no_tables_used,
@@ -563,6 +656,55 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
             .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 22, 'x' FROM DUAL WHERE missing = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 23, 'x' FROM DUAL WHERE 2 BETWEEN 1 AND 3",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 24, 'x' FROM DUAL WHERE DATABASE() = 'app'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 25, 'x' FROM DUAL WHERE 1 && 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE "
+                "filtering",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 26, 'x' FROM DUAL WHERE 1 || 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE "
+                "filtering",
         }
     );
 

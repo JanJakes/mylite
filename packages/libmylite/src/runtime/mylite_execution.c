@@ -18291,6 +18291,9 @@ static bool column_default_value_is_current_date_expression(
 static bool column_default_value_is_current_time_expression(
     const struct mylite_sql_ast_node *value_node
 );
+static bool column_default_value_is_current_timestamp_expression(
+    const struct mylite_sql_ast_node *value_node
+);
 static bool column_default_value_is_parenthesized_text_expression(
     const struct mylite_sql_ast_node *default_node
 );
@@ -112401,7 +112404,7 @@ static int validate_column_default_value(
 ) {
     const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
 
-    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+    if (column_default_value_is_current_timestamp_expression(value_node)) {
         if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
             return MYLITE_OK;
         }
@@ -112509,7 +112512,7 @@ static int finalize_planned_column_default(
         return MYLITE_ERROR;
     }
     value_node = child_at(column->default_node, 0U);
-    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+    if (column_default_value_is_current_timestamp_expression(value_node)) {
         if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
             column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP;
             return MYLITE_OK;
@@ -113406,6 +113409,13 @@ static bool column_default_value_is_current_time_expression(
 ) {
     value_node = unwrap_parenthesized_expression(value_node);
     return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE) != 0;
+}
+
+static bool column_default_value_is_current_timestamp_expression(
+    const struct mylite_sql_ast_node *value_node
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) != 0;
 }
 
 static void planned_column_descriptor_for_default(

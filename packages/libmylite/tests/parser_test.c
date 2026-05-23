@@ -15212,6 +15212,39 @@ static int test_datetime_type_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE datetime_current_defaults ("
+        "dt DATETIME DEFAULT (CURRENT_TIMESTAMP), nested DATETIME DEFAULT ((NOW())));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_node(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "datetime parenthesized current timestamp default"
+    );
+    failures += expect_node(
+        child_at(child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U), 0U),
+        MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE,
+        "datetime current timestamp default value"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_node(
+        child_at(
+            child_at(
+                child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE,
+        "datetime nested now default value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM datetime_types WHERE d BETWEEN '2024-01-01 00:00:00' "
         "AND '2024-12-31 23:59:59';",
         MYLITE_SQL_PARSE_OK,
@@ -15452,6 +15485,19 @@ static int test_timestamp_type_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE timestamp_types ALTER ts SET DEFAULT (CURRENT_TIMESTAMP);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE,
+        "timestamp alter parenthesized current timestamp default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM timestamp_types WHERE ts BETWEEN '1970-01-01 00:00:01' "
         "AND '2038-01-19 03:14:07';",
         MYLITE_SQL_PARSE_OK,
@@ -15509,6 +15555,13 @@ static int test_timestamp_type_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE timestamp_fractional (ts TIMESTAMP(3));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE timestamp_bad_on_update (ts TIMESTAMP ON UPDATE (CURRENT_TIMESTAMP));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

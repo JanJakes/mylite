@@ -21,6 +21,9 @@ enum {
     automatic_temporal_show_row_count = 7,
     automatic_temporal_information_schema_row_count = 6,
     automatic_temporal_data_column_count = 7,
+    parenthesized_current_timestamp_show_row_count = 10,
+    parenthesized_current_timestamp_information_schema_column_count = 3,
+    parenthesized_current_timestamp_data_column_count = 10,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
     mysql_error_incorrect_parameter_count = 1582,
@@ -43,6 +46,7 @@ struct expected_query {
 
 static int test_current_timestamp_scalar_and_system_variable(void);
 static int test_current_timestamp_defaults_updates_metadata_and_persistence(void);
+static int test_parenthesized_current_timestamp_defaults(void);
 static int test_current_timestamp_alter_add_and_file_safety(void);
 static int test_current_timestamp_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -80,6 +84,7 @@ int main(void) {
 
     failures += test_current_timestamp_scalar_and_system_variable();
     failures += test_current_timestamp_defaults_updates_metadata_and_persistence();
+    failures += test_parenthesized_current_timestamp_defaults();
     failures += test_current_timestamp_alter_add_and_file_safety();
     failures += test_current_timestamp_diagnostics();
 
@@ -539,6 +544,355 @@ static int test_current_timestamp_defaults_updates_metadata_and_persistence(void
     return failures;
 }
 
+static int test_parenthesized_current_timestamp_defaults(void) {
+    static const char *const show_columns_rows[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "dt",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_call",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_now",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_local",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_local_call",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_lts",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_lts_call",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_nested",
+        "datetime",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "ts",
+        "timestamp",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const information_schema_rows[] = {
+        "id",
+        NULL,
+        "",
+        "dt",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_call",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_now",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_local",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_local_call",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_lts",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_lts_call",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt_nested",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "ts",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const show_create_rows[] = {
+        "current_exprs",
+        "CREATE TABLE `current_exprs` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `dt` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_call` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_now` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_local` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_local_call` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_lts` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_lts_call` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt_nested` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `ts` timestamp NULL DEFAULT CURRENT_TIMESTAMP\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const inserted_rows[] = {
+        "1",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+        "2023-11-14 22:13:20",
+    };
+    static const char *const insert_counts[] = {
+        "1",
+        "0",
+    };
+    static const char *const altered_show_create_rows[] = {
+        "t",
+        "CREATE TABLE `t` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `dt2` datetime DEFAULT CURRENT_TIMESTAMP\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const altered_rows[] = {
+        "1",
+        "2023-11-14 22:14:20",
+        "2",
+        "2023-11-14 22:14:20",
+        "3",
+        "2023-11-14 22:16:20",
+    };
+    static const char *const clone_show_create_rows[] = {
+        "clone",
+        "CREATE TABLE `clone` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `dt` datetime DEFAULT CURRENT_TIMESTAMP\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const clone_rows[] = {
+        "1",
+        "2023-11-14 22:17:20",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_db *second_database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "parenthesized") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open parenthesized file");
+    failures +=
+        expect_int(mylite_open_memory(&second_database), MYLITE_OK, "open independent memory");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "SET timestamp = 1700000000");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE current_exprs ("
+        "id INT, "
+        "dt DATETIME DEFAULT (CURRENT_TIMESTAMP), "
+        "dt_call DATETIME DEFAULT (CURRENT_TIMESTAMP()), "
+        "dt_now DATETIME DEFAULT (NOW()), "
+        "dt_local DATETIME DEFAULT (LOCALTIME), "
+        "dt_local_call DATETIME DEFAULT (LOCALTIME()), "
+        "dt_lts DATETIME DEFAULT (LOCALTIMESTAMP), "
+        "dt_lts_call DATETIME DEFAULT (LOCALTIMESTAMP()), "
+        "dt_nested DATETIME DEFAULT ((NOW())), "
+        "ts TIMESTAMP DEFAULT (NOW()))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM current_exprs",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = parenthesized_current_timestamp_show_row_count,
+            .context = "parenthesized current timestamp SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'current_exprs' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .column_count = parenthesized_current_timestamp_information_schema_column_count,
+            .row_count = parenthesized_current_timestamp_show_row_count,
+            .context = "parenthesized current timestamp information schema",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE current_exprs",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parenthesized current timestamp SHOW CREATE",
+        }
+    );
+    failures += expect_statement_ok(database, "INSERT INTO current_exprs(id) VALUES (1)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = insert_counts,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parenthesized current timestamp insert counts",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, dt, dt_call, dt_now, dt_local, dt_local_call, dt_lts, "
+                   "dt_lts_call, dt_nested, ts FROM current_exprs",
+            .values = inserted_rows,
+            .column_count = parenthesized_current_timestamp_data_column_count,
+            .row_count = 1U,
+            .context = "parenthesized current timestamp insert materialization",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE t (id INT)");
+    failures += expect_statement_ok(database, "INSERT INTO t(id) VALUES (1), (2)");
+    failures += expect_statement_ok(database, "SET timestamp = 1700000060");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE t ADD COLUMN dt DATETIME DEFAULT (NOW())");
+    failures += expect_statement_ok(database, "SET timestamp = 1700000120");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE t ALTER COLUMN dt SET DEFAULT (CURRENT_TIMESTAMP)"
+    );
+    failures += expect_statement_ok(database, "SET timestamp = 1700000180");
+    failures += expect_statement_ok(database, "INSERT INTO t(id) VALUES (3)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE t MODIFY COLUMN dt DATETIME DEFAULT (LOCALTIMESTAMP)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE t CHANGE COLUMN dt dt2 DATETIME DEFAULT (LOCALTIME())"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE t",
+            .values = altered_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parenthesized altered current timestamp SHOW CREATE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, dt2 FROM t ORDER BY id",
+            .values = altered_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "parenthesized altered current timestamp rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE source_like(id INT, dt DATETIME DEFAULT (NOW()))"
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE source_like");
+    failures += expect_statement_ok(database, "SET timestamp = 1700000240");
+    failures += expect_statement_ok(database, "INSERT INTO clone(id) VALUES (1)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE clone",
+            .values = clone_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parenthesized current timestamp CREATE TABLE LIKE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, dt FROM clone",
+            .values = clone_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parenthesized current timestamp clone rows",
+        }
+    );
+    failures += expect_statement_ok(second_database, "SET timestamp = 1700000300");
+    failures += expect_query_values(
+        second_database,
+        (struct expected_query){
+            .sql = "SELECT NOW()",
+            .values = (const char *const[]){"2023-11-14 22:18:20"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "parenthesized independent handle timestamp state",
+        }
+    );
+    failures +=
+        expect_int(read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)), 0, "preamble");
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "parenthesized current timestamp defaults leave preamble"
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen parenthesized file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, dt FROM clone",
+            .values = clone_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parenthesized current timestamp clone persists",
+        }
+    );
+
+    mylite_close(second_database);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_current_timestamp_alter_add_and_file_safety(void) {
     static const char *const after_add_rows[] = {
         "1",
@@ -655,6 +1009,42 @@ static int test_current_timestamp_diagnostics(void) {
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",
             .message_part = "Invalid default value for 'i'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_parenthesized_int_default (i INT DEFAULT (CURRENT_TIMESTAMP))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'i'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_fractional_default (dt DATETIME DEFAULT (CURRENT_TIMESTAMP(1)))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'dt'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_utc_default (dt DATETIME DEFAULT (UTC_TIMESTAMP()))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'dt'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_parenthesized_on_update (dt DATETIME ON UPDATE (CURRENT_TIMESTAMP))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '('",
         }
     );
     failures += execute_error(

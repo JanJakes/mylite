@@ -1580,6 +1580,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "replace_values_statement";
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
         return "replace_set_statement";
+    case MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT:
+        return "load_data_infile_statement";
+    case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:
+        return "load_data_local_modifier";
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
         return "set_names_statement";
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:

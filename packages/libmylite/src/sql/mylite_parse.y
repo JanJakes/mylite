@@ -356,6 +356,9 @@ statement(A) ::= replace_set_statement(B). {
 statement(A) ::= insert_set_statement(B). {
     A = B;
 }
+statement(A) ::= load_data_infile_statement(B). {
+    A = B;
+}
 statement(A) ::= delete_statement(B). {
     A = B;
 }
@@ -2260,6 +2263,104 @@ insert_set_statement(A) ::=
     A = mylite_sql_parser_make_insert_set_statement(
         state, I, T, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
+}
+
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        NULL,
+        NULL,
+        NULL);
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T) load_data_ignore_lines(I). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        I,
+        NULL,
+        NULL);
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T) load_data_column_list(C). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        NULL,
+        C,
+        NULL);
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T)
+    load_data_ignore_lines(I) load_data_column_list(C). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        I,
+        C,
+        NULL);
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        NULL,
+        NULL,
+        mylite_sql_parser_make_load_data_local_modifier(state, LO));
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T) load_data_ignore_lines(I). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        I,
+        NULL,
+        mylite_sql_parser_make_load_data_local_modifier(state, LO));
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T) load_data_column_list(C). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        NULL,
+        C,
+        mylite_sql_parser_make_load_data_local_modifier(state, LO));
+}
+load_data_infile_statement(A) ::=
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T)
+    load_data_ignore_lines(I) load_data_column_list(C). {
+    A = mylite_sql_parser_make_load_data_infile_statement(
+        state,
+        L,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_STRING),
+        T,
+        I,
+        C,
+        mylite_sql_parser_make_load_data_local_modifier(state, LO));
+}
+
+load_data_ignore_lines(A) ::= IGNORE INTEGER(N) LINES. {
+    A = mylite_sql_parser_make_literal(state, N, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+load_data_column_list(A) ::= LPAREN identifier_list(L) RPAREN. {
+    A = L;
 }
 
 delete_statement(A) ::=
@@ -6346,6 +6447,9 @@ identifier(A) ::= IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DATA(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SESSION(T). {

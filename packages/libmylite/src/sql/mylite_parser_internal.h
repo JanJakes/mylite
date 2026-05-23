@@ -1098,6 +1098,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
     struct mylite_sql_ast_node *ignore,
     struct mylite_sql_ast_node *duplicate_update
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_load_data_infile_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token load_token,
+    struct mylite_sql_ast_node *file_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *ignore_lines,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *local_modifier
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_load_data_local_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_low_priority_modifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token

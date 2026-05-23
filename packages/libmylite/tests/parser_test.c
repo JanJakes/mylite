@@ -216,6 +216,7 @@ static int test_insert_modifier_statements(void);
 static int test_insert_on_duplicate_key_update_statement(void);
 static int test_replace_select_statement(void);
 static int test_replace_modifier_statements(void);
+static int test_load_data_infile_statement(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_transaction_control_statements(void);
@@ -538,6 +539,7 @@ int main(void) {
     failures += test_insert_on_duplicate_key_update_statement();
     failures += test_replace_select_statement();
     failures += test_replace_modifier_statements();
+    failures += test_load_data_infile_statement();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_transaction_control_statements();
@@ -23614,6 +23616,87 @@ static int test_replace_modifier_statements(void) {
         child_at(statement, 3U),
         MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER,
         "delayed replace select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_load_data_infile_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *ignore_lines = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "LOAD DATA INFILE '/tmp/posts.tsv' INTO TABLE posts;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT, "load data statement");
+    failures += expect_child_count(statement, 2U, "load data statement child count");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "load data file literal"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "posts", "load data target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "LOAD DATA INFILE '/tmp/posts.tsv' INTO TABLE app.posts IGNORE 1 LINES (id, body);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    ignore_lines = child_at(statement, 2U);
+    columns = child_at(statement, 3U);
+    failures += expect_node(statement, MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT, "load data full");
+    failures += expect_child_count(statement, 4U, "load data full child count");
+    failures += expect_span_text(child_at(statement, 1U), "app.posts", "load data qualified");
+    failures += expect_literal(ignore_lines, MYLITE_SQL_AST_LITERAL_INTEGER, "load data ignore");
+    failures += expect_span_text(ignore_lines, "1", "load data ignore text");
+    failures += expect_node(columns, MYLITE_SQL_AST_IDENTIFIER_LIST, "load data columns");
+    failures += expect_child_count(columns, 2U, "load data column count");
+    failures += expect_span_text(child_at(columns, 0U), "id", "load data first column");
+    failures += expect_span_text(child_at(columns, 1U), "body", "load data second column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "LOAD DATA LOCAL INFILE '/tmp/posts.tsv' INTO TABLE posts;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_child_count(statement, 3U, "load data local child count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER,
+        "load data local modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "LOAD DATA INFILE '/tmp/posts.tsv' INTO TABLE posts (id) IGNORE 1 LINES;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "LOAD DATA INFILE '/tmp/posts.tsv' INTO TABLE posts IGNORE +1 LINES;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "LOAD DATA INFILE '/tmp/posts.tsv' INTO TABLE posts FIELDS TERMINATED BY ',';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

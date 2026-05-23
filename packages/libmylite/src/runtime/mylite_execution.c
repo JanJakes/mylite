@@ -34,6 +34,7 @@
 #include "sqlite3.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <float.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -50,6 +51,7 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_cant_get_stat = 13,
     mysql_error_no_database_selected = 1046,
     mysql_error_database_access_denied = 1044,
     mysql_error_database_exists = 1007,
@@ -96,6 +98,9 @@ enum {
     mysql_error_blob_key_without_length = 1170,
     mysql_error_incorrect_arguments = 1210,
     mysql_error_wrong_usage = 1221,
+    mysql_error_load_data_row_missing = 1261,
+    mysql_error_load_data_row_truncated = 1262,
+    mysql_error_load_data_null_to_not_null = 1263,
     mysql_error_spatial_must_be_not_null = 1252,
     mysql_error_fulltext_column = 1283,
     mysql_error_json_used_as_key = 3152,
@@ -190,6 +195,7 @@ enum {
     mysql_error_duplicate_check_constraint = 3822,
     mysql_error_drop_constraint_ambiguous = 3939,
     mysql_error_constraint_does_not_exist = 3940,
+    mysql_error_load_data_local_disabled = 3948,
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
     mysql_error_duplicated_value_in_set = 1291,
@@ -2579,6 +2585,32 @@ struct planned_insert {
     int64_t first_generated_auto_increment;
     bool generated_auto_increment;
     struct planned_insert_duplicate_update duplicate_update;
+};
+
+struct planned_load_data_infile {
+    struct planned_insert insert;
+    char *file_path;
+    size_t file_path_length;
+    size_t *target_indexes;
+    size_t target_count;
+    uint64_t ignore_line_count;
+};
+
+struct load_data_field {
+    char *text;
+    size_t text_length;
+    bool is_null;
+};
+
+struct load_data_row {
+    struct load_data_field *fields;
+    size_t field_count;
+    size_t field_capacity;
+};
+
+struct load_data_missing_warning_request {
+    size_t row_number;
+    size_t warning_count;
 };
 
 enum planned_select_predicate_kind {
@@ -8977,6 +9009,11 @@ static int execute_planned_insert_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_load_data_infile_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_delete_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -12089,6 +12126,135 @@ static int plan_insert_set(
     const struct mylite_sql_ast_node *statement,
     struct planned_insert *out_plan
 );
+static int plan_load_data_infile(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_load_data_infile *out_plan
+);
+static void planned_load_data_infile_deinit(struct planned_load_data_infile *plan);
+static int execute_load_data_infile_from_plan(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    mylite_result *result
+);
+static int collect_load_data_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    const struct planned_insert *plan,
+    size_t **out_indexes,
+    size_t *out_index_count
+);
+static int validate_load_data_target_columns(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const size_t *target_indexes,
+    size_t target_count
+);
+static int parse_load_data_ignore_line_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_value
+);
+static int execute_load_data_file_rows(
+    struct mylite_db *database,
+    FILE *file,
+    sqlite3_stmt *statement,
+    const struct planned_load_data_infile *plan,
+    struct insert_execution_counters *counters
+);
+static int finish_load_data_field(
+    struct mylite_db *database,
+    struct load_data_row *row,
+    struct dynamic_string *field,
+    bool *escape_pending
+);
+static int load_data_row_append_field(
+    struct mylite_db *database,
+    struct load_data_row *row,
+    char *raw_text,
+    size_t raw_text_length
+);
+static int decode_load_data_field_text(
+    struct mylite_db *database,
+    char *raw_text,
+    size_t raw_text_length,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int process_load_data_row(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    sqlite3_stmt *statement,
+    const struct load_data_row *row,
+    uint64_t physical_row_number,
+    size_t *loaded_row_count,
+    struct insert_execution_counters *counters
+);
+static int execute_load_data_import_row(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    sqlite3_stmt *statement,
+    const struct load_data_row *input_row,
+    size_t row_number,
+    struct insert_execution_counters *counters
+);
+static int convert_load_data_row_values(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    const struct load_data_row *input_row,
+    size_t row_number,
+    struct planned_insert_row *out_row
+);
+static int convert_load_data_field_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int convert_load_data_missing_field_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static bool load_data_missing_field_stores_null(
+    const struct mylite_catalog_column_descriptor *column
+);
+static int convert_load_data_empty_temporal_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value,
+    bool *out_handled
+);
+static int convert_load_data_null_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int convert_load_data_integer_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int convert_load_data_text_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static char *copy_load_data_field_text(
+    struct mylite_db *database,
+    const struct load_data_field *field
+);
+static void load_data_row_deinit(struct load_data_row *row);
+static void load_data_row_reset(struct load_data_row *row);
 static void planned_insert_deinit(struct planned_insert *plan);
 static void planned_value_deinit(struct planned_value *value);
 static int execute_insert_from_plan(
@@ -19605,6 +19771,10 @@ static bool dml_allows_string_truncation_adjustment(
     const struct mylite_db *database,
     bool ignore_errors
 );
+static bool insert_allows_implicit_default_adjustment(
+    const struct mylite_db *database,
+    const struct planned_insert *plan
+);
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -27033,6 +27203,29 @@ static void set_unknown_column_in_table_error(
 static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name);
 static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
 static void set_bad_null_error(struct mylite_db *database, const char *column_name);
+static void set_load_data_file_error(
+    struct mylite_db *database,
+    const char *file_path,
+    int os_error
+);
+static void set_load_data_local_disabled_error(struct mylite_db *database);
+static void set_load_data_row_missing_error(struct mylite_db *database, size_t row_number);
+static int append_load_data_row_missing_warnings(
+    struct mylite_db *database,
+    struct load_data_missing_warning_request request
+);
+static void set_load_data_row_truncated_error(struct mylite_db *database, size_t row_number);
+static int append_load_data_row_truncated_warning(struct mylite_db *database, size_t row_number);
+static void set_load_data_null_to_not_null_error(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
+static int append_load_data_null_to_not_null_warning(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
 static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name);
 static void set_generated_column_value_error(
     struct mylite_db *database,
@@ -27500,6 +27693,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST:
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:
         break;
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return execute_drop_index_statement(database, statement, out_result);
@@ -27589,6 +27783,8 @@ static int execute_non_prepared_statement(
         return execute_insert_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
         return execute_replace_set_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT:
+        return execute_load_data_infile_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
         return execute_delete_statement(database, statement, out_result);
@@ -37783,6 +37979,43 @@ static int execute_planned_insert_set_statement(
         rc = execute_insert_from_plan(database, &plan, result);
     }
     planned_insert_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    clear_next_transaction_characteristics_after_statement(database);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_load_data_infile_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_load_data_infile plan = {0};
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (child_with_kind(statement, MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER) != NULL) {
+        set_load_data_local_disabled_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_load_data_infile(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = reject_read_only_persistent_write(database, &plan.insert.target, &plan.insert.table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_load_data_infile_from_plan(database, &plan, result);
+    }
+    planned_load_data_infile_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -49173,6 +49406,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
+    case MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT:
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
@@ -49246,6 +49480,7 @@ static int64_t row_count_for_completed_statement(
         return 0;
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:
         break;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
@@ -69124,6 +69359,258 @@ static int reject_rename_table_check_constraint_schema_collision_callback(
     return MYLITE_OK;
 }
 
+static int plan_load_data_infile(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_load_data_infile *out_plan
+) {
+    const struct mylite_sql_ast_node *file_name = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *table_name = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *ignore_lines = NULL;
+    const struct mylite_sql_ast_node *column_list = NULL;
+    struct primary_key_info primary_key = primary_key_info_init();
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_load_data_infile){0};
+    for (size_t child_index = 2U; child_index < mylite_sql_ast_node_child_count(statement);
+         ++child_index) {
+        const struct mylite_sql_ast_node *child = child_at(statement, child_index);
+
+        if (child->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(child) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            ignore_lines = child;
+        } else if (child->kind == MYLITE_SQL_AST_IDENTIFIER_LIST) {
+            column_list = child;
+        }
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        file_name,
+        "LOAD DATA INFILE supports only string literal file names",
+        "LOAD DATA INFILE file names do not support NUL bytes",
+        &out_plan->file_path,
+        &out_plan->file_path_length
+    );
+    if (rc == MYLITE_OK) {
+        rc =
+            parse_load_data_ignore_line_count(database, ignore_lines, &out_plan->ignore_line_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_visible_writable_table_reference(
+            database,
+            table_name,
+            &out_plan->insert.target,
+            &out_plan->insert.table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->insert.table.table_id,
+            &out_plan->insert.columns,
+            &out_plan->insert.column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(
+            database,
+            out_plan->insert.table.table_id,
+            out_plan->insert.columns,
+            out_plan->insert.column_count,
+            &primary_key
+        );
+    }
+    if (rc == MYLITE_OK && primary_key.has_primary_key) {
+        out_plan->insert.has_primary_key = true;
+        if (primary_key.part_count == 1U) {
+            out_plan->insert.primary_key_column_index = primary_key.parts[0].column_index;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->insert.table.table_id,
+            out_plan->insert.columns,
+            out_plan->insert.column_count,
+            &out_plan->insert.indexes,
+            &out_plan->insert.index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_insert_target_foreign_key_infos(database, &out_plan->insert);
+    }
+    if (rc == MYLITE_OK) {
+        rc = initialize_insert_auto_increment_plan(database, &out_plan->insert);
+    }
+    if (rc == MYLITE_OK) {
+        rc = collect_load_data_target_indexes(
+            database,
+            column_list,
+            &out_plan->insert,
+            &out_plan->target_indexes,
+            &out_plan->target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_target_duplicate(
+            database,
+            out_plan->insert.columns,
+            out_plan->target_indexes,
+            out_plan->target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_load_data_target_columns(
+            database,
+            &out_plan->insert,
+            out_plan->target_indexes,
+            out_plan->target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_omitted_columns(
+            database,
+            &out_plan->insert,
+            out_plan->target_indexes,
+            out_plan->target_count
+        );
+    }
+
+    primary_key_info_deinit(&primary_key);
+    return rc;
+}
+
+static void planned_load_data_infile_deinit(struct planned_load_data_infile *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_insert_deinit(&plan->insert);
+    free(plan->file_path);
+    free(plan->target_indexes);
+    *plan = (struct planned_load_data_infile){0};
+}
+
+static int collect_load_data_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    const struct planned_insert *plan,
+    size_t **out_indexes,
+    size_t *out_index_count
+) {
+    size_t explicit_column_count = mylite_sql_ast_node_child_count(column_list);
+    size_t column_count = explicit_column_count;
+    bool omitted_column_list = false;
+    size_t *indexes = NULL;
+
+    *out_indexes = NULL;
+    *out_index_count = 0U;
+    if (column_list != NULL && column_list->kind != MYLITE_SQL_AST_IDENTIFIER_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    omitted_column_list = insert_column_list_is_omitted(column_list);
+    if (explicit_column_count == 0U) {
+        if (!omitted_column_list) {
+            return MYLITE_OK;
+        }
+        column_count = count_visible_insert_target_columns(plan);
+    }
+    if (column_count > SIZE_MAX / sizeof(*indexes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (column_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    indexes = calloc(column_count, sizeof(*indexes));
+    if (indexes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    if (explicit_column_count == 0U) {
+        collect_visible_insert_target_indexes(plan, indexes);
+    } else {
+        int rc = collect_explicit_insert_target_indexes(
+            database,
+            column_list,
+            plan,
+            indexes,
+            column_count
+        );
+
+        if (rc != MYLITE_OK) {
+            free(indexes);
+            return rc;
+        }
+    }
+
+    *out_indexes = indexes;
+    *out_index_count = column_count;
+    return MYLITE_OK;
+}
+
+static int validate_load_data_target_columns(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const size_t *target_indexes,
+    size_t target_count
+) {
+    for (size_t target_index = 0U; target_index < target_count; ++target_index) {
+        const struct mylite_catalog_column_descriptor *column = NULL;
+        size_t column_index = target_indexes[target_index];
+
+        if (column_index >= plan->column_count) {
+            set_runtime_error(database, "invalid LOAD DATA target column index");
+            return MYLITE_ERROR;
+        }
+        column = &plan->columns[column_index];
+        if (column->is_generated) {
+            set_generated_column_value_error(database, column->name, plan->table.name);
+            return MYLITE_ERROR;
+        }
+        if (strcmp(column->physical_type, "INTEGER") == 0 || column_descriptor_is_char(column) ||
+            column_descriptor_is_varchar(column) || column_descriptor_is_text_family(column) ||
+            column_descriptor_is_year(column) || column_descriptor_is_date(column) ||
+            column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+            column_descriptor_is_timestamp(column)) {
+            continue;
+        }
+        set_unsupported_error(
+            database,
+            "LOAD DATA INFILE supports only baseline integer, character, and temporal targets"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int parse_load_data_ignore_line_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_value
+) {
+    *out_value = 0U;
+    if (literal == NULL) {
+        return MYLITE_OK;
+    }
+    if (literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal->span, out_value) != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "LOAD DATA IGNORE LINES supports only unsigned integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int plan_insert(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -70261,6 +70748,830 @@ static int execute_insert_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int execute_load_data_infile_from_plan(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    mylite_result *result
+) {
+    FILE *file = NULL;
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    struct insert_execution_counters counters = {0};
+    struct mylite_statement_transaction transaction = {0};
+    int rc = build_insert_sql(&plan->insert, &sql);
+
+    if (plan->insert.has_auto_increment) {
+        counters.auto_increment_next_after_rows = plan->insert.auto_increment_next;
+    }
+    if (rc == MYLITE_OK) {
+        errno = 0;
+        file = fopen(plan->file_path, "rb");
+        if (file == NULL) {
+            set_load_data_file_error(database, plan->file_path, errno);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = begin_statement_transaction(database, &transaction);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_load_data_file_rows(database, file, statement, plan, &counters);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    statement = NULL;
+    if (file != NULL) {
+        if (fclose(file) != 0 && rc == MYLITE_OK) {
+            set_load_data_file_error(database, plan->file_path, errno);
+            rc = MYLITE_ERROR;
+        }
+        file = NULL;
+    }
+    if (rc == MYLITE_OK && plan->insert.has_auto_increment &&
+        counters.auto_increment_next_after_rows != plan->insert.auto_increment_next) {
+        rc = update_table_auto_increment_next(
+            database,
+            &plan->insert.table,
+            counters.auto_increment_next_after_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(
+            database,
+            &plan->insert.table,
+            counters.affected_rows,
+            false
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_child_foreign_keys_after_write(database, plan->insert.table.table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = commit_statement_transaction(database, &transaction);
+    }
+    if (rc != MYLITE_OK) {
+        rollback_statement_transaction(database, &transaction);
+    }
+    free(sql);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    mylite_result_set_affected_rows(result, counters.affected_rows);
+    if (counters.inserted_generated_auto_increment) {
+        database->session.last_insert_id =
+            (uint64_t)counters.first_inserted_generated_auto_increment;
+    }
+
+    return MYLITE_OK;
+}
+
+static int execute_load_data_file_rows(
+    struct mylite_db *database,
+    FILE *file,
+    sqlite3_stmt *statement,
+    const struct planned_load_data_infile *plan,
+    struct insert_execution_counters *counters
+) {
+    struct dynamic_string field;
+    struct load_data_row row = {0};
+    uint64_t physical_row_number = 0U;
+    size_t loaded_row_count = 0U;
+    bool escape_pending = false;
+    bool row_pending = false;
+    int rc = MYLITE_OK;
+    int byte = 0;
+
+    dynamic_string_init(&field);
+    while (rc == MYLITE_OK && (byte = fgetc(file)) != EOF) {
+        row_pending = true;
+        if (escape_pending) {
+            rc = dynamic_string_append_char(&field, '\\');
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append_char(&field, (char)byte);
+            }
+            escape_pending = false;
+            continue;
+        }
+        if (byte == '\\') {
+            escape_pending = true;
+            continue;
+        }
+        if (byte == '\t') {
+            rc = finish_load_data_field(database, &row, &field, &escape_pending);
+            continue;
+        }
+        if (byte == '\n') {
+            rc = finish_load_data_field(database, &row, &field, &escape_pending);
+            if (rc == MYLITE_OK) {
+                ++physical_row_number;
+                rc = process_load_data_row(
+                    database,
+                    plan,
+                    statement,
+                    &row,
+                    physical_row_number,
+                    &loaded_row_count,
+                    counters
+                );
+            }
+            load_data_row_reset(&row);
+            row_pending = false;
+            continue;
+        }
+        rc = dynamic_string_append_char(&field, (char)byte);
+    }
+    if (rc == MYLITE_OK && ferror(file) != 0) {
+        set_load_data_file_error(database, plan->file_path, errno);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && row_pending) {
+        rc = finish_load_data_field(database, &row, &field, &escape_pending);
+        if (rc == MYLITE_OK) {
+            ++physical_row_number;
+            rc = process_load_data_row(
+                database,
+                plan,
+                statement,
+                &row,
+                physical_row_number,
+                &loaded_row_count,
+                counters
+            );
+        }
+    }
+
+    load_data_row_deinit(&row);
+    dynamic_string_deinit(&field);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int finish_load_data_field(
+    struct mylite_db *database,
+    struct load_data_row *row,
+    struct dynamic_string *field,
+    bool *escape_pending
+) {
+    char *raw_text = NULL;
+    size_t raw_text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (*escape_pending) {
+        rc = dynamic_string_append_char(field, '\\');
+        *escape_pending = false;
+    }
+    if (rc == MYLITE_OK && field->text == NULL) {
+        rc = dynamic_string_append(field, "");
+    }
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+
+    raw_text_length = field->length;
+    raw_text = dynamic_string_take(field);
+    dynamic_string_init(field);
+    if (raw_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    return load_data_row_append_field(database, row, raw_text, raw_text_length);
+}
+
+static int load_data_row_append_field(
+    struct mylite_db *database,
+    struct load_data_row *row,
+    char *raw_text,
+    size_t raw_text_length
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    bool is_null = false;
+    int rc = decode_load_data_field_text(
+        database,
+        raw_text,
+        raw_text_length,
+        &text,
+        &text_length,
+        &is_null
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (row->field_count == row->field_capacity) {
+        size_t new_capacity = row->field_capacity == 0U ? 4U : row->field_capacity * 2U;
+        struct load_data_field *new_fields = NULL;
+
+        if (new_capacity < row->field_capacity || new_capacity > SIZE_MAX / sizeof(*new_fields)) {
+            free(text);
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        new_fields = realloc(row->fields, new_capacity * sizeof(*new_fields));
+        if (new_fields == NULL) {
+            free(text);
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        row->fields = new_fields;
+        row->field_capacity = new_capacity;
+    }
+
+    row->fields[row->field_count] = (struct load_data_field){
+        .text = text,
+        .text_length = text_length,
+        .is_null = is_null,
+    };
+    ++row->field_count;
+    return MYLITE_OK;
+}
+
+static int decode_load_data_field_text(
+    struct mylite_db *database,
+    char *raw_text,
+    size_t raw_text_length,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    struct dynamic_string decoded;
+    int rc = MYLITE_OK;
+
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+    if (raw_text_length == 2U && raw_text[0] == '\\' && raw_text[1] == 'N') {
+        free(raw_text);
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    dynamic_string_init(&decoded);
+    for (size_t index = 0U; rc == MYLITE_OK && index < raw_text_length; ++index) {
+        char byte = raw_text[index];
+
+        if (byte != '\\' || index + 1U >= raw_text_length) {
+            rc = dynamic_string_append_char(&decoded, byte);
+            continue;
+        }
+
+        ++index;
+        switch (raw_text[index]) {
+        case '0':
+            rc = dynamic_string_append_char(&decoded, '\0');
+            break;
+        case 'b':
+            rc = dynamic_string_append_char(&decoded, '\b');
+            break;
+        case 'n':
+            rc = dynamic_string_append_char(&decoded, '\n');
+            break;
+        case 'r':
+            rc = dynamic_string_append_char(&decoded, '\r');
+            break;
+        case 't':
+            rc = dynamic_string_append_char(&decoded, '\t');
+            break;
+        case 'Z':
+            rc = dynamic_string_append_char(&decoded, '\032');
+            break;
+        case '\\':
+            rc = dynamic_string_append_char(&decoded, '\\');
+            break;
+        default:
+            rc = dynamic_string_append_char(&decoded, raw_text[index]);
+            break;
+        }
+    }
+    free(raw_text);
+    if (rc == MYLITE_OK && decoded.text == NULL) {
+        rc = dynamic_string_append(&decoded, "");
+    }
+    if (rc == MYLITE_OK) {
+        *out_text_length = decoded.length;
+        *out_text = dynamic_string_take(&decoded);
+        if (*out_text == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    dynamic_string_deinit(&decoded);
+    return rc;
+}
+
+static int process_load_data_row(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    sqlite3_stmt *statement,
+    const struct load_data_row *row,
+    uint64_t physical_row_number,
+    size_t *loaded_row_count,
+    struct insert_execution_counters *counters
+) {
+    if (physical_row_number <= plan->ignore_line_count) {
+        return MYLITE_OK;
+    }
+    if (*loaded_row_count == SIZE_MAX) {
+        set_runtime_error(database, "LOAD DATA row count is too large");
+        return MYLITE_ERROR;
+    }
+    ++(*loaded_row_count);
+    return execute_load_data_import_row(
+        database,
+        plan,
+        statement,
+        row,
+        *loaded_row_count,
+        counters
+    );
+}
+
+static int execute_load_data_import_row(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    sqlite3_stmt *statement,
+    const struct load_data_row *input_row,
+    size_t row_number,
+    struct insert_execution_counters *counters
+) {
+    struct planned_insert row_plan = plan->insert;
+    struct planned_insert_row row = {0};
+    int rc = convert_load_data_row_values(database, plan, input_row, row_number, &row);
+
+    if (rc == MYLITE_OK && insert_allows_implicit_default_adjustment(database, &plan->insert) &&
+        row_number == 1U) {
+        rc = append_insert_omitted_column_warnings(
+            database,
+            &plan->insert,
+            plan->target_indexes,
+            plan->target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        row_plan.rows = &row;
+        row_plan.row_count = 1U;
+        row_plan.auto_increment_next = counters->auto_increment_next_after_rows;
+        row_plan.auto_increment_next_after_statement = counters->auto_increment_next_after_rows;
+        rc = plan_insert_auto_increment_values(database, &row_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_string_key_values(database, &row_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_plan_rows(database, statement, &row_plan, counters);
+    }
+
+    planned_insert_row_deinit(&row, plan->insert.column_count);
+    return rc;
+}
+
+static int convert_load_data_row_values(
+    struct mylite_db *database,
+    const struct planned_load_data_infile *plan,
+    const struct load_data_row *input_row,
+    size_t row_number,
+    struct planned_insert_row *out_row
+) {
+    int rc = MYLITE_OK;
+
+    if (input_row->field_count < plan->target_count) {
+        if (session_sql_mode_is_strict(database)) {
+            set_load_data_row_missing_error(database, row_number);
+            return MYLITE_ERROR;
+        }
+        rc = append_load_data_row_missing_warnings(
+            database,
+            (struct load_data_missing_warning_request){
+                .row_number = row_number,
+                .warning_count = plan->target_count - input_row->field_count,
+            }
+        );
+    } else if (input_row->field_count > plan->target_count) {
+        if (session_sql_mode_is_strict(database)) {
+            set_load_data_row_truncated_error(database, row_number);
+            return MYLITE_ERROR;
+        }
+        rc = append_load_data_row_truncated_warning(database, row_number);
+    }
+    if (rc == MYLITE_OK) {
+        rc = allocate_insert_row_values(database, &plan->insert, out_row);
+    }
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        size_t column_index = plan->target_indexes[target_index];
+
+        if (target_index >= input_row->field_count) {
+            rc = convert_load_data_missing_field_value(
+                database,
+                &plan->insert.columns[column_index],
+                &out_row->values[column_index]
+            );
+            continue;
+        }
+        rc = convert_load_data_field_value(
+            database,
+            &plan->insert.columns[column_index],
+            &input_row->fields[target_index],
+            row_number,
+            &out_row->values[column_index]
+        );
+    }
+
+    return rc;
+}
+
+static int convert_load_data_field_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    bool handled_empty_temporal = false;
+    int rc = MYLITE_OK;
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (field->is_null) {
+        return convert_load_data_null_field(database, column, row_number, out_value);
+    }
+    if (strcmp(column->physical_type, "INTEGER") == 0) {
+        return convert_load_data_integer_field(database, column, field, row_number, out_value);
+    }
+    if (column_descriptor_is_char(column) || column_descriptor_is_varchar(column) ||
+        column_descriptor_is_text_family(column)) {
+        return convert_load_data_text_field(database, column, field, row_number, out_value);
+    }
+
+    rc = convert_load_data_empty_temporal_field(
+        database,
+        column,
+        field,
+        row_number,
+        out_value,
+        &handled_empty_temporal
+    );
+    if (handled_empty_temporal || rc != MYLITE_OK) {
+        return rc;
+    }
+
+    text = copy_load_data_field_text(database, field);
+    if (text == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (column_descriptor_is_year(column)) {
+        return convert_year_string_value(
+            database,
+            text,
+            field->text_length,
+            column,
+            row_number,
+            false,
+            out_value
+        );
+    }
+    if (column_descriptor_is_date(column)) {
+        return convert_relaxed_date_storage_text(
+            database,
+            text,
+            field->text_length,
+            column->name,
+            row_number,
+            false,
+            out_value
+        );
+    }
+    if (column_descriptor_is_time(column)) {
+        return canonicalize_time_text(
+            database,
+            text,
+            field->text_length,
+            column->name,
+            row_number,
+            false,
+            out_value
+        );
+    }
+    if (column_descriptor_is_datetime(column)) {
+        return convert_relaxed_datetime_storage_text(
+            database,
+            text,
+            field->text_length,
+            column->name,
+            row_number,
+            false,
+            database == NULL ? 0 : database->session.time_zone_offset_minutes,
+            out_value
+        );
+    }
+    if (column_descriptor_is_timestamp(column)) {
+        return convert_relaxed_timestamp_storage_text(
+            database,
+            text,
+            field->text_length,
+            column->name,
+            row_number,
+            false,
+            0,
+            out_value
+        );
+    }
+
+    free(text);
+    set_unsupported_error(
+        database,
+        "LOAD DATA INFILE supports only baseline integer, character, and temporal targets"
+    );
+    return MYLITE_ERROR;
+}
+
+static int convert_load_data_missing_field_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (load_data_missing_field_stores_null(column)) {
+        return MYLITE_OK;
+    }
+    return make_insert_ignore_implicit_value(database, column, out_value);
+}
+
+static bool load_data_missing_field_stores_null(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        return false;
+    }
+    return (column->is_nullable &&
+            (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE ||
+             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
+             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT)) != 0;
+}
+
+static int convert_load_data_empty_temporal_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value,
+    bool *out_handled
+) {
+    int rc = MYLITE_OK;
+
+    *out_handled = false;
+    if (session_sql_mode_is_strict(database) || column == NULL || field == NULL ||
+        field->text_length != 0U ||
+        (!column_descriptor_is_year(column) && !column_descriptor_is_date(column) &&
+         !column_descriptor_is_time(column) && !column_descriptor_is_datetime(column) &&
+         !column_descriptor_is_timestamp(column))) {
+        return MYLITE_OK;
+    }
+
+    if (column_descriptor_is_year(column)) {
+        char *text = copy_temporal_text(database, "", 0U);
+
+        *out_handled = true;
+        if (text == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return convert_year_string_value(database, text, 0U, column, row_number, true, out_value);
+    }
+    if (column_descriptor_is_date(column)) {
+        *out_handled = true;
+        rc = append_out_of_range_warning(database, column->name, row_number);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return make_zero_date_value(database, out_value);
+    }
+    if (column_descriptor_is_time(column)) {
+        *out_handled = true;
+        return make_zero_time_value(database, out_value);
+    }
+    if (column_descriptor_is_datetime(column)) {
+        *out_handled = true;
+        rc = append_out_of_range_warning(database, column->name, row_number);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return make_zero_datetime_value(database, out_value);
+    }
+    if (column_descriptor_is_timestamp(column)) {
+        *out_handled = true;
+        rc = append_out_of_range_warning(database, column->name, row_number);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return make_zero_timestamp_value(database, out_value);
+    }
+
+    return MYLITE_OK;
+}
+
+static int convert_load_data_null_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    if (column_descriptor_is_auto_increment(column) || column->is_nullable) {
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
+    if (session_sql_mode_is_strict(database)) {
+        set_load_data_null_to_not_null_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    int rc = append_load_data_null_to_not_null_warning(database, column->name, row_number);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return make_insert_ignore_implicit_value(database, column, out_value);
+}
+
+static int convert_load_data_integer_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    bool is_negative = false;
+    bool strict_mode = session_sql_mode_is_strict(database);
+    uint64_t magnitude = 0U;
+    enum dml_numeric_string_parse_result parse_result =
+        parse_dml_integer_string_text(field->text, field->text_length, &magnitude, &is_negative);
+    int rc = MYLITE_OK;
+
+    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+        if (strict_mode) {
+            set_incorrect_integer_value_error(database, field->text, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        rc =
+            append_incorrect_integer_value_warning(database, field->text, column->name, row_number);
+        if (rc == MYLITE_OK) {
+            *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
+        }
+        return rc;
+    }
+    if (parse_result == DML_NUMERIC_STRING_PARSE_OVERFLOW) {
+        if (strict_mode) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        out_value->is_null = false;
+        return clip_integer_for_column(
+            database,
+            is_negative,
+            column,
+            row_number,
+            &out_value->integer
+        );
+    }
+
+    bool exceeds_range = false;
+    rc = dml_integer_value_exceeds_column_range(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &exceeds_range
+    );
+    if (rc == MYLITE_OK && parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED && !exceeds_range) {
+        if (strict_mode) {
+            set_data_truncated_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        rc = append_data_truncated_warning(database, column->name, row_number);
+    }
+    if (rc == MYLITE_OK) {
+        out_value->is_null = false;
+        if (strict_mode) {
+            rc = convert_integer_for_column_with_policy(
+                database,
+                magnitude,
+                is_negative,
+                column,
+                row_number,
+                false,
+                &out_value->integer
+            );
+        } else {
+            rc = convert_integer_for_column_with_policy(
+                database,
+                magnitude,
+                is_negative,
+                column,
+                row_number,
+                true,
+                &out_value->integer
+            );
+        }
+    }
+    return rc;
+}
+
+static int convert_load_data_text_field(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct load_data_field *field,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    char *text = copy_load_data_field_text(database, field);
+    struct char_text_conversion conversion = {
+        .text = text,
+        .text_length = field->text_length,
+        .row_number = row_number,
+    };
+    bool allow_nonspace_truncation = dml_allows_string_truncation_adjustment(database, false);
+    int rc = MYLITE_OK;
+
+    if (text == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (column_descriptor_is_char(column)) {
+        rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
+    } else if (column_descriptor_is_varchar(column)) {
+        rc = convert_varchar_text(database, column, &conversion, allow_nonspace_truncation);
+    } else {
+        rc = convert_text_family_text(
+            database,
+            column,
+            &conversion,
+            allow_nonspace_truncation,
+            false
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(text);
+        return rc;
+    }
+    return assign_text_value(database, text, conversion.text_length, out_value);
+}
+
+static char *copy_load_data_field_text(
+    struct mylite_db *database,
+    const struct load_data_field *field
+) {
+    char *copy = malloc(field->text_length + 1U);
+
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return NULL;
+    }
+    memcpy(copy, field->text, field->text_length);
+    copy[field->text_length] = '\0';
+    return copy;
+}
+
+static void load_data_row_deinit(struct load_data_row *row) {
+    if (row == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < row->field_count; ++index) {
+        free(row->fields[index].text);
+    }
+    free(row->fields);
+    *row = (struct load_data_row){0};
+}
+
+static void load_data_row_reset(struct load_data_row *row) {
+    if (row == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < row->field_count; ++index) {
+        free(row->fields[index].text);
+    }
+    row->field_count = 0U;
 }
 
 static int execute_insert_plan_rows(
@@ -170261,6 +171572,193 @@ static void set_bad_null_error(struct mylite_db *database, const char *column_na
         "23000",
         message
     );
+}
+
+static void set_load_data_file_error(
+    struct mylite_db *database,
+    const char *file_path,
+    int os_error
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *error_text = os_error == 0 ? "Unknown error" : strerror(os_error);
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Can't get stat of '%s' (OS errno %d - %s)",
+        file_path == NULL ? "" : file_path,
+        os_error,
+        error_text
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cant_get_stat,
+        "HY000",
+        message
+    );
+}
+
+static void set_load_data_local_disabled_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_load_data_local_disabled,
+        "42000",
+        "Loading local data is disabled; this must be enabled on both the client and server sides"
+    );
+}
+
+static void set_load_data_row_missing_error(struct mylite_db *database, size_t row_number) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Row %zu doesn't contain data for all columns",
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_load_data_row_missing,
+        "01000",
+        message
+    );
+}
+
+static int append_load_data_row_missing_warnings(
+    struct mylite_db *database,
+    struct load_data_missing_warning_request request
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Row %zu doesn't contain data for all columns",
+        request.row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    for (size_t warning_index = 0U; rc == MYLITE_OK && warning_index < request.warning_count;
+         ++warning_index) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_error_load_data_row_missing,
+            "01000",
+            message
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static void set_load_data_row_truncated_error(struct mylite_db *database, size_t row_number) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Row %zu was truncated; it contained more data than there were input columns",
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_load_data_row_truncated,
+        "01000",
+        message
+    );
+}
+
+static int append_load_data_row_truncated_warning(struct mylite_db *database, size_t row_number) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Row %zu was truncated; it contained more data than there were input columns",
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_load_data_row_truncated,
+        "01000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static void set_load_data_null_to_not_null_error(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column set to default value; NULL supplied to NOT NULL column '%s' at row %zu",
+        column_name,
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_load_data_null_to_not_null,
+        "22004",
+        message
+    );
+}
+
+static int append_load_data_null_to_not_null_warning(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column set to default value; NULL supplied to NOT NULL column '%s' at row %zu",
+        column_name,
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_load_data_null_to_not_null,
+        "22004",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name) {

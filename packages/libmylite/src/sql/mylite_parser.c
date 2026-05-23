@@ -3809,6 +3809,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_load_data_infile_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token load_token,
+    struct mylite_sql_ast_node *file_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *ignore_lines,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *local_modifier
+) {
+    struct mylite_sql_source_span span = span_from_token(&load_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (columns != NULL) {
+        span = span_join(span, columns->span);
+    } else if (ignore_lines != NULL) {
+        span = span_join(span, ignore_lines->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    } else if (file_name != NULL) {
+        span = span_join(span, file_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, file_name);
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, ignore_lines);
+    mylite_sql_ast_node_append_child(statement, columns);
+    mylite_sql_ast_node_append_child(statement, local_modifier);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_load_data_local_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER, span_from_token(&token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_low_priority_modifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token
@@ -7661,6 +7703,7 @@ static bool map_keyword_token(
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
         {"DATABASES", MYLITE_SQL_PARSE_DATABASES},
+        {"DATA", MYLITE_SQL_PARSE_DATA},
         {"DAY", MYLITE_SQL_PARSE_DAY},
         {"DAYNAME", MYLITE_SQL_PARSE_DAYNAME},
         {"DAY_HOUR", MYLITE_SQL_PARSE_DAY_HOUR},
@@ -7797,6 +7840,7 @@ static bool map_keyword_token(
         {"FOR", MYLITE_SQL_PARSE_FOR},
         {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
+        {"INFILE", MYLITE_SQL_PARSE_INFILE},
         {"INNER", MYLITE_SQL_PARSE_INNER},
         {"JOIN", MYLITE_SQL_PARSE_JOIN},
         {"LEFT", MYLITE_SQL_PARSE_LEFT},
@@ -7807,6 +7851,7 @@ static bool map_keyword_token(
         {"DELAYED", MYLITE_SQL_PARSE_DELAYED},
         {"INTO", MYLITE_SQL_PARSE_INTO},
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
+        {"LOAD", MYLITE_SQL_PARSE_LOAD},
         {"MODE", MYLITE_SQL_PARSE_MODE},
         {"READ", MYLITE_SQL_PARSE_READ},
         {"COMMITTED", MYLITE_SQL_PARSE_COMMITTED},
@@ -7855,6 +7900,7 @@ static bool map_keyword_token(
         {"SET", MYLITE_SQL_PARSE_SET},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"LOCAL", MYLITE_SQL_PARSE_LOCAL},
+        {"LINES", MYLITE_SQL_PARSE_LINES},
         {"LOCALTIME", MYLITE_SQL_PARSE_LOCALTIME},
         {"LOCALTIMESTAMP", MYLITE_SQL_PARSE_LOCALTIMESTAMP},
         {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},

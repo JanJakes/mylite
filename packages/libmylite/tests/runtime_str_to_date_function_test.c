@@ -379,6 +379,12 @@ static int test_str_to_date_warnings_and_sql_modes(void) {
         "STR_TO_DATE('0000-00-00', '%Y-%m-%d')",
     };
     static const char *const values_allow_invalid_nozero[] = {"2024-02-31", NULL, "0000-00-00"};
+    static const char *const columns_allow_invalid_no_zero_date[] = {
+        "STR_TO_DATE('2024-02-31', '%Y-%m-%d')",
+        "STR_TO_DATE('0000-02-31', '%Y-%m-%d')",
+        "STR_TO_DATE('2024-00-01', '%Y-%m-%d')",
+    };
+    static const char *const values_allow_invalid_no_zero_date[] = {"2024-02-31", NULL, NULL};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -491,6 +497,23 @@ static int test_str_to_date_warnings_and_sql_modes(void) {
             .row_count = 1U,
             .warning_count = 1U,
             .context = "allow invalid dates no zero in date str_to_date",
+        }
+    );
+    failures +=
+        execute_ok(database, "SET SESSION sql_mode = 'ALLOW_INVALID_DATES,NO_ZERO_DATE'", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STR_TO_DATE('2024-02-31', '%Y-%m-%d'), "
+                   "STR_TO_DATE('0000-02-31', '%Y-%m-%d'), "
+                   "STR_TO_DATE('2024-00-01', '%Y-%m-%d')",
+            .columns = columns_allow_invalid_no_zero_date,
+            .column_count = sizeof(columns_allow_invalid_no_zero_date) /
+                            sizeof(columns_allow_invalid_no_zero_date[0]),
+            .values = values_allow_invalid_no_zero_date,
+            .row_count = 1U,
+            .warning_count = 2U,
+            .context = "allow invalid dates no zero date str_to_date",
         }
     );
 

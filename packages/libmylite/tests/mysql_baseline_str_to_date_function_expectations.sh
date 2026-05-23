@@ -192,6 +192,20 @@ expect_output \
 "STR_TO_DATE('0000-00-00','%Y-%m-%d'); SHOW WARNINGS;" \
     "$DATABASE"
 
+allow_invalid_no_zero_date_expected=$(cat <<EXPECTED
+2024-02-31	NULL	NULL
+Warning	1411	Incorrect datetime value: '0000-02-31' for function str_to_date
+Warning	1411	Incorrect datetime value: '2024-00-01' for function str_to_date
+EXPECTED
+)
+expect_output \
+    "str_to_date allow invalid dates no zero date warnings" \
+    "$allow_invalid_no_zero_date_expected" \
+    "SET SESSION sql_mode = 'ALLOW_INVALID_DATES,NO_ZERO_DATE'; SELECT "\
+"STR_TO_DATE('2024-02-31','%Y-%m-%d'), STR_TO_DATE('0000-02-31','%Y-%m-%d'), "\
+"STR_TO_DATE('2024-00-01','%Y-%m-%d'); SHOW WARNINGS;" \
+    "$DATABASE"
+
 run_mysql \
     "SET SESSION sql_mode = ''; CREATE TABLE t(id INT, v VARCHAR(32), body TEXT, n INT); "\
 "INSERT INTO t VALUES (1, '2024-01-02', '09:30:17', 1), "\
@@ -280,6 +294,14 @@ expect_error \
     42S22 \
     "Unknown column 'missing' in 'field list'" \
     "SELECT STR_TO_DATE(missing + 1, NULL) FROM t;" \
+    "$DATABASE"
+
+expect_error \
+    "str_to_date resolves no-source nested missing format column before null short circuit" \
+    1054 \
+    42S22 \
+    "Unknown column 'missing' in 'field list'" \
+    "SELECT STR_TO_DATE(NULL, missing + 1);" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_str_to_date_function_expectations: ok"

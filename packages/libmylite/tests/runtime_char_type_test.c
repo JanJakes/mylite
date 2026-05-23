@@ -557,15 +557,6 @@ static int test_char_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DISTINCT v FROM diag",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only integer descriptor columns",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT COUNT(DISTINCT v) FROM diag",
         (struct expected_sql_error){
             .code = mysql_error_parse,

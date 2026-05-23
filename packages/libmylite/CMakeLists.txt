@@ -2649,6 +2649,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_select_order_limit_lifecycle_test)
 
+  add_executable(mylite_runtime_select_distinct_rowsets_test
+    tests/runtime_select_distinct_rowsets_test.c
+  )
+  target_link_libraries(mylite_runtime_select_distinct_rowsets_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_select_distinct_rowsets_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_select_distinct_rowsets_test)
+
   add_executable(mylite_runtime_table_statement_test
     tests/runtime_table_statement_test.c
   )
@@ -4377,6 +4388,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.select_order_limit_lifecycle
     COMMAND mylite_runtime_select_order_limit_lifecycle_test
+  )
+  add_test(
+    NAME libmylite.runtime.select_distinct_rowsets
+    COMMAND mylite_runtime_select_distinct_rowsets_test
   )
   add_test(
     NAME libmylite.runtime.table_statement

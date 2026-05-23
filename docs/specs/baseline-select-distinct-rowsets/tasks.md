@@ -9,12 +9,12 @@
   ownership boundary.
 - [x] Add MySQL-runtime expectation script for this phase.
 - [x] Update compatibility docs for the planned limited rowset distinct scope.
-- [ ] Replace the one-column integer-only distinct planner with the specified
+- [x] Replace the one-column integer-only distinct planner with the specified
   descriptor rowset planner validation.
-- [ ] Generate `SELECT DISTINCT` projection SQL with MyLite string collation for
+- [x] Generate `SELECT DISTINCT` projection SQL with MyLite string collation for
   supported nonbinary string descriptor columns.
-- [ ] Add focused C runtime coverage and update old rejection tests.
-- [ ] Run the MySQL expectation script, focused CTest entries, and full
+- [x] Add focused C runtime coverage and update old rejection tests.
+- [x] Run the MySQL expectation script, focused CTest entries, and full
   workflow.
-- [ ] Review the final diff for scope, descriptor authority, SQLite SQL shape,
+- [x] Review the final diff for scope, descriptor authority, SQLite SQL shape,
   collation correctness, memory behavior, docs, and tests.

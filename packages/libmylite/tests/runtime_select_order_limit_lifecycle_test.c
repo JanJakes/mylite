@@ -1445,7 +1445,7 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports ORDER BY only on the selected column",
+            .message_part = "SELECT DISTINCT supports ORDER BY only on selected columns",
         }
     );
     failures += execute_error(
@@ -1454,7 +1454,7 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports ORDER BY only on the selected column",
+            .message_part = "SELECT DISTINCT supports ORDER BY only on selected columns",
         }
     );
     failures += execute_error(
@@ -1463,34 +1463,7 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports ORDER BY only on the selected column",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT DISTINCT n, nn FROM ordered_numbers ORDER BY n",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports exactly one selected column",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT DISTINCT * FROM ordered_numbers ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one descriptor column",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT DISTINCTROW * FROM ordered_numbers ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one descriptor column",
+            .message_part = "SELECT DISTINCT supports ORDER BY only on selected columns",
         }
     );
     failures += execute_error(
@@ -1499,7 +1472,7 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one descriptor column",
+            .message_part = "SELECT supports only descriptor table columns",
         }
     );
     failures += execute_error(

@@ -178,6 +178,14 @@ expect_value \
 label|varchar(20)|YES||NULL|" \
     "$show_columns"
 
+shadow_show_create=$(run_mysql \
+    "USE ${DATABASE}; CREATE TEMPORARY TABLE v(id INT); SHOW CREATE VIEW v; DROP TEMPORARY TABLE v;" \
+    | normalize_tsv)
+expect_value \
+    "show create view ignores temporary table shadow" \
+    "v|CREATE ALGORITHM=UNDEFINED DEFINER=\`root\`@\`%\` SQL SECURITY DEFINER VIEW \`v\` AS select \`t\`.\`id\` AS \`id\`,\`t\`.\`name\` AS \`label\` from \`t\`|utf8mb4|utf8mb4_0900_ai_ci" \
+    "$shadow_show_create"
+
 status_row=$(run_mysql \
     "USE ${DATABASE}; SHOW TABLE STATUS LIKE 'v';" \
     | awk -F '\t' '{print $1 "|" $2 "|" $3 "|" $4 "|" $5 "|" $18}' )
@@ -285,8 +293,66 @@ keep_count=$(run_mysql \
     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'keep_v';")
 expect_value "drop view missing atomic keeps existing view" "1" "$keep_count"
 
+run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE dep_base(id INT);
+     CREATE VIEW dep_v AS SELECT id FROM dep_base;
+     RENAME TABLE dep_base TO dep_base_renamed;" >/dev/null
+usage_after_rename=$(run_mysql \
+    "SELECT VIEW_SCHEMA,VIEW_NAME,TABLE_SCHEMA,TABLE_NAME "\
+"FROM INFORMATION_SCHEMA.VIEW_TABLE_USAGE WHERE VIEW_SCHEMA = '${DATABASE}' AND VIEW_NAME = 'dep_v';" \
+    | normalize_tsv)
+expect_value \
+    "view table usage keeps source name after rename" \
+    "${DATABASE}|dep_v|${DATABASE}|dep_base" \
+    "$usage_after_rename"
+run_mysql "USE ${DATABASE}; DROP TABLE dep_base_renamed;" >/dev/null
+usage_after_drop=$(run_mysql \
+    "SELECT VIEW_SCHEMA,VIEW_NAME,TABLE_SCHEMA,TABLE_NAME "\
+"FROM INFORMATION_SCHEMA.VIEW_TABLE_USAGE WHERE VIEW_SCHEMA = '${DATABASE}' AND VIEW_NAME = 'dep_v';" \
+    | normalize_tsv)
+expect_value \
+    "view table usage keeps source name after drop" \
+    "${DATABASE}|dep_v|${DATABASE}|dep_base" \
+    "$usage_after_drop"
+run_mysql "USE ${DATABASE}; DROP VIEW dep_v;" >/dev/null
+
+run_mysql \
+    "USE ${DATABASE};
+     SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+     CREATE TABLE tx_t(id INT, name VARCHAR(20));
+     START TRANSACTION;
+     INSERT INTO tx_t VALUES (1, 'a');
+     CREATE VIEW tx_v AS SELECT id FROM tx_t;
+     ROLLBACK;" >/dev/null
+tx_count_after_create=$(run_mysql "USE ${DATABASE}; SELECT COUNT(*) FROM tx_t;")
+expect_value "create view implicitly commits active transaction" "1" "$tx_count_after_create"
+tx_show_after_create=$(run_mysql "USE ${DATABASE}; SHOW CREATE VIEW tx_v;" | normalize_tsv)
+expect_value \
+    "transaction-created view persists" \
+    "tx_v|CREATE ALGORITHM=UNDEFINED DEFINER=\`root\`@\`%\` SQL SECURITY DEFINER VIEW \`tx_v\` AS select \`tx_t\`.\`id\` AS \`id\` from \`tx_t\`|utf8mb4|utf8mb4_0900_ai_ci" \
+    "$tx_show_after_create"
+run_mysql \
+    "USE ${DATABASE};
+     START TRANSACTION;
+     INSERT INTO tx_t VALUES (2, 'b');
+     DROP VIEW tx_v;
+     ROLLBACK;" >/dev/null
+tx_count_after_drop=$(run_mysql "USE ${DATABASE}; SELECT COUNT(*) FROM tx_t;")
+expect_value "drop view implicitly commits active transaction" "2" "$tx_count_after_drop"
+expect_error \
+    "transaction-dropped view stays dropped" \
+    1146 \
+    42S02 \
+    "Table '${DATABASE}.tx_v' doesn't exist" \
+    "USE ${DATABASE}; SHOW CREATE VIEW tx_v;"
+
 run_mysql "USE ${DATABASE}; DROP VIEW v; DROP VIEW keep_v;" >/dev/null
 post_drop=$(run_mysql "USE ${DATABASE}; SHOW FULL TABLES;" | normalize_tsv)
-expect_value "post drop view table list" "t|BASE TABLE" "$post_drop"
+expect_value \
+    "post drop view table list" \
+    "t|BASE TABLE
+tx_t|BASE TABLE" \
+    "$post_drop"
 
 printf '%s\n' "baseline-view-lifecycle MySQL 8.4.9 expectations verified"

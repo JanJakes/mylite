@@ -1357,6 +1357,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_select
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *view_name,
+    struct mylite_sql_ast_node *select_statement
+) {
+    struct mylite_sql_source_span span = span_from_token(&create_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (select_statement != NULL) {
+        span = span_join(span, select_statement->span);
+    } else if (view_name != NULL) {
+        span = span_join(span, view_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_CREATE_VIEW_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, view_name);
+    mylite_sql_ast_node_append_child(statement, select_statement);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -1996,6 +2021,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_temporary_table_statemen
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *view_names
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_drop_table_statement(
+        state,
+        drop_token,
+        if_exists_clause,
+        view_names
+    );
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_DROP_VIEW_STATEMENT;
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *table_name
@@ -2583,6 +2627,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, table_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *view_name
+) {
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_show_create_table_statement(state, show_token, view_name);
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT;
+    }
     return statement;
 }
 
@@ -7571,6 +7629,7 @@ static bool map_keyword_token(
         {"USE", MYLITE_SQL_PARSE_USE},
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"VIEW", MYLITE_SQL_PARSE_VIEW},
         {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
         {"GENERATED", MYLITE_SQL_PARSE_GENERATED},
         {"ALWAYS", MYLITE_SQL_PARSE_ALWAYS},

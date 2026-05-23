@@ -10,7 +10,8 @@
 #include <string.h>
 
 enum {
-    catalog_table_count = 9,
+    catalog_table_count = 10,
+    pre_view_catalog_table_count = 9,
     pre_check_constraint_catalog_table_count = 8,
     downgraded_catalog_with_check_constraint_table_count = 7,
     pre_foreign_key_catalog_table_count = 6,
@@ -41,6 +42,7 @@ enum {
     catalog_schema_version_v28 = 28U,
     catalog_schema_version_v29 = 29U,
     catalog_schema_version_v30 = 30U,
+    catalog_schema_version_v31 = 31U,
     catalog_table_key_block_size_eight = 8,
     catalog_table_key_block_size_sixteen = 16,
     catalog_table_stats_sample_pages_max = 65535,
@@ -127,6 +129,23 @@ enum catalog_column_replace_bind_index {
     catalog_column_replace_generation_bind = 18,
     catalog_column_replace_table_id_bind = 19,
     catalog_column_replace_column_id_bind = 20,
+};
+
+enum catalog_view_insert_bind_index {
+    catalog_view_insert_table_id_bind = 1,
+    catalog_view_insert_view_definition_bind = 2,
+    catalog_view_insert_show_create_sql_bind = 3,
+    catalog_view_insert_check_option_bind = 4,
+    catalog_view_insert_is_updatable_bind = 5,
+    catalog_view_insert_definer_bind = 6,
+    catalog_view_insert_security_type_bind = 7,
+    catalog_view_insert_character_set_client_bind = 8,
+    catalog_view_insert_collation_connection_bind = 9,
+    catalog_view_insert_source_schema_id_bind = 10,
+    catalog_view_insert_source_table_id_bind = 11,
+    catalog_view_insert_source_schema_name_bind = 12,
+    catalog_view_insert_source_table_name_bind = 13,
+    catalog_view_insert_generation_bind = 14,
 };
 
 enum catalog_column_reorder_offset_bind_index {
@@ -254,6 +273,25 @@ enum catalog_column_select_column_index {
     catalog_column_select_updated_generation_column = 22,
 };
 
+enum catalog_view_select_column_index {
+    catalog_view_select_table_id_column = 0,
+    catalog_view_select_view_definition_column = 1,
+    catalog_view_select_show_create_sql_column = 2,
+    catalog_view_select_check_option_column = 3,
+    catalog_view_select_is_updatable_column = 4,
+    catalog_view_select_definer_column = 5,
+    catalog_view_select_security_type_column = 6,
+    catalog_view_select_character_set_client_column = 7,
+    catalog_view_select_collation_connection_column = 8,
+    catalog_view_select_source_schema_id_column = 9,
+    catalog_view_select_source_table_id_column = 10,
+    catalog_view_select_source_schema_name_column = 11,
+    catalog_view_select_source_table_name_column = 12,
+    catalog_view_select_descriptor_version_column = 13,
+    catalog_view_select_created_generation_column = 14,
+    catalog_view_select_updated_generation_column = 15,
+};
+
 enum catalog_index_select_column_index {
     catalog_index_select_index_id_column = 0,
     catalog_index_select_table_id_column = 1,
@@ -373,6 +411,21 @@ struct catalog_column_values {
     const char *sqlite_generation_expression;
 };
 
+struct catalog_view_values {
+    const char *view_definition;
+    const char *show_create_sql;
+    const char *check_option;
+    const char *is_updatable;
+    const char *definer;
+    const char *security_type;
+    const char *character_set_client;
+    const char *collation_connection;
+    int64_t source_schema_id;
+    int64_t source_table_id;
+    const char *source_schema_name;
+    const char *source_table_name;
+};
+
 struct catalog_column_default_bind_indexes {
     int default_kind;
     int default_integer;
@@ -446,6 +499,7 @@ static int migrate_catalog_schema_v27_to_v28(sqlite3 *sqlite);
 static int migrate_catalog_schema_v28_to_v29(sqlite3 *sqlite);
 static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite);
 static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite);
+static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -519,6 +573,12 @@ static int bind_catalog_column_replace_values(
     int64_t table_id,
     int64_t column_id,
     const struct catalog_column_values *values,
+    uint64_t generation
+);
+static int bind_catalog_view_insert_values(
+    sqlite3_stmt *statement,
+    int64_t table_id,
+    const struct catalog_view_values *values,
     uint64_t generation
 );
 static int bind_catalog_column_insert_core_values(
@@ -599,6 +659,11 @@ static int read_table_by_id(
     int64_t table_id,
     struct mylite_catalog_table_descriptor *out_table
 );
+static int read_view_by_table_id(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_view_descriptor *out_view
+);
 static int read_column_by_name(
     sqlite3 *sqlite,
     int64_t table_id,
@@ -636,6 +701,23 @@ static int materialize_table_lifecycle(
     struct mylite_catalog_table_descriptor *out_table
 );
 static int validate_materialized_table(const struct mylite_catalog_table_descriptor *table);
+static int materialize_view(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+);
+static int materialize_view_text_fields(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+);
+static int materialize_view_source(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+);
+static int materialize_view_generations(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+);
+static int validate_materialized_view(const struct mylite_catalog_view_descriptor *view);
 static int materialize_column(
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
@@ -849,6 +931,7 @@ static const char *catalog_state_table_name(void);
 static const char *catalog_schemas_table_name(void);
 static const char *catalog_tables_table_name(void);
 static const char *catalog_columns_table_name(void);
+static const char *catalog_views_table_name(void);
 static const char *catalog_indexes_table_name(void);
 static const char *catalog_index_columns_table_name(void);
 static const char *catalog_foreign_keys_table_name(void);
@@ -1475,6 +1558,200 @@ int mylite_catalog_insert_column_in_mutation(
     }
 
     return MYLITE_OK;
+}
+
+int mylite_catalog_insert_view_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *view_definition,
+    const char *show_create_sql,
+    const char *check_option,
+    const char *is_updatable,
+    const char *definer,
+    const char *security_type,
+    const char *character_set_client,
+    const char *collation_connection,
+    int64_t source_schema_id,
+    int64_t source_table_id,
+    const char *source_schema_name,
+    const char *source_table_name,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    const struct catalog_view_values values = {
+        .view_definition = view_definition,
+        .show_create_sql = show_create_sql,
+        .check_option = check_option,
+        .is_updatable = is_updatable,
+        .definer = definer,
+        .security_type = security_type,
+        .character_set_client = character_set_client,
+        .collation_connection = collation_connection,
+        .source_schema_id = source_schema_id,
+        .source_table_id = source_table_id,
+        .source_schema_name = source_schema_name,
+        .source_table_name = source_table_name,
+    };
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_view != NULL) {
+        *out_view = (struct mylite_catalog_view_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view_definition, MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(show_create_sql, MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(check_option, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(is_updatable, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(definer, MYLITE_CATALOG_DEFINER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(security_type, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(character_set_client, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(collation_connection, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(source_schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(source_table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(source_schema_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(source_table_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "INSERT INTO _mylite_catalog_views "
+        "(table_id, view_definition, show_create_sql, check_option, is_updatable, definer, "
+        "security_type, character_set_client, collation_connection, source_schema_id, "
+        "source_table_id, source_schema_name, source_table_name, descriptor_version, "
+        "created_catalog_generation, "
+        "updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?14)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_catalog_view_insert_values(
+            statement,
+            table_id,
+            &values,
+            mutation->next_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (out_view != NULL) {
+        return read_view_by_table_id(database->sqlite, table_id, out_view);
+    }
+
+    return MYLITE_OK;
+}
+
+static int bind_catalog_view_insert_values(
+    sqlite3_stmt *statement,
+    int64_t table_id,
+    const struct catalog_view_values *values,
+    uint64_t generation
+) {
+    int rc = values == NULL ? MYLITE_MISUSE
+                            : bind_i64(statement, catalog_view_insert_table_id_bind, table_id);
+
+    if (rc == MYLITE_OK) {
+        rc =
+            bind_text(statement, catalog_view_insert_view_definition_bind, values->view_definition);
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            bind_text(statement, catalog_view_insert_show_create_sql_bind, values->show_create_sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_view_insert_check_option_bind, values->check_option);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_view_insert_is_updatable_bind, values->is_updatable);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_view_insert_definer_bind, values->definer);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_view_insert_security_type_bind, values->security_type);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_view_insert_character_set_client_bind,
+            values->character_set_client
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_view_insert_collation_connection_bind,
+            values->collation_connection
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_view_insert_source_schema_id_bind,
+            values->source_schema_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_view_insert_source_table_id_bind, values->source_table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_view_insert_source_schema_name_bind,
+            values->source_schema_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_view_insert_source_table_name_bind,
+            values->source_table_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, catalog_view_insert_generation_bind, generation);
+    }
+    return rc;
 }
 
 int mylite_catalog_insert_index_in_mutation(
@@ -3025,6 +3302,21 @@ int mylite_catalog_delete_table_in_mutation(
     if (rc == MYLITE_OK) {
         rc = prepare_statement(
             database->sqlite,
+            "DELETE FROM _mylite_catalog_views WHERE table_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
             "DELETE FROM _mylite_catalog_index_columns WHERE table_id = ?1",
             &statement
         );
@@ -3571,6 +3863,24 @@ int mylite_catalog_delete_schema_in_mutation(
         rc = prepare_statement(
             database->sqlite,
             "DELETE FROM _mylite_catalog_indexes "
+            "WHERE table_id IN ("
+            "SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1"
+            ")",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_views "
             "WHERE table_id IN ("
             "SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1"
             ")",
@@ -4862,6 +5172,23 @@ int mylite_catalog_read_schema_by_name(
     return MYLITE_OK;
 }
 
+int mylite_catalog_read_schema_by_id(
+    struct mylite_db *database,
+    int64_t schema_id,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(schema_id);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return read_schema_by_id(database->sqlite, schema_id, out_schema);
+}
+
 int mylite_catalog_try_read_schema_by_name(
     struct mylite_db *database,
     const char *name,
@@ -4928,6 +5255,24 @@ int mylite_catalog_delete_schema(struct mylite_db *database, int64_t schema_id) 
         rc = prepare_statement(
             database->sqlite,
             "DELETE FROM _mylite_catalog_indexes "
+            "WHERE table_id IN ("
+            "SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1"
+            ")",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_views "
             "WHERE table_id IN ("
             "SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1"
             ")",
@@ -5240,6 +5585,27 @@ int mylite_catalog_read_table_by_id(
     return read_table_by_id(database->sqlite, table_id, out_table);
 }
 
+int mylite_catalog_read_view_by_table_id(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_view == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return read_view_by_table_id(database->sqlite, table_id, out_view);
+}
+
 int mylite_catalog_update_table_name(
     struct mylite_db *database,
     int64_t table_id,
@@ -5322,6 +5688,24 @@ int mylite_catalog_delete_table(struct mylite_db *database, int64_t table_id) {
     }
 
     rc = delete_foreign_keys_for_related_table(database->sqlite, table_id);
+    if (rc == MYLITE_OK) {
+        rc = delete_check_constraints_for_table(database->sqlite, table_id);
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_views WHERE table_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
 
     if (rc == MYLITE_OK) {
         rc = prepare_statement(
@@ -5608,7 +5992,7 @@ static int ensure_catalog_schema(struct mylite_db *database) {
         table_count != pre_foreign_key_catalog_table_count &&
         table_count != downgraded_catalog_with_check_constraint_table_count &&
         table_count != pre_check_constraint_catalog_table_count &&
-        table_count != catalog_table_count) {
+        table_count != pre_view_catalog_table_count && table_count != catalog_table_count) {
         return MYLITE_ERROR;
     }
 
@@ -5780,6 +6164,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v30:
         rc = migrate_catalog_schema_v30_to_v31(sqlite);
+        next_schema_version = catalog_schema_version_v31;
+        break;
+    case catalog_schema_version_v31:
+        rc = migrate_catalog_schema_v31_to_v32(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -6747,6 +7135,84 @@ static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite) {
         "ADD COLUMN stats_sample_pages INTEGER NOT NULL DEFAULT 0 "
         "CHECK(stats_sample_pages BETWEEN 0 AND 65535);"
         "UPDATE _mylite_catalog_state "
+        "SET schema_version = 31, minimum_reader_schema_version = 30;"
+        "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_tables RENAME TO _mylite_catalog_tables_v31;"
+        "CREATE TABLE _mylite_catalog_tables ("
+        "table_id INTEGER PRIMARY KEY,"
+        "schema_id INTEGER NOT NULL,"
+        "name TEXT NOT NULL,"
+        "kind INTEGER NOT NULL CHECK(kind IN (1, 3)),"
+        "physical_name TEXT NOT NULL UNIQUE,"
+        "auto_increment_next INTEGER NOT NULL CHECK(auto_increment_next > 0),"
+        "default_charset TEXT NOT NULL,"
+        "default_collation TEXT NOT NULL,"
+        "comment TEXT NOT NULL,"
+        "row_format_option TEXT NOT NULL DEFAULT '',"
+        "key_block_size INTEGER NOT NULL DEFAULT 0 "
+        "CHECK(key_block_size IN (0, 1, 2, 4, 8, 16)),"
+        "pack_keys INTEGER NOT NULL DEFAULT -1 CHECK(pack_keys IN (-1, 0, 1)),"
+        "checksum INTEGER NOT NULL DEFAULT 0 CHECK(checksum IN (0, 1)),"
+        "stats_persistent INTEGER NOT NULL DEFAULT -1 CHECK(stats_persistent IN (-1, 0, 1)),"
+        "stats_auto_recalc INTEGER NOT NULL DEFAULT -1 "
+        "CHECK(stats_auto_recalc IN (-1, 0, 1)),"
+        "stats_sample_pages INTEGER NOT NULL DEFAULT 0 "
+        "CHECK(stats_sample_pages BETWEEN 0 AND 65535),"
+        "fulltext_doc_id_initialized INTEGER NOT NULL "
+        "CHECK(fulltext_doc_id_initialized IN (0, 1)),"
+        "created_time_utc_epoch INTEGER NOT NULL CHECK(created_time_utc_epoch >= 0),"
+        "updated_time_utc_epoch INTEGER NOT NULL CHECK(updated_time_utc_epoch >= 0),"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(schema_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_tables "
+        "(table_id, schema_id, name, kind, physical_name, auto_increment_next, "
+        "default_charset, default_collation, comment, row_format_option, key_block_size, "
+        "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
+        "fulltext_doc_id_initialized, created_time_utc_epoch, updated_time_utc_epoch, "
+        "descriptor_version, created_catalog_generation, updated_catalog_generation) "
+        "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
+        "default_charset, default_collation, comment, row_format_option, key_block_size, "
+        "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
+        "fulltext_doc_id_initialized, created_time_utc_epoch, updated_time_utc_epoch, "
+        "descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_tables_v31;"
+        "DROP TABLE _mylite_catalog_tables_v31;"
+        "DROP TABLE IF EXISTS _mylite_catalog_views;"
+        "CREATE TABLE _mylite_catalog_views ("
+        "table_id INTEGER PRIMARY KEY,"
+        "view_definition TEXT NOT NULL,"
+        "show_create_sql TEXT NOT NULL,"
+        "check_option TEXT NOT NULL,"
+        "is_updatable TEXT NOT NULL,"
+        "definer TEXT NOT NULL,"
+        "security_type TEXT NOT NULL,"
+        "character_set_client TEXT NOT NULL,"
+        "collation_connection TEXT NOT NULL,"
+        "source_schema_id INTEGER NOT NULL,"
+        "source_table_id INTEGER NOT NULL,"
+        "source_schema_name TEXT NOT NULL,"
+        "source_table_name TEXT NOT NULL,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL"
+        ");"
+        "UPDATE _mylite_catalog_state "
         "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
         ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ";"
         "COMMIT;";
@@ -6779,6 +7245,16 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
             "created_time_utc_epoch, updated_time_utc_epoch, "
             "descriptor_version, created_catalog_generation, updated_catalog_generation "
             "FROM _mylite_catalog_tables WHERE 0"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_select_shape(
+            sqlite,
+            "SELECT table_id, view_definition, show_create_sql, check_option, is_updatable, "
+            "definer, security_type, character_set_client, collation_connection, "
+            "source_schema_id, source_table_id, source_schema_name, source_table_name, "
+            "descriptor_version, created_catalog_generation, updated_catalog_generation "
+            "FROM _mylite_catalog_views WHERE 0"
         );
     }
     if (rc == MYLITE_OK) {
@@ -6872,7 +7348,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "table_id INTEGER PRIMARY KEY,"
         "schema_id INTEGER NOT NULL,"
         "name TEXT NOT NULL,"
-        "kind INTEGER NOT NULL CHECK(kind = 1),"
+        "kind INTEGER NOT NULL CHECK(kind IN (1, 3)),"
         "physical_name TEXT NOT NULL UNIQUE,"
         "auto_increment_next INTEGER NOT NULL CHECK(auto_increment_next > 0),"
         "default_charset TEXT NOT NULL,"
@@ -6925,6 +7401,24 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(table_id, ordinal_position),"
         "UNIQUE(table_id, name)"
+        ");",
+        "CREATE TABLE _mylite_catalog_views ("
+        "table_id INTEGER PRIMARY KEY,"
+        "view_definition TEXT NOT NULL,"
+        "show_create_sql TEXT NOT NULL,"
+        "check_option TEXT NOT NULL,"
+        "is_updatable TEXT NOT NULL,"
+        "definer TEXT NOT NULL,"
+        "security_type TEXT NOT NULL,"
+        "character_set_client TEXT NOT NULL,"
+        "collation_connection TEXT NOT NULL,"
+        "source_schema_id INTEGER NOT NULL,"
+        "source_table_id INTEGER NOT NULL,"
+        "source_schema_name TEXT NOT NULL,"
+        "source_table_name TEXT NOT NULL,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL"
         ");",
         "CREATE TABLE _mylite_catalog_indexes ("
         "index_id INTEGER PRIMARY KEY,"
@@ -7040,11 +7534,12 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
         catalog_schemas_name_bind = 2,
         catalog_tables_name_bind = 3,
         catalog_columns_name_bind = 4,
-        catalog_indexes_name_bind = 5,
-        catalog_index_columns_name_bind = 6,
-        catalog_foreign_keys_name_bind = 7,
-        catalog_foreign_key_columns_name_bind = 8,
-        catalog_check_constraints_name_bind = 9,
+        catalog_views_name_bind = 5,
+        catalog_indexes_name_bind = 6,
+        catalog_index_columns_name_bind = 7,
+        catalog_foreign_keys_name_bind = 8,
+        catalog_foreign_key_columns_name_bind = 9,
+        catalog_check_constraints_name_bind = 10,
     };
 
     sqlite3_stmt *statement = NULL;
@@ -7056,7 +7551,7 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
         sqlite,
         "SELECT count(*) FROM sqlite_master "
         "WHERE type = 'table' "
-        "AND name IN (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "AND name IN (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -7070,6 +7565,9 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
     }
     if (rc == MYLITE_OK) {
         rc = bind_text(statement, catalog_columns_name_bind, catalog_columns_table_name());
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_views_name_bind, catalog_views_table_name());
     }
     if (rc == MYLITE_OK) {
         rc = bind_text(statement, catalog_indexes_name_bind, catalog_indexes_table_name());
@@ -7902,6 +8400,40 @@ static int read_table_by_id(
     return finalize_statement(statement, rc);
 }
 
+static int read_view_by_table_id(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT table_id, view_definition, show_create_sql, check_option, is_updatable, "
+        "definer, security_type, character_set_client, collation_connection, "
+        "source_schema_id, source_table_id, source_schema_name, source_table_name, "
+        "descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_views WHERE table_id = ?1",
+        &statement
+    );
+
+    *out_view = (struct mylite_catalog_view_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_view(statement, out_view);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 static int read_column_by_name(
     sqlite3 *sqlite,
     int64_t table_id,
@@ -8377,6 +8909,207 @@ static int validate_materialized_table(const struct mylite_catalog_table_descrip
         .created_time_utc_epoch = table->created_time_utc_epoch,
         .updated_time_utc_epoch = table->updated_time_utc_epoch,
     });
+}
+
+static int materialize_view(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    int rc =
+        checked_column_i64(statement, catalog_view_select_table_id_column, &out_view->table_id);
+
+    if (rc == MYLITE_OK) {
+        rc = materialize_view_text_fields(statement, out_view);
+    }
+    if (rc == MYLITE_OK) {
+        rc = materialize_view_source(statement, out_view);
+    }
+    if (rc == MYLITE_OK) {
+        rc = materialize_view_generations(statement, out_view);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_materialized_view(out_view);
+    }
+    return rc;
+}
+
+static int materialize_view_text_fields(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    int rc = checked_column_text(
+        statement,
+        catalog_view_select_view_definition_column,
+        out_view->view_definition,
+        sizeof(out_view->view_definition)
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_show_create_sql_column,
+            out_view->show_create_sql,
+            sizeof(out_view->show_create_sql)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_check_option_column,
+            out_view->check_option,
+            sizeof(out_view->check_option)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_is_updatable_column,
+            out_view->is_updatable,
+            sizeof(out_view->is_updatable)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_definer_column,
+            out_view->definer,
+            sizeof(out_view->definer)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_security_type_column,
+            out_view->security_type,
+            sizeof(out_view->security_type)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_character_set_client_column,
+            out_view->character_set_client,
+            sizeof(out_view->character_set_client)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_collation_connection_column,
+            out_view->collation_connection,
+            sizeof(out_view->collation_connection)
+        );
+    }
+
+    return rc;
+}
+
+static int materialize_view_source(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    int rc = checked_column_i64(
+        statement,
+        catalog_view_select_source_schema_id_column,
+        &out_view->source_schema_id
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_view_select_source_table_id_column,
+            &out_view->source_table_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_source_schema_name_column,
+            out_view->source_schema_name,
+            sizeof(out_view->source_schema_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_view_select_source_table_name_column,
+            out_view->source_table_name,
+            sizeof(out_view->source_table_name)
+        );
+    }
+
+    return rc;
+}
+
+static int materialize_view_generations(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_view_descriptor *out_view
+) {
+    int rc = checked_column_u64(
+        statement,
+        catalog_view_select_descriptor_version_column,
+        &out_view->descriptor_version
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_view_select_created_generation_column,
+            &out_view->created_catalog_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_view_select_updated_generation_column,
+            &out_view->updated_catalog_generation
+        );
+    }
+
+    return rc;
+}
+
+static int validate_materialized_view(const struct mylite_catalog_view_descriptor *view) {
+    int rc = validate_positive_id(view->table_id);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->view_definition, MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            validate_required_name(view->show_create_sql, MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->check_option, sizeof(view->check_option));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->is_updatable, sizeof(view->is_updatable));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->definer, sizeof(view->definer));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->security_type, sizeof(view->security_type));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->character_set_client, sizeof(view->character_set_client));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->collation_connection, sizeof(view->collation_connection));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(view->source_schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(view->source_table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->source_schema_name, sizeof(view->source_schema_name));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(view->source_table_name, sizeof(view->source_table_name));
+    }
+    return rc;
 }
 
 static int materialize_column(
@@ -9271,7 +10004,7 @@ static int validate_logical_object_name(const char *name, size_t capacity) {
 }
 
 static int validate_table_kind(enum mylite_catalog_table_kind kind) {
-    if (kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (kind != MYLITE_CATALOG_TABLE_KIND_BASE && kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
         return MYLITE_MISUSE;
     }
 
@@ -9904,6 +10637,10 @@ static const char *catalog_tables_table_name(void) {
 
 static const char *catalog_columns_table_name(void) {
     return "_mylite_catalog_columns";
+}
+
+static const char *catalog_views_table_name(void) {
+    return "_mylite_catalog_views";
 }
 
 static const char *catalog_indexes_table_name(void) {

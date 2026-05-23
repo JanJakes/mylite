@@ -146,6 +146,9 @@ statement(A) ::= create_table_select_statement(B). {
 statement(A) ::= create_temporary_table_select_statement(B). {
     A = B;
 }
+statement(A) ::= create_view_statement(B). {
+    A = B;
+}
 statement(A) ::= create_index_statement(B). {
     A = B;
 }
@@ -159,6 +162,9 @@ statement(A) ::= drop_table_statement(B). {
     A = B;
 }
 statement(A) ::= drop_temporary_table_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_view_statement(B). {
     A = B;
 }
 statement(A) ::= drop_schema_statement(B). {
@@ -210,6 +216,9 @@ statement(A) ::= show_index_statement(B). {
     A = B;
 }
 statement(A) ::= show_create_table_statement(B). {
+    A = B;
+}
+statement(A) ::= show_create_view_statement(B). {
     A = B;
 }
 statement(A) ::= show_create_database_statement(B). {
@@ -885,6 +894,9 @@ create_temporary_table_select_statement(A) ::=
     create_table_select_as_opt select_statement(S). {
     A = mylite_sql_parser_make_create_temporary_table_select_statement(state, C, E, T, S);
 }
+create_view_statement(A) ::= CREATE(C) VIEW table_name(T) AS select_statement(S). {
+    A = mylite_sql_parser_make_create_view_statement(state, C, T, S);
+}
 
 create_index_statement(A) ::=
     CREATE(C) INDEX identifier(N) index_type_opt(Y) ON table_name(T) LPAREN
@@ -1130,6 +1142,9 @@ drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name_list(
 drop_temporary_table_statement(A) ::=
     DROP(D) TEMPORARY TABLE drop_if_exists_opt(E) table_name_list(T). {
     A = mylite_sql_parser_make_drop_temporary_table_statement(state, D, E, T);
+}
+drop_view_statement(A) ::= DROP(D) VIEW drop_if_exists_opt(E) table_name_list(T). {
+    A = mylite_sql_parser_make_drop_view_statement(state, D, E, T);
 }
 
 drop_if_exists_opt(A) ::= . {
@@ -1441,6 +1456,9 @@ show_status_filter_opt(A) ::= LIKE STRING(P). {
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
     A = mylite_sql_parser_make_show_create_table_statement(state, S, T);
+}
+show_create_view_statement(A) ::= SHOW(S) CREATE VIEW table_name(T). {
+    A = mylite_sql_parser_make_show_create_view_statement(state, S, T);
 }
 
 show_create_database_statement(A) ::= SHOW(S) CREATE DATABASE identifier(D). {
@@ -6629,6 +6647,9 @@ identifier(A) ::= COLUMNS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TABLES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= VIEW(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TEMPORARY(T). {

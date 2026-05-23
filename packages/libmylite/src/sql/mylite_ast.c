@@ -1766,6 +1766,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_full_columns_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return "show_create_table_statement";
+    case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
+        return "show_create_view_statement";
     case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:
         return "table_engine_option";
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
@@ -1800,6 +1802,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_assignment";
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
         return "alter_table_rename_statement";
+    case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
+        return "create_view_statement";
+    case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
+        return "drop_view_statement";
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
         return "show_index_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:

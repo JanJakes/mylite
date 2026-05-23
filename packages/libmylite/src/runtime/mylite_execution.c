@@ -120,6 +120,7 @@ enum {
     mysql_error_subquery_returns_more_than_one_row = 1242,
     mysql_error_unknown_prepared_statement_handler = 1243,
     mysql_error_select_reduced = 1222,
+    mysql_error_not_view = 1347,
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
@@ -333,6 +334,7 @@ enum {
     show_index_result_column_count = 15,
     show_index_null_column = 9,
     show_create_table_result_column_count = 2,
+    show_create_view_result_column_count = 4,
     show_create_database_result_column_count = 2,
     show_table_status_name_column = 0,
     show_table_status_version_column = 2,
@@ -2339,6 +2341,7 @@ struct planned_drop_schema {
     struct planned_drop_schema_table *tables;
     size_t table_count;
     size_t table_capacity;
+    size_t object_count;
 };
 
 struct planned_value {
@@ -3175,6 +3178,15 @@ struct planned_grouped_aggregate {
     struct planned_select_limit limit;
 };
 
+struct planned_create_view {
+    struct table_name_resolution target;
+    struct planned_select source;
+    char **column_names;
+    size_t column_count;
+    char *view_definition;
+    char *show_create_sql;
+};
+
 struct grouped_aggregate_clauses {
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *group_clause;
@@ -3196,6 +3208,7 @@ struct uint128_parts {
 struct planned_show_create_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_view_descriptor view;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
     struct loaded_index_info *indexes;
@@ -3204,6 +3217,7 @@ struct planned_show_create_table {
     size_t foreign_key_count;
     struct loaded_check_constraint_info *check_constraints;
     size_t check_constraint_count;
+    bool is_view;
 };
 
 struct planned_delete {
@@ -8419,6 +8433,11 @@ static int execute_create_temporary_table_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_create_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_create_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -8451,11 +8470,25 @@ static int execute_drop_temporary_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_drop_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int plan_drop_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     bool temporary_only,
     struct planned_drop_table *out_plan
+);
+static int plan_drop_view(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_drop_table *out_plan
+);
+static int execute_drop_view_from_plan(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
 );
 static int plan_drop_table_target(
     struct mylite_db *database,
@@ -9187,6 +9220,12 @@ static int append_information_schema_tables_base_row(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
 );
+static int append_information_schema_tables_view_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
 static int append_information_schema_partitions_base_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -9262,6 +9301,12 @@ static int append_information_schema_columns_base_rows(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
 );
+static int append_information_schema_columns_view_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
 static int append_information_schema_columns_base_column_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -9271,6 +9316,18 @@ static int append_information_schema_columns_base_column_row(
     const struct primary_key_info *primary_key,
     const struct loaded_index_info *indexes,
     size_t index_count
+);
+static int append_information_schema_views_view_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_view_table_usage_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
 );
 static int column_default_display_text(
     struct mylite_db *database,
@@ -9864,6 +9921,15 @@ static int execute_show_columns_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int load_show_columns_key_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct primary_key_info *primary_key,
+    struct loaded_index_info **out_indexes,
+    size_t *out_index_count
+);
 static int append_show_columns_result_columns(
     struct mylite_db *database,
     mylite_result *result,
@@ -9957,6 +10023,11 @@ static int execute_show_index_statement(
     mylite_result **out_result
 );
 static int execute_show_create_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_create_view_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -10096,6 +10167,50 @@ static int create_temporary_table_select_from_plan(
     struct mylite_db *database,
     struct planned_create_table_select *plan,
     int64_t *out_affected_rows
+);
+static int plan_create_view(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_view *out_plan
+);
+static int create_view_from_plan(
+    struct mylite_db *database,
+    const struct planned_create_view *plan
+);
+static void planned_create_view_deinit(struct planned_create_view *plan);
+static int validate_create_view_select_subset(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement
+);
+static int copy_create_view_column_names(
+    struct mylite_db *database,
+    struct planned_create_view *plan
+);
+static int build_create_view_definition_sql(
+    struct mylite_db *database,
+    const struct planned_create_view *plan,
+    char **out_sql
+);
+static int build_create_view_select_sql(
+    struct mylite_db *database,
+    const struct planned_create_view *plan,
+    bool qualify_source_schema,
+    char **out_sql
+);
+static int build_create_view_show_create_sql(
+    struct mylite_db *database,
+    const struct planned_create_view *plan,
+    char **out_sql
+);
+static int append_create_view_projection_sql(
+    struct dynamic_string *string,
+    const struct planned_create_view *plan,
+    bool qualify_source_schema
+);
+static int append_create_view_from_sql(
+    struct dynamic_string *string,
+    const struct planned_create_view *plan,
+    bool qualify_source_schema
 );
 static int infer_create_table_select_columns(
     struct mylite_db *database,
@@ -16436,6 +16551,12 @@ static int execute_show_create_table_from_plan(
     const struct planned_show_create_table *plan,
     mylite_result *result
 );
+static int append_show_create_view_result(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *view_name,
+    const struct mylite_catalog_view_descriptor *view
+);
 static int build_show_create_table_sql(
     struct mylite_db *database,
     const struct planned_show_create_table *plan,
@@ -17095,6 +17216,18 @@ static int resolve_writable_table_name_allow_missing_schema(
     bool *out_missing_schema
 );
 static int resolve_readable_table(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    bool missing_schema,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int resolve_metadata_table_reference(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    bool missing_schema,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int resolve_persistent_metadata_table_reference(
     struct mylite_db *database,
     const struct table_name_resolution *resolution,
     bool missing_schema,
@@ -23874,6 +24007,7 @@ static int append_show_database(
 );
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size);
+static int build_physical_view_name(int64_t table_id, char *destination, size_t destination_size);
 static int build_physical_index_name(int64_t index_id, char *destination, size_t destination_size);
 static int build_physical_check_constraint_name(
     int64_t check_constraint_id,
@@ -26217,6 +26351,11 @@ static void set_unknown_table_error(
     const char *schema_name,
     const char *table_name
 );
+static void set_not_view_error(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+);
 static void set_unknown_table_name_error(struct mylite_db *database, const char *table_name);
 static void set_unknown_multi_delete_table_error(
     struct mylite_db *database,
@@ -26876,6 +27015,8 @@ static int execute_non_prepared_statement(
         return execute_create_table_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT:
         return execute_create_temporary_table_select_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
+        return execute_create_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
@@ -26891,6 +27032,8 @@ static int execute_non_prepared_statement(
         return execute_drop_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
         return execute_drop_temporary_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
+        return execute_drop_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
         return execute_truncate_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
@@ -27036,6 +27179,8 @@ static int execute_non_prepared_statement(
         return execute_show_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return execute_show_create_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
+        return execute_show_create_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
         return execute_show_create_database_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
@@ -29010,11 +29155,13 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
@@ -33275,6 +33422,487 @@ static int execute_create_temporary_table_select_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_create_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_create_view plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_create_view(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = create_view_from_plan(database, &plan);
+    }
+    planned_create_view_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int plan_create_view(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_view *out_plan
+) {
+    const struct mylite_sql_ast_node *select_statement = child_at(statement, 1U);
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_create_view){0};
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_view_select_subset(database, select_statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select(database, select_statement, false, &out_plan->source);
+    }
+    if (rc == MYLITE_OK && out_plan->source.table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "CREATE VIEW supports only persistent base-table sources");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_create_view_column_names(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_create_view_definition_sql(database, out_plan, &out_plan->view_definition);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_create_view_show_create_sql(database, out_plan, &out_plan->show_create_sql);
+    }
+    if (rc != MYLITE_OK) {
+        planned_create_view_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int create_view_from_plan(
+    struct mylite_db *database,
+    const struct planned_create_view *plan
+) {
+    struct mylite_catalog_table_descriptor existing_table = {0};
+    struct mylite_catalog_table_descriptor view_table = {0};
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    bool existing_table_found = false;
+    int64_t table_id = 0;
+    int64_t created_time_utc_epoch = current_timestamp_epoch(database);
+    int rc = mylite_catalog_try_read_table_by_name(
+        database,
+        plan->target.schema.schema_id,
+        plan->target.table_name,
+        &existing_table,
+        &existing_table_found
+    );
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+        return rc;
+    }
+    if (existing_table_found) {
+        set_table_exists_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_allocate_table_id_in_mutation(database, &mutation, &table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_physical_view_name(table_id, physical_name, sizeof(physical_name));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_table_in_mutation(
+            database,
+            &mutation,
+            table_id,
+            plan->target.schema.schema_id,
+            plan->target.table_name,
+            physical_name,
+            MYLITE_CATALOG_TABLE_KIND_VIEW,
+            1,
+            plan->target.schema.default_charset,
+            plan->target.schema.default_collation,
+            "",
+            "",
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            created_time_utc_epoch,
+            created_time_utc_epoch,
+            &view_table
+        );
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const struct mylite_catalog_column_descriptor *source_column =
+            &plan->source.columns[column_index];
+
+        rc = mylite_catalog_insert_column_in_mutation(
+            database,
+            &mutation,
+            table_id,
+            (int64_t)column_index + 1,
+            plan->column_names[column_index],
+            source_column->logical_type,
+            source_column->physical_type,
+            source_column->is_nullable,
+            source_column->is_visible,
+            false,
+            MYLITE_CATALOG_COLUMN_DEFAULT_NONE,
+            0,
+            NULL,
+            false,
+            source_column->character_set_name,
+            source_column->collation_name,
+            "",
+            false,
+            MYLITE_CATALOG_GENERATED_COLUMN_INVALID,
+            "",
+            "",
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_view_in_mutation(
+            database,
+            &mutation,
+            table_id,
+            plan->view_definition,
+            plan->show_create_sql,
+            "NONE",
+            "NO",
+            "root@%",
+            "DEFINER",
+            database->session.character_set_client,
+            database->session.collation_connection,
+            plan->source.source.schema.schema_id,
+            plan->source.table.table_id,
+            plan->source.source.schema.name,
+            plan->source.source.table_name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_catalog_rollback_mutation(database, &mutation);
+        set_internal_error_if_clear(database, rc, "failed to create view descriptor");
+        return rc;
+    }
+
+    (void)view_table;
+    return MYLITE_OK;
+}
+
+static void planned_create_view_deinit(struct planned_create_view *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        free(plan->column_names[column_index]);
+    }
+    free((void *)plan->column_names);
+    free(plan->view_definition);
+    free(plan->show_create_sql);
+    planned_select_deinit(&plan->source);
+    *plan = (struct planned_create_view){0};
+}
+
+static int validate_create_view_select_subset(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement
+) {
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *select_item = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+
+    if (select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "CREATE VIEW supports only a single SELECT statement");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_modifier(select_statement) !=
+            MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_calc_found_rows(select_statement) != 0) {
+        set_unsupported_error(database, "CREATE VIEW supports only direct non-distinct SELECT");
+        return MYLITE_ERROR;
+    }
+
+    select_list = child_at(select_statement, 0U);
+    if (select_list == NULL) {
+        set_unsupported_error(database, "CREATE VIEW requires a direct projection list");
+        return MYLITE_ERROR;
+    }
+    select_item = child_at(select_list, 0U);
+    while (select_item != NULL) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+        const struct mylite_sql_ast_node *alias = child_at(select_item, 1U);
+
+        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL) {
+            set_unsupported_error(database, "CREATE VIEW requires direct projection items");
+            return MYLITE_ERROR;
+        }
+        if (expression->kind == MYLITE_SQL_AST_WILDCARD ||
+            expression->kind == MYLITE_SQL_AST_QUALIFIED_WILDCARD) {
+            if (alias != NULL) {
+                set_unsupported_error(database, "CREATE VIEW wildcard items cannot have aliases");
+                return MYLITE_ERROR;
+            }
+        } else if (
+            expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+            expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
+        ) {
+            set_unsupported_error(database, "CREATE VIEW supports only direct column projection");
+            return MYLITE_ERROR;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    from_clause = child_at(select_statement, 1U);
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(database, "CREATE VIEW supports only one base-table source");
+        return MYLITE_ERROR;
+    }
+    if (from_table_index_hint_list_node(from_clause) != NULL) {
+        set_unsupported_error(database, "CREATE VIEW does not support index hints");
+        return MYLITE_ERROR;
+    }
+
+    optional_clause = child_at(select_statement, 2U);
+    if (optional_clause != NULL) {
+        set_unsupported_error(database, "CREATE VIEW supports only direct projection SELECT");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_create_view_column_names(
+    struct mylite_db *database,
+    struct planned_create_view *plan
+) {
+    if (plan->source.column_count > SIZE_MAX / sizeof(*plan->column_names)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->column_names = (char **)calloc(plan->source.column_count, sizeof(*plan->column_names));
+    if (plan->column_names == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->column_count = plan->source.column_count;
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        const struct mylite_sql_ast_node *alias = plan->source.column_aliases[column_index];
+        int rc = MYLITE_OK;
+
+        if (alias != NULL) {
+            rc = copy_select_item_alias_text(database, alias, &plan->column_names[column_index]);
+        } else {
+            rc = duplicate_text(
+                database,
+                plan->source.columns[column_index].name,
+                &plan->column_names[column_index]
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        for (size_t prior_index = 0U; prior_index < column_index; ++prior_index) {
+            if (text_equals_ascii_case_insensitive(
+                    plan->column_names[prior_index],
+                    plan->column_names[column_index]
+                )) {
+                set_duplicate_column_error(database, plan->column_names[column_index]);
+                return MYLITE_ERROR;
+            }
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int build_create_view_definition_sql(
+    struct mylite_db *database,
+    const struct planned_create_view *plan,
+    char **out_sql
+) {
+    return build_create_view_select_sql(database, plan, true, out_sql);
+}
+
+static int build_create_view_select_sql(
+    struct mylite_db *database,
+    const struct planned_create_view *plan,
+    bool qualify_source_schema,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "select ");
+    if (rc == MYLITE_OK) {
+        rc = append_create_view_projection_sql(&string, plan, qualify_source_schema);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " from ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_view_from_sql(&string, plan, qualify_source_schema);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        return MYLITE_OK;
+    }
+
+    dynamic_string_deinit(&string);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int build_create_view_show_create_sql(
+    struct mylite_db *database,
+    const struct planned_create_view *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    char *select_sql = NULL;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = build_create_view_select_sql(database, plan, false, &select_sql);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(
+            &string,
+            "CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW "
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(&string, plan->target.table_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, select_sql);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        free(select_sql);
+        return MYLITE_OK;
+    }
+
+    dynamic_string_deinit(&string);
+    free(select_sql);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_create_view_projection_sql(
+    struct dynamic_string *string,
+    const struct planned_create_view *plan,
+    bool qualify_source_schema
+) {
+    const char *source_qualifier = plan->source.source.table_name;
+    int rc = MYLITE_OK;
+
+    if (plan->source.source_has_alias) {
+        source_qualifier = plan->source.source_alias;
+    }
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index > 0U) {
+            rc = dynamic_string_append_char(string, ',');
+        }
+        if (rc == MYLITE_OK && qualify_source_schema && !plan->source.source_has_alias) {
+            rc = dynamic_string_append_mysql_quoted_identifier(
+                string,
+                plan->source.source.schema.name
+            );
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append_char(string, '.');
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_mysql_quoted_identifier(string, source_qualifier);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '.');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_mysql_quoted_identifier(
+                string,
+                plan->source.columns[column_index].name
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_mysql_quoted_identifier(
+                string,
+                plan->column_names[column_index]
+            );
+        }
+    }
+    return rc;
+}
+
+static int append_create_view_from_sql(
+    struct dynamic_string *string,
+    const struct planned_create_view *plan,
+    bool qualify_source_schema
+) {
+    int rc = MYLITE_OK;
+
+    if (qualify_source_schema) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, plan->source.source.schema.name);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '.');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, plan->source.source.table_name);
+    }
+
+    if (rc == MYLITE_OK && plan->source.source_has_alias) {
+        rc = dynamic_string_append_char(string, ' ');
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_mysql_quoted_identifier(string, plan->source.source_alias);
+        }
+    }
+    return rc;
+}
+
 static int execute_create_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -33497,6 +34125,42 @@ static int execute_drop_temporary_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_drop_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_drop_table plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_drop_view(database, statement, &plan);
+    if (rc == MYLITE_OK && plan.missing_count != 0U && !drop_table_has_if_exists(statement)) {
+        rc = finish_drop_table_missing_targets(database, &plan);
+    }
+    if (rc == MYLITE_OK && (plan.existing_count != 0U || plan.missing_count != 0U)) {
+        rc = commit_active_user_transaction_for_ddl(database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_drop_table_missing_notes(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_drop_view_from_plan(database, &plan);
+    }
+    planned_drop_table_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int plan_drop_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -33610,10 +34274,132 @@ static int plan_drop_table_target(
         ++out_plan->missing_count;
         return MYLITE_OK;
     }
+    if (target->table.kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        target->missing = true;
+        ++out_plan->missing_count;
+        return MYLITE_OK;
+    }
 
     ++out_plan->existing_count;
     ++out_plan->persistent_existing_count;
     return MYLITE_OK;
+}
+
+static int plan_drop_view(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_drop_table *out_plan
+) {
+    const struct mylite_sql_ast_node *target_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *target_node = NULL;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_drop_table){0};
+    if (target_list == NULL || target_list->kind != MYLITE_SQL_AST_TABLE_NAME_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    out_plan->target_count = mylite_sql_ast_node_child_count(target_list);
+    if (out_plan->target_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (out_plan->target_count > SIZE_MAX / sizeof(*out_plan->targets)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->targets = calloc(out_plan->target_count, sizeof(*out_plan->targets));
+    if (out_plan->targets == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    target_node = child_at(target_list, 0U);
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < out_plan->target_count;
+         ++target_index) {
+        struct planned_drop_table_target *target = &out_plan->targets[target_index];
+        bool missing_schema = false;
+        bool found = false;
+
+        rc = resolve_writable_table_name_allow_missing_schema(
+            database,
+            target_node,
+            &target->target,
+            &missing_schema
+        );
+        if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target->target.table_name)) {
+            set_reserved_name_error(database, "table", target->target.table_name);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = check_drop_table_duplicate_targets(database, out_plan, target_index);
+        }
+        if (rc == MYLITE_OK && missing_schema) {
+            target->missing = true;
+            ++out_plan->missing_count;
+        } else if (rc == MYLITE_OK) {
+            rc = mylite_catalog_try_read_table_by_name(
+                database,
+                target->target.schema.schema_id,
+                target->target.table_name,
+                &target->table,
+                &found
+            );
+            if (rc != MYLITE_OK) {
+                set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+            } else if (!found) {
+                target->missing = true;
+                ++out_plan->missing_count;
+            } else if (target->table.kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
+                set_not_view_error(database, target->target.schema.name, target->target.table_name);
+                rc = MYLITE_ERROR;
+            } else {
+                ++out_plan->existing_count;
+                ++out_plan->persistent_existing_count;
+            }
+        }
+        if (target_node != NULL) {
+            target_node = target_node->next_sibling;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        planned_drop_table_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int execute_drop_view_from_plan(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = MYLITE_OK;
+
+    if (plan->existing_count == 0U) {
+        return MYLITE_OK;
+    }
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (!target->missing) {
+            rc = mylite_catalog_delete_table_in_mutation(
+                database,
+                &mutation,
+                target->table.table_id
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_catalog_rollback_mutation(database, &mutation);
+        set_internal_error_if_clear(database, rc, "failed to drop view descriptor");
+    }
+    return rc;
 }
 
 static int check_drop_table_duplicate_targets(
@@ -37925,12 +38711,12 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
-    case INFORMATION_SCHEMA_TABLE_VIEWS:
-    case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_TABLES:
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
+    case INFORMATION_SCHEMA_TABLE_VIEWS:
+    case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
@@ -37982,6 +38768,41 @@ static int append_information_schema_catalog_table(
     if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
         context->schema == NULL) {
         return MYLITE_MISUSE;
+    }
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_TABLES) {
+            return append_information_schema_tables_view_row(
+                context->database,
+                context->rows,
+                context->schema,
+                table
+            );
+        }
+        if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_COLUMNS) {
+            return append_information_schema_columns_view_rows(
+                context->database,
+                context->rows,
+                context->schema,
+                table
+            );
+        }
+        if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_VIEWS) {
+            return append_information_schema_views_view_row(
+                context->database,
+                context->rows,
+                context->schema,
+                table
+            );
+        }
+        if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE) {
+            return append_information_schema_view_table_usage_row(
+                context->database,
+                context->rows,
+                context->schema,
+                table
+            );
+        }
+        return MYLITE_OK;
     }
     if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
         return MYLITE_OK;
@@ -38484,6 +39305,34 @@ static int append_information_schema_tables_base_row(
         table->comment,
     };
 
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_tables_view_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct table_status_values status = {0};
+    int rc = format_table_status_timestamp(
+        database,
+        table->created_time_utc_epoch,
+        status.create_time_text,
+        sizeof(status.create_time_text),
+        &status.create_time
+    );
+    const char *values[information_schema_tables_column_count] = {
+        "def",  schema->name, table->name, "VIEW", NULL,
+        NULL,   NULL,         NULL,        NULL,   NULL,
+        NULL,   NULL,         NULL,        NULL,   status.create_time,
+        NULL,   NULL,         NULL,        NULL,   NULL,
+        "VIEW",
+    };
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     return append_information_schema_row(database, rows, values);
 }
 
@@ -39030,6 +39879,34 @@ static int append_information_schema_columns_base_rows(
     return rc;
 }
 
+static int append_information_schema_columns_view_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    struct primary_key_info primary_key = primary_key_info_init();
+    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        rc = append_information_schema_columns_base_column_row(
+            database,
+            rows,
+            schema,
+            table,
+            &columns[column_index],
+            &primary_key,
+            NULL,
+            0U
+        );
+    }
+    primary_key_info_deinit(&primary_key);
+    free(columns);
+    return rc;
+}
+
 static int append_information_schema_columns_base_column_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -39159,6 +40036,58 @@ static int append_information_schema_columns_base_column_row(
             column->generation_expression;
     }
 
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_views_view_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_view_descriptor view = {0};
+    int rc = mylite_catalog_read_view_by_table_id(database, table->table_id, &view);
+    const char *values[information_schema_views_column_count] = {
+        "def",
+        schema->name,
+        table->name,
+        view.view_definition,
+        view.check_option,
+        view.is_updatable,
+        view.definer,
+        view.security_type,
+        view.character_set_client,
+        view.collation_connection,
+    };
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read view descriptor");
+        return rc;
+    }
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_view_table_usage_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_view_descriptor view = {0};
+    int rc = mylite_catalog_read_view_by_table_id(database, table->table_id, &view);
+    const char *values[information_schema_view_table_usage_column_count] = {
+        "def",
+        schema->name,
+        table->name,
+        "def",
+        view.source_schema_name,
+        view.source_table_name,
+    };
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read view descriptor");
+        return rc;
+    }
     return append_information_schema_row(database, rows, values);
 }
 
@@ -45240,29 +46169,21 @@ static int execute_show_columns_statement(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = resolve_readable_table(database, &target, missing_schema, &table);
+        rc = resolve_metadata_table_reference(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
         rc = load_table_columns(database, table.table_id, &columns, &column_count);
-        if (rc == MYLITE_OK) {
-            rc = load_primary_key_info(
-                database,
-                table.table_id,
-                columns,
-                column_count,
-                &primary_key
-            );
-        }
-        if (rc == MYLITE_OK) {
-            rc = load_table_index_infos(
-                database,
-                table.table_id,
-                columns,
-                column_count,
-                &indexes,
-                &context.index_count
-            );
-        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_show_columns_key_metadata(
+            database,
+            &table,
+            columns,
+            column_count,
+            &primary_key,
+            &indexes,
+            &context.index_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = make_show_like_filter(database, nodes.like, &filter);
@@ -45315,6 +46236,36 @@ static int execute_show_columns_statement(
     loaded_index_infos_deinit(&indexes, &context.index_count);
     free(columns);
     return finish_successful_result(database, result, out_result);
+}
+
+static int load_show_columns_key_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct primary_key_info *primary_key,
+    struct loaded_index_info **out_indexes,
+    size_t *out_index_count
+) {
+    int rc = MYLITE_OK;
+
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        table->kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        return MYLITE_OK;
+    }
+
+    rc = load_primary_key_info(database, table->table_id, columns, column_count, primary_key);
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            out_indexes,
+            out_index_count
+        );
+    }
+    return rc;
 }
 
 static int append_show_columns_result_columns(
@@ -45766,6 +46717,57 @@ static int execute_show_create_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_create_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct table_name_resolution target = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    struct mylite_catalog_view_descriptor view = {0};
+    mylite_result *result = NULL;
+    bool missing_schema = false;
+    int rc = resolve_table_name_allow_missing_schema(
+        database,
+        child_at(statement, 0U),
+        &target,
+        &missing_schema
+    );
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target.table_name)) {
+        set_reserved_name_error(database, "table", target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_persistent_metadata_table_reference(database, &target, missing_schema, &table);
+    }
+    if (rc == MYLITE_OK && table.kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        set_not_view_error(database, target.schema.name, target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_view_by_table_id(database, table.table_id, &view);
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to read view descriptor");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_view_result(database, result, table.name, &view);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_create_database_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -45933,15 +46935,47 @@ static int plan_show_create_table(
     const struct mylite_sql_ast_node *statement,
     struct planned_show_create_table *out_plan
 ) {
+    bool missing_schema = false;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_show_create_table){0};
-    rc = resolve_visible_table_reference(
+    rc = resolve_table_name_allow_missing_schema(
         database,
         child_at(statement, 0U),
         &out_plan->target,
-        &out_plan->table
+        &missing_schema
     );
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_metadata_table_reference(
+            database,
+            &out_plan->target,
+            missing_schema,
+            &out_plan->table
+        );
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        out_plan->is_view = true;
+        rc = mylite_catalog_read_view_by_table_id(
+            database,
+            out_plan->table.table_id,
+            &out_plan->view
+        );
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to read view descriptor");
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->is_view) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        set_unsupported_error(database, "SHOW CREATE TABLE supports only tables and views");
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -46010,6 +47044,10 @@ static int execute_show_create_table_from_plan(
     const char *values[show_create_table_result_column_count] = {NULL, NULL};
     int rc = MYLITE_OK;
 
+    if (plan->is_view) {
+        return append_show_create_view_result(database, result, plan->table.name, &plan->view);
+    }
+
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_create_table_result_column_count;
          ++column_index) {
@@ -46034,6 +47072,43 @@ static int execute_show_create_table_from_plan(
     }
 
     free(create_sql);
+    return rc;
+}
+
+static int append_show_create_view_result(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *view_name,
+    const struct mylite_catalog_view_descriptor *view
+) {
+    static const char *const result_columns[show_create_view_result_column_count] = {
+        "View",
+        "Create View",
+        "character_set_client",
+        "collation_connection",
+    };
+    const char *values[show_create_view_result_column_count] = {
+        view_name,
+        view->show_create_sql,
+        view->character_set_client,
+        view->collation_connection,
+    };
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_create_view_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
     return rc;
 }
 
@@ -47607,8 +48682,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
@@ -47656,6 +48733,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
@@ -56644,15 +57722,21 @@ static int collect_drop_schema_table(
     if (table == NULL || context == NULL || context->database == NULL || context->plan == NULL) {
         return MYLITE_MISUSE;
     }
-    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        table->kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
         set_unsupported_error(
             context->database,
-            "DROP DATABASE supports only persistent base tables"
+            "DROP DATABASE supports only persistent base tables and views"
         );
         return MYLITE_ERROR;
     }
 
     plan = context->plan;
+    ++plan->object_count;
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        return MYLITE_OK;
+    }
+
     rc = reserve_drop_schema_tables(plan, plan->table_count + 1U);
     if (rc != MYLITE_OK) {
         set_nomem_error(context->database);
@@ -56731,7 +57815,7 @@ static int drop_schema_from_plan(
         database->session.has_selected_schema = false;
         database->session.selected_schema[0] = '\0';
     }
-    mylite_result_set_affected_rows(result, (int64_t)plan->table_count);
+    mylite_result_set_affected_rows(result, (int64_t)plan->object_count);
 
     return MYLITE_OK;
 }
@@ -108792,6 +109876,74 @@ static int resolve_readable_table(
     return MYLITE_OK;
 }
 
+static int resolve_metadata_table_reference(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    bool missing_schema,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    bool found_temporary = false;
+    int rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        resolution->schema.name,
+        resolution->table_name,
+        out_table,
+        &found_temporary
+    );
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (found_temporary) {
+        return MYLITE_OK;
+    }
+    if (missing_schema) {
+        set_unknown_database_error(database, resolution->schema.name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_read_table_by_name(
+        database,
+        resolution->schema.schema_id,
+        resolution->table_name,
+        out_table
+    );
+    if (rc != MYLITE_OK) {
+        set_table_does_not_exist_error(database, resolution->schema.name, resolution->table_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int resolve_persistent_metadata_table_reference(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    bool missing_schema,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    int rc = MYLITE_OK;
+
+    if (missing_schema) {
+        set_unknown_database_error(database, resolution->schema.name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_read_table_by_name(
+        database,
+        resolution->schema.schema_id,
+        resolution->table_name,
+        out_table
+    );
+    if (rc != MYLITE_OK) {
+        set_table_does_not_exist_error(database, resolution->schema.name, resolution->table_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int resolve_show_columns_table_name(
     struct mylite_db *database,
     struct show_columns_target_nodes nodes,
@@ -144073,7 +145225,8 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
     if (table == NULL || context == NULL || context->database == NULL || context->result == NULL) {
         return MYLITE_MISUSE;
     }
-    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        table->kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
         return MYLITE_OK;
     }
 
@@ -144083,7 +145236,7 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
 
     values[0] = table->name;
     if (context->is_full) {
-        values[1] = "BASE TABLE";
+        values[1] = table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? "VIEW" : "BASE TABLE";
     }
 
     if (context->where_clause != NULL) {
@@ -144697,37 +145850,51 @@ static int append_show_table_status(
     if (table == NULL || context == NULL || context->database == NULL || context->result == NULL) {
         return MYLITE_MISUSE;
     }
-    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        table->kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
         return MYLITE_OK;
     }
     if (!show_like_filter_matches(context->filter, table->name, true)) {
         return MYLITE_OK;
     }
 
-    rc = load_table_status_values(context->database, table, &status);
-    if (rc != MYLITE_OK) {
-        return rc;
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        rc = load_table_status_values(context->database, table, &status);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    } else {
+        rc = format_table_status_timestamp(
+            context->database,
+            table->created_time_utc_epoch,
+            status.create_time_text,
+            sizeof(status.create_time_text),
+            &status.create_time
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
 
     const char *values[show_table_status_result_column_count] = {
         table->name,
-        "InnoDB",
-        "10",
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "InnoDB",
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "10",
         status.row_format,
-        status.row_count_text,
-        status.average_row_length_text,
-        "16384",
-        "0",
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : status.row_count_text,
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : status.average_row_length_text,
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "16384",
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "0",
         status.index_length,
-        "0",
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "0",
         status.auto_increment,
         status.create_time,
         status.update_time,
         NULL,
-        table->default_collation,
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : table->default_collation,
         NULL,
         status.create_options,
-        table->comment,
+        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? "VIEW" : table->comment,
     };
 
     if (context->where_clause != NULL) {
@@ -147266,6 +148433,16 @@ static char show_like_ascii_lower(char byte) {
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size) {
     int written = snprintf(destination, destination_size, "_mylite_user_table_%" PRId64, table_id);
+
+    if (written < 0 || (size_t)written >= destination_size) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int build_physical_view_name(int64_t table_id, char *destination, size_t destination_size) {
+    int written = snprintf(destination, destination_size, "_mylite_user_view_%" PRId64, table_id);
 
     if (written < 0 || (size_t)written >= destination_size) {
         return MYLITE_ERROR;
@@ -163033,6 +164210,26 @@ static void set_unknown_table_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown_table,
         "42S02",
+        message
+    );
+}
+
+static void set_not_view_error(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "'%s.%s' is not VIEW", schema_name, table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_view,
+        "HY000",
         message
     );
 }

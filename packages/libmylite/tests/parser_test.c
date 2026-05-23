@@ -176,6 +176,7 @@ static int test_alter_table_drop_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
+static int test_create_view_lifecycle_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
 static int test_alter_table_order_by_statements(void);
 static int test_alter_table_algorithm_lock_option_statements(void);
@@ -493,6 +494,7 @@ int main(void) {
     failures += test_alter_table_auto_increment_option_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
+    failures += test_create_view_lifecycle_statements();
     failures += test_alter_table_default_charset_collation_statements();
     failures += test_alter_table_order_by_statements();
     failures += test_alter_table_algorithm_lock_option_statements();
@@ -18129,6 +18131,72 @@ static int test_create_table_select_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_view_lifecycle_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *view_name = NULL;
+    const struct mylite_sql_ast_node *select_statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *drop_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE VIEW app.v AS SELECT id AS view_id, source.name FROM source;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    view_name = child_at(statement, 0U);
+    select_statement = child_at(statement, 1U);
+    select_list = child_at(select_statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_VIEW_STATEMENT, "create view statement");
+    failures += expect_node(view_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "create view target");
+    failures += expect_span_text(child_at(view_name, 0U), "app", "create view target schema");
+    failures += expect_span_text(child_at(view_name, 1U), "v", "create view target name");
+    failures +=
+        expect_node(select_statement, MYLITE_SQL_AST_SELECT_STATEMENT, "view source select");
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 0U), 1U), "view_id", "view source alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP VIEW IF EXISTS v, app.other;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    drop_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_VIEW_STATEMENT, "drop view statement");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE,
+        "drop view if exists"
+    );
+    failures += expect_child_count(drop_list, 2U, "drop view target count");
+    failures += expect_span_text(child_at(drop_list, 0U), "v", "drop view first target");
+    failures += expect_span_text(child_at(drop_list, 1U), "app.other", "drop view second target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE VIEW app.v;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT,
+        "show create view statement"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app.v", "show create view target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE view (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "view keyword table name statement"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "view", "view keyword table name");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

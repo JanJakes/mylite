@@ -466,6 +466,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_select
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *select_statement
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *view_name,
+    struct mylite_sql_ast_node *select_statement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -625,6 +631,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_temporary_table_statemen
     struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *if_exists_clause,
     struct mylite_sql_ast_node *table_names
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *view_names
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
     struct mylite_sql_parser_state *state,
@@ -787,6 +799,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
     struct mylite_sql_ast_node *table_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *view_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statement(
     struct mylite_sql_parser_state *state,

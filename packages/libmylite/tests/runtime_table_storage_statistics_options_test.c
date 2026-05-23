@@ -22,8 +22,8 @@ enum {
     show_table_status_create_options_column = 16,
     mysql_error_parse = 1064,
     mysql_error_table_storage_engine_option = 1031,
-    catalog_schema_version_after_storage_statistics_options = 31,
-    catalog_minimum_reader_version_after_storage_statistics_options = 30,
+    catalog_schema_version_after_storage_statistics_options = 32,
+    catalog_minimum_reader_version_after_storage_statistics_options = 32,
 };
 
 struct expected_sql_error {

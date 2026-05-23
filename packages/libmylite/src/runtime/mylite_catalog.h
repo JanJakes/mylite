@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 31
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 30
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 32
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 32
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -29,6 +29,9 @@ enum {
     MYLITE_CATALOG_TABLE_COMMENT_CAPACITY = (MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS *
                                              MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
                                             1,
+    MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY = 8192,
+    MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY = 8192,
+    MYLITE_CATALOG_DEFINER_CAPACITY = 289,
     MYLITE_CATALOG_INDEX_COMMENT_MAX_CHARACTERS = 1024,
     MYLITE_CATALOG_INDEX_COMMENT_CAPACITY = (MYLITE_CATALOG_INDEX_COMMENT_MAX_CHARACTERS *
                                              MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
@@ -48,6 +51,7 @@ enum mylite_catalog_table_kind {
     MYLITE_CATALOG_TABLE_KIND_INVALID = 0,
     MYLITE_CATALOG_TABLE_KIND_BASE = 1,
     MYLITE_CATALOG_TABLE_KIND_TEMPORARY = 2,
+    MYLITE_CATALOG_TABLE_KIND_VIEW = 3,
 };
 
 enum mylite_catalog_column_default_kind {
@@ -125,6 +129,25 @@ struct mylite_catalog_table_descriptor {
     bool fulltext_doc_id_initialized;
     int64_t created_time_utc_epoch;
     int64_t updated_time_utc_epoch;
+    uint64_t descriptor_version;
+    uint64_t created_catalog_generation;
+    uint64_t updated_catalog_generation;
+};
+
+struct mylite_catalog_view_descriptor {
+    int64_t table_id;
+    char view_definition[MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY];
+    char show_create_sql[MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY];
+    char check_option[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char is_updatable[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char definer[MYLITE_CATALOG_DEFINER_CAPACITY];
+    char security_type[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char character_set_client[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char collation_connection[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int64_t source_schema_id;
+    int64_t source_table_id;
+    char source_schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char source_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -356,6 +379,24 @@ int mylite_catalog_insert_column_in_mutation(
     const char *generation_expression,
     const char *sqlite_generation_expression,
     struct mylite_catalog_column_descriptor *out_column
+);
+int mylite_catalog_insert_view_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *view_definition,
+    const char *show_create_sql,
+    const char *check_option,
+    const char *is_updatable,
+    const char *definer,
+    const char *security_type,
+    const char *character_set_client,
+    const char *collation_connection,
+    int64_t source_schema_id,
+    int64_t source_table_id,
+    const char *source_schema_name,
+    const char *source_table_name,
+    struct mylite_catalog_view_descriptor *out_view
 );
 int mylite_catalog_insert_index_in_mutation(
     struct mylite_db *database,
@@ -684,6 +725,11 @@ int mylite_catalog_read_schema_by_name(
     const char *name,
     struct mylite_catalog_schema_descriptor *out_schema
 );
+int mylite_catalog_read_schema_by_id(
+    struct mylite_db *database,
+    int64_t schema_id,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
 int mylite_catalog_try_read_schema_by_name(
     struct mylite_db *database,
     const char *name,
@@ -722,6 +768,11 @@ int mylite_catalog_read_table_by_id(
     struct mylite_db *database,
     int64_t table_id,
     struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_read_view_by_table_id(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_view_descriptor *out_view
 );
 int mylite_catalog_update_table_name(
     struct mylite_db *database,

@@ -74,6 +74,8 @@ Observed behavior shaping this slice:
   `character_set_client`, and `collation_connection`.
 - `SHOW CREATE TABLE v` for a view returns the same view-shaped result columns
   and row as `SHOW CREATE VIEW v`.
+- `SHOW CREATE VIEW v` resolves the persistent view even when a session
+  temporary table named `v` exists.
 - `SHOW CREATE VIEW t` where `t` is a base table fails with
   `1347 / HY000 'schema.t' is not VIEW`.
 - `SHOW COLUMNS FROM v` returns the view's projected column metadata.
@@ -85,6 +87,9 @@ Observed behavior shaping this slice:
   not told that unsupported view mutation is available.
 - `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` reports one dependency row for the
   source table used by the admitted direct-column view.
+- `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` continues to report the source schema
+  and table names captured when the view was created after that source table is
+  renamed or dropped.
 - `INFORMATION_SCHEMA.TABLES` reports view rows with `TABLE_TYPE = 'VIEW'`,
   most storage fields as SQL `NULL`, and `TABLE_COMMENT = 'VIEW'`.
 - `SHOW TABLE STATUS LIKE 'v'` emits one view row with most storage fields
@@ -101,6 +106,8 @@ Observed behavior shaping this slice:
   appends one note for each missing view.
 - MySQL parses and ignores `DROP VIEW ... RESTRICT` and `CASCADE`. MyLite
   defers these optional keywords for this slice.
+- `CREATE VIEW` and `DROP VIEW` implicitly commit a pending user transaction
+  before executing and cannot be rolled back by a following `ROLLBACK`.
 
 ## Supported SQL
 
@@ -197,7 +204,10 @@ The view descriptor stores:
 - `character_set_client` and `collation_connection` captured from the session
   at create time;
 - `source_schema_id` and `source_table_id` for the single admitted source
-  table.
+  table;
+- `source_schema_name` and `source_table_name` captured at create time for
+  stable `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` output even if the source table
+  is later renamed or dropped.
 
 The corresponding `_mylite_catalog_tables` row has kind `VIEW`, a stable
 internal physical name such as `_mylite_user_view_<table_id>`, creation time,
@@ -215,8 +225,9 @@ one catalog mutation. It does not execute SQLite DDL because no physical view
 is created in this slice.
 
 Dropping a schema containing views removes those view descriptors along with
-base-table descriptors. Future physical view execution must define dependency
-ordering before adding SQLite view drops.
+base-table descriptors. `DROP DATABASE` affected rows include both base-table
+and view descriptors, matching observed MySQL 8.4.9 behavior. Future physical
+view execution must define dependency ordering before adding SQLite view drops.
 
 ## Ownership Boundary
 
@@ -244,6 +255,7 @@ ordering before adding SQLite view drops.
 
 `CREATE VIEW`:
 
+- follows the existing MyLite implicit-commit DDL policy before mutation;
 - resolves and validates the target before catalog mutation;
 - rejects target collisions with any persistent table or view as
   `1050 / 42S01 Table 'name' already exists`;
@@ -258,6 +270,7 @@ ordering before adding SQLite view drops.
 
 `DROP VIEW`:
 
+- follows the existing MyLite implicit-commit DDL policy before mutation;
 - resolves all targets before mutation;
 - without `IF EXISTS`, any missing view makes the statement fail with
   `1051 / 42S02` and no descriptors are changed;
@@ -269,7 +282,9 @@ ordering before adding SQLite view drops.
 
 `SHOW CREATE VIEW` and `SHOW CREATE TABLE` for views:
 
-- resolve the target and require a persistent view descriptor;
+- resolve the persistent catalog target and require a persistent view
+  descriptor; `SHOW CREATE VIEW` intentionally ignores a same-named temporary
+  table because MySQL returns the persistent view definition for that shape;
 - return `View`, `Create View`, `character_set_client`, and
   `collation_connection` columns;
 - render `CREATE ALGORITHM=UNDEFINED DEFINER=\`root\`@\`%\` SQL
@@ -299,7 +314,8 @@ ordering before adding SQLite view drops.
 `INFORMATION_SCHEMA`:
 
 - `VIEWS` emits one row per stored view descriptor;
-- `VIEW_TABLE_USAGE` emits one row per stored baseline view dependency;
+- `VIEW_TABLE_USAGE` emits one row per stored baseline view dependency using
+  the create-time source schema and table names;
 - `TABLES` emits view rows with `TABLE_TYPE = 'VIEW'`;
 - `COLUMNS` emits view column rows from descriptors;
 - index, constraint, partition, statistics, key-usage, check, referential, and
@@ -360,6 +376,8 @@ include:
   schema, unknown explicit schema, and reserved `_mylite_*` names;
 - target collisions with base tables and existing views;
 - `SHOW CREATE VIEW` and `SHOW CREATE TABLE` for views;
+- `SHOW CREATE VIEW` when a same-named temporary table shadows the view for
+  normal table resolution;
 - `SHOW CREATE VIEW` on base tables and unknown targets;
 - `SHOW TABLES`, `SHOW FULL TABLES`, and filters including `WHERE Table_type =
   'VIEW'`;
@@ -367,10 +385,13 @@ include:
 - `SHOW COLUMNS` / `SHOW FULL COLUMNS` for views;
 - `INFORMATION_SCHEMA.VIEWS`, `VIEW_TABLE_USAGE`, `TABLES`, and `COLUMNS`
   rows for stored views;
+- stable `VIEW_TABLE_USAGE` source names after renaming and dropping the source
+  table;
+- implicit transaction commits for `CREATE VIEW` and `DROP VIEW`;
 - `DROP VIEW`, multi-view drop, missing target atomicity without `IF EXISTS`,
   missing-target notes with `IF EXISTS`, and `DROP TABLE` against a view;
 - persistence across close/reopen, independent file-backed handles, and drop
-  database cleanup;
+  database cleanup with view descriptors included in affected rows;
 - `.mylite` preamble preservation and unchanged shifted SQLite payload
   invariants;
 - zero-initialized cleanup for new statement/planner/catalog structs;

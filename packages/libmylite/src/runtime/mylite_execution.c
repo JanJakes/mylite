@@ -14,6 +14,7 @@
 #include "mylite_result.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
+#include "mylite_string_base64.h"
 #include "mylite_string_case.h"
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
@@ -264,6 +265,10 @@ enum {
     literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
     generated_default_display_text_capacity = (MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY * 2) + 16,
+    base64_invalid_message_capacity = 64,
+    base64_signed_integer_message_capacity = 96,
+    base64_column_message_capacity = 128,
+    base64_unsupported_message_capacity = 256,
     integer_expression_default_text_initial_capacity = 16,
     integer_expression_default_text_growth_factor = 2,
     week_temporal_mode_count = 8,
@@ -2892,6 +2897,8 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE = 54,
     PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF = 55,
     PLANNED_ROW_SCALAR_EXPRESSION_UUID = 56,
+    PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64 = 57,
+    PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64 = 58,
 };
 
 enum {
@@ -15030,6 +15037,16 @@ static int hex_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int to_base64_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int from_base64_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int unhex_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -15119,6 +15136,52 @@ static int hex_scalar_argument_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell,
     bool *out_handled
+);
+static int base64_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int base64_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const char *function_name,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int base64_string_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const char *function_name,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes
+);
+static int base64_unary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int base64_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+);
+static void set_base64_argument_unsupported_error(
+    struct mylite_db *database,
+    const char *function_name
 );
 static int unhex_argument_bytes(
     struct mylite_db *database,
@@ -16690,6 +16753,7 @@ static bool is_base_conversion_projection_expression(const struct mylite_sql_ast
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_base64_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_uuid_value_projection_argument_supported(
@@ -23180,6 +23244,30 @@ static int plan_row_scalar_unhex_column(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_base64_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_base64_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    enum planned_row_scalar_expression_kind expression_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool base64_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *function_name
+);
 static bool unhex_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
@@ -25480,6 +25568,11 @@ static int append_row_scalar_unhex_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_base64_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_uuid_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -26685,6 +26778,11 @@ static int bind_row_scalar_hex_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_unhex_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_base64_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -28202,6 +28300,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_HEX_FUNCTION:
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_FUNCTION:
@@ -38915,6 +39017,7 @@ static bool compound_expression_uses_string_collation(
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
     case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_CONV_FUNCTION:
@@ -38982,6 +39085,7 @@ static bool compound_expression_uses_binary_collation(
     switch (expression->kind) {
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_CHAR_FUNCTION:
@@ -49852,6 +49956,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_HEX_FUNCTION:
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_FUNCTION:
@@ -83718,6 +83826,8 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
@@ -85839,6 +85949,7 @@ static bool select_statement_is_row_function_scalar_projection(
 
         if (is_string_metadata_projection_expression(expression) ||
             is_hex_projection_expression(expression) ||
+            is_base64_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
             is_uuid_projection_expression(expression) ||
             is_char_projection_expression(expression) ||
@@ -87358,6 +87469,10 @@ static const char *argument_count_error_node_function_name(
         return "CRC32";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         return "HEX";
+    case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
+        return "TO_BASE64";
+    case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
+        return "FROM_BASE64";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         return "UNHEX";
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
@@ -87720,6 +87835,16 @@ static int session_scalar_value(
         return hex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "HEX");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+        return to_base64_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "TO_BASE64");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+        return from_base64_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "FROM_BASE64");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return unhex_function_value(database, expression, out_cell);
@@ -100560,6 +100685,122 @@ static int unhex_function_value(
     return MYLITE_OK;
 }
 
+static int to_base64_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const unsigned char *bytes = NULL;
+    char *encoded = NULL;
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    size_t encoded_size = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_TO_BASE64_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "TO_BASE64");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    rc = base64_argument_bytes(
+        database,
+        argument,
+        "TO_BASE64",
+        out_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_bytes);
+        return rc;
+    }
+
+    rc = mylite_string_base64_encode(bytes, byte_count, &encoded, &encoded_size);
+    free(owned_bytes);
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+
+    out_cell->owned_text = encoded;
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = encoded_size;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
+}
+
+static int from_base64_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const unsigned char *bytes = NULL;
+    unsigned char *decoded = NULL;
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    size_t decoded_size = 0U;
+    bool is_null = false;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_FROM_BASE64_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "FROM_BASE64");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    rc = base64_argument_bytes(
+        database,
+        argument,
+        "FROM_BASE64",
+        out_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_bytes);
+        return rc;
+    }
+
+    rc = mylite_string_base64_decode(bytes, byte_count, &decoded, &decoded_size, &valid);
+    free(owned_bytes);
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+    if (!valid) {
+        return MYLITE_OK;
+    }
+
+    out_cell->owned_text = (char *)decoded;
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = decoded_size;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
+}
+
 static int uuid_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -101364,6 +101605,286 @@ static int hex_scalar_argument_value(
 
     *out_handled = false;
     return MYLITE_OK;
+}
+
+static int base64_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    bool handled_scalar = false;
+    int rc = MYLITE_OK;
+
+    if (cell == NULL || function_name == NULL || out_bytes == NULL || out_byte_count == NULL ||
+        out_owned_bytes == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_owned_bytes = NULL;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_base64_argument_unsupported_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return base64_literal_argument_bytes(
+            database,
+            expression,
+            function_name,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return base64_unary_argument_bytes(
+            database,
+            expression,
+            function_name,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+
+    rc = base64_scalar_argument_value(database, expression, cell, &handled_scalar);
+    if (rc != MYLITE_OK || handled_scalar) {
+        if (rc == MYLITE_OK && cell->value == NULL) {
+            *out_is_null = true;
+        } else if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)cell->value;
+            *out_byte_count = strlen(cell->value);
+            if (cell->has_value_size) {
+                *out_byte_count = cell->value_size;
+            }
+        }
+        return rc;
+    }
+
+    set_base64_argument_unsupported_error(database, function_name);
+    return MYLITE_ERROR;
+}
+
+static int base64_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const char *function_name,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || function_name == NULL || out_bytes == NULL || out_byte_count == NULL ||
+        out_owned_bytes == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_bytes =
+            (const unsigned char *)(literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ? "1" : "0");
+        *out_byte_count = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        rc = copy_source_span_text(database, &literal->span, out_owned_bytes);
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+            *out_byte_count = strlen(*out_owned_bytes);
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return base64_string_literal_argument_bytes(
+            database,
+            literal,
+            function_name,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        rc = decode_binary_hex_literal(database, literal, out_owned_bytes, out_byte_count);
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+        }
+        return rc;
+    }
+
+    set_base64_argument_unsupported_error(database, function_name);
+    return MYLITE_ERROR;
+}
+
+static int base64_string_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const char *function_name,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes
+) {
+    char unsupported_message[base64_unsupported_message_capacity];
+    char invalid_message[base64_invalid_message_capacity];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    written = snprintf(
+        unsupported_message,
+        sizeof(unsupported_message),
+        "%s() supports only string, hex, integer, boolean, NULL, supported session scalar, "
+        "supported system variable, binary cast/convert, and descriptor column arguments",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(unsupported_message)) {
+        set_runtime_error(database, "failed to format Base64 unsupported message");
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        invalid_message,
+        sizeof(invalid_message),
+        "%s() string literal is invalid",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(invalid_message)) {
+        set_runtime_error(database, "failed to format Base64 invalid message");
+        return MYLITE_ERROR;
+    }
+    rc = decode_sql_string_literal_with_policy(
+        database,
+        literal,
+        unsupported_message,
+        invalid_message,
+        true,
+        out_owned_bytes,
+        out_byte_count
+    );
+    if (rc == MYLITE_OK) {
+        *out_bytes = (const unsigned char *)*out_owned_bytes;
+    }
+    return rc;
+}
+
+static int base64_unary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    char message[base64_signed_integer_message_capacity];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || function_name == NULL || out_bytes == NULL ||
+        out_byte_count == NULL || out_owned_bytes == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        message,
+        sizeof(message),
+        "%s() supports only signed integer literal arguments",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format Base64 signed-integer message");
+        return MYLITE_ERROR;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_unsupported_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        rc = copy_source_span_text(database, &literal->span, out_owned_bytes);
+    } else {
+        if (literal->span.length > SIZE_MAX - 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        *out_owned_bytes = (char *)malloc(literal->span.length + 2U);
+        if (*out_owned_bytes == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        (*out_owned_bytes)[0] = '-';
+        memcpy(*out_owned_bytes + 1U, literal->span.text, literal->span.length);
+        (*out_owned_bytes)[literal->span.length + 1U] = '\0';
+        rc = MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        *out_bytes = (const unsigned char *)*out_owned_bytes;
+        *out_byte_count = strlen(*out_owned_bytes);
+        *out_is_null = false;
+    }
+    return rc;
+}
+
+static int base64_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+) {
+    return hex_scalar_argument_value(database, expression, out_cell, out_handled);
+}
+
+static void set_base64_argument_unsupported_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    char message[base64_unsupported_message_capacity];
+    int written = 0;
+
+    if (function_name == NULL) {
+        set_runtime_error(database, "missing Base64 function name");
+        return;
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "%s() supports only string, hex, integer, boolean, NULL, supported session scalar, "
+        "supported system variable, binary cast/convert, and descriptor column arguments",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format Base64 unsupported message");
+        return;
+    }
+    set_unsupported_error(database, message);
 }
 
 static int unhex_argument_bytes(
@@ -111118,6 +111639,7 @@ static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *exp
 
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression) {
     return (is_hex_projection_expression(expression) ||
+            is_base64_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
             is_uuid_projection_expression(expression) ||
             is_char_projection_expression(expression)) != 0;
@@ -111250,6 +111772,78 @@ static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *exp
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_base64_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_TO_BASE64_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_FROM_BASE64_FUNCTION)) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument == NULL) {
+        return false;
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(argument, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+
+    switch (argument->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+    case MYLITE_SQL_AST_UTC_DATE_VALUE:
+    case MYLITE_SQL_AST_UTC_TIME_VALUE:
+    case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
         return true;
     default:
         return false;
@@ -135105,6 +135699,173 @@ static bool unhex_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_base64_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const char *function_name = NULL;
+    enum planned_row_scalar_expression_kind expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_NONE;
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_TO_BASE64_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_FROM_BASE64_FUNCTION) ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "TO_BASE64");
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION) {
+        function_name = "TO_BASE64";
+        expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64;
+    } else {
+        function_name = "FROM_BASE64";
+        expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                             argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+
+            rc = collect_column_reference_parts(database, argument, parts, &part_count);
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_base64_column(
+            database,
+            argument,
+            function_name,
+            expression_kind,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    if (!is_base64_projection_expression(expression)) {
+        set_base64_argument_unsupported_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    rc = expression->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION
+             ? to_base64_function_value(database, expression, &cell)
+             : from_base64_function_value(database, expression, &cell);
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        if (cell.value == NULL) {
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        } else if (expression->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION) {
+            rc = copy_text_value(database, cell.value, &out_expression->value);
+        } else {
+            rc = copy_blob_value(database, cell.value, cell.value_size, &out_expression->value);
+        }
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int plan_row_scalar_base64_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    enum planned_row_scalar_expression_kind expression_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT Base64 functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!base64_column_descriptor_is_supported(database, &column, function_name)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = expression_kind;
+    out_expression->argument_count = 1U;
+    out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->arguments[0].column = column;
+    return MYLITE_OK;
+}
+
+static bool base64_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *function_name
+) {
+    char message[base64_column_message_capacity];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "%s() supports only integer, nonbinary string, and binary string columns",
+        function_name == NULL ? "Base64" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format Base64 column message");
+        return false;
+    }
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column)) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_approximate(column) ||
+        column_descriptor_is_bit(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        set_unsupported_error(database, message);
+        return false;
+    }
+
+    set_unsupported_error(database, message);
+    return false;
+}
+
 static int plan_row_scalar_uuid_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -135518,6 +136279,17 @@ static int plan_row_scalar_binary_string_expression(
         );
     case MYLITE_SQL_AST_HEX_FUNCTION:
         return plan_row_scalar_hex_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+        return plan_row_scalar_base64_expression(
             database,
             expression,
             has_source,
@@ -137147,6 +137919,8 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -141239,6 +142013,8 @@ static bool row_scalar_expression_contains_row_function(
               mylite_sql_ast_node_operator(current) ==
                   MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_FROM_BASE64_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
@@ -156380,6 +157156,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -156412,6 +157189,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -157357,6 +158135,9 @@ static int append_row_scalar_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
         return append_row_scalar_hex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
+        return append_row_scalar_base64_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -157438,6 +158219,8 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -157579,6 +158362,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -157947,6 +158732,37 @@ static int append_row_scalar_unhex_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_base64_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64) {
+        rc = dynamic_string_append(string, "_mylite_to_base64(");
+    } else if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64) {
+        rc = dynamic_string_append(string, "_mylite_from_base64(");
+    } else {
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_uuid_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -158051,6 +158867,8 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -158165,6 +158983,8 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -158237,6 +159057,8 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -159358,6 +160180,8 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -159560,6 +160384,8 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -159636,6 +160462,8 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -160045,6 +160873,8 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -160125,6 +160955,8 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -166381,6 +167213,9 @@ static int bind_row_scalar_expression_parameters(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
         return bind_row_scalar_hex_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
+        return bind_row_scalar_base64_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return bind_row_scalar_unhex_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -166466,6 +167301,8 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -166585,6 +167422,8 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -167282,6 +168121,8 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -167469,6 +168310,8 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -167540,6 +168383,8 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -167692,6 +168537,21 @@ static int bind_row_scalar_unhex_expression_parameters(
     );
 }
 
+static int bind_row_scalar_base64_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+}
+
 static int bind_row_scalar_uuid_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -167786,6 +168646,8 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -167886,6 +168748,8 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:

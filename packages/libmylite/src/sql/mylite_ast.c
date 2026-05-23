@@ -1188,6 +1188,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "hex_function";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         return "hex_argument_count_error";
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+        return "to_base64_function";
+    case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
+        return "to_base64_argument_count_error";
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+        return "from_base64_function";
+    case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
+        return "from_base64_argument_count_error";
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return "unhex_function";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:

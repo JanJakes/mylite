@@ -4703,6 +4703,14 @@ expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
 }
+expression(A) ::= TO_BASE64(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TO_BASE64_FUNCTION, B, R);
+}
+expression(A) ::= FROM_BASE64(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_FROM_BASE64_FUNCTION, B, R);
+}
 expression(A) ::= UNHEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_UNHEX_FUNCTION, B, R);
@@ -5176,6 +5184,24 @@ expression(A) ::= HEX(T) LPAREN expression(B) COMMA function_argument_list(C) RP
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= TO_BASE64(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= TO_BASE64(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= FROM_BASE64(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= FROM_BASE64(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= UNHEX(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -6693,6 +6719,12 @@ identifier(A) ::= CRC32(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= HEX(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TO_BASE64(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= FROM_BASE64(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UNHEX(T). {

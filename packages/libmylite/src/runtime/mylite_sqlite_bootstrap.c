@@ -9,6 +9,7 @@
 #include "mylite_json_functions.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
+#include "mylite_string_base64.h"
 #include "mylite_string_case.h"
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
@@ -267,6 +268,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_trim_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_base64_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_unhex_function(sqlite);

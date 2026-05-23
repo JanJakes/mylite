@@ -90,6 +90,7 @@ static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_hex_function(void);
+static int test_base64_functions(void);
 static int test_unhex_function(void);
 static int test_uuid_function(void);
 static int test_char_function(void);
@@ -413,6 +414,7 @@ int main(void) {
     failures += test_bit_count_function();
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_hex_function();
+    failures += test_base64_functions();
     failures += test_unhex_function();
     failures += test_uuid_function();
     failures += test_char_function();
@@ -5979,6 +5981,117 @@ static int test_hex_function(void) {
     failures += parse_sql("CREATE TABLE hex_names (hex INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "hex identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_base64_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT TO_BASE64('abc'), FROM_BASE64(X'59574A6A'), TO_BASE64(-1), "
+        "FROM_BASE64(v) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_TO_BASE64_FUNCTION, "to_base64 string function");
+    failures += expect_span_text(expression, "TO_BASE64('abc')", "to_base64 string span");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "to_base64 string");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_FROM_BASE64_FUNCTION, "from_base64 binary function");
+    failures += expect_literal(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "from_base64 hex literal"
+    );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_TO_BASE64_FUNCTION, "to_base64 signed function");
+    failures += expect_operator(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "to_base64 negative argument"
+    );
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_FROM_BASE64_FUNCTION, "from_base64 column function");
+    failures +=
+        expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "from_base64 column");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "base64 from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT TO_BASE64 ('a'), (FROM_BASE64(NULL)) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TO_BASE64_FUNCTION, "spaced to_base64");
+    failures += expect_span_text(expression, "TO_BASE64 ('a')", "spaced to_base64 span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized base64");
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_FROM_BASE64_FUNCTION,
+        "wrapped from_base64"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TO_BASE64();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR,
+        "empty to_base64 argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT FROM_BASE64('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR,
+        "two from_base64 argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO TO_BASE64('abc'), FROM_BASE64(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "base64 do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_TO_BASE64_FUNCTION,
+        "do to_base64"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_FROM_BASE64_FUNCTION,
+        "do null from_base64"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE base64_names (to_base64 INT, from_base64 INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "base64 identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -55,6 +55,7 @@ add_library(mylite STATIC
   src/runtime/mylite_sqlite_bootstrap.c
   src/runtime/mylite_sqlite_registration.c
   src/runtime/mylite_statement_context.c
+  src/runtime/mylite_string_base64.c
   src/runtime/mylite_string_case.c
   src/runtime/mylite_string_char.c
   src/runtime/mylite_string_codepoint.c
@@ -585,6 +586,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_hex_function_test)
+
+  add_executable(mylite_runtime_base64_functions_test
+    tests/runtime_base64_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_base64_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_base64_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_base64_functions_test)
 
   add_executable(mylite_runtime_unhex_function_test
     tests/runtime_unhex_function_test.c
@@ -3809,6 +3821,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.hex_function
     COMMAND mylite_runtime_hex_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.base64_functions
+    COMMAND mylite_runtime_base64_functions_test
   )
   add_test(
     NAME libmylite.runtime.unhex_function

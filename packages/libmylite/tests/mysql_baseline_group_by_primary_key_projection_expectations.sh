@@ -112,13 +112,20 @@ core=$(run_mysql \
      DO 0;
      SELECT id, title, created, status
        FROM posts GROUP BY id ORDER BY created DESC LIMIT 2;
+     SELECT * FROM posts GROUP BY id ORDER BY created DESC LIMIT 2;
      SELECT p.id, p.title, COUNT(c.id) AS c
        FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
        GROUP BY p.id ORDER BY p.title;
+     SELECT COUNT(*) AS c FROM posts GROUP BY id ORDER BY id;
+     SELECT MIN(id) AS m FROM posts GROUP BY status ORDER BY status;
      SELECT p.*
        FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
        GROUP BY p.id ORDER BY p.created DESC LIMIT 2;
+     SELECT p.*, COUNT(c.id) AS c
+       FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
+       GROUP BY p.id ORDER BY p.created DESC LIMIT 2;
      SELECT a, b, v FROM cpk GROUP BY a, b ORDER BY a, b;
+     SELECT a, b, v FROM cpk GROUP BY b, a ORDER BY v;
      SELECT title FROM posts GROUP BY id ORDER BY title;
      SELECT id, COUNT(*) AS c FROM posts GROUP BY id ORDER BY title;
      SELECT @@warning_count, ROW_COUNT();"
@@ -127,23 +134,39 @@ expect_value "single explicit first" "3	Gamma	2024-01-03 00:00:00	publish" \
     "$(printf '%s\n' "$core" | sed -n '1p')"
 expect_value "single explicit second" "2	Beta	2024-01-02 00:00:00	draft" \
     "$(printf '%s\n' "$core" | sed -n '2p')"
-expect_value "joined projection first" "1	Alpha	2" "$(printf '%s\n' "$core" | sed -n '3p')"
-expect_value "joined projection second" "2	Beta	1" "$(printf '%s\n' "$core" | sed -n '4p')"
-expect_value "joined projection third" "3	Gamma	0" "$(printf '%s\n' "$core" | sed -n '5p')"
+expect_value "unqualified wildcard first" "3	Gamma	2024-01-03 00:00:00	publish" \
+    "$(printf '%s\n' "$core" | sed -n '3p')"
+expect_value "unqualified wildcard second" "2	Beta	2024-01-02 00:00:00	draft" \
+    "$(printf '%s\n' "$core" | sed -n '4p')"
+expect_value "joined projection first" "1	Alpha	2" "$(printf '%s\n' "$core" | sed -n '5p')"
+expect_value "joined projection second" "2	Beta	1" "$(printf '%s\n' "$core" | sed -n '6p')"
+expect_value "joined projection third" "3	Gamma	0" "$(printf '%s\n' "$core" | sed -n '7p')"
+expect_value "aggregate-only count first" "1" "$(printf '%s\n' "$core" | sed -n '8p')"
+expect_value "aggregate-only count second" "1" "$(printf '%s\n' "$core" | sed -n '9p')"
+expect_value "aggregate-only count third" "1" "$(printf '%s\n' "$core" | sed -n '10p')"
+expect_value "aggregate-only minimum first" "2" "$(printf '%s\n' "$core" | sed -n '11p')"
+expect_value "aggregate-only minimum second" "1" "$(printf '%s\n' "$core" | sed -n '12p')"
 expect_value "qualified wildcard first" "3	Gamma	2024-01-03 00:00:00	publish" \
-    "$(printf '%s\n' "$core" | sed -n '6p')"
+    "$(printf '%s\n' "$core" | sed -n '13p')"
 expect_value "qualified wildcard second" "2	Beta	2024-01-02 00:00:00	draft" \
-    "$(printf '%s\n' "$core" | sed -n '7p')"
-expect_value "composite first" "1	1	aa" "$(printf '%s\n' "$core" | sed -n '8p')"
-expect_value "composite second" "1	2	ab" "$(printf '%s\n' "$core" | sed -n '9p')"
-expect_value "composite third" "2	1	ba" "$(printf '%s\n' "$core" | sed -n '10p')"
-expect_value "unselected group key order first" "Alpha" "$(printf '%s\n' "$core" | sed -n '11p')"
-expect_value "unselected group key order second" "Beta" "$(printf '%s\n' "$core" | sed -n '12p')"
-expect_value "unselected group key order third" "Gamma" "$(printf '%s\n' "$core" | sed -n '13p')"
-expect_value "unselected fd order first" "1	1" "$(printf '%s\n' "$core" | sed -n '14p')"
-expect_value "unselected fd order second" "2	1" "$(printf '%s\n' "$core" | sed -n '15p')"
-expect_value "unselected fd order third" "3	1" "$(printf '%s\n' "$core" | sed -n '16p')"
-expect_value "status" "0	-1" "$(printf '%s\n' "$core" | sed -n '17p')"
+    "$(printf '%s\n' "$core" | sed -n '14p')"
+expect_value "qualified wildcard aggregate first" "3	Gamma	2024-01-03 00:00:00	publish	0" \
+    "$(printf '%s\n' "$core" | sed -n '15p')"
+expect_value "qualified wildcard aggregate second" "2	Beta	2024-01-02 00:00:00	draft	1" \
+    "$(printf '%s\n' "$core" | sed -n '16p')"
+expect_value "composite first" "1	1	aa" "$(printf '%s\n' "$core" | sed -n '17p')"
+expect_value "composite second" "1	2	ab" "$(printf '%s\n' "$core" | sed -n '18p')"
+expect_value "composite third" "2	1	ba" "$(printf '%s\n' "$core" | sed -n '19p')"
+expect_value "composite reversed first" "1	1	aa" "$(printf '%s\n' "$core" | sed -n '20p')"
+expect_value "composite reversed second" "1	2	ab" "$(printf '%s\n' "$core" | sed -n '21p')"
+expect_value "composite reversed third" "2	1	ba" "$(printf '%s\n' "$core" | sed -n '22p')"
+expect_value "unselected group key order first" "Alpha" "$(printf '%s\n' "$core" | sed -n '23p')"
+expect_value "unselected group key order second" "Beta" "$(printf '%s\n' "$core" | sed -n '24p')"
+expect_value "unselected group key order third" "Gamma" "$(printf '%s\n' "$core" | sed -n '25p')"
+expect_value "unselected fd order first" "1	1" "$(printf '%s\n' "$core" | sed -n '26p')"
+expect_value "unselected fd order second" "2	1" "$(printf '%s\n' "$core" | sed -n '27p')"
+expect_value "unselected fd order third" "3	1" "$(printf '%s\n' "$core" | sed -n '28p')"
+expect_value "status" "0	-1" "$(printf '%s\n' "$core" | sed -n '29p')"
 
 expect_error \
     "no primary key selected column" \

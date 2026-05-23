@@ -84,14 +84,16 @@ Where:
   - a grouped descriptor column;
   - a descriptor column from a source whose complete primary key is present in
     the `GROUP BY` list;
-  - an unqualified `*`, expanded source by source, only when every expanded
-    visible column is legal by the same rule;
+  - an unqualified `*` as the whole select list, expanded source by source,
+    only when every expanded visible column is legal by the same rule;
   - a qualified `source.*`, only when every visible column of that source is
     legal by the same rule;
   - an existing grouped aggregate result.
-- Nonaggregate selected descriptor columns and wildcard expansions must precede
-  aggregate select items in this slice. This preserves the existing grouped
-  result-planning shape and keeps diagnostics deterministic.
+- Nonaggregate selected descriptor columns and qualified wildcard expansions
+  must precede aggregate select items in this slice. This preserves the
+  existing grouped result-planning shape and keeps diagnostics deterministic.
+  The existing parser admits unqualified `*` only as the whole select list, so
+  `SELECT *, COUNT(*) ...` remains outside this slice.
 - Aggregate select items remain limited to the existing grouped aggregate
   functions and type families.
 - `ORDER BY` may refer to:
@@ -148,9 +150,11 @@ No parser expansion is needed. The relevant admitted shapes are:
 select_statement ::= SELECT select_list FROM from_source where_opt group_by_clause
                      having_opt order_by_opt limit_opt.
 
+select_list ::= STAR.
+select_list ::= select_item_list.
+
 select_item ::= expression alias_opt.
 expression ::= qualified_identifier.
-expression ::= STAR.
 expression ::= qualified_identifier DOT STAR.
 expression ::= grouped_aggregate_function.
 

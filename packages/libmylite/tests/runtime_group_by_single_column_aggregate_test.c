@@ -1018,6 +1018,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
 }
 
 static int test_grouped_diagnostics(void) {
+    static const char *const unselected_group_key_columns[] = {"g", "n", "COUNT(*)"};
+    static const char *const unselected_group_key_values[] = {
+        "1",
+        "10",
+        "1",
+        "2",
+        "20",
+        "1",
+        "2",
+        "30",
+        "1",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -1259,9 +1271,9 @@ static int test_grouped_diagnostics(void) {
         database,
         "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, n ORDER BY id",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_not_group_by,
             .sqlstate = "42000",
-            .message_part = "GROUP BY supports ORDER BY only on the grouped column",
+            .message_part = "Expression #1 of ORDER BY clause is not in GROUP BY clause",
         }
     );
     failures += execute_error(
@@ -1282,14 +1294,16 @@ static int test_grouped_diagnostics(void) {
             .message_part = "GROUP BY supports ORDER BY only on unique selected group aliases",
         }
     );
-    failures += execute_error(
+    failures += expect_grouped_query(
         database,
-        "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, n, nn",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+        (struct expected_grouped_query){
+            .sql = "SELECT g, n, COUNT(*) FROM grouped_numbers WHERE n IS NOT NULL "
+                   "GROUP BY g, n, nn ORDER BY n",
+            .columns = unselected_group_key_columns,
+            .column_count = 3U,
+            .values = unselected_group_key_values,
+            .row_count = 3U,
+            .context = "unselected descriptor group key is accepted",
         }
     );
     failures += execute_error(

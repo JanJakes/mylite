@@ -704,14 +704,12 @@ static int test_filtered_select_diagnostics(void) {
             .context = "select item alias with where",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers GROUP BY i",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+        (struct expected_single_value_query){
+            .sql = "SELECT i FROM numbers GROUP BY i ORDER BY i LIMIT 1",
+            .expected = "-2",
+            .context = "grouped selected column with where planner",
         }
     );
     failures += execute_error(

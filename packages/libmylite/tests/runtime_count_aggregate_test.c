@@ -41,6 +41,14 @@ struct expected_count_query {
     const char *context;
 };
 
+struct expected_count_rows_query {
+    const char *sql;
+    const char *column;
+    const char *const *values;
+    size_t value_count;
+    const char *context;
+};
+
 static int test_count_aggregate_values_persistence_rename_and_truncate(void);
 static int test_count_aggregate_diagnostics(void);
 static int test_independent_count_aggregate_handles(void);
@@ -48,6 +56,7 @@ static int seed_count_schema(mylite_db *database);
 static int create_count_table(mylite_db *database);
 static int insert_count_rows(mylite_db *database);
 static int expect_count_query(mylite_db *database, struct expected_count_query query);
+static int expect_count_rows_query(mylite_db *database, struct expected_count_rows_query query);
 static int expect_row_count(mylite_db *database, const char *expected, const char *context);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -1702,6 +1711,7 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
 }
 
 static int test_count_aggregate_diagnostics(void) {
+    static const char *const grouped_counts[] = {"1", "1", "1", "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -2387,14 +2397,14 @@ static int test_count_aggregate_diagnostics(void) {
             .context = "count star select item alias",
         }
     );
-    failures += execute_error(
+    failures += expect_count_rows_query(
         database,
-        "SELECT COUNT(*) FROM numbers GROUP BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+        (struct expected_count_rows_query){
+            .sql = "SELECT COUNT(*) AS c FROM numbers GROUP BY id ORDER BY id",
+            .column = "c",
+            .values = grouped_counts,
+            .value_count = sizeof(grouped_counts) / sizeof(grouped_counts[0]),
+            .context = "grouped aggregate without selected group column",
         }
     );
     failures += execute_error(
@@ -2679,6 +2689,27 @@ static int expect_count_query(mylite_db *database, struct expected_count_query q
     failures += expect_text(mylite_result_column_name(result, 0U), query.column, query.context);
     failures += expect_size(mylite_result_row_count(result), 1U, query.context);
     failures += expect_text(mylite_result_value_text(result, 0U, 0U), query.value, query.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_count_rows_query(mylite_db *database, struct expected_count_rows_query query) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 1U, query.context);
+    failures += expect_text(mylite_result_column_name(result, 0U), query.column, query.context);
+    failures += expect_size(mylite_result_row_count(result), query.value_count, query.context);
+    for (size_t row_index = 0U; row_index < query.value_count; ++row_index) {
+        failures += expect_text(
+            mylite_result_value_text(result, row_index, 0U),
+            query.values[row_index],
+            query.context
+        );
+    }
     failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
     failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
     mylite_result_free(result);

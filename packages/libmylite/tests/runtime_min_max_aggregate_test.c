@@ -41,6 +41,14 @@ struct expected_aggregate_query {
     const char *context;
 };
 
+struct expected_aggregate_rows_query {
+    const char *sql;
+    const char *column;
+    const char *const *values;
+    size_t value_count;
+    const char *context;
+};
+
 static int test_min_max_values_persistence_rename_and_drop(void);
 static int test_min_max_diagnostics(void);
 static int test_independent_min_max_handles(void);
@@ -51,6 +59,10 @@ static int create_all_null_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_aggregate_query(mylite_db *database, struct expected_aggregate_query query);
+static int expect_aggregate_rows_query(
+    mylite_db *database,
+    struct expected_aggregate_rows_query query
+);
 static int expect_row_count(mylite_db *database, const char *expected, const char *context);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
@@ -570,6 +582,7 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
 }
 
 static int test_min_max_diagnostics(void) {
+    static const char *const grouped_minimums[] = {"-2", "0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -808,14 +821,14 @@ static int test_min_max_diagnostics(void) {
             .context = "min select item alias",
         }
     );
-    failures += execute_error(
+    failures += expect_aggregate_rows_query(
         database,
-        "SELECT MIN(i) FROM numbers GROUP BY tie",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+        (struct expected_aggregate_rows_query){
+            .sql = "SELECT MIN(i) AS m FROM numbers GROUP BY tie ORDER BY tie",
+            .column = "m",
+            .values = grouped_minimums,
+            .value_count = sizeof(grouped_minimums) / sizeof(grouped_minimums[0]),
+            .context = "grouped minimum without selected group column",
         }
     );
     failures += execute_error(
@@ -1106,6 +1119,30 @@ static int expect_aggregate_query(mylite_db *database, struct expected_aggregate
     failures += expect_text(mylite_result_column_name(result, 0U), query.column, query.context);
     failures += expect_size(mylite_result_row_count(result), 1U, query.context);
     failures += expect_value(mylite_result_value_text(result, 0U, 0U), query.value, query.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_aggregate_rows_query(
+    mylite_db *database,
+    struct expected_aggregate_rows_query query
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 1U, query.context);
+    failures += expect_text(mylite_result_column_name(result, 0U), query.column, query.context);
+    failures += expect_size(mylite_result_row_count(result), query.value_count, query.context);
+    for (size_t row_index = 0U; row_index < query.value_count; ++row_index) {
+        failures += expect_value(
+            mylite_result_value_text(result, row_index, 0U),
+            query.values[row_index],
+            query.context
+        );
+    }
     failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
     failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
     mylite_result_free(result);

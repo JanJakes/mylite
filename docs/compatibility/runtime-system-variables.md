@@ -411,7 +411,7 @@ Performance Schema variable tables remain unsupported.
 | `innodb_random_read_ahead` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_read_ahead_threshold` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_read_io_threads` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_read_only` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_read_only` | 🟡 | Limited fixed global read-only disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads return MySQL-style global-variable diagnostics, and every `SET` form returns MySQL-style read-only diagnostics; no startup option, mutable value, InnoDB read-only mode, write blocking, or data-dictionary effects |
 | `innodb_redo_log_archive_dirs` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_redo_log_capacity` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_redo_log_encrypt` | ❌ | Value, scope, SET, diagnostics |
@@ -770,7 +770,7 @@ Performance Schema variable tables remain unsupported.
 | `range_optimizer_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
 | `rbr_exec_mode` | ❌ | Value, scope, SET, diagnostics |
 | `read_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `read_only` | ❌ | Value, scope, SET, diagnostics |
+| `read_only` | 🟡 | Limited fixed global disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads and non-global `SET` forms use MySQL-shaped global-variable diagnostics, and exact no-op global `SET` forms may preserve `OFF`; no mutable global state, write blocking, privileges, replication exceptions, lock waits, startup option, or interaction with `super_read_only` |
 | `read_rnd_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `regexp_stack_limit` | ❌ | Value, scope, SET, diagnostics |
 | `regexp_time_limit` | ❌ | Value, scope, SET, diagnostics |
@@ -908,7 +908,7 @@ Performance Schema variable tables remain unsupported.
 | `statement_id` | ❌ | Value, scope, SET, diagnostics |
 | `stored_program_cache` | ❌ | Value, scope, SET, diagnostics |
 | `stored_program_definition_cache` | ❌ | Value, scope, SET, diagnostics |
-| `super_read_only` | ❌ | Value, scope, SET, diagnostics |
+| `super_read_only` | 🟡 | Limited fixed global disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads and non-global `SET` forms use MySQL-shaped global-variable diagnostics, and exact no-op global `SET` forms may preserve `OFF`; no mutable global state, write blocking, privileges, startup option, or implication of `read_only` |
 | `sync_binlog` | ❌ | Value, scope, SET, diagnostics |
 | `sync_master_info` | ❌ | Value, scope, SET, diagnostics |
 | `sync_relay_log` | ❌ | Value, scope, SET, diagnostics |

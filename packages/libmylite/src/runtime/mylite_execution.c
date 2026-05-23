@@ -2899,6 +2899,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_UUID = 56,
     PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64 = 57,
     PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64 = 58,
+    PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE = 59,
 };
 
 enum {
@@ -15559,6 +15560,11 @@ static int time_format_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int str_to_date_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int date_format_function_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -15579,6 +15585,16 @@ static int time_format_function_arguments(
     size_t *out_format_length,
     bool *out_format_is_null
 );
+static int str_to_date_function_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_value,
+    size_t *out_value_length,
+    bool *out_value_is_null,
+    char **out_format,
+    size_t *out_format_length,
+    bool *out_format_is_null
+);
 static int date_format_string_or_null_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -15587,6 +15603,17 @@ static int date_format_string_or_null_argument(
     size_t *out_text_length,
     bool *out_is_null
 );
+static int str_to_date_string_or_null_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *literal_nul_message,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static bool str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression);
+static bool str_to_date_child_is_identifier_reference(const struct mylite_sql_ast_node *expression);
 static int time_format_string_or_null_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -23749,6 +23776,34 @@ static int plan_row_scalar_time_format_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_str_to_date_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_str_to_date_null_short_circuit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_expression,
+    const struct mylite_sql_ast_node *format_expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool *out_handled,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_str_to_date_resolve_short_circuit_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
 static int plan_row_scalar_date_format_value_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -23793,6 +23848,28 @@ static int plan_row_scalar_date_format_format_argument(
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_time_format_format_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_str_to_date_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_str_to_date_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_str_to_date_format_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
@@ -28011,8 +28088,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
@@ -38996,6 +39075,7 @@ static bool compound_expression_uses_string_collation(
     case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_LOWER_FUNCTION:
     case MYLITE_SQL_AST_LCASE_FUNCTION:
     case MYLITE_SQL_AST_UPPER_FUNCTION:
@@ -49666,8 +49746,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
@@ -83821,6 +83903,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -87431,6 +87514,8 @@ static const char *argument_count_error_node_function_name(
         return "DATE_FORMAT";
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
         return "TIME_FORMAT";
+    case MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR:
+        return "STR_TO_DATE";
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
         return "DATEDIFF";
     case MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR:
@@ -87919,6 +88004,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIME_FORMAT");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "STR_TO_DATE");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "DAYNAME");
         return MYLITE_ERROR;
@@ -87996,6 +88084,8 @@ static int session_scalar_value(
         return date_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
         return time_format_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+        return str_to_date_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FIELD");
         return MYLITE_ERROR;
@@ -104423,6 +104513,56 @@ static int time_format_function_value(
     return rc;
 }
 
+static int str_to_date_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    char *value = NULL;
+    char *format = NULL;
+    size_t value_length = 0U;
+    size_t format_length = 0U;
+    bool value_is_null = false;
+    bool format_is_null = false;
+    bool result_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    rc = str_to_date_function_arguments(
+        database,
+        expression,
+        &value,
+        &value_length,
+        &value_is_null,
+        &format,
+        &format_length,
+        &format_is_null
+    );
+    if (rc == MYLITE_OK && !value_is_null && !format_is_null) {
+        rc = mylite_str_to_date_value(
+            database,
+            value,
+            value_length,
+            format,
+            format_length,
+            &out_cell->owned_text,
+            &result_is_null
+        );
+    } else {
+        result_is_null = true;
+    }
+    if (rc == MYLITE_OK && !result_is_null) {
+        out_cell->value = out_cell->owned_text;
+    }
+    free(value);
+    free(format);
+    return rc;
+}
+
 static int date_format_function_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -104531,6 +104671,95 @@ static int time_format_function_arguments(
     return rc;
 }
 
+static int str_to_date_function_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_value,
+    size_t *out_value_length,
+    bool *out_value_is_null,
+    char **out_format,
+    size_t *out_format_length,
+    bool *out_format_is_null
+) {
+    const struct mylite_sql_ast_node *value_expression = NULL;
+    const struct mylite_sql_ast_node *format_expression = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_value_length == NULL || out_value_is_null == NULL ||
+        out_format == NULL || out_format_length == NULL || out_format_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = NULL;
+    *out_value_length = 0U;
+    *out_value_is_null = false;
+    *out_format = NULL;
+    *out_format_length = 0U;
+    *out_format_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_STR_TO_DATE_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, "STR_TO_DATE");
+        return MYLITE_ERROR;
+    }
+
+    value_expression = child_at(expression, 0U);
+    format_expression = child_at(expression, 1U);
+    if (str_to_date_child_is_null_literal(value_expression)) {
+        if (str_to_date_child_is_identifier_reference(format_expression)) {
+            return date_add_set_unknown_identifier_error(database, format_expression);
+        }
+        *out_value_is_null = true;
+        return MYLITE_OK;
+    }
+    if (str_to_date_child_is_null_literal(format_expression)) {
+        if (str_to_date_child_is_identifier_reference(value_expression)) {
+            return date_add_set_unknown_identifier_error(database, value_expression);
+        }
+        *out_format_is_null = true;
+        return MYLITE_OK;
+    }
+
+    rc = str_to_date_string_or_null_argument(
+        database,
+        value_expression,
+        "STR_TO_DATE() supports only string and NULL values",
+        "STR_TO_DATE() literals do not support NUL bytes",
+        out_value,
+        out_value_length,
+        out_value_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = str_to_date_string_or_null_argument(
+            database,
+            format_expression,
+            "STR_TO_DATE() supports only string format literals and NULL",
+            "STR_TO_DATE() literals do not support NUL bytes",
+            out_format,
+            out_format_length,
+            out_format_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !*out_format_is_null) {
+        rc = mylite_str_to_date_validate_format(database, *out_format, *out_format_length);
+    }
+    return rc;
+}
+
+static bool str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    return (expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+}
+
+static bool str_to_date_child_is_identifier_reference(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    return (expression != NULL && (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                                   expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) != 0;
+}
+
 static int date_format_string_or_null_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -104630,6 +104859,59 @@ static int time_format_string_or_null_argument(
     );
     if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
         set_unsupported_error(database, "TIME_FORMAT() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int str_to_date_string_or_null_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *literal_nul_message,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        unsupported_message,
+        literal_nul_message,
+        out_text,
+        out_text_length
+    );
+    if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
+        set_unsupported_error(database, literal_nul_message);
         rc = MYLITE_ERROR;
     }
     return rc;
@@ -112469,7 +112751,8 @@ static bool is_date_format_projection_expression(const struct mylite_sql_ast_nod
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || (expression->kind != MYLITE_SQL_AST_DATE_FORMAT_FUNCTION &&
-                               expression->kind != MYLITE_SQL_AST_TIME_FORMAT_FUNCTION)) {
+                               expression->kind != MYLITE_SQL_AST_TIME_FORMAT_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_STR_TO_DATE_FUNCTION)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 2U) {
@@ -113142,6 +113425,7 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
@@ -130122,6 +130406,10 @@ static int plan_row_scalar_date_function_expression(
         set_native_function_parameter_count_error(database, "TIME_FORMAT");
         return MYLITE_ERROR;
     }
+    if (expression->kind == MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "STR_TO_DATE");
+        return MYLITE_ERROR;
+    }
     if (expression->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION) {
         return plan_row_scalar_date_format_expression(
             database,
@@ -130135,6 +130423,17 @@ static int plan_row_scalar_date_function_expression(
     }
     if (expression->kind == MYLITE_SQL_AST_TIME_FORMAT_FUNCTION) {
         return plan_row_scalar_time_format_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_STR_TO_DATE_FUNCTION) {
+        return plan_row_scalar_str_to_date_expression(
             database,
             expression,
             has_source,
@@ -137884,6 +138183,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -139144,6 +139444,311 @@ static int plan_row_scalar_time_format_format_argument(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_time_format_validate_format(database, text, text_length);
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        rc = assign_text_value(database, text, text_length, &out_expression->value);
+        text = NULL;
+    }
+    free(text);
+    return rc;
+}
+
+static int plan_row_scalar_str_to_date_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *value_expression = NULL;
+    const struct mylite_sql_ast_node *format_expression = NULL;
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_STR_TO_DATE_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, "STR_TO_DATE");
+        return MYLITE_ERROR;
+    }
+
+    value_expression = child_at(expression, 0U);
+    format_expression = child_at(expression, 1U);
+    rc = plan_row_scalar_str_to_date_null_short_circuit(
+        database,
+        value_expression,
+        format_expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &handled,
+        out_expression
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE;
+    out_expression->argument_count = 2U;
+
+    rc = plan_row_scalar_str_to_date_value_argument(
+        database,
+        value_expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_str_to_date_format_argument(
+            database,
+            format_expression,
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_str_to_date_null_short_circuit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_expression,
+    const struct mylite_sql_ast_node *format_expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool *out_handled,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *reference_expression = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL || out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!str_to_date_child_is_null_literal(value_expression) &&
+        !str_to_date_child_is_null_literal(format_expression)) {
+        return MYLITE_OK;
+    }
+
+    if (str_to_date_child_is_identifier_reference(value_expression)) {
+        reference_expression = value_expression;
+    } else if (str_to_date_child_is_identifier_reference(format_expression)) {
+        reference_expression = format_expression;
+    }
+    if (reference_expression != NULL) {
+        rc = plan_row_scalar_str_to_date_resolve_short_circuit_reference(
+            database,
+            reference_expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+    *out_handled = true;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_str_to_date_resolve_short_circuit_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+
+    if (!has_source) {
+        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t part_count = 0U;
+        int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    return resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT STR_TO_DATE() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+}
+
+static int plan_row_scalar_str_to_date_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "STR_TO_DATE() supports only string and NULL values");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            return plan_row_scalar_literal_value(database, expression, out_expression);
+        }
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_str_to_date_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    set_unsupported_error(database, "STR_TO_DATE() supports only string and NULL values");
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_str_to_date_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT STR_TO_DATE() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!column_descriptor_is_string_family(&column)) {
+        set_unsupported_error(database, "STR_TO_DATE() supports only nonbinary string columns");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_str_to_date_format_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "STR_TO_DATE() supports only string format literals and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "STR_TO_DATE() supports only string format literals and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        "STR_TO_DATE() supports only string format literals and NULL",
+        "STR_TO_DATE() literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK && memchr(text, '\0', text_length) != NULL) {
+        set_unsupported_error(database, "STR_TO_DATE() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_str_to_date_validate_format(database, text, text_length);
     }
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
@@ -141956,6 +142561,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_TIME_FORMAT_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_STR_TO_DATE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATEDIFF_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_TIMEDIFF_FUNCTION ||
@@ -157139,6 +157745,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -158028,6 +158635,7 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
         return append_row_scalar_date_format_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
         return append_row_scalar_date_format_numeric_equal_sql(string, expression, next_parameter);
@@ -158184,6 +158792,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -158327,6 +158936,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -158680,14 +159290,17 @@ static int append_row_scalar_date_format_expression_sql(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count != 3U) {
+    if (expression == NULL ||
+        (expression->argument_count != 2U && expression->argument_count != 3U)) {
         return MYLITE_ERROR;
     }
-    rc = dynamic_string_append(
-        string,
-        expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT ? "_mylite_time_format("
-                                                                      : "_mylite_date_format("
-    );
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE) {
+        rc = dynamic_string_append(string, "_mylite_str_to_date(");
+    } else if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT) {
+        rc = dynamic_string_append(string, "_mylite_time_format(");
+    } else {
+        rc = dynamic_string_append(string, "_mylite_date_format(");
+    }
     for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
          ++argument_index) {
         if (argument_index != 0U) {
@@ -158832,6 +159445,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -158948,6 +159562,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -159022,6 +159637,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -160146,6 +160762,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -160349,6 +160966,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -160427,6 +161045,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -160838,6 +161457,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -160920,6 +161540,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -167010,6 +167631,7 @@ static int bind_row_scalar_expression_parameters(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
         return bind_row_scalar_date_format_expression_parameters(
             statement,
             expression,
@@ -167266,6 +167888,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -167387,6 +168010,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -167542,7 +168166,8 @@ static int bind_row_scalar_date_format_expression_parameters(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count != 3U) {
+    if (expression == NULL ||
+        (expression->argument_count != 2U && expression->argument_count != 3U)) {
         return MYLITE_ERROR;
     }
     for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
@@ -168087,6 +168712,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -168275,6 +168901,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -168348,6 +168975,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -168611,6 +169239,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -168713,6 +169342,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:

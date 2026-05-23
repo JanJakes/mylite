@@ -873,6 +873,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_time_format_function_test)
 
+  add_executable(mylite_runtime_str_to_date_function_test
+    tests/runtime_str_to_date_function_test.c
+  )
+  target_link_libraries(mylite_runtime_str_to_date_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_str_to_date_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_str_to_date_function_test)
+
   add_executable(mylite_runtime_datediff_function_test
     tests/runtime_datediff_function_test.c
   )
@@ -3925,6 +3936,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.time_format_function
     COMMAND mylite_runtime_time_format_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.str_to_date_function
+    COMMAND mylite_runtime_str_to_date_function_test
   )
   add_test(
     NAME libmylite.runtime.datediff_function

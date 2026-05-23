@@ -53,6 +53,20 @@ int mylite_time_format_value(
     char **out_text,
     bool *out_is_null
 );
+int mylite_str_to_date_validate_format(
+    struct mylite_db *database,
+    const char *format,
+    size_t format_length
+);
+int mylite_str_to_date_value(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length,
+    const char *format,
+    size_t format_length,
+    char **out_text,
+    bool *out_is_null
+);
 int mylite_sqlite_register_date_format_function(sqlite3 *sqlite);
 
 #endif

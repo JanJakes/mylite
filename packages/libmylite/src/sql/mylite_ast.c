@@ -1196,6 +1196,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "from_base64_function";
     case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
         return "from_base64_argument_count_error";
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+        return "str_to_date_function";
+    case MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR:
+        return "str_to_date_argument_count_error";
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return "unhex_function";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:

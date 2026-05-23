@@ -4150,6 +4150,10 @@ expression(A) ::= TIME_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_TIME_FORMAT_FUNCTION, B, C, R);
 }
+expression(A) ::= STR_TO_DATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_STR_TO_DATE_FUNCTION, B, C, R);
+}
 expression(A) ::= DATEDIFF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATEDIFF_FUNCTION, B, C, R);
@@ -5471,6 +5475,21 @@ expression(A) ::=
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR, D, R);
 }
+expression(A) ::= STR_TO_DATE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= STR_TO_DATE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    STR_TO_DATE(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR, D, R);
+}
 expression(A) ::= DATEDIFF(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -6584,6 +6603,9 @@ identifier(A) ::= DATE_FORMAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TIME_FORMAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STR_TO_DATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATEDIFF(T). {

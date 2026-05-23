@@ -990,6 +990,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"STRCMP", 0U},
         {"STREAM", 0U},
         {"STRING", 0U},
+        {"STR_TO_DATE", 0U},
         {"SUBCLASS_ORIGIN", 0U},
         {"SUBDATE", 0U},
         {"SUBJECT", 0U},

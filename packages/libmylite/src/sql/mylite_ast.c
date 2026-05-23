@@ -930,8 +930,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "year_function";
     case MYLITE_SQL_AST_MONTH_FUNCTION:
         return "month_function";
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+        return "monthname_function";
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
+        return "monthname_argument_count_error";
     case MYLITE_SQL_AST_DAY_FUNCTION:
         return "day_function";
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+        return "dayname_function";
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
+        return "dayname_argument_count_error";
     case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
         return "dayofmonth_function";
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:

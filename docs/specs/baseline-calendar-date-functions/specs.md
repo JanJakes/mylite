@@ -144,7 +144,8 @@ This slice intentionally does not support:
 - use in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults,
   generated columns, indexes, constraints, joins, CTEs, or arbitrary SQLite
   pass-through;
-- locale-aware `DAYNAME()` or `MONTHNAME()`;
+- broader locale-aware `DAYNAME()` / `MONTHNAME()` behavior and temporal
+  coercions outside the later baseline calendar-name slice;
 - broader temporal functions such as `EXTRACT()`, `TIMESTAMPDIFF()`,
   `TO_DAYS()`, `TO_SECONDS()`, `WEEK()`, `WEEKDAY()`, `WEEKOFYEAR()`, or
   `YEARWEEK()`.

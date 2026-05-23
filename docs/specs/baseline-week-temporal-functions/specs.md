@@ -173,8 +173,9 @@ This slice intentionally does not support:
   pass-through;
 - `DATE_FORMAT()` week format specifiers such as `%U`, `%u`, `%V`, `%v`, `%X`,
   and `%x`;
-- broader temporal functions such as `DAYNAME()`, `MONTHNAME()`, `TO_DAYS()`,
-  or `TO_SECONDS()`.
+- broader temporal functions such as `TO_DAYS()` or `TO_SECONDS()`, and
+  locale-sensitive behavior or broader coercions for the later
+  `DAYNAME()` / `MONTHNAME()` slice.
 
 ## Grammar
 

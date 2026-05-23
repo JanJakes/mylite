@@ -4111,6 +4111,10 @@ expression(A) ::= WEEKDAY(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_WEEKDAY_FUNCTION, B, R);
 }
+expression(A) ::= DAYNAME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYNAME_FUNCTION, B, R);
+}
 expression(A) ::= WEEKOFYEAR(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION, B, R);
@@ -4134,6 +4138,10 @@ expression(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
 expression(A) ::= MONTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_MONTH_FUNCTION, B, R);
+}
+expression(A) ::= MONTHNAME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MONTHNAME_FUNCTION, B, R);
 }
 expression(A) ::= DAY(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
@@ -5465,6 +5473,15 @@ expression(A) ::=
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR, C, R);
 }
+expression(A) ::= DAYNAME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= DAYNAME(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR, C, R);
+}
 expression(A) ::= LAST_DAY(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -5492,6 +5509,15 @@ expression(A) ::= WEEKOFYEAR(T) LPAREN expression(B) COMMA function_argument_lis
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= MONTHNAME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= MONTHNAME(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= YEARWEEK(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -6967,6 +6993,9 @@ identifier(A) ::= DATE(T). {
 identifier(A) ::= DAY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= DAYNAME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= DAYOFMONTH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -6992,6 +7021,9 @@ identifier(A) ::= MINUTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MONTHNAME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= QUARTER(T). {

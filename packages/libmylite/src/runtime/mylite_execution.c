@@ -452,6 +452,7 @@ enum {
     mysql_version_function_display_length = 20,
     mysql_json_type_display_length = 68,
     mysql_temporal_string_function_display_length = 29,
+    mysql_calendar_name_function_display_length = 9,
     double_text_max_significant_digits = 17,
     double_text_capacity = 32,
     scalar_exact_decimal_part_capacity = literal_projection_max_significant_digits + 1,
@@ -13519,6 +13520,10 @@ static void populate_scalar_connection_string_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor,
     struct scalar_connection_string_result_column_shape shape
+);
+static void populate_calendar_name_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
 );
 static void populate_uuid_string_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor,
@@ -27740,7 +27745,11 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAY_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
@@ -49346,7 +49355,11 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAY_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
@@ -82377,6 +82390,11 @@ static int populate_row_scalar_expression_result_column_descriptor(
             expression,
             descriptor
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+        if (mylite_temporal_extract_kind_is_calendar_name(expression->temporal_extract_kind)) {
+            populate_calendar_name_result_column_descriptor(database, descriptor);
+        }
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
@@ -82390,7 +82408,6 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -85043,6 +85060,10 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+        populate_calendar_name_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
     default:
         return MYLITE_OK;
     }
@@ -85060,6 +85081,22 @@ static void populate_scalar_temporal_string_result_column_descriptor(
     descriptor->decimals = mysql_approximate_decimals;
     descriptor->flags = 0U;
     descriptor->nullable = true;
+}
+
+static void populate_calendar_name_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = mysql_calendar_name_function_display_length *
+                              scalar_connection_max_bytes_per_character(database),
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
 }
 
 static void populate_scalar_datetime_result_column_descriptor(
@@ -85984,6 +86021,8 @@ static const char *argument_count_error_node_function_name(
         return "SEC_TO_TIME";
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
         return "FROM_UNIXTIME";
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
+        return "DAYNAME";
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
         return "DAYOFMONTH";
     case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
@@ -85992,6 +86031,8 @@ static const char *argument_count_error_node_function_name(
         return "DAYOFYEAR";
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         return "LAST_DAY";
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
+        return "MONTHNAME";
     case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
         return "WEEKDAY";
     case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
@@ -86442,6 +86483,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIME_FORMAT");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "DAYNAME");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "DAYOFMONTH");
         return MYLITE_ERROR;
@@ -86453,6 +86497,9 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "LAST_DAY");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "MONTHNAME");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "WEEKDAY");
@@ -86473,7 +86520,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
     case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
     case MYLITE_SQL_AST_DAYOFYEAR_FUNCTION:
@@ -91031,13 +91080,18 @@ static int evaluate_temporal_extract_scalar_argument(
     bool *out_is_null
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    const int is_calendar_name = (int)mylite_temporal_extract_kind_is_calendar_name(extract_kind);
     const int is_calendar_date = (int)mylite_temporal_extract_kind_is_calendar_date(extract_kind);
     const int is_week_temporal = (int)mylite_temporal_extract_kind_is_week_temporal(extract_kind);
     const char *unsupported_message =
         "temporal extract functions support only string temporal literals and NULL";
     const char *nul_message = "temporal extract literals do not support NUL bytes";
 
-    if (is_week_temporal != 0) {
+    if (is_calendar_name != 0) {
+        unsupported_message =
+            "calendar name functions support only string temporal literals and NULL";
+        nul_message = "calendar name function literals do not support NUL bytes";
+    } else if (is_week_temporal != 0) {
         unsupported_message = "week temporal functions support only string temporal literals and "
                               "NULL";
         nul_message = "week temporal function literals do not support NUL bytes";
@@ -91231,9 +91285,13 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
         return MYLITE_TEMPORAL_EXTRACT_YEAR;
     case MYLITE_SQL_AST_MONTH_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_MONTH;
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_MONTHNAME;
     case MYLITE_SQL_AST_DAY_FUNCTION:
     case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_DAY;
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_DAYNAME;
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK;
     case MYLITE_SQL_AST_DAYOFYEAR_FUNCTION:
@@ -91263,7 +91321,9 @@ static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_
     case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
     case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
     case MYLITE_SQL_AST_DAYOFYEAR_FUNCTION:
@@ -108679,12 +108739,16 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
     case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFYEAR_FUNCTION:
     case MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LAST_DAY_FUNCTION:
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_WEEK_FUNCTION:
     case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
     case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
@@ -128194,12 +128258,16 @@ static const char *calendar_date_argument_count_error_function_name(
     enum mylite_sql_ast_node_kind ast_kind
 ) {
     switch (ast_kind) {
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
+        return "DAYNAME";
     case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
         return "DAYOFWEEK";
     case MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR:
         return "DAYOFYEAR";
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         return "LAST_DAY";
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
+        return "MONTHNAME";
     case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
         return "WEEKDAY";
     case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
@@ -137550,13 +137618,18 @@ static int plan_row_scalar_temporal_extract_argument(
     struct planned_row_scalar_expression *out_expression,
     enum mylite_temporal_extract_input_kind *out_input_kind
 ) {
+    const int is_calendar_name = (int)mylite_temporal_extract_kind_is_calendar_name(extract_kind);
     const int is_calendar_date = (int)mylite_temporal_extract_kind_is_calendar_date(extract_kind);
     const int is_week_temporal = (int)mylite_temporal_extract_kind_is_week_temporal(extract_kind);
     const char *unsupported_argument_message =
         "temporal extract functions support only string temporal literals, descriptor columns, and "
         "NULL";
 
-    if (is_week_temporal != 0) {
+    if (is_calendar_name != 0) {
+        unsupported_argument_message =
+            "calendar name functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
+    } else if (is_week_temporal != 0) {
         unsupported_argument_message =
             "week temporal functions support only string temporal literals, DATE, DATETIME, "
             "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
@@ -137635,6 +137708,7 @@ static int plan_row_scalar_temporal_extract_literal_value(
     struct planned_row_scalar_expression *out_expression
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    const int is_calendar_name = (int)mylite_temporal_extract_kind_is_calendar_name(extract_kind);
     const int is_calendar_date = (int)mylite_temporal_extract_kind_is_calendar_date(extract_kind);
     const int is_week_temporal = (int)mylite_temporal_extract_kind_is_week_temporal(extract_kind);
     const char *unsupported_message =
@@ -137645,7 +137719,12 @@ static int plan_row_scalar_temporal_extract_literal_value(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (is_week_temporal != 0) {
+    if (is_calendar_name != 0) {
+        unsupported_message =
+            "calendar name functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
+        nul_message = "calendar name function literals do not support NUL bytes";
+    } else if (is_week_temporal != 0) {
         unsupported_message =
             "week temporal functions support only string temporal literals, DATE, DATETIME, "
             "TIMESTAMP descriptor columns, string descriptor columns, and NULL";
@@ -137767,7 +137846,9 @@ static int reject_time_column_temporal_extract_date_part(
     struct mylite_db *database,
     enum mylite_temporal_extract_kind extract_kind
 ) {
-    if (mylite_temporal_extract_kind_is_week_temporal(extract_kind)) {
+    if (mylite_temporal_extract_kind_is_calendar_name(extract_kind)) {
+        set_unsupported_error(database, "calendar name functions do not yet support TIME values");
+    } else if (mylite_temporal_extract_kind_is_week_temporal(extract_kind)) {
         set_unsupported_error(database, "week temporal functions do not yet support TIME values");
     } else if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
         set_unsupported_error(database, "calendar date functions do not yet support TIME values");
@@ -137791,7 +137872,13 @@ static int reject_unsupported_temporal_extract_column(
     struct mylite_db *database,
     enum mylite_temporal_extract_kind extract_kind
 ) {
-    if (mylite_temporal_extract_kind_is_week_temporal(extract_kind)) {
+    if (mylite_temporal_extract_kind_is_calendar_name(extract_kind)) {
+        set_unsupported_error(
+            database,
+            "calendar name functions support only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, string descriptor columns, and NULL"
+        );
+    } else if (mylite_temporal_extract_kind_is_week_temporal(extract_kind)) {
         set_unsupported_error(
             database,
             "week temporal functions support only string temporal literals, DATE, DATETIME, "
@@ -139795,9 +139882,11 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
             is_temporal_extract_function_kind(current->kind) ||
             is_string_length_function_kind(current->kind) ||

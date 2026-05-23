@@ -37,6 +37,8 @@ enum mylite_temporal_extract_kind {
     MYLITE_TEMPORAL_EXTRACT_WEEKDAY = 24,
     MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR = 25,
     MYLITE_TEMPORAL_EXTRACT_YEARWEEK = 26,
+    MYLITE_TEMPORAL_EXTRACT_DAYNAME = 27,
+    MYLITE_TEMPORAL_EXTRACT_MONTHNAME = 28,
 };
 
 enum mylite_temporal_extract_input_kind {
@@ -54,6 +56,7 @@ bool mylite_temporal_extract_kind_from_name(
     enum mylite_temporal_extract_kind *out_kind
 );
 bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_kind kind);
+bool mylite_temporal_extract_kind_is_calendar_name(enum mylite_temporal_extract_kind kind);
 bool mylite_temporal_extract_kind_is_week_temporal(enum mylite_temporal_extract_kind kind);
 bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind kind);
 bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind kind);

@@ -63,6 +63,7 @@ enum {
     week_first_year_week_month = 1,
     week_first_year_week_day = 1,
     week_minimum_days_in_first_week = 4,
+    sunday_weekday_index = 1,
     yearweek_scale = 100,
     digit_radix = 10,
 };
@@ -137,6 +138,16 @@ static int invalid_calendar_date_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 );
+static int format_day_name_result(
+    struct mylite_db *database,
+    const struct temporal_date_parts *date,
+    char **out_text
+);
+static int format_month_name_result(
+    struct mylite_db *database,
+    const struct temporal_date_parts *date,
+    char **out_text
+);
 static int extract_time_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
@@ -207,6 +218,7 @@ static bool parse_time_text(
 );
 static bool parse_fixed_digits(const char *text, size_t count, int *out_value);
 static bool calendar_complete_date_is_valid(const struct temporal_date_parts *parts);
+static bool calendar_month_name_argument_is_valid(const struct temporal_date_parts *parts);
 static bool calendar_last_day_argument_is_valid(const struct temporal_date_parts *parts);
 static bool date_parts_are_valid(const struct temporal_date_parts *parts);
 static bool datetime_time_parts_are_valid(const struct temporal_time_parts *parts);
@@ -226,6 +238,7 @@ static int calendar_weeks_in_year(int year, int mode);
 static bool week_mode_uses_four_days_rule(int normalized_mode);
 static int calendar_sunday_based_weekday_from_day_number(int64_t day_number);
 static int64_t calendar_day_number(const struct temporal_date_parts *parts);
+static int copy_static_name_result(struct mylite_db *database, const char *name, char **out_text);
 static int append_incorrect_temporal_warning(
     struct mylite_db *database,
     const char *prefix,
@@ -259,6 +272,10 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "weekofyear";
     case MYLITE_TEMPORAL_EXTRACT_YEARWEEK:
         return "yearweek";
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+        return "dayname";
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
+        return "monthname";
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
         return "dayofweek";
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
@@ -313,6 +330,8 @@ bool mylite_temporal_extract_kind_from_name(
         {"weekday", MYLITE_TEMPORAL_EXTRACT_WEEKDAY},
         {"weekofyear", MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR},
         {"yearweek", MYLITE_TEMPORAL_EXTRACT_YEARWEEK},
+        {"dayname", MYLITE_TEMPORAL_EXTRACT_DAYNAME},
+        {"monthname", MYLITE_TEMPORAL_EXTRACT_MONTHNAME},
         {"dayofweek", MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK},
         {"dayofyear", MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR},
         {"last_day", MYLITE_TEMPORAL_EXTRACT_LAST_DAY},
@@ -350,6 +369,8 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
@@ -380,6 +401,43 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     return false;
 }
 
+bool mylite_temporal_extract_kind_is_calendar_name(enum mylite_temporal_extract_kind kind) {
+    switch (kind) {
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
+        return true;
+    case MYLITE_TEMPORAL_EXTRACT_DATE:
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
+    case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_QUARTER:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_MONTH:
+    case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_WEEK:
+    case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
+    case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_YEARWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
+        return false;
+    }
+    return false;
+}
+
 bool mylite_temporal_extract_kind_is_week_temporal(enum mylite_temporal_extract_kind kind) {
     switch (kind) {
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
@@ -398,6 +456,8 @@ bool mylite_temporal_extract_kind_is_week_temporal(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
@@ -426,6 +486,8 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
@@ -475,6 +537,8 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
@@ -831,7 +895,9 @@ static int temporal_extract_sqlite_result(
     } else if (
         extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE ||
         extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME ||
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_LAST_DAY
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_LAST_DAY ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_DAYNAME ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_MONTHNAME
     ) {
         sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
     } else {
@@ -912,6 +978,8 @@ static int extract_date_part_value(
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
@@ -962,6 +1030,16 @@ static int extract_calendar_date_value(
         }
         date.day = calendar_days_in_month(date.year, date.month);
         return format_date_result(database, &date, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+        if (!calendar_complete_date_is_valid(&date)) {
+            return invalid_calendar_date_value(database, request);
+        }
+        return format_day_name_result(database, &date, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
+        if (!calendar_month_name_argument_is_valid(&date)) {
+            return invalid_calendar_date_value(database, request);
+        }
+        return format_month_name_result(database, &date, request->out_text);
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
         if (!calendar_complete_date_is_valid(&date)) {
             return invalid_calendar_date_value(database, request);
@@ -1063,6 +1141,54 @@ static int invalid_calendar_date_value(
     }
     *request->out_is_null = true;
     return rc;
+}
+
+static int format_day_name_result(
+    struct mylite_db *database,
+    const struct temporal_date_parts *date,
+    char **out_text
+) {
+    static const char *const names[] = {
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+    };
+    int weekday = calendar_day_of_week(date);
+
+    if (weekday < sunday_weekday_index || weekday > days_per_week) {
+        return MYLITE_ERROR;
+    }
+    return copy_static_name_result(database, names[weekday - sunday_weekday_index], out_text);
+}
+
+static int format_month_name_result(
+    struct mylite_db *database,
+    const struct temporal_date_parts *date,
+    char **out_text
+) {
+    static const char *const names[] = {
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    };
+
+    if (date == NULL || date->month < 1 || date->month > date_month_max) {
+        return MYLITE_ERROR;
+    }
+    return copy_static_name_result(database, names[date->month - 1], out_text);
 }
 
 static int extract_time_part_value(
@@ -1206,6 +1332,8 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
     case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYNAME:
+    case MYLITE_TEMPORAL_EXTRACT_MONTHNAME:
     case MYLITE_TEMPORAL_EXTRACT_WEEK:
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
@@ -1691,6 +1819,17 @@ static bool calendar_complete_date_is_valid(const struct temporal_date_parts *pa
     return parts->day <= calendar_days_in_month(parts->year, parts->month);
 }
 
+static bool calendar_month_name_argument_is_valid(const struct temporal_date_parts *parts) {
+    if (parts == NULL || parts->month < 1 || parts->month > date_month_max || parts->day < 0 ||
+        parts->day > date_day_max) {
+        return false;
+    }
+    if (parts->day == 0) {
+        return true;
+    }
+    return parts->day <= calendar_days_in_month(parts->year, parts->month);
+}
+
 static bool calendar_last_day_argument_is_valid(const struct temporal_date_parts *parts) {
     if (parts == NULL || parts->month < 1 || parts->month > date_month_max || parts->day < 0 ||
         parts->day > date_day_max) {
@@ -1907,6 +2046,26 @@ static int64_t calendar_day_number(const struct temporal_date_parts *parts) {
         return (year * days_per_common_year) + leap_days_before_year + calendar_day_of_year(parts);
     }
     return calendar_day_of_year(parts);
+}
+
+static int copy_static_name_result(struct mylite_db *database, const char *name, char **out_text) {
+    size_t length = name == NULL ? 0U : strlen(name);
+
+    if (out_text == NULL || name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = (char *)malloc(length + 1U);
+    if (*out_text == NULL) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory"
+        );
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_text, name, length + 1U);
+    return MYLITE_OK;
 }
 
 static int append_incorrect_temporal_warning(

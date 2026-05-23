@@ -103,6 +103,7 @@ static int test_strcmp_function(void);
 static int test_regexp_like_function(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
+static int test_any_value_function(void);
 static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
 static int test_inverse_trig_functions(void);
@@ -422,6 +423,7 @@ int main(void) {
     failures += test_regexp_like_function();
     failures += test_pi_function();
     failures += test_rand_function();
+    failures += test_any_value_function();
     failures += test_sqrt_function();
     failures += test_angle_conversion_functions();
     failures += test_inverse_trig_functions();
@@ -9970,6 +9972,110 @@ static int test_bitwise_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT BIT_XOR(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_any_value_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *group_clause = NULL;
+    const struct mylite_sql_ast_node *having_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT ANY_VALUE(1), any_value(NULL), Any_Value('abc') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_ANY_VALUE_FUNCTION, "any_value integer");
+    failures += expect_span_text(first_expression, "ANY_VALUE(1)", "any_value integer span");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "integer arg");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ANY_VALUE_FUNCTION, "any_value null");
+    failures += expect_span_text(second_expression, "any_value(NULL)", "any_value null span");
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_ANY_VALUE_FUNCTION, "any_value string");
+    failures += expect_span_text(third_expression, "Any_Value('abc')", "any_value string span");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "any_value dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT g, ANY_VALUE(t.v) AS av FROM app.t GROUP BY g HAVING av IS NOT NULL "
+        "ORDER BY av DESC;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    having_clause = first_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_ANY_VALUE_FUNCTION, "grouped any_value");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified any_value argument"
+    );
+    failures += expect_span_text(child_at(group_clause, 0U), "g", "any_value group key");
+    failures +=
+        expect_span_text(child_at(child_at(having_clause, 0U), 0U), "av", "any_value having alias");
+    failures += expect_span_text(child_at(order_clause, 0U), "av", "any_value order alias");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "any_value order desc"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ANY_VALUE (1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_ANY_VALUE_FUNCTION, "spaced any_value");
+    failures += expect_span_text(first_expression, "ANY_VALUE (1)", "spaced any_value span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ANY_VALUE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR,
+        "empty any_value arity"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ANY_VALUE(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR,
+        "multi any_value arity"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE any_value(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "any_value identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ANY_VALUE(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT ANY_VALUE(DISTINCT v) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

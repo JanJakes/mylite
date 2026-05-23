@@ -1746,6 +1746,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_xor_aggregate_function";
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
         return "group_concat_aggregate_function";
+    case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
+        return "any_value_function";
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
+        return "any_value_argument_count_error";
     case MYLITE_SQL_AST_LOCK_TABLES_STATEMENT:
         return "lock_tables_statement";
     case MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT:

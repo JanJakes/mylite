@@ -272,6 +272,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"ANALYZE", MYLITE_SQL_KEYWORD_RESERVED},
         {"AND", MYLITE_SQL_KEYWORD_RESERVED},
         {"ANY", 0U},
+        {"ANY_VALUE", 0U},
         {"ARRAY", 0U},
         {"AS", MYLITE_SQL_KEYWORD_RESERVED},
         {"ASC", MYLITE_SQL_KEYWORD_RESERVED},

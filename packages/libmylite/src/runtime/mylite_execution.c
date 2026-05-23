@@ -3143,6 +3143,7 @@ enum planned_grouped_aggregate_function {
     PLANNED_GROUPED_AGGREGATE_BIT_OR = 8,
     PLANNED_GROUPED_AGGREGATE_BIT_XOR = 9,
     PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT = 10,
+    PLANNED_GROUPED_AGGREGATE_ANY_VALUE = 11,
 };
 
 enum { grouped_aggregate_max_results = 16 };
@@ -12913,6 +12914,15 @@ static int plan_grouped_count_column(
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
 );
+static int plan_grouped_any_value_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+);
 static int plan_grouped_column_aggregate_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
@@ -16617,6 +16627,9 @@ static int append_system_variable_error_name_byte(
     size_t capacity
 );
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *unwrap_any_value_function_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expression);
@@ -23736,6 +23749,9 @@ static bool row_scalar_column_descriptor_is_supported(
 static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_expression_contains_any_value_function(
+    const struct mylite_sql_ast_node *expression
+);
 static bool row_scalar_expression_contains_date_interval_second_function(
     const struct mylite_sql_ast_node *expression
 );
@@ -27260,6 +27276,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_GROUP_BY_ITEM_LIST:
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -27931,6 +27949,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
@@ -38463,7 +38483,7 @@ static bool compound_select_item_uses_string_collation(
 static bool compound_expression_uses_string_collation(
     const struct mylite_sql_ast_node *expression
 ) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {
         return false;
     }
@@ -38566,7 +38586,7 @@ static bool compound_select_item_uses_binary_collation(
 static bool compound_expression_uses_binary_collation(
     const struct mylite_sql_ast_node *expression
 ) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {
         return false;
     }
@@ -38691,6 +38711,10 @@ static int execute_scalar_or_row_scalar_select_if_needed(
     bool *out_handled
 ) {
     *out_handled = true;
+    if (select_statement_has_group_by_clause(statement)) {
+        *out_handled = false;
+        return MYLITE_OK;
+    }
     if (select_statement_is_row_function_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(
             database,
@@ -49529,6 +49553,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
@@ -78183,6 +78209,17 @@ static int plan_grouped_aggregate_item(
             &out_item->aggregate_column_source_index
         );
     }
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        return plan_grouped_any_value_column(
+            database,
+            aggregate_expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_item->aggregate_column,
+            &out_item->aggregate_column_source_index
+        );
+    }
 
     return plan_grouped_column_aggregate_column(
         database,
@@ -78193,6 +78230,30 @@ static int plan_grouped_aggregate_item(
         table_column_count,
         &out_item->aggregate_column,
         &out_item->aggregate_column_source_index
+    );
+}
+
+static int plan_grouped_any_value_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+) {
+    const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
+
+    return resolve_descriptor_column_reference_with_source_index(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "ANY_VALUE(column) supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        out_column,
+        out_source_index
     );
 }
 
@@ -78526,6 +78587,9 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
     case PLANNED_COLUMN_AGGREGATE_NONE:
         break;
     }
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {
+        return PLANNED_GROUPED_AGGREGATE_ANY_VALUE;
+    }
 
     return PLANNED_GROUPED_AGGREGATE_NONE;
 }
@@ -78553,6 +78617,7 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_GROUPED_AGGREGATE_ANY_VALUE:
         return PLANNED_COLUMN_AGGREGATE_NONE;
     }
 
@@ -81262,6 +81327,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(child_at(select_item, 0U)) ||
              (has_table_source &&
+              row_scalar_expression_contains_any_value_function(child_at(select_item, 0U))) ||
+             (has_table_source &&
               row_scalar_expression_is_concat_operator(child_at(select_item, 0U))) ||
              (has_table_source && row_scalar_expression_contains_date_interval_second_function(
                                       child_at(select_item, 0U)
@@ -81788,6 +81855,8 @@ static int copy_row_scalar_result_column_name(
     const struct planned_row_scalar_select_item *item,
     char **out_name
 ) {
+    const struct mylite_sql_ast_node *source_expression = NULL;
+
     if (out_name == NULL) {
         return MYLITE_MISUSE;
     }
@@ -81796,8 +81865,12 @@ static int copy_row_scalar_result_column_name(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    source_expression = unwrap_parenthesized_expression(item->source_expression);
     if (item->alias != NULL) {
         return copy_select_item_alias_text(database, item->alias, out_name);
+    }
+    if (source_expression != NULL && source_expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {
+        return copy_scalar_projection_column_name(database, item->source_expression, out_name);
     }
     if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return duplicate_text(database, item->expression.column.name, out_name);
@@ -83223,7 +83296,7 @@ static int append_grouped_aggregate_sqlite_row(
 ) {
     struct mylite_result_cell *cells = NULL;
     char (*projection_buffers)[approximate_numeric_text_capacity] = NULL;
-    char (*aggregate_buffers)[integer_text_capacity + sizeof(".0000")] = NULL;
+    char (*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
     int sqlite_column_index = 0;
     size_t result_column_count = plan->projection_count + plan->aggregate_count;
     int rc = MYLITE_OK;
@@ -83333,6 +83406,19 @@ static int append_grouped_aggregate_sqlite_cell(
     *out_cell = (struct mylite_result_cell){.is_null = true};
     if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
         rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
+        ++(*sqlite_column_index);
+        return rc;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        rc = append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            (size_t)*sqlite_column_index,
+            &item->aggregate_column,
+            buffer,
+            buffer_size,
+            out_cell
+        );
         ++(*sqlite_column_index);
         return rc;
     }
@@ -83779,7 +83865,7 @@ static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_no
 static bool is_scalar_projection_select_item_expression(
     const struct mylite_sql_ast_node *expression
 ) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
 
     if (expression == NULL) {
         return false;
@@ -84078,7 +84164,7 @@ static int make_scalar_result_column_descriptor(
         return MYLITE_MISUSE;
     }
     *out_descriptor = unknown_result_column_descriptor(label);
-    unwrapped = unwrap_parenthesized_expression(expression);
+    unwrapped = unwrap_any_value_function_expression(expression);
     if (unwrapped == NULL) {
         return MYLITE_OK;
     }
@@ -85140,6 +85226,8 @@ static const char *argument_count_error_node_function_name(
         return "POW";
     case MYLITE_SQL_AST_POWER_ARGUMENT_COUNT_ERROR:
         return "POWER";
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
+        return "ANY_VALUE";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -85299,7 +85387,7 @@ static int session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
@@ -85340,6 +85428,9 @@ static int session_scalar_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "ANY_VALUE");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_VERSION_FUNCTION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -107761,7 +107852,7 @@ static bool system_variable_component_is_empty(const struct system_variable_comp
 }
 
 static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
 
     if (expression == NULL) {
         return false;
@@ -107817,6 +107908,7 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_USER_VARIABLE:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
         return true;
     default:
         return false;
@@ -108465,7 +108557,7 @@ static void if_validation_stack_deinit(struct if_validation_stack *stack) {
 }
 
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
 
     if (expression == NULL) {
         return false;
@@ -110258,7 +110350,7 @@ static bool is_scalar_projection_attempt_expression(const struct mylite_sql_ast_
 static bool is_scalar_value_projection_attempt_expression(
     const struct mylite_sql_ast_node *expression
 ) {
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {
         return false;
     }
@@ -110287,6 +110379,7 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
         return true;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return is_scalar_value_projection_attempt_operand(expression);
@@ -110434,6 +110527,17 @@ static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
 ) {
     while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         expression = child_at(expression, 0U);
+    }
+
+    return expression;
+}
+
+static const struct mylite_sql_ast_node *unwrap_any_value_function_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    while (expression != NULL && expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {
+        expression = unwrap_parenthesized_expression(child_at(expression, 0U));
     }
 
     return expression;
@@ -126551,13 +126655,16 @@ static int plan_row_scalar_expression(
     bool handled = false;
     int rc = MYLITE_OK;
 
-    expression = unwrap_parenthesized_expression(expression);
+    expression = unwrap_any_value_function_expression(expression);
     planned_row_scalar_expression_deinit(out_expression);
     if (expression == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-
+    if (expression->kind == MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "ANY_VALUE");
+        return MYLITE_ERROR;
+    }
     if (row_scalar_expression_is_concat_operator(expression)) {
         return plan_row_scalar_concat_operator_expression(
             database,
@@ -138844,6 +138951,45 @@ static bool row_scalar_expression_contains_row_function(
         if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
             continue;
         }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return found;
+}
+
+static bool row_scalar_expression_contains_any_value_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        size_t child_count = 0U;
+
+        current = unwrap_parenthesized_expression(current);
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+
         child_count = mylite_sql_ast_node_child_count(current);
         for (size_t child_index = 0U; child_index < child_count; ++child_index) {
             if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
@@ -158428,6 +158574,14 @@ static int append_grouped_aggregate_expression_sql(
     if (item->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
         return dynamic_string_append(string, "COUNT(*)");
     }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        return append_descriptor_column_name_sql_for_source(
+            string,
+            &item->aggregate_column,
+            item->aggregate_column_source_index,
+            qualify
+        );
+    }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         rc = dynamic_string_append(string, "AVG(");
     } else {
@@ -158474,6 +158628,7 @@ static const char *grouped_aggregate_sql_function(
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_AVG:
+    case PLANNED_GROUPED_AGGREGATE_ANY_VALUE:
         return "";
     }
 

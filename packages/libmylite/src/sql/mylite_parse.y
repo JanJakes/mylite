@@ -5978,6 +5978,19 @@ expression(A) ::= GROUP_CONCAT(T) LPAREN(L) qualified_identifier(B)
     group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R). {
     A = mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R);
 }
+expression(A) ::= ANY_VALUE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ANY_VALUE_FUNCTION, B, R);
+}
+expression(A) ::= ANY_VALUE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ANY_VALUE(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR, C, R);
+}
 
 group_concat_order_opt(A) ::= . {
     A = NULL;
@@ -6655,6 +6668,9 @@ identifier(A) ::= BIT_XOR(T). {
 }
 identifier(A) ::= GROUP_CONCAT(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= ANY_VALUE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= BIT_COUNT(T). {
     A = mylite_sql_parser_make_identifier(state, T);

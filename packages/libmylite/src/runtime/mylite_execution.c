@@ -7473,6 +7473,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY = 54,
     SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY = 55,
     SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY = 56,
+    SESSION_SYSTEM_VARIABLE_BIG_TABLES = 57,
 };
 
 struct system_variable_component {
@@ -7532,6 +7533,7 @@ struct set_session_snapshot {
     bool sql_mode_is_placeholder;
     bool time_zone_is_placeholder;
     bool system_variables_are_placeholder;
+    bool big_tables;
     bool foreign_key_checks_enabled;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;
@@ -7549,6 +7551,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"auto_increment_increment", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT, true, true},
     {"auto_increment_offset", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET, true, true},
     {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT, true, true},
+    {"big_tables", SESSION_SYSTEM_VARIABLE_BIG_TABLES, true, true},
     {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT, true, true},
     {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION, true, true},
     {"character_set_database", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE, true, true},
@@ -7888,6 +7891,13 @@ static int evaluate_user_variable_assignment_value(
     struct session_scalar_cell *out_cell,
     enum mylite_session_user_variable_value_kind *out_value_kind
 );
+static int copy_user_variable_source_text_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_session_user_variable_value_kind value_kind,
+    struct session_scalar_cell *out_cell,
+    enum mylite_session_user_variable_value_kind *out_value_kind
+);
 static int set_session_user_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *target,
@@ -8057,11 +8067,25 @@ static int apply_set_system_variable_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment
 );
+static int apply_set_system_variable_user_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_sql_mode_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *value
+);
+static int apply_set_time_zone_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *value
 );
 static bool reject_invalid_read_only_system_variable_cell_target(
     struct mylite_db *database,
@@ -8080,6 +8104,12 @@ static int apply_set_group_concat_max_len_cell_value(
     enum mylite_session_user_variable_value_kind value_kind
 );
 static int apply_set_information_schema_stats_expiry_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_big_tables_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
@@ -8117,6 +8147,41 @@ static int apply_set_foreign_key_checks_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_big_tables_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int parse_set_big_tables_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_value
+);
+static int parse_set_big_tables_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_value
+);
+static int finish_parse_set_big_tables_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    uint64_t magnitude,
+    bool negative,
+    const char *value_text,
+    bool *out_value
+);
+static const struct mylite_sql_ast_node *unwrap_big_tables_value_literal(
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_negative
+);
+static void copy_big_tables_value_text(
+    const struct mylite_sql_ast_node *value_node,
+    char *buffer,
+    size_t buffer_size
 );
 static int parse_set_foreign_key_checks_value(
     struct mylite_db *database,
@@ -8364,6 +8429,14 @@ static uint64_t foreign_key_checks_system_variable_uint64_value(
     bool global_scope
 );
 static const char *foreign_key_checks_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static uint64_t big_tables_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static const char *big_tables_system_variable_show_value(
     const struct mylite_db *database,
     bool global_scope
 );
@@ -30896,28 +30969,9 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (unwrap_parenthesized_expression(value_node) != NULL &&
-        unwrap_parenthesized_expression(value_node)->kind == MYLITE_SQL_AST_USER_VARIABLE) {
-        struct session_scalar_cell value = {0};
-        enum mylite_session_user_variable_value_kind value_kind =
-            MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
-
-        rc = session_user_variable_value(
-            database,
-            unwrap_parenthesized_expression(value_node),
-            &value
-        );
-        if (rc == MYLITE_OK) {
-            rc = session_user_variable_value_kind(
-                database,
-                unwrap_parenthesized_expression(value_node),
-                &value_kind
-            );
-        }
-        if (rc == MYLITE_OK) {
-            rc = apply_set_system_variable_cell_value(database, &target, &value, value_kind);
-        }
-        session_scalar_cell_deinit(&value);
+    rc =
+        apply_set_system_variable_user_variable_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
         return rc;
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
@@ -30944,6 +30998,9 @@ static int apply_set_system_variable_assignment(
     if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         return apply_set_foreign_key_checks_value(database, &target, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_BIG_TABLES) {
+        return apply_set_big_tables_value(database, &target, value_node);
+    }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
@@ -30963,6 +31020,37 @@ static int apply_set_system_variable_assignment(
 
     set_read_only_system_variable_error(database, target.name);
     return MYLITE_ERROR;
+}
+
+static int apply_set_system_variable_user_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(value_node);
+    struct session_scalar_cell value = {0};
+    enum mylite_session_user_variable_value_kind value_kind =
+        MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (unwrapped == NULL || unwrapped->kind != MYLITE_SQL_AST_USER_VARIABLE) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+    rc = session_user_variable_value(database, unwrapped, &value);
+    if (rc == MYLITE_OK) {
+        rc = session_user_variable_value_kind(database, unwrapped, &value_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_set_system_variable_cell_value(database, target, &value, value_kind);
+    }
+    session_scalar_cell_deinit(&value);
+    return rc;
 }
 
 static int apply_set_integer_system_variable_value(
@@ -31063,6 +31151,31 @@ static int evaluate_user_variable_assignment_value(
             }
             return rc;
         }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL) {
+            return copy_user_variable_source_text_value(
+                database,
+                unwrapped,
+                MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL,
+                out_cell,
+                out_value_kind
+            );
+        }
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        const struct mylite_sql_ast_node *unary_value = child_at(unwrapped, 0U);
+
+        if (unary_value != NULL && unary_value->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(unary_value) == MYLITE_SQL_AST_LITERAL_DECIMAL) {
+            return copy_user_variable_source_text_value(
+                database,
+                mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_POSITIVE
+                    ? unary_value
+                    : unwrapped,
+                MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL,
+                out_cell,
+                out_value_kind
+            );
+        }
     }
 
     switch (unwrapped->kind) {
@@ -31081,10 +31194,41 @@ static int evaluate_user_variable_assignment_value(
     default:
         set_unsupported_error(
             database,
-            "SET user variables support only integer, string, boolean, NULL, and variable values"
+            "SET user variables support only integer, decimal, string, boolean, NULL, and "
+            "variable values"
         );
         return MYLITE_ERROR;
     }
+}
+
+static int copy_user_variable_source_text_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_session_user_variable_value_kind value_kind,
+    struct session_scalar_cell *out_cell,
+    enum mylite_session_user_variable_value_kind *out_value_kind
+) {
+    const struct mylite_sql_source_span *span = value_node == NULL ? NULL : &value_node->span;
+
+    if (out_cell == NULL || out_value_kind == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (span == NULL || span->text == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    out_cell->owned_text = (char *)malloc(span->length + 1U);
+    if (out_cell->owned_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(out_cell->owned_text, span->text, span->length);
+    out_cell->owned_text[span->length] = '\0';
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = span->length;
+    out_cell->has_value_size = true;
+    *out_value_kind = value_kind;
+    return MYLITE_OK;
 }
 
 static int set_session_user_variable(
@@ -31480,12 +31624,14 @@ static enum mylite_session_user_variable_value_kind infer_user_variable_value_ki
         case MYLITE_SQL_AST_LITERAL_NULL:
             return MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
         case MYLITE_SQL_AST_LITERAL_STRING:
-        case MYLITE_SQL_AST_LITERAL_DECIMAL:
-        case MYLITE_SQL_AST_LITERAL_FLOAT:
         case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
         case MYLITE_SQL_AST_LITERAL_HEX:
         case MYLITE_SQL_AST_LITERAL_BIT:
         case MYLITE_SQL_AST_LITERAL_NONE:
+            return MYLITE_SESSION_USER_VARIABLE_VALUE_STRING;
+        case MYLITE_SQL_AST_LITERAL_DECIMAL:
+            return MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL;
+        case MYLITE_SQL_AST_LITERAL_FLOAT:
             return MYLITE_SESSION_USER_VARIABLE_VALUE_STRING;
         }
     }
@@ -31788,6 +31934,9 @@ static int append_execute_parameter_sql(
         text_is_decimal_integer_literal(value->value, value->value_size)) {
         return dynamic_string_append_bytes(string, value->value, value->value_size);
     }
+    if (value->value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL) {
+        return dynamic_string_append_bytes(string, value->value, value->value_size);
+    }
 
     return append_execute_string_literal(database, string, value->value, value->value_size);
 }
@@ -32013,6 +32162,7 @@ static int copy_set_session_snapshot(
     out_snapshot->sql_mode_is_placeholder = session->sql_mode_is_placeholder;
     out_snapshot->time_zone_is_placeholder = session->time_zone_is_placeholder;
     out_snapshot->system_variables_are_placeholder = session->system_variables_are_placeholder;
+    out_snapshot->big_tables = session->big_tables;
     out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
     out_snapshot->has_next_transaction_isolation = session->has_next_transaction_isolation;
     out_snapshot->has_next_transaction_access_mode = session->has_next_transaction_access_mode;
@@ -32113,6 +32263,7 @@ static void restore_set_session_snapshot(
     session->sql_mode_is_placeholder = snapshot->sql_mode_is_placeholder;
     session->time_zone_is_placeholder = snapshot->time_zone_is_placeholder;
     session->system_variables_are_placeholder = snapshot->system_variables_are_placeholder;
+    session->big_tables = snapshot->big_tables;
     session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
     session->has_next_transaction_isolation = snapshot->has_next_transaction_isolation;
     session->has_next_transaction_access_mode = snapshot->has_next_transaction_access_mode;
@@ -32161,7 +32312,6 @@ static int apply_set_system_variable_cell_value(
     enum mylite_session_user_variable_value_kind value_kind
 ) {
     bool boolean_value = false;
-    uint64_t modes = 0U;
     int rc = MYLITE_OK;
 
     if (target == NULL || value == NULL) {
@@ -32171,28 +32321,10 @@ static int apply_set_system_variable_cell_value(
         return MYLITE_ERROR;
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
-        if (value->value == NULL) {
-            set_unsupported_error(
-                database,
-                "SET sql_mode from NULL user variables is not supported"
-            );
-            return MYLITE_ERROR;
-        }
-        rc = parse_sql_mode_text(database, value->value, &modes);
-        if (rc == MYLITE_OK) {
-            rc = append_set_sql_mode_warnings(database, modes);
-        }
-        if (rc == MYLITE_OK) {
-            rc = set_session_sql_mode(database, modes);
-        }
-        return rc;
+        return apply_set_sql_mode_cell_value(database, value);
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_TIME_ZONE) {
-        if (value->value == NULL) {
-            set_system_variable_cant_be_set_value_error(database, "time_zone", "NULL");
-            return MYLITE_ERROR;
-        }
-        return set_session_time_zone(database, value->value);
+        return apply_set_time_zone_cell_value(database, value);
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_cell_value(database, target, value, value_kind);
@@ -32219,6 +32351,9 @@ static int apply_set_system_variable_cell_value(
         }
         return rc;
     }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_BIG_TABLES) {
+        return apply_set_big_tables_cell_value(database, target, value, value_kind);
+    }
     if (set_system_variable_fixed_boolean_value(target->kind, &boolean_value)) {
         bool actual = false;
 
@@ -32241,6 +32376,44 @@ static int apply_set_system_variable_cell_value(
         "SET system variable assignments from user variables are not supported for this variable"
     );
     return MYLITE_ERROR;
+}
+
+static int apply_set_sql_mode_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *value
+) {
+    uint64_t modes = 0U;
+    int rc = MYLITE_OK;
+
+    if (value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value->value == NULL) {
+        set_unsupported_error(database, "SET sql_mode from NULL user variables is not supported");
+        return MYLITE_ERROR;
+    }
+    rc = parse_sql_mode_text(database, value->value, &modes);
+    if (rc == MYLITE_OK) {
+        rc = append_set_sql_mode_warnings(database, modes);
+    }
+    if (rc == MYLITE_OK) {
+        rc = set_session_sql_mode(database, modes);
+    }
+    return rc;
+}
+
+static int apply_set_time_zone_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *value
+) {
+    if (value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value->value == NULL) {
+        set_system_variable_cant_be_set_value_error(database, "time_zone", "NULL");
+        return MYLITE_ERROR;
+    }
+    return set_session_time_zone(database, value->value);
 }
 
 static bool reject_invalid_read_only_system_variable_cell_target(
@@ -32601,6 +32774,319 @@ static int validate_set_fixed_boolean_value(
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int apply_set_big_tables_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    bool value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid big_tables system variable target");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_big_tables_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (value) {
+            set_unsupported_error(
+                database,
+                "SET big_tables supports only fixed no-op global assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    database->session.big_tables = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int apply_set_big_tables_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    bool big_tables = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = parse_set_big_tables_cell_value(database, target->name, value, value_kind, &big_tables);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (big_tables) {
+            set_unsupported_error(
+                database,
+                "SET big_tables supports only fixed no-op global assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    database->session.big_tables = big_tables;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_big_tables_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = false;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        const struct mylite_sql_ast_node *inner_node =
+            unwrap_parenthesized_expression(child_at(value_node, 0U));
+
+        if (inner_node != NULL && inner_node->kind == MYLITE_SQL_AST_LITERAL &&
+            (mylite_sql_ast_node_literal_kind(inner_node) == MYLITE_SQL_AST_LITERAL_TRUE ||
+             mylite_sql_ast_node_literal_kind(inner_node) == MYLITE_SQL_AST_LITERAL_FALSE)) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+    }
+
+    literal_node = unwrap_big_tables_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_value = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *decoded = NULL;
+        size_t decoded_size = 0U;
+        int rc = decode_sql_string_literal(
+            database,
+            literal_node,
+            "SET big_tables supports only string literals",
+            "SET big_tables string values do not support NUL bytes",
+            &decoded,
+            &decoded_size
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(decoded, "ON")) {
+            *out_value = true;
+            free(decoded);
+            return MYLITE_OK;
+        }
+        if (text_equals_ascii_case_insensitive(decoded, "OFF")) {
+            free(decoded);
+            return MYLITE_OK;
+        }
+        free(decoded);
+        copy_big_tables_value_text(value_node, value_text, sizeof(value_text));
+        set_system_variable_cant_be_set_value_error(database, variable_name, value_text);
+        return MYLITE_ERROR;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        set_system_variable_cant_be_set_value_error(database, variable_name, "NULL");
+        return MYLITE_ERROR;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    copy_big_tables_value_text(value_node, value_text, sizeof(value_text));
+    return finish_parse_set_big_tables_integer(
+        database,
+        variable_name,
+        magnitude,
+        negative,
+        value_text,
+        out_value
+    );
+}
+
+static int parse_set_big_tables_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_value
+) {
+    struct mylite_sql_source_span unsigned_span = {0};
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = false;
+    if (value == NULL || text == NULL) {
+        set_system_variable_cant_be_set_value_error(database, variable_name, "NULL");
+        return MYLITE_ERROR;
+    }
+    if (value->has_value_size) {
+        text_size = value->value_size;
+    } else {
+        text_size = strlen(text);
+    }
+    if (value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
+        if (text_equals_ascii_case_insensitive(text, "ON")) {
+            *out_value = true;
+            return MYLITE_OK;
+        }
+        if (text_equals_ascii_case_insensitive(text, "OFF")) {
+            return MYLITE_OK;
+        }
+        set_system_variable_cant_be_set_value_error(database, variable_name, text);
+        return MYLITE_ERROR;
+    }
+    if (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER || text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        ++text;
+        --text_size;
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    if (parse_unsigned_integer_literal(&unsigned_span, &magnitude) != MYLITE_OK) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    return finish_parse_set_big_tables_integer(
+        database,
+        variable_name,
+        magnitude,
+        negative,
+        value->value,
+        out_value
+    );
+}
+
+static int finish_parse_set_big_tables_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    uint64_t magnitude,
+    bool negative,
+    const char *value_text,
+    bool *out_value
+) {
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (magnitude == 0U) {
+        *out_value = false;
+        return MYLITE_OK;
+    }
+    if (!negative && magnitude == 1U) {
+        *out_value = true;
+        return MYLITE_OK;
+    }
+
+    set_system_variable_cant_be_set_value_error(database, variable_name, value_text);
+    return MYLITE_ERROR;
+}
+
+static const struct mylite_sql_ast_node *unwrap_big_tables_value_literal(
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_negative
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+
+    if (out_negative != NULL) {
+        *out_negative = false;
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return literal_node;
+    }
+
+    switch (mylite_sql_ast_node_operator(literal_node)) {
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        if (out_negative != NULL) {
+            *out_negative = true;
+        }
+        break;
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+        break;
+    default:
+        return NULL;
+    }
+
+    return unwrap_parenthesized_expression(child_at(literal_node, 0U));
+}
+
+static void copy_big_tables_value_text(
+    const struct mylite_sql_ast_node *value_node,
+    char *buffer,
+    size_t buffer_size
+) {
+    const struct mylite_sql_source_span *span = value_node == NULL ? NULL : &value_node->span;
+    size_t source_offset = 0U;
+    size_t source_length = 0U;
+    size_t copied = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return;
+    }
+    if (span != NULL && span->text != NULL) {
+        source_length = span->length;
+        if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING &&
+            source_length >= 2U) {
+            source_offset = 1U;
+            source_length -= 2U;
+        }
+        copied = source_length < buffer_size ? source_length : buffer_size - 1U;
+        memcpy(buffer, &span->text[source_offset], copied);
+    }
+    buffer[copied] = '\0';
 }
 
 static int apply_set_foreign_key_checks_value(
@@ -102482,6 +102968,12 @@ static int hex_numeric_system_variable_value(
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
+        out_value->integer = big_tables_system_variable_uint64_value(
+            database,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
@@ -111025,6 +111517,15 @@ static int system_variable_value(
             ),
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
+        return format_session_scalar_uint64_value(
+            database,
+            big_tables_system_variable_uint64_value(
+                database,
+                system_variable_expression_has_global_scope(expression)
+            ),
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
@@ -111345,6 +111846,26 @@ static const char *foreign_key_checks_system_variable_show_value(
     return "OFF";
 }
 
+static uint64_t big_tables_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL || !database->session.big_tables) {
+        return 0U;
+    }
+    return 1U;
+}
+
+static const char *big_tables_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (big_tables_system_variable_uint64_value(database, global_scope) == 0U) {
+        return "OFF";
+    }
+    return "ON";
+}
+
 static const char *default_sql_mode_value(void) {
     return MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT;
 }
@@ -111480,6 +112001,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
@@ -111679,6 +112201,9 @@ static int show_system_variable_value(
         );
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         *out_value = foreign_key_checks_system_variable_show_value(database, global_scope);
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
+        *out_value = big_tables_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:

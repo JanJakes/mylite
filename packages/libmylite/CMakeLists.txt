@@ -1277,6 +1277,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_group_concat_max_len_system_variable_test)
 
+  add_executable(mylite_runtime_big_tables_system_variable_test
+    tests/runtime_big_tables_system_variable_test.c
+  )
+  target_link_libraries(mylite_runtime_big_tables_system_variable_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_big_tables_system_variable_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_big_tables_system_variable_test)
+
   add_executable(mylite_runtime_information_schema_stats_expiry_system_variable_test
     tests/runtime_information_schema_stats_expiry_system_variable_test.c
   )
@@ -4104,6 +4116,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.group_concat_max_len_system_variable
     COMMAND mylite_runtime_group_concat_max_len_system_variable_test
+  )
+  add_test(
+    NAME libmylite.runtime.big_tables_system_variable
+    COMMAND mylite_runtime_big_tables_system_variable_test
   )
   add_test(
     NAME libmylite.runtime.information_schema_stats_expiry_system_variable

@@ -133,6 +133,12 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "decimal assignments" \
+    "1.0	-1.50" \
+    "SET @d = 1.0, @nd = -1.50; SELECT @d, @nd;" \
+    "$DATABASE"
+
+expect_output \
     "quoted variables" \
     "ok	space	dq" \
     "SET @\`dash-name\` = 'ok', @'sp ace' = 'space', @\"dq-name\" = 'dq';

@@ -93,7 +93,7 @@ Performance Schema variable tables remain unsupported.
 | `automatic_sp_privileges` | ❌ | Value, scope, SET, diagnostics |
 | `back_log` | ❌ | Value, scope, SET, diagnostics |
 | `basedir` | ❌ | Value, scope, SET, diagnostics |
-| `big_tables` | ❌ | Value, scope, SET, diagnostics |
+| `big_tables` | 🟡 | Limited scalar `SELECT @@big_tables` with no scope, `session`, `local`, or fixed `global`; limited `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, boolean tokens, integer `0`/`1` with supported unary signs, string `ON`/`OFF`, and supported integer/string user variables, with decimal user variables rejected using MySQL-compatible diagnostics. Session/local/unscoped reads report the handle-local value; global reads remain fixed at `0`, and mutable global assignment is limited to exact no-op forms. No actual temporary-table storage, optimizer planning, row materialization, startup/persisted values, `SET_VAR` hints, privileges, or Performance Schema variable tables |
 | `bind_address` | ❌ | Value, scope, SET, diagnostics |
 | `binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |
 | `binlog_checksum` | ❌ | Value, scope, SET, diagnostics |

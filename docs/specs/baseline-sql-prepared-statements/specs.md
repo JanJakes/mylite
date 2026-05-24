@@ -98,12 +98,13 @@ text and do not count as parameter markers.
 
 `EXECUTE ... USING` binds only user variables. Uninitialized variables and
 `NULL` variables bind as SQL `NULL`. Integer and boolean user variables bind as
-decimal integer literals. String user variables bind as single-quoted string
-literals with MyLite-owned escaping. The bound SQL is then parsed and dispatched
-through the same internal statement execution path as direct SQL text, so
-descriptor resolution, catalog authority, SQLite identifier quoting, parameter
-binding inside physical plans, result metadata, diagnostics, warning counts,
-and affected-row behavior remain owned by existing statement implementations.
+decimal integer literals. Fixed-decimal user variables bind as decimal source
+text. String user variables bind as single-quoted string literals with
+MyLite-owned escaping. The bound SQL is then parsed and dispatched through the
+same internal statement execution path as direct SQL text, so descriptor
+resolution, catalog authority, SQLite identifier quoting, parameter binding
+inside physical plans, result metadata, diagnostics, warning counts, and
+affected-row behavior remain owned by existing statement implementations.
 
 This slice deliberately does not admit parameter markers outside prepared SQL,
 binary protocol markers, marker metadata, server-side parameter type inference,
@@ -206,8 +207,9 @@ snapshot path.
   unknown handlers, `DROP PREPARE`, source string and user-variable forms,
   marker count mismatches, invalid `USING` constants, direct `?` syntax errors,
   invalid marker locations, nested prepared commands, semicolon/multiple
-  statements, uninitialized/`NULL` variables, integer parameters, string
-  parameters, quoted strings with apostrophes/backslashes, and DML side effects.
+  statements, uninitialized/`NULL` variables, integer parameters,
+  fixed-decimal parameters, string parameters, quoted strings with
+  apostrophes/backslashes, and DML side effects.
 - Add parser tests for all admitted lifecycle grammar and rejected malformed
   forms.
 - Add runtime C tests for session-local lifecycle, independent handles,

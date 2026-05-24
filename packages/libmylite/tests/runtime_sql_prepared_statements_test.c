@@ -178,6 +178,8 @@ static int test_prepared_statement_source_variables_and_dml(void) {
     static const char *const escaped_columns[] = {"id"};
     static const char *const default_backslash_values[] = {"1"};
     static const char *const no_backslash_escape_values[] = {"2"};
+    static const char *const decimal_columns[] = {"v"};
+    static const char *const decimal_values[] = {"-1.50", "1.00"};
     mylite_db *database = NULL;
     int failures = make_test_path(path, sizeof(path), "prepared-source-dml");
 
@@ -255,6 +257,30 @@ static int test_prepared_statement_source_variables_and_dml(void) {
             .context = "null parameter predicate",
         }
     );
+
+    failures += execute_statement_ok(database, "CREATE TABLE decimal_params (v DECIMAL(6,2))");
+    failures += execute_statement_ok(
+        database,
+        "PREPARE decimals FROM 'INSERT INTO decimal_params VALUES (?), (?)'"
+    );
+    failures += execute_statement_ok(database, "SET @d = 1.0, @nd = -1.50");
+    failures +=
+        expect_statement_result(database, "EXECUTE decimals USING @nd, @d", 2, "decimal insert");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM decimal_params",
+            .columns = decimal_columns,
+            .values = decimal_values,
+            .column_count = 1U,
+            .row_count = 2U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "fixed decimal parameter readback",
+        }
+    );
+    failures +=
+        expect_statement_result(database, "DEALLOCATE PREPARE decimals", 0, "deallocate decimal");
 
     failures +=
         execute_statement_ok(database, "PREPARE escstmt FROM 'SELECT id FROM t WHERE v <=> ?'");

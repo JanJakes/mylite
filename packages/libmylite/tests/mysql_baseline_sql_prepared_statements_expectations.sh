@@ -122,6 +122,20 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "fixed decimal parameters" \
+    "2
+-1.50
+1.00" \
+     "CREATE TABLE decimal_params (v DECIMAL(6,2));
+     PREPARE decimals FROM 'INSERT INTO decimal_params VALUES (?), (?)';
+     SET @d = 1.0, @nd = -1.50;
+     EXECUTE decimals USING @nd, @d;
+     SELECT ROW_COUNT();
+     SELECT v FROM decimal_params;
+     DEALLOCATE PREPARE decimals;" \
+    "$DATABASE"
+
+expect_output \
     "backslash parameters" \
     "615C62
 615C5C62" \

@@ -96,6 +96,7 @@ enum mylite_session_user_variable_value_kind {
     MYLITE_SESSION_USER_VARIABLE_VALUE_NULL = 0,
     MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER = 1,
     MYLITE_SESSION_USER_VARIABLE_VALUE_STRING = 2,
+    MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL = 3,
 };
 
 struct mylite_session_user_variable {
@@ -170,6 +171,7 @@ struct mylite_session_state {
     bool time_zone_is_placeholder;
     bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
+    bool big_tables;
     bool foreign_key_checks_enabled;
     bool user_transaction_active;
     bool has_next_transaction_isolation;

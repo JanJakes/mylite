@@ -21,7 +21,7 @@ enum {
     user_variable_name_too_long_character_count = 65,
     user_variable_sql_capacity = 320,
     uninitialized_read_column_count = 5,
-    assigned_read_column_count = 11,
+    assigned_read_column_count = 13,
     atomic_rollback_column_count = 5,
     test_path_capacity = 256,
 };
@@ -114,6 +114,8 @@ static int test_user_variable_values_and_scalar_reads(void) {
         "@`dash-name`",
         "@'sp ace'",
         "@\"dq-name\"",
+        "@d",
+        "@nd",
         "ROW_COUNT()",
         "@@warning_count",
         "@@error_count",
@@ -127,6 +129,8 @@ static int test_user_variable_values_and_scalar_reads(void) {
         "ok",
         "space",
         "dq",
+        "1.0",
+        "-1.50",
         "0",
         "0",
         "0",
@@ -158,7 +162,7 @@ static int test_user_variable_values_and_scalar_reads(void) {
     failures += expect_statement_result(
         database,
         "SET @a = 1, @b := 'x', @c = NULL, @p = (+2), @`dash-name` = 'ok', "
-        "@'sp ace' = 'space', @\"dq-name\" = 'dq'",
+        "@'sp ace' = 'space', @\"dq-name\" = 'dq', @d = 1.0, @nd = -1.50",
         0,
         "assign user variables"
     );
@@ -166,7 +170,7 @@ static int test_user_variable_values_and_scalar_reads(void) {
         database,
         (struct expected_query){
             .sql = "SELECT @a, @b AS bee, @c, @p, @a + 2, @`dash-name`, @'sp ace', "
-                   "@\"dq-name\", ROW_COUNT(), @@warning_count, @@error_count",
+                   "@\"dq-name\", @d, @nd, ROW_COUNT(), @@warning_count, @@error_count",
             .columns = assigned_columns,
             .values = assigned_values,
             .column_count = assigned_read_column_count,

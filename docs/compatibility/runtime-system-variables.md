@@ -92,7 +92,7 @@ Performance Schema variable tables remain unsupported.
 | `autocommit` | 🟡 | Limited scalar `SELECT @@autocommit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed visible autocommit baseline `1`; limited fixed no-op `SET` forms may preserve `1`; explicit `START TRANSACTION` / `BEGIN` user transactions are tracked separately while visible autocommit remains `1`; no mutable global/session state, `SET autocommit = 0`, session-state tracking, or protocol status flags |
 | `automatic_sp_privileges` | ❌ | Value, scope, SET, diagnostics |
 | `back_log` | ❌ | Value, scope, SET, diagnostics |
-| `basedir` | ❌ | Value, scope, SET, diagnostics |
+| `basedir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/usr/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host installation discovery, startup option handling, path probing, or filesystem behavior |
 | `big_tables` | 🟡 | Limited scalar `SELECT @@big_tables` with no scope, `session`, `local`, or fixed `global`; limited `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, boolean tokens, integer `0`/`1` with supported unary signs, string `ON`/`OFF`, and supported integer/string user variables, with decimal user variables rejected using MySQL-compatible diagnostics. Session/local/unscoped reads report the handle-local value; global reads remain fixed at `0`, and mutable global assignment is limited to exact no-op forms. No actual temporary-table storage, optimizer planning, row materialization, startup/persisted values, `SET_VAR` hints, privileges, or Performance Schema variable tables |
 | `bind_address` | ❌ | Value, scope, SET, diagnostics |
 | `binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |
@@ -165,7 +165,7 @@ Performance Schema variable tables remain unsupported.
 | `core_file` | ❌ | Value, scope, SET, diagnostics |
 | `create_admin_listener_thread` | ❌ | Value, scope, SET, diagnostics |
 | `cte_max_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
-| `datadir` | ❌ | Value, scope, SET, diagnostics |
+| `datadir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/lib/mysql/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No MySQL data-directory layout, startup option handling, path probing, or file placement behavior |
 | `debug` | ❌ | Value, scope, SET, diagnostics |
 | `debug_sync` | ❌ | Value, scope, SET, diagnostics |
 | `default_collation_for_utf8mb4` | ❌ | Value, scope, SET, diagnostics |
@@ -284,7 +284,7 @@ Performance Schema variable tables remain unsupported.
 | `have_symlink` | ❌ | Value, scope, SET, diagnostics |
 | `histogram_generation_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
 | `host_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `hostname` | ❌ | Value, scope, SET, diagnostics |
+| `hostname` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `mylite`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host-name probing, DNS behavior, startup option handling, or replication identity behavior |
 | `identity` | ❌ | Value, scope, SET, diagnostics |
 | `immediate_server_version` | ❌ | Value, scope, SET, diagnostics |
 | `information_schema_stats_expiry` | 🟡 | Limited handle-local session scalar reads and `SHOW VARIABLES` rows; session/local/unqualified `SET` assignment for `DEFAULT`, integer literals with optional unary sign, booleans, and integer user variables; values below `0` clamp to `0`, values above `31536000` clamp to `31536000`, and clamping emits warning `1292`. Global reads expose fixed `86400` and mutable global assignment is limited to exact no-op `DEFAULT`/`86400` forms; no actual information-schema statistics cache, shared cross-session statistics state, `ANALYZE TABLE` interaction, startup options, persisted variables, privileges, `SET_VAR` hints, or Performance Schema variable tables |
@@ -488,7 +488,7 @@ Performance Schema variable tables remain unsupported.
 | `lc_messages` | ❌ | Value, scope, SET, diagnostics |
 | `lc_messages_dir` | ❌ | Value, scope, SET, diagnostics |
 | `lc_time_names` | ❌ | Value, scope, SET, diagnostics |
-| `license` | ❌ | Value, scope, SET, diagnostics |
+| `license` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `GPL`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. The placeholder is not a project license notice; no server-build license discovery or startup option behavior |
 | `local_infile` | ❌ | Value, scope, SET, diagnostics |
 | `lock_order` | ❌ | Value, scope, SET, diagnostics |
 | `lock_order_debug_loop` | ❌ | Value, scope, SET, diagnostics |
@@ -749,9 +749,9 @@ Performance Schema variable tables remain unsupported.
 | `persist_only_admin_x509_subject` | ❌ | Value, scope, SET, diagnostics |
 | `persist_sensitive_variables_in_plaintext` | ❌ | Value, scope, SET, diagnostics |
 | `persisted_globals_load` | ❌ | Value, scope, SET, diagnostics |
-| `pid_file` | ❌ | Value, scope, SET, diagnostics |
-| `plugin_dir` | ❌ | Value, scope, SET, diagnostics |
-| `port` | ❌ | Value, scope, SET, diagnostics |
+| `pid_file` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/run/mysqld/mysqld.pid`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No PID file is created or read |
+| `plugin_dir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/usr/lib64/mysql/plugin/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No plugin loading or path probing |
+| `port` | 🟡 | Limited fixed global read-only numeric scalar and `SHOW VARIABLES` placeholder `3306`; default/global scalar reads and numeric scalar contexts such as `HEX(@@port)` are supported, `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No network listener, socket binding, startup option handling, or mutable port state |
 | `preload_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `print_identified_with_as_hex` | ❌ | Value, scope, SET, diagnostics |
 | `profiling` | ❌ | Value, scope, SET, diagnostics |
@@ -877,7 +877,7 @@ Performance Schema variable tables remain unsupported.
 | `slow_launch_time` | ❌ | Value, scope, SET, diagnostics |
 | `slow_query_log` | ❌ | Value, scope, SET, diagnostics |
 | `slow_query_log_file` | ❌ | Value, scope, SET, diagnostics |
-| `socket` | ❌ | Value, scope, SET, diagnostics |
+| `socket` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/run/mysqld/mysqld.sock`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No socket file is created or used |
 | `sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `source_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `sql_auto_is_null` | 🟡 | Limited scalar `SELECT @@sql_auto_is_null` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; limited fixed no-op `SET` forms may preserve `0`; no mutable global/session state, special `IS NULL` lookup behavior, changed predicates, or Performance Schema variable tables |

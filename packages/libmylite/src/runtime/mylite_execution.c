@@ -661,6 +661,14 @@ static const uint64_t group_concat_max_len_minimum_value = 4ULL;
 static const uint64_t information_schema_stats_expiry_default_value =
     MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE;
 static const uint64_t information_schema_stats_expiry_max_value = 31536000ULL;
+static const uint64_t port_system_variable_value = 3306ULL;
+static const char basedir_system_variable_value[] = "/usr/";
+static const char datadir_system_variable_value[] = "/var/lib/mysql/";
+static const char hostname_system_variable_value[] = "mylite";
+static const char license_system_variable_value[] = "GPL";
+static const char pid_file_system_variable_value[] = "/var/run/mysqld/mysqld.pid";
+static const char plugin_dir_system_variable_value[] = "/usr/lib64/mysql/plugin/";
+static const char socket_system_variable_value[] = "/var/run/mysqld/mysqld.sock";
 static const uint64_t server_id_system_variable_value = 1ULL;
 static const uint64_t server_id_bits_system_variable_value = 32ULL;
 static const char server_uuid_system_variable_value[] = "4d796c69-7465-4000-8000-000000000001";
@@ -7497,6 +7505,14 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SERVER_ID = 62,
     SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS = 63,
     SESSION_SYSTEM_VARIABLE_SERVER_UUID = 64,
+    SESSION_SYSTEM_VARIABLE_BASEDIR = 65,
+    SESSION_SYSTEM_VARIABLE_DATADIR = 66,
+    SESSION_SYSTEM_VARIABLE_HOSTNAME = 67,
+    SESSION_SYSTEM_VARIABLE_LICENSE = 68,
+    SESSION_SYSTEM_VARIABLE_PID_FILE = 69,
+    SESSION_SYSTEM_VARIABLE_PLUGIN_DIR = 70,
+    SESSION_SYSTEM_VARIABLE_PORT = 71,
+    SESSION_SYSTEM_VARIABLE_SOCKET = 72,
 };
 
 struct system_variable_component {
@@ -7574,6 +7590,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"auto_increment_increment", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT, true, true},
     {"auto_increment_offset", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET, true, true},
     {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT, true, true},
+    {"basedir", SESSION_SYSTEM_VARIABLE_BASEDIR, true, true},
     {"big_tables", SESSION_SYSTEM_VARIABLE_BIG_TABLES, true, true},
     {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT, true, true},
     {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION, true, true},
@@ -7585,6 +7602,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"collation_connection", SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION, true, true},
     {"collation_database", SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE, true, true},
     {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER, true, true},
+    {"datadir", SESSION_SYSTEM_VARIABLE_DATADIR, true, true},
     {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE, true, true},
     {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT, true, false},
     {"explicit_defaults_for_timestamp",
@@ -7597,12 +7615,14 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
     {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
     {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
+    {"hostname", SESSION_SYSTEM_VARIABLE_HOSTNAME, true, true},
     {"information_schema_stats_expiry",
      SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY,
      true,
      true},
     {"innodb_read_only", SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY, true, true},
     {"interactive_timeout", SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT, true, true},
+    {"license", SESSION_SYSTEM_VARIABLE_LICENSE, true, true},
     {"log_bin", SESSION_SYSTEM_VARIABLE_LOG_BIN, true, true},
     {"log_bin_basename", SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME, true, true},
     {"log_bin_index", SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX, true, true},
@@ -7613,10 +7633,14 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"lower_case_file_system", SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
     {"lower_case_table_names", SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
     {"max_allowed_packet", SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
+    {"pid_file", SESSION_SYSTEM_VARIABLE_PID_FILE, true, true},
+    {"plugin_dir", SESSION_SYSTEM_VARIABLE_PLUGIN_DIR, true, true},
+    {"port", SESSION_SYSTEM_VARIABLE_PORT, true, true},
     {"read_only", SESSION_SYSTEM_VARIABLE_READ_ONLY, true, true},
     {"server_id", SESSION_SYSTEM_VARIABLE_SERVER_ID, true, true},
     {"server_id_bits", SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS, true, true},
     {"server_uuid", SESSION_SYSTEM_VARIABLE_SERVER_UUID, true, true},
+    {"socket", SESSION_SYSTEM_VARIABLE_SOCKET, true, true},
     {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
     {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
     {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
@@ -8239,6 +8263,7 @@ static void copy_foreign_key_checks_value_text(
 static bool is_read_only_server_identity_binary_log_system_variable(
     enum session_system_variable_kind kind
 );
+static bool is_read_only_server_environment_system_variable(enum session_system_variable_kind kind);
 static bool fixed_global_uint64_server_identity_system_variable_value(
     enum session_system_variable_kind kind,
     uint64_t *out_value,
@@ -31312,7 +31337,8 @@ static int apply_set_system_variable_assignment(
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
         target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
-        target.kind == SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY) {
+        target.kind == SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
+        is_read_only_server_environment_system_variable(target.kind)) {
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
@@ -32839,6 +32865,10 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
+    if (is_read_only_server_environment_system_variable(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
     if (is_read_only_server_identity_binary_log_system_variable(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
@@ -33143,6 +33173,24 @@ static bool is_read_only_server_identity_binary_log_system_variable(
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
     case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_read_only_server_environment_system_variable(
+    enum session_system_variable_kind kind
+) {
+    switch (kind) {
+    case SESSION_SYSTEM_VARIABLE_BASEDIR:
+    case SESSION_SYSTEM_VARIABLE_DATADIR:
+    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
+    case SESSION_SYSTEM_VARIABLE_LICENSE:
+    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+    case SESSION_SYSTEM_VARIABLE_PORT:
+    case SESSION_SYSTEM_VARIABLE_SOCKET:
         return true;
     default:
         return false;
@@ -104483,6 +104531,9 @@ static int hex_numeric_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
         out_value->integer = server_id_bits_system_variable_value;
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_PORT:
+        out_value->integer = port_system_variable_value;
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
         out_value->integer = sql_select_limit_system_variable_value(
             database,
@@ -112953,14 +113004,35 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
         out_cell->value = "";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_BASEDIR:
+        out_cell->value = basedir_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_DATADIR:
+        out_cell->value = datadir_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
+        out_cell->value = hostname_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_LICENSE:
+        out_cell->value = license_system_variable_value;
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
         out_cell->value = log_bin_basename_system_variable_value;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
         out_cell->value = log_bin_index_system_variable_value;
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+        out_cell->value = pid_file_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+        out_cell->value = plugin_dir_system_variable_value;
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
         out_cell->value = server_uuid_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SOCKET:
+        out_cell->value = socket_system_variable_value;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
@@ -113069,6 +113141,8 @@ static int system_variable_value(
             server_id_bits_system_variable_value,
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_PORT:
+        return format_session_scalar_uint64_value(database, port_system_variable_value, out_cell);
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
         rc = format_uint64(
             database,
@@ -113500,6 +113574,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+    case SESSION_SYSTEM_VARIABLE_BASEDIR:
     case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
     case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
@@ -113509,6 +113584,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
     case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
+    case SESSION_SYSTEM_VARIABLE_DATADIR:
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
@@ -113535,6 +113611,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
     case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
     case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
     case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
@@ -113543,6 +113620,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
     case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
     case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case SESSION_SYSTEM_VARIABLE_LICENSE:
     case SESSION_SYSTEM_VARIABLE_LOG_BIN:
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
@@ -113550,10 +113628,14 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+    case SESSION_SYSTEM_VARIABLE_PORT:
     case SESSION_SYSTEM_VARIABLE_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_SERVER_ID:
     case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
     case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
+    case SESSION_SYSTEM_VARIABLE_SOCKET:
     case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
     case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
@@ -113565,7 +113647,15 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
 
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind) {
     switch (kind) {
+    case SESSION_SYSTEM_VARIABLE_BASEDIR:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
+    case SESSION_SYSTEM_VARIABLE_DATADIR:
+    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
+    case SESSION_SYSTEM_VARIABLE_LICENSE:
+    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+    case SESSION_SYSTEM_VARIABLE_PORT:
+    case SESSION_SYSTEM_VARIABLE_SOCKET:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_VERSION:
@@ -113683,14 +113773,35 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
         *out_value = "";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_BASEDIR:
+        *out_value = basedir_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_DATADIR:
+        *out_value = datadir_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
+        *out_value = hostname_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_LICENSE:
+        *out_value = license_system_variable_value;
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
         *out_value = log_bin_basename_system_variable_value;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
         *out_value = log_bin_index_system_variable_value;
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+        *out_value = pid_file_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+        *out_value = plugin_dir_system_variable_value;
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
         *out_value = server_uuid_system_variable_value;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SOCKET:
+        *out_value = socket_system_variable_value;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
@@ -113784,6 +113895,14 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             server_id_bits_system_variable_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case SESSION_SYSTEM_VARIABLE_PORT:
+        return format_show_system_variable_uint64_value(
+            database,
+            port_system_variable_value,
             integer_buffer,
             integer_buffer_size,
             out_value

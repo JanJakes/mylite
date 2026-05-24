@@ -85,6 +85,43 @@ expect_output \
 "SELECT id, v, u, n FROM events ORDER BY id;" \
     "$DATABASE"
 
+text_targets_expected=$(cat <<EXPECTED
+1	0
+_site_transient_timeout_tag1	1704067110	no
+1704067200	1704067110	1704067205	1704067207	NULL	1704067208
+1	1704067230	1704067231
+2	1704067220	NULL
+3	1704067240	NULL
+EXPECTED
+)
+expect_output \
+    "insert unix timestamp arithmetic text targets" \
+    "$text_targets_expected" \
+    "SET time_zone = '+00:00'; SET timestamp = 1704067200; "\
+"CREATE TABLE wp_options(option_name VARCHAR(191), option_value LONGTEXT, autoload VARCHAR(20)); "\
+"INSERT INTO wp_options(option_name, option_value, autoload) "\
+"VALUES ('_site_transient_timeout_tag1', UNIX_TIMESTAMP() + -90, 'no'); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT option_name, option_value, autoload FROM wp_options; "\
+"CREATE TABLE text_values(v VARCHAR(32), txt TEXT, lt LONGTEXT, c CHAR(20), "\
+"n VARCHAR(20), nn VARCHAR(20) NOT NULL); "\
+"INSERT INTO text_values(v, txt, lt, c, n, nn) VALUES "\
+"(UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + -90, UNIX_TIMESTAMP() - -5, "\
+"UNIX_TIMESTAMP() + 7, UNIX_TIMESTAMP() + NULL, UNIX_TIMESTAMP() + 8); "\
+"SELECT v, txt, lt, c, n, nn FROM text_values; "\
+"CREATE TABLE text_events(id INT PRIMARY KEY, v LONGTEXT, s VARCHAR(32)); "\
+"INSERT INTO text_events SET id = 1, v = UNIX_TIMESTAMP() + 10, "\
+"s = UNIX_TIMESTAMP() + 11; "\
+"INSERT INTO text_events VALUES (2, 'old', 'old'); "\
+"REPLACE INTO text_events(id, v, s) VALUES "\
+"(2, UNIX_TIMESTAMP() + 20, UNIX_TIMESTAMP() + NULL); "\
+"REPLACE INTO text_events SET id = 3, v = UNIX_TIMESTAMP() + 40, "\
+"s = UNIX_TIMESTAMP() + NULL; "\
+"INSERT INTO text_events(id, v, s) VALUES (1, 'old', 'old') "\
+"ON DUPLICATE KEY UPDATE v = UNIX_TIMESTAMP() + 30, s = UNIX_TIMESTAMP() + 31; "\
+"SELECT id, v, s FROM text_events ORDER BY id;" \
+    "$DATABASE"
+
 set_replace_duplicate_expected=$(cat <<EXPECTED
 1	0
 2	0
@@ -148,6 +185,34 @@ expect_output \
     "INSERT IGNORE INTO required_value VALUES (UNIX_TIMESTAMP() + NULL); "\
 "SHOW WARNINGS; SELECT ROW_COUNT(), @@warning_count, v FROM required_value;" \
     "$DATABASE"
+
+text_null_ignore_expected=$(cat <<EXPECTED
+Warning	1048	Column 'v' cannot be null
+-1	1	[]
+EXPECTED
+)
+expect_error \
+    "null arithmetic into not null text" \
+    1048 \
+    23000 \
+    "Column 'v' cannot be null" \
+    "USE ${DATABASE}; CREATE TABLE required_text(v VARCHAR(10) NOT NULL); "\
+"INSERT INTO required_text VALUES (UNIX_TIMESTAMP() + NULL);"
+expect_output \
+    "insert ignore null text arithmetic adjustment" \
+    "$text_null_ignore_expected" \
+    "INSERT IGNORE INTO required_text VALUES (UNIX_TIMESTAMP() + NULL); "\
+"SHOW WARNINGS; SELECT ROW_COUNT(), @@warning_count, CONCAT('[', v, ']') FROM required_text;" \
+    "$DATABASE"
+
+expect_error \
+    "target string too long" \
+    1406 \
+    22001 \
+    "Data too long for column 'v' at row 1" \
+    "USE ${DATABASE}; CREATE TABLE short_text(v VARCHAR(4)); "\
+"SET timestamp = 1704067200; "\
+"INSERT INTO short_text VALUES (UNIX_TIMESTAMP());"
 
 expect_error \
     "target integer out of range" \

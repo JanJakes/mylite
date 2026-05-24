@@ -20393,6 +20393,7 @@ static int convert_insert_unix_timestamp_arithmetic_value(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
 static int evaluate_insert_unix_timestamp_arithmetic_value(
@@ -20418,6 +20419,20 @@ static int finish_insert_unix_timestamp_integer_value(
     size_t row_number,
     bool ignore_errors,
     struct planned_value *out_value
+);
+static int finish_insert_unix_timestamp_text_value(
+    struct mylite_db *database,
+    int64_t integer,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_string_truncation_adjustment,
+    struct planned_value *out_value
+);
+static int format_insert_unix_timestamp_integer_text(
+    struct mylite_db *database,
+    int64_t integer,
+    char **out_text,
+    size_t *out_text_length
 );
 static bool insert_unix_timestamp_now_node_is_admitted(
     const struct mylite_sql_ast_node *value_node
@@ -127994,6 +128009,7 @@ static int convert_insert_value(
             column,
             row_number,
             ignore_errors,
+            allow_string_truncation_adjustment,
             out_value
         );
     }
@@ -128069,6 +128085,7 @@ static int convert_insert_unix_timestamp_arithmetic_value(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 ) {
     struct integer_column_range range = {0};
@@ -128083,15 +128100,17 @@ static int convert_insert_unix_timestamp_arithmetic_value(
         return MYLITE_ERROR;
     }
 
-    rc = integer_range_for_column(
-        database,
-        column,
-        "INSERT UNIX_TIMESTAMP arithmetic supports only integer targets",
-        &range
-    );
-    (void)range;
-    if (rc != MYLITE_OK) {
-        return rc;
+    if (!column_descriptor_is_string_family(column)) {
+        rc = integer_range_for_column(
+            database,
+            column,
+            "INSERT UNIX_TIMESTAMP arithmetic supports only integer and nonbinary string targets",
+            &range
+        );
+        (void)range;
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
 
     rc = evaluate_insert_unix_timestamp_arithmetic_value(database, value_node, &value);
@@ -128102,6 +128121,16 @@ static int convert_insert_unix_timestamp_arithmetic_value(
         return convert_null_insert_value(database, column, ignore_errors, out_value);
     }
 
+    if (column_descriptor_is_string_family(column)) {
+        return finish_insert_unix_timestamp_text_value(
+            database,
+            value.integer,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            out_value
+        );
+    }
     return finish_insert_unix_timestamp_integer_value(
         database,
         value.integer,
@@ -128286,6 +128315,92 @@ static int finish_insert_unix_timestamp_integer_value(
         ignore_errors,
         &out_value->integer
     );
+}
+
+static int finish_insert_unix_timestamp_text_value(
+    struct mylite_db *database,
+    int64_t integer,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_string_truncation_adjustment,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    struct char_text_conversion conversion = {
+        .text = NULL,
+        .text_length = 0U,
+        .row_number = row_number,
+    };
+    int rc = format_insert_unix_timestamp_integer_text(database, integer, &text, &text_length);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    conversion.text = text;
+    conversion.text_length = text_length;
+
+    if (column_descriptor_is_char(column)) {
+        rc = convert_char_text(database, column, &conversion, allow_string_truncation_adjustment);
+    } else if (column_descriptor_is_varchar(column)) {
+        rc =
+            convert_varchar_text(database, column, &conversion, allow_string_truncation_adjustment);
+    } else if (column_descriptor_is_text_family(column)) {
+        rc = convert_text_family_text(
+            database,
+            column,
+            &conversion,
+            allow_string_truncation_adjustment,
+            false
+        );
+    } else {
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        free(text);
+        if (rc == MYLITE_ERROR && !diagnostics_has_error_condition(&database->diagnostics)) {
+            set_unsupported_error(
+                database,
+                "INSERT UNIX_TIMESTAMP arithmetic supports only integer and nonbinary string "
+                "targets"
+            );
+        }
+        return rc;
+    }
+
+    return assign_text_value(database, text, conversion.text_length, out_value);
+}
+
+static int format_insert_unix_timestamp_integer_text(
+    struct mylite_db *database,
+    int64_t integer,
+    char **out_text,
+    size_t *out_text_length
+) {
+    char buffer[integer_text_capacity];
+    char *text = NULL;
+    int written = 0;
+
+    if (out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    written = snprintf(buffer, sizeof(buffer), "%" PRId64, integer);
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        set_runtime_error(database, "failed to format INSERT UNIX_TIMESTAMP arithmetic value");
+        return MYLITE_ERROR;
+    }
+
+    text = malloc((size_t)written + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(text, buffer, (size_t)written + 1U);
+    *out_text = text;
+    *out_text_length = (size_t)written;
+    return MYLITE_OK;
 }
 
 static bool insert_unix_timestamp_now_node_is_admitted(

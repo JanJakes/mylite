@@ -49,6 +49,17 @@ Runtime probes establish the behavior used by this baseline:
 - Assigning the arithmetic result to an integer column uses normal column range
   conversion. A value outside `INT` range fails with `1264 / 22003` under strict
   mode.
+- Assigning the arithmetic result to `CHAR`, `VARCHAR`, and `TEXT`-family
+  targets stores the visible decimal integer string. For example, WordPress'
+  `LONGTEXT` `wp_options.option_value` stores `UNIX_TIMESTAMP() + -90` as
+  text such as `1704067110`.
+- Assigning a `NULL` arithmetic result to a nullable string target stores SQL
+  `NULL`; assigning it to a `NOT NULL` string target follows the same
+  `1048 / 23000` and `INSERT IGNORE` empty-string adjustment behavior as
+  explicit `NULL`.
+- String target length checks use normal MySQL row-value conversion. For
+  example, inserting a ten-digit timestamp into `VARCHAR(4)` fails with
+  `1406 / 22001` in strict mode.
 - Arithmetic overflow before assignment fails with `1690 / 22003`.
 - `INSERT ... SET`, `REPLACE ... VALUES`, `REPLACE ... SET`, and admitted
   `ON DUPLICATE KEY UPDATE` assignments accept the same value expressions in
@@ -91,20 +102,24 @@ The supported statement envelopes are the current descriptor-driven:
 - currently admitted `INSERT ... ON DUPLICATE KEY UPDATE` assignment values
   using the same `insert_value` grammar.
 
-The supported target columns are non-`AUTO_INCREMENT` integer-family descriptor
-targets whose physical storage is currently MyLite's integer path, including
-signed and unsigned `INT`, `INTEGER`, and `BIGINT` within MyLite's signed-64
-physical storage envelope. `NULL` arithmetic results follow the existing
-nullable, strict, non-strict, and `IGNORE` handling for explicit `NULL` values.
-Omitted `AUTO_INCREMENT` targets keep the existing generated-id behavior;
-explicit `UNIX_TIMESTAMP()` arithmetic assigned to the `AUTO_INCREMENT` target
-itself remains deferred because MySQL treats expression-`NULL` results there as
-generated values.
+The supported target columns are:
+
+- non-`AUTO_INCREMENT` integer-family descriptor targets whose physical storage
+  is currently MyLite's integer path, including signed and unsigned `INT`,
+  `INTEGER`, and `BIGINT` within MyLite's signed-64 physical storage envelope;
+- nonbinary string targets in the current `CHAR`, `VARCHAR`, and baseline
+  `TEXT` family, including `TINYTEXT`, `TEXT`, `MEDIUMTEXT`, and `LONGTEXT`.
+
+`NULL` arithmetic results follow the existing nullable, strict, non-strict, and
+`IGNORE` handling for explicit `NULL` values. Omitted `AUTO_INCREMENT` targets
+keep the existing generated-id behavior; explicit `UNIX_TIMESTAMP()` arithmetic
+assigned to the `AUTO_INCREMENT` target itself remains deferred because MySQL
+treats expression-`NULL` results there as generated values.
 
 The result is evaluated once per expression during MyLite planning/conversion,
 then bound through existing prepared SQLite `INSERT` / duplicate-update
-statements as a planned integer or `NULL` value. SQLite does not parse or
-execute the user expression.
+statements as a planned integer, planned text, or `NULL` value. SQLite does not
+parse or execute the user expression.
 
 ## Deferred Surface
 
@@ -116,8 +131,8 @@ This slice intentionally does not support:
   values;
 - string, decimal, float, bit, hex, parameter, user-variable, system-variable,
   subquery, column, aggregate, or arbitrary function operands;
-- string, decimal, approximate, temporal, `YEAR`, `BIT`, binary string, `ENUM`,
-  `SET`, `JSON`, or spatial target conversion for these expressions;
+- decimal, approximate, temporal, `YEAR`, `BIT`, binary string, `ENUM`, `SET`,
+  `JSON`, or spatial target conversion for these expressions;
 - explicit `AUTO_INCREMENT` target assignment with these expressions;
 - `UPDATE` assignments, defaults, generated columns, predicates, `ORDER BY`,
   `GROUP BY`, `HAVING`, indexes, constraints, triggers, privilege semantics, or
@@ -154,16 +169,20 @@ Planning/conversion:
    schema/table/column policy for `INSERT`, `REPLACE`, and duplicate updates.
 2. Detect the admitted `UNIX_TIMESTAMP()` value expression before ordinary
    literal conversion.
-3. Reject non-integer target descriptors with a MyLite-specific unsupported
-   diagnostic.
+3. Reject target descriptors outside the admitted integer and nonbinary string
+   set with a MyLite-specific unsupported diagnostic.
 4. Evaluate no-argument `UNIX_TIMESTAMP()` using the existing statement-context
    timestamp helper.
 5. Evaluate the optional signed integer or `NULL` delta through MyLite-owned
    signed-64 arithmetic. If the delta is `NULL`, the expression result is
    `NULL`.
 6. Convert the resulting signed integer or `NULL` through the existing
-   descriptor integer/null conversion policy for the target column, preserving
-   strict, non-strict, and `IGNORE` behavior.
+   descriptor conversion policy for the target column:
+   - integer-family targets use the existing integer/null conversion path;
+   - nonbinary string targets first format the signed integer as decimal text,
+     then use the existing `CHAR` / `VARCHAR` / `TEXT` conversion and length
+     checking path;
+   - `NULL` uses the existing nullability and `IGNORE` adjustment path.
 7. Bind the resulting planned value with existing SQLite prepared statement
    parameter binding.
 
@@ -196,7 +215,8 @@ match the existing descriptor DML path.
 Required diagnostics:
 
 - unsupported target descriptor:
-  `INSERT UNIX_TIMESTAMP arithmetic supports only integer targets`;
+  `INSERT UNIX_TIMESTAMP arithmetic supports only integer and nonbinary string
+  targets`;
 - explicit `AUTO_INCREMENT` target descriptor:
   `INSERT UNIX_TIMESTAMP arithmetic does not yet support AUTO_INCREMENT targets`;
 - unsupported operand, overflow, or syntax outside the admitted grammar:
@@ -235,6 +255,9 @@ Add fast C tests and a MySQL-runtime expectation artifact covering:
 - `REPLACE ... SET` assignment values and the documented MySQL-only
   `AUTO_INCREMENT` expression-`NULL` behavior that remains deferred in MyLite;
 - target integer range errors and signed-64 arithmetic overflow diagnostics;
+- nonbinary string target coercion for the WordPress `wp_options.option_value`
+  `LONGTEXT` shape, nullable string targets, strict `NOT NULL`, `IGNORE`
+  adjustment, and data-too-long errors;
 - unsupported target descriptors and unsupported expression shapes;
 - reopen persistence and `.mylite` preamble preservation.
 

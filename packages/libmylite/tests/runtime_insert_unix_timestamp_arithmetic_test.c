@@ -17,7 +17,9 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_data_too_long = 1406,
     mysql_error_bigint_out_of_range = 1690,
+    text_values_column_count = 6,
 };
 
 struct expected_sql_error {
@@ -41,6 +43,7 @@ struct expected_statement_result {
 };
 
 static int test_insert_values_unix_timestamp_arithmetic_persistence(void);
+static int test_insert_unix_timestamp_arithmetic_text_targets(void);
 static int test_insert_set_replace_and_duplicate_update_unix_timestamp_arithmetic(void);
 static int test_insert_unix_timestamp_arithmetic_diagnostics(void);
 static int open_app_database(
@@ -84,6 +87,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_insert_values_unix_timestamp_arithmetic_persistence();
+    failures += test_insert_unix_timestamp_arithmetic_text_targets();
     failures += test_insert_set_replace_and_duplicate_update_unix_timestamp_arithmetic();
     failures += test_insert_unix_timestamp_arithmetic_diagnostics();
 
@@ -177,6 +181,145 @@ static int test_insert_values_unix_timestamp_arithmetic_persistence(void) {
             .column_count = 4U,
             .row_count = 2U,
             .context = "reopened insert values unix timestamp rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_insert_unix_timestamp_arithmetic_text_targets(void) {
+    static const char *const wp_rows[] = {
+        "_site_transient_timeout_tag1",
+        "1704067110",
+        "no",
+    };
+    static const char *const text_rows[] = {
+        "1704067200",
+        "1704067110",
+        "1704067205",
+        "1704067207",
+        NULL,
+        "1704067208",
+    };
+    static const char *const text_event_rows[] = {
+        "1",
+        "1704067230",
+        "1704067231",
+        "2",
+        "1704067220",
+        NULL,
+        "3",
+        "1704067240",
+        NULL,
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "text-targets", path, sizeof(path));
+    failures += execute_ok(database, "SET time_zone = '+00:00'", NULL);
+    failures += execute_ok(database, "SET timestamp = 1704067200", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE wp_options("
+        "option_name VARCHAR(191), option_value LONGTEXT, autoload VARCHAR(20)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO wp_options(option_name, option_value, autoload) "
+        "VALUES ('_site_transient_timeout_tag1', UNIX_TIMESTAMP() + -90, 'no')",
+        &result
+    );
+    failures += expect_statement_result(
+        result,
+        (struct expected_statement_result){
+            .affected_rows = 1,
+            .warning_count = 0U,
+            .context = "wp unix timestamp text insert result",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT option_name, option_value, autoload FROM wp_options",
+            .values = wp_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "wp unix timestamp text insert row",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE text_values("
+        "v VARCHAR(32), txt TEXT, lt LONGTEXT, c CHAR(20), n VARCHAR(20), "
+        "nn VARCHAR(20) NOT NULL"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO text_values(v, txt, lt, c, n, nn) VALUES "
+        "(UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + -90, UNIX_TIMESTAMP() - -5, "
+        "UNIX_TIMESTAMP() + 7, UNIX_TIMESTAMP() + NULL, UNIX_TIMESTAMP() + 8)",
+        NULL
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v, txt, lt, c, n, nn FROM text_values",
+            .values = text_rows,
+            .column_count = text_values_column_count,
+            .row_count = 1U,
+            .context = "unix timestamp text-family target rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE text_events(id INT PRIMARY KEY, v LONGTEXT, s VARCHAR(32))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO text_events SET id = 1, v = UNIX_TIMESTAMP() + 10, "
+        "s = UNIX_TIMESTAMP() + 11",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO text_events VALUES (2, 'old', 'old')", NULL);
+    failures += execute_ok(
+        database,
+        "REPLACE INTO text_events(id, v, s) VALUES "
+        "(2, UNIX_TIMESTAMP() + 20, UNIX_TIMESTAMP() + NULL)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "REPLACE INTO text_events SET id = 3, v = UNIX_TIMESTAMP() + 40, "
+        "s = UNIX_TIMESTAMP() + NULL",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO text_events(id, v, s) VALUES (1, 'old', 'old') "
+        "ON DUPLICATE KEY UPDATE v = UNIX_TIMESTAMP() + 30, s = UNIX_TIMESTAMP() + 31",
+        NULL
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, s FROM text_events ORDER BY id",
+            .values = text_event_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "unix timestamp text set replace duplicate rows",
         }
     );
 
@@ -298,6 +441,7 @@ static int test_insert_set_replace_and_duplicate_update_unix_timestamp_arithmeti
 
 static int test_insert_unix_timestamp_arithmetic_diagnostics(void) {
     static const char *const ignored_null[] = {"0"};
+    static const char *const ignored_text_null[] = {""};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -306,14 +450,26 @@ static int test_insert_unix_timestamp_arithmetic_diagnostics(void) {
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
     failures += execute_ok(database, "SET time_zone = '+00:00'", NULL);
     failures += execute_ok(database, "SET timestamp = 1704067200", NULL);
-    failures += execute_ok(database, "CREATE TABLE text_target(label VARCHAR(32))", NULL);
+    failures += execute_ok(database, "CREATE TABLE decimal_target(v DECIMAL(12,0))", NULL);
     failures += execute_error(
         database,
-        "INSERT INTO text_target VALUES (UNIX_TIMESTAMP())",
+        "INSERT INTO decimal_target VALUES (UNIX_TIMESTAMP())",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "INSERT UNIX_TIMESTAMP arithmetic supports only integer targets",
+            .message_part =
+                "INSERT UNIX_TIMESTAMP arithmetic supports only integer and nonbinary string "
+                "targets",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE short_text(v VARCHAR(4))", NULL);
+    failures += execute_error(
+        database,
+        "INSERT INTO short_text VALUES (UNIX_TIMESTAMP())",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
         }
     );
     failures += execute_ok(
@@ -363,6 +519,41 @@ static int test_insert_unix_timestamp_arithmetic_diagnostics(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "insert ignore unix timestamp null row",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE required_text(v VARCHAR(10) NOT NULL)", NULL);
+    failures += execute_error(
+        database,
+        "INSERT INTO required_text VALUES (UNIX_TIMESTAMP() + NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'v' cannot be null",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "INSERT IGNORE INTO required_text VALUES (UNIX_TIMESTAMP() + NULL)",
+        &result
+    );
+    failures += expect_statement_result(
+        result,
+        (struct expected_statement_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+            .context = "insert ignore unix timestamp text null result",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM required_text",
+            .values = ignored_text_null,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "insert ignore unix timestamp text null row",
         }
     );
     failures += execute_ok(database, "CREATE TABLE small_target(v INT)", NULL);

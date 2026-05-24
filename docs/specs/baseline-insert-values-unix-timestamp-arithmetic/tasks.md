@@ -6,6 +6,7 @@
 - [x] Extend parser support for no-argument `UNIX_TIMESTAMP()` insert values
       and plus/minus signed integer or `NULL` deltas.
 - [x] Add descriptor-driven runtime conversion for integer-family targets.
+- [x] Extend descriptor-driven runtime conversion to nonbinary string targets.
 - [x] Add fast runtime tests for success, diagnostics, persistence, and file
       safety.
 - [x] Update compatibility documentation for the exact supported subset.

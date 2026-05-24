@@ -757,7 +757,7 @@ Performance Schema variable tables remain unsupported.
 | `profiling` | ❌ | Value, scope, SET, diagnostics |
 | `profiling_history_size` | ❌ | Value, scope, SET, diagnostics |
 | `protocol_compression_algorithms` | ❌ | Value, scope, SET, diagnostics |
-| `protocol_version` | ❌ | Value, scope, SET, diagnostics |
+| `protocol_version` | 🟡 | Limited fixed global read-only numeric scalar and `SHOW VARIABLES` placeholder `10`; default/global scalar reads and numeric scalar contexts such as `HEX(@@protocol_version)` are supported, `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No wire-protocol handshake metadata, startup option handling, or mutable protocol state |
 | `proxy_user` | ❌ | Value, scope, SET, diagnostics |
 | `pseudo_replica_mode` | ❌ | Value, scope, SET, diagnostics |
 | `pseudo_slave_mode` | ❌ | Value, scope, SET, diagnostics |
@@ -1009,9 +1009,9 @@ Performance Schema variable tables remain unsupported.
 | `validate_password.special_char_count` | ❌ | Value, scope, SET, diagnostics |
 | `version` | 🟡 | Limited read-only scalar `SELECT @@version` with no scope or `global`; returns MyLite's engine version string, not an impersonated MySQL server version; no `session`/`local`, `SET`, protocol handshake version reporting, or version compile variables |
 | `version_comment` | 🟡 | Limited read-only scalar `SELECT @@version_comment` with no scope or `global`; returns MyLite's fixed version comment; no MySQL build comment impersonation, `session`/`local`, `SET`, protocol metadata, or version compile variables |
-| `version_compile_machine` | ❌ | Value, scope, SET, diagnostics |
-| `version_compile_os` | ❌ | Value, scope, SET, diagnostics |
-| `version_compile_zlib` | ❌ | Value, scope, SET, diagnostics |
+| `version_compile_machine` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `aarch64`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host build-machine introspection or startup option behavior |
+| `version_compile_os` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `Linux`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host operating-system introspection or startup option behavior |
+| `version_compile_zlib` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `1.3.2`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No linked zlib version introspection or startup option behavior |
 | `version_tokens_session` | ❌ | Value, scope, SET, diagnostics |
 | `version_tokens_session_number` | ❌ | Value, scope, SET, diagnostics |
 | `wait_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |

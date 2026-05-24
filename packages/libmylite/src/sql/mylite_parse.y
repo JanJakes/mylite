@@ -4765,6 +4765,10 @@ expression(A) ::= JSON_SET(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_JSON_SET_FUNCTION, B, R);
 }
+expression(A) ::= JSON_REPLACE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_REPLACE_FUNCTION, B, R);
+}
 expression(A) ::= json_contains_predicate_expression(B). {
     A = B;
 }
@@ -5572,6 +5576,10 @@ expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) COMMA function_argument_lis
 expression(A) ::= JSON_SET(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_REPLACE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= JSON_UNQUOTE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -6794,6 +6802,9 @@ identifier(A) ::= JSON_QUOTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_SET(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_REPLACE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_UNQUOTE(T). {

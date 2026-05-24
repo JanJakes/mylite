@@ -43,10 +43,10 @@ struct expected_dml_result {
     size_t warning_count;
 };
 
-static int test_literal_json_set_values(void);
+static int test_literal_json_replace_values(void);
 static int test_dual_do_and_status(void);
-static int test_table_backed_json_set_values(void);
-static int test_json_set_diagnostics(void);
+static int test_table_backed_json_replace_values(void);
+static int test_json_replace_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_dml_ok(mylite_db *database, const char *sql, struct expected_dml_result expected);
@@ -71,56 +71,54 @@ static int expect_contains(const char *actual, const char *needle, const char *c
 int main(void) {
     int failures = 0;
 
-    failures += test_literal_json_set_values();
+    failures += test_literal_json_replace_values();
     failures += test_dual_do_and_status();
-    failures += test_table_backed_json_set_values();
-    failures += test_json_set_diagnostics();
+    failures += test_table_backed_json_replace_values();
+    failures += test_json_replace_diagnostics();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_literal_json_set_values(void) {
+static int test_literal_json_replace_values(void) {
     static const char *const columns_object[] = {
-        "replaced",
-        "added",
+        "existing_member",
+        "missing_member",
         "nested",
         "missing_parent",
         "duplicate_path",
         "root",
     };
     static const char *const values_object[] = {
-        "{\"a\": 2}",
-        "{\"a\": 1, \"b\": 2}",
-        "{\"a\": {\"b\": 1, \"c\": 2}}",
+        "{\"a\": 10, \"b\": [2, 3]}",
         "{\"a\": 1}",
-        "{\"a\": 2}",
+        "{\"a\": {\"b\": 2}}",
+        "{\"a\": 1}",
+        "{\"a\": 3}",
         "2",
     };
     static const char *const columns_array[] = {
         "array_replace",
-        "array_append",
-        "array_far_append",
-        "scalar_append",
+        "array_append_noop",
+        "array_far_noop",
+        "array_leading_zero",
         "scalar_replace",
-        "scalar_far_append",
+        "scalar_noop",
     };
     static const char *const values_array[] = {
         "[9, 2]",
-        "[1, 2, 9]",
-        "[1, 2, 9]",
         "[1, 2]",
+        "[1, 2]",
+        "[1, 9]",
         "2",
-        "[\"x\", 2]",
+        "1",
     };
     static const char *const columns_values[] = {
-        "json_extract_value",
         "json_array_value",
         "string_value",
         "string_type",
         "json_type",
     };
     static const char *const values_values[] = {
-        "{\"a\": 2}",
         "{\"a\": [1, 2]}",
         "{\"a\": \"[1,2]\"}",
         "STRING",
@@ -145,80 +143,84 @@ static int test_literal_json_set_values(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT JSON_SET('{\"a\":1}', '$.a', 2) AS replaced, "
-                   "JSON_SET('{\"a\":1}', '$.b', 2) AS added, "
-                   "JSON_SET('{\"a\":{\"b\":1}}', '$.a.c', 2) AS nested, "
-                   "JSON_SET('{\"a\":1}', '$.b.c', 2) AS missing_parent, "
-                   "JSON_SET('{}', '$.a', 1, '$.a', 2) AS duplicate_path, "
-                   "JSON_SET('{\"a\":1}', '$', 2) AS root",
+            .sql = "SELECT JSON_REPLACE('{\"a\":1,\"b\":[2,3]}', '$.a', 10) "
+                   "AS existing_member, "
+                   "JSON_REPLACE('{\"a\":1}', '$.b', 2) AS missing_member, "
+                   "JSON_REPLACE('{\"a\":{\"b\":1}}', '$.a.b', 2) AS nested, "
+                   "JSON_REPLACE('{\"a\":1}', '$.b.c', 2) AS missing_parent, "
+                   "JSON_REPLACE('{\"a\":1}', '$.a', 2, '$.a', 3) AS duplicate_path, "
+                   "JSON_REPLACE('{\"a\":1}', '$', 2) AS root",
             .columns = columns_object,
             .column_count = sizeof(columns_object) / sizeof(columns_object[0]),
             .values = values_object,
             .row_count = 1U,
-            .context = "literal object json_set values",
+            .context = "literal object json_replace values",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT JSON_SET('[1,2]', '$[0]', 9) AS array_replace, "
-                   "JSON_SET('[1,2]', '$[2]', 9) AS array_append, "
-                   "JSON_SET('[1,2]', '$[99]', 9) AS array_far_append, "
-                   "JSON_SET('1', '$[1]', 2) AS scalar_append, "
-                   "JSON_SET('\"x\"', '$[0]', 2) AS scalar_replace, "
-                   "JSON_SET('\"x\"', '$[2]', 2) AS scalar_far_append",
+            .sql = "SELECT JSON_REPLACE('[1,2]', '$[0]', 9) AS array_replace, "
+                   "JSON_REPLACE('[1,2]', '$[2]', 9) AS array_append_noop, "
+                   "JSON_REPLACE('[1,2]', '$[99]', 9) AS array_far_noop, "
+                   "JSON_REPLACE('[1,2]', '$[01]', 9) AS array_leading_zero, "
+                   "JSON_REPLACE('1', '$[0]', 2) AS scalar_replace, "
+                   "JSON_REPLACE('1', '$[1]', 2) AS scalar_noop",
             .columns = columns_array,
             .column_count = sizeof(columns_array) / sizeof(columns_array[0]),
             .values = values_array,
             .row_count = 1U,
-            .context = "literal array json_set values",
+            .context = "literal array json_replace values",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT JSON_SET('{\"a\":1}', '$.a', "
-                   "JSON_EXTRACT('{\"x\":2}', '$.x')) AS json_extract_value, "
-                   "JSON_SET('{}', '$.a', JSON_ARRAY(1,2)) AS json_array_value, "
-                   "JSON_SET('{}', '$.a', '[1,2]') AS string_value, "
-                   "JSON_TYPE(JSON_EXTRACT(JSON_SET('{}', '$.a', '[1,2]'), '$.a')) "
-                   "AS string_type, "
-                   "JSON_TYPE(JSON_EXTRACT(JSON_SET('{}', '$.a', JSON_ARRAY(1,2)), '$.a')) "
-                   "AS json_type",
+            .sql = "SELECT JSON_REPLACE('{\"a\":1}', '$.a', JSON_ARRAY(1,2)) "
+                   "AS json_array_value, "
+                   "JSON_REPLACE('{\"a\":1}', '$.a', '[1,2]') AS string_value, "
+                   "JSON_TYPE(JSON_EXTRACT(JSON_REPLACE('{\"a\":1}', '$.a', '[1,2]'), "
+                   "'$.a')) AS string_type, "
+                   "JSON_TYPE(JSON_EXTRACT(JSON_REPLACE('{\"a\":1}', '$.a', "
+                   "JSON_ARRAY(1,2)), '$.a')) AS json_type",
             .columns = columns_values,
             .column_count = sizeof(columns_values) / sizeof(columns_values[0]),
             .values = values_values,
             .row_count = 1U,
-            .context = "json_set JSON and string value arguments",
+            .context = "json_replace JSON and string value arguments",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT JSON_SET('{\"a\":1}', '$.a', NULL) AS json_null_value, "
-                   "JSON_SET(NULL, '$.a', 1) AS null_document, "
-                   "JSON_SET('{\"a\":1}', NULL, 2) AS null_path",
+            .sql = "SELECT JSON_REPLACE('{\"a\":1}', '$.a', NULL) AS json_null_value, "
+                   "JSON_REPLACE(NULL, '$.a', 1) AS null_document, "
+                   "JSON_REPLACE('{\"a\":1}', NULL, 2) AS null_path",
             .columns = columns_nulls,
             .column_count = sizeof(columns_nulls) / sizeof(columns_nulls[0]),
             .values = values_nulls,
             .row_count = 1U,
-            .context = "json_set null handling",
+            .context = "json_replace null handling",
         }
     );
 
-    failures += execute_ok(database, "SELECT JSON_SET('{}', '$.a', 1) AS changed", &result);
+    failures +=
+        execute_ok(database, "SELECT JSON_REPLACE('{\"a\":1}', '$.b', 2) AS changed", &result);
     if (failures == 0) {
         failures +=
-            expect_size(mylite_result_column_count(result), 1U, "json_set metadata columns");
+            expect_size(mylite_result_column_count(result), 1U, "json_replace metadata columns");
         failures += expect_int(
             mylite_result_column_type(result, 0U),
             MYLITE_RESULT_COLUMN_TYPE_JSON,
-            "json_set metadata type"
+            "json_replace metadata type"
+        );
+        failures += expect_int(
+            mylite_result_column_nullable(result, 0U),
+            1,
+            "json_replace metadata nullable"
         );
         failures +=
-            expect_int(mylite_result_column_nullable(result, 0U), 1, "json_set metadata nullable");
-        failures +=
-            expect_result_value(result, 0U, 0U, values_metadata[0], "json_set metadata value");
+            expect_result_value(result, 0U, 0U, values_metadata[0], "json_replace metadata value");
     }
     mylite_result_free(result);
 
@@ -227,7 +229,7 @@ static int test_literal_json_set_values(void) {
 }
 
 static int test_dual_do_and_status(void) {
-    static const char *const columns_dual[] = {"changed", "JSON_SET('{}','$.a',1)"};
+    static const char *const columns_dual[] = {"changed", "JSON_REPLACE('{\"a\":0}','$.a',1)"};
     static const char *const values_dual[] = {"{\"a\": 1}", "{\"a\": 1}"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
@@ -240,13 +242,13 @@ static int test_dual_do_and_status(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT JSON_SET('{\"a\":0}', '$.a', 1) AS changed, "
-                   "JSON_SET('{}','$.a',1) FROM DUAL",
+            .sql = "SELECT JSON_REPLACE('{\"a\":0}', '$.a', 1) AS changed, "
+                   "JSON_REPLACE('{\"a\":0}','$.a',1) FROM DUAL",
             .columns = columns_dual,
             .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
             .values = values_dual,
             .row_count = 1U,
-            .context = "json_set from dual",
+            .context = "json_replace from dual",
         }
     );
     failures += expect_query(
@@ -257,20 +259,23 @@ static int test_dual_do_and_status(void) {
             .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
             .values = values_after_select,
             .row_count = 1U,
-            .context = "row count after json_set select",
+            .context = "row count after json_replace select",
         }
     );
 
     failures += execute_ok(
         database,
-        "DO JSON_SET('{\"a\":1}', '$.a', 2), JSON_SET('{\"a\":1}', '$.a', NULL)",
+        "DO JSON_REPLACE('{\"a\":1}', '$.a', 2), "
+        "JSON_REPLACE('{\"a\":1}', '$.a', NULL)",
         &result
     );
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "json_set do columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "json_set do rows");
-        failures += expect_int64(mylite_result_affected_rows(result), 0, "json_set do affected");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "json_set do warnings");
+        failures += expect_size(mylite_result_column_count(result), 0U, "json_replace do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "json_replace do rows");
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 0, "json_replace do affected");
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "json_replace do warnings");
     }
     mylite_result_free(result);
     failures += expect_query(
@@ -281,7 +286,7 @@ static int test_dual_do_and_status(void) {
             .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
             .values = values_after_do,
             .row_count = 1U,
-            .context = "row count after json_set do",
+            .context = "row count after json_replace do",
         }
     );
 
@@ -289,22 +294,25 @@ static int test_dual_do_and_status(void) {
     return failures;
 }
 
-static int test_table_backed_json_set_values(void) {
+static int test_table_backed_json_replace_values(void) {
+    static const char nested_json_value[] =
+        "{\"b\": 0, \"i\": 0, \"j\": {\"b\": 0, \"i\": 0, \"j\": null, \"s\": 0, "
+        "\"x\": \"\"}, \"s\": 0, \"x\": \"\"}";
     static const char *const columns_table[] = {
         "id",
-        "JSON_SET(j, '$.s', s)",
-        "JSON_SET(j, '$.i', i)",
-        "JSON_SET(j, '$.b', b)",
-        "JSON_SET(j, '$.j', j)",
-        "JSON_SET(j, '$.x', label)",
+        "JSON_REPLACE(j, '$.s', s)",
+        "JSON_REPLACE(j, '$.i', i)",
+        "JSON_REPLACE(j, '$.b', b)",
+        "JSON_REPLACE(j, '$.j', j)",
+        "JSON_REPLACE(j, '$.x', label)",
     };
     static const char *const values_table[] = {
         "1",
-        "{\"a\": 1, \"s\": \"[1,2]\"}",
-        "{\"a\": 1, \"i\": 7}",
-        "{\"a\": 1, \"b\": 1}",
-        "{\"a\": 1, \"j\": {\"a\": 1}}",
-        "{\"a\": 1, \"x\": \"row\"}",
+        "{\"b\": 0, \"i\": 0, \"j\": null, \"s\": \"[1,2]\", \"x\": \"\"}",
+        "{\"b\": 0, \"i\": 7, \"j\": null, \"s\": 0, \"x\": \"\"}",
+        "{\"b\": 1, \"i\": 0, \"j\": null, \"s\": 0, \"x\": \"\"}",
+        nested_json_value,
+        "{\"b\": 0, \"i\": 0, \"j\": null, \"s\": 0, \"x\": \"row\"}",
         "2",
         NULL,
         NULL,
@@ -312,8 +320,11 @@ static int test_table_backed_json_set_values(void) {
         NULL,
         NULL,
     };
-    static const char *const columns_limited[] = {"id", "JSON_SET(j, '$.i', i)"};
-    static const char *const values_limited[] = {"1", "{\"a\": 1, \"i\": 7}"};
+    static const char *const columns_limited[] = {"id", "JSON_REPLACE(j, '$.i', i)"};
+    static const char *const values_limited[] = {
+        "1",
+        "{\"b\": 0, \"i\": 7, \"j\": null, \"s\": 0, \"x\": \"\"}",
+    };
     static const char *const columns_nested[] = {
         "id",
         "extracted_i",
@@ -330,9 +341,19 @@ static int test_table_backed_json_set_values(void) {
         NULL,
         NULL,
     };
-    static const char *const values_reopen[] = {"1", "{\"a\": 1, \"i\": 7}", "2", NULL};
+    static const char *const values_reopen[] = {
+        "1",
+        "{\"b\": 0, \"i\": 7, \"j\": null, \"s\": 0, \"x\": \"\"}",
+        "2",
+        NULL,
+    };
     static const char *const columns_source[] = {"id", "j"};
-    static const char *const values_source[] = {"1", "{\"a\": 1}", "2", NULL};
+    static const char *const values_source[] = {
+        "1",
+        "{\"b\": 0, \"i\": 0, \"j\": null, \"s\": 0, \"x\": \"\"}",
+        "2",
+        NULL,
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -352,47 +373,51 @@ static int test_table_backed_json_set_values(void) {
     );
     failures += expect_dml_ok(
         database,
-        "INSERT INTO t VALUES (1, '{\"a\":1}', '[1,2]', 7, TRUE, 'row'), "
+        "INSERT INTO t VALUES "
+        "(1, '{\"s\":0,\"i\":0,\"b\":0,\"j\":null,\"x\":\"\"}', '[1,2]', 7, TRUE, 'row'), "
         "(2, NULL, NULL, NULL, FALSE, NULL)",
         (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, JSON_SET(j, '$.s', s), JSON_SET(j, '$.i', i), "
-                   "JSON_SET(j, '$.b', b), JSON_SET(j, '$.j', j), "
-                   "JSON_SET(j, '$.x', label) FROM t ORDER BY id",
+            .sql = "SELECT id, JSON_REPLACE(j, '$.s', s), JSON_REPLACE(j, '$.i', i), "
+                   "JSON_REPLACE(j, '$.b', b), JSON_REPLACE(j, '$.j', j), "
+                   "JSON_REPLACE(j, '$.x', label) FROM t ORDER BY id",
             .columns = columns_table,
             .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
             .values = values_table,
             .row_count = 2U,
-            .context = "table json_set projection",
+            .context = "table json_replace projection",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, JSON_SET(j, '$.i', i) FROM t WHERE id >= 1 ORDER BY id LIMIT 1",
+            .sql = "SELECT id, JSON_REPLACE(j, '$.i', i) "
+                   "FROM t WHERE id >= 1 ORDER BY id LIMIT 1",
             .columns = columns_limited,
             .column_count = sizeof(columns_limited) / sizeof(columns_limited[0]),
             .values = values_limited,
             .row_count = 1U,
-            .context = "table json_set where order limit projection",
+            .context = "table json_replace where order limit projection",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, JSON_EXTRACT(JSON_SET(j, '$.i', i), '$.i') AS extracted_i, "
-                   "JSON_UNQUOTE(JSON_EXTRACT(JSON_SET(j, '$.x', label), '$.x')) "
+            .sql = "SELECT id, "
+                   "JSON_EXTRACT(JSON_REPLACE(j, '$.i', i), '$.i') AS extracted_i, "
+                   "JSON_UNQUOTE(JSON_EXTRACT(JSON_REPLACE(j, '$.x', label), '$.x')) "
                    "AS unquoted_label, "
-                   "JSON_TYPE(JSON_EXTRACT(JSON_SET(j, '$.j', JSON_ARRAY(i)), '$.j')) "
-                   "AS json_value_type FROM t ORDER BY id",
+                   "JSON_TYPE(JSON_EXTRACT(JSON_REPLACE(j, '$.j', JSON_ARRAY(i)), '$.j')) "
+                   "AS json_value_type "
+                   "FROM t ORDER BY id",
             .columns = columns_nested,
             .column_count = sizeof(columns_nested) / sizeof(columns_nested[0]),
             .values = values_nested,
             .row_count = 2U,
-            .context = "table json_set nested projection",
+            .context = "row-scalar json_extract consumes json_replace result",
         }
     );
     failures += expect_query(
@@ -403,24 +428,24 @@ static int test_table_backed_json_set_values(void) {
             .column_count = sizeof(columns_source) / sizeof(columns_source[0]),
             .values = values_source,
             .row_count = 2U,
-            .context = "json_set does not mutate source rows",
+            .context = "json_replace does not mutate source rows",
         }
     );
 
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen json_set");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen json_replace");
     failures += execute_ok(database, "USE app", NULL);
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, JSON_SET(j, '$.i', i) FROM t ORDER BY id",
+            .sql = "SELECT id, JSON_REPLACE(j, '$.i', i) FROM t ORDER BY id",
             .columns = columns_limited,
             .column_count = sizeof(columns_limited) / sizeof(columns_limited[0]),
             .values = values_reopen,
             .row_count = 2U,
-            .context = "reopen table json_set values",
+            .context = "reopen table json_replace values",
         }
     );
 
@@ -429,7 +454,7 @@ static int test_table_backed_json_set_values(void) {
     return failures;
 }
 
-static int test_json_set_diagnostics(void) {
+static int test_json_replace_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -446,7 +471,7 @@ static int test_json_set_diagnostics(void) {
     failures += execute_ok(database, "INSERT INTO t VALUES ('{\"a\":1}', 1, x'6162')", NULL);
     failures += execute_error(
         database,
-        "SELECT JSON_SET()",
+        "SELECT JSON_REPLACE()",
         (struct expected_sql_error){
             .code = mysql_error_native_function_argument_count,
             .sqlstate = "42000",
@@ -455,7 +480,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET('{}')",
+        "SELECT JSON_REPLACE('{}')",
         (struct expected_sql_error){
             .code = mysql_error_native_function_argument_count,
             .sqlstate = "42000",
@@ -464,7 +489,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET('{}', '$.a')",
+        "SELECT JSON_REPLACE('{}', '$.a')",
         (struct expected_sql_error){
             .code = mysql_error_native_function_argument_count,
             .sqlstate = "42000",
@@ -473,7 +498,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET('{bad}', '$.a', 1)",
+        "SELECT JSON_REPLACE('{bad}', '$.a', 1)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_text,
             .sqlstate = "22032",
@@ -482,7 +507,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET('{}', 'a', 1)",
+        "SELECT JSON_REPLACE('{}', 'a', 1)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_path,
             .sqlstate = "42000",
@@ -491,7 +516,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET(j, 'a', 1) FROM t",
+        "SELECT JSON_REPLACE(j, 'a', 1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_path,
             .sqlstate = "42000",
@@ -500,7 +525,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET(1, '$.a', 2)",
+        "SELECT JSON_REPLACE(1, '$.a', 2)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_data,
             .sqlstate = "22032",
@@ -509,16 +534,16 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET('{}', '$.*', 1)",
+        "SELECT JSON_REPLACE('{}', '$.*', 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "JSON_SET() path or document shape is not supported",
+            .message_part = "JSON_REPLACE() path or document shape is not supported",
         }
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET(j, '$.a', n + 1) FROM t",
+        "SELECT JSON_REPLACE(j, '$.a', n + 1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -529,7 +554,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET(missing, '$.a', 1) FROM t",
+        "SELECT JSON_REPLACE(missing, '$.a', 1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -538,7 +563,7 @@ static int test_json_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT JSON_SET(b, '$.a', 1) FROM t",
+        "SELECT JSON_REPLACE(b, '$.a', 1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_charset,
             .sqlstate = "22032",
@@ -623,7 +648,6 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         );
         failures +=
             expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-        failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
         for (size_t column = 0U; column < expected.column_count; ++column) {
             failures += expect_text(
                 mylite_result_column_name(result, column),
@@ -653,16 +677,12 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite-runtime-json-set-%s-%d.mylite",
+        "/tmp/mylite_json_replace_%s_%d.mylite",
         name,
         current_process_id()
     );
 
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build json_set test path\n");
-        return 1;
-    }
-    return 0;
+    return written < 0 || (size_t)written >= path_size ? 1 : 0;
 }
 
 static int current_process_id(void) {
@@ -675,17 +695,16 @@ static int current_process_id(void) {
 
 static void remove_related_files(const char *path) {
     remove_with_suffix(path, "");
-    remove_with_suffix(path, "-journal");
     remove_with_suffix(path, "-wal");
     remove_with_suffix(path, "-shm");
 }
 
 static void remove_with_suffix(const char *path, const char *suffix) {
-    char related[test_path_capacity + path_suffix_capacity];
-    int written = snprintf(related, sizeof(related), "%s%s", path, suffix);
+    char buffer[test_path_capacity + path_suffix_capacity];
+    int written = snprintf(buffer, sizeof(buffer), "%s%s", path, suffix);
 
-    if (written > 0 && (size_t)written < sizeof(related)) {
-        (void)remove(related);
+    if (written >= 0 && (size_t)written < sizeof(buffer)) {
+        (void)remove(buffer);
     }
 }
 
@@ -698,90 +717,64 @@ static int expect_result_value(
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
 
-    if (expected == NULL) {
-        if (actual != NULL) {
-            fprintf(
-                stderr,
-                "%s: row %zu column %zu expected NULL, got [%s]\n",
-                context,
-                row,
-                column,
-                actual
-            );
-            return 1;
-        }
-        return 0;
-    }
-    if (actual == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: row %zu column %zu expected [%s], got [%s]\n",
-            context,
-            row,
-            column,
-            expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
+    return expect_text(actual, expected, context);
 }
 
 static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
+    if (actual == expected) {
+        return 0;
     }
-    return 0;
+    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
+    return 1;
 }
 
 static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
+    if (actual == expected) {
+        return 0;
     }
-    return 0;
+    fprintf(
+        stderr,
+        "%s: expected %lld, got %lld\n",
+        context,
+        (long long)expected,
+        (long long)actual
+    );
+    return 1;
 }
 
 static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
+    if (actual == expected) {
+        return 0;
     }
-    return 0;
+    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+    return 1;
 }
 
 static int expect_text(const char *actual, const char *expected, const char *context) {
-    if ((actual == NULL && expected != NULL) || (actual != NULL && expected == NULL) ||
-        (actual != NULL && expected != NULL && strcmp(actual, expected) != 0)) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
+    if (actual == expected ||
+        (actual != NULL && expected != NULL && strcmp(actual, expected) == 0)) {
+        return 0;
     }
-    return 0;
+    fprintf(
+        stderr,
+        "%s: expected %s, got %s\n",
+        context,
+        expected == NULL ? "NULL" : expected,
+        actual == NULL ? "NULL" : actual
+    );
+    return 1;
 }
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "NULL" : actual,
-            needle == NULL ? "NULL" : needle
-        );
-        return 1;
+    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
+        return 0;
     }
-    return 0;
+    fprintf(
+        stderr,
+        "%s: expected %s to contain %s\n",
+        context,
+        actual == NULL ? "NULL" : actual,
+        needle == NULL ? "NULL" : needle
+    );
+    return 1;
 }

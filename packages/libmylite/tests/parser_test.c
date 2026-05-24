@@ -2960,12 +2960,52 @@ static int test_json_set_function(void) {
     failures += expect_node(child_at(second_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "json_set alias");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT JSON_REPLACE('{\"a\":1}', '$.a', 2), "
+        "json_replace(j, '$.b', JSON_OBJECT('k', 1)) AS changed FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_item = child_at(select_list, 1U);
+    second_expression = child_at(second_item, 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_REPLACE_FUNCTION,
+        "json_replace function"
+    );
+    failures += expect_span_text(
+        first_expression,
+        "JSON_REPLACE('{\"a\":1}', '$.a', 2)",
+        "json_replace span"
+    );
+    failures += expect_child_count(first_expression, 1U, "json_replace argument-list child count");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "json_replace args");
+    failures += expect_child_count(arguments, 3U, "json_replace argument count");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_JSON_REPLACE_FUNCTION, "lower json_replace");
+    failures +=
+        expect_node(child_at(second_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "json_replace alias");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT JSON_SET();", MYLITE_SQL_PARSE_OK, &result);
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(
         first_expression,
         MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR,
         "json_set zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_REPLACE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR,
+        "json_replace zero argument marker"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2979,6 +3019,13 @@ static int test_json_set_function(void) {
 
     failures += parse_sql(
         "CREATE TABLE json_set (json_set INT); SELECT json_set FROM json_set;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE json_replace (json_replace INT); SELECT json_replace FROM json_replace;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

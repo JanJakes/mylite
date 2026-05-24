@@ -111,6 +111,17 @@ int mylite_json_set(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_replace(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_path_validate(
     const char *path,
     size_t path_length,

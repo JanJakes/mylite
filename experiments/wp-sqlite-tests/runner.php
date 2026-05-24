@@ -604,6 +604,7 @@ namespace {
 			}
 			$this->mysqli->query('CREATE DATABASE IF NOT EXISTS wp');
 			$this->mysqli->select_db('wp');
+			$this->query_or_throw("SET SESSION sql_mode = ''");
 		}
 
 		public function query(string $sql, array $params = array()): WP_SQLite_MyLite_Statement {

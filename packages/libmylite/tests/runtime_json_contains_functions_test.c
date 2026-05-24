@@ -706,7 +706,7 @@ static int test_json_contains_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "JSON introspection supports only string, NULL, JSON_EXTRACT(), "
-                            "and descriptor column documents",
+                            "JSON_SET(), and descriptor column documents",
         }
     );
 

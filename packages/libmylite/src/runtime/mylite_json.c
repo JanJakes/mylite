@@ -168,6 +168,24 @@ struct json_number_integer_part {
     bool is_negative;
 };
 
+enum json_set_path_leg_kind {
+    JSON_SET_PATH_MEMBER,
+    JSON_SET_PATH_ARRAY,
+};
+
+struct json_set_path_leg {
+    enum json_set_path_leg_kind kind;
+    const char *member;
+    size_t member_length;
+    size_t index;
+};
+
+struct json_set_path {
+    struct json_set_path_leg *legs;
+    size_t count;
+    size_t capacity;
+};
+
 static int parse_document(struct json_parser *parser, struct json_value *out_value);
 static int json_value_from_sql_value(
     const struct mylite_json_sql_value *sql_value,
@@ -367,6 +385,47 @@ static int parse_path_array_leg(
     bool *inout_matched
 );
 static int parse_path_array_index(struct json_parser *parser, size_t *out_index);
+static int parse_json_set_path(struct json_parser *parser, struct json_set_path *out_path);
+static int parse_json_set_path_member_leg(struct json_parser *parser, struct json_set_path *path);
+static int parse_json_set_path_quoted_member_leg(
+    struct json_parser *parser,
+    struct json_set_path *path
+);
+static int parse_json_set_path_identifier_member_leg(
+    struct json_parser *parser,
+    struct json_set_path *path
+);
+static int parse_json_set_path_array_leg(struct json_parser *parser, struct json_set_path *path);
+static int parse_json_set_path_array_index(struct json_parser *parser, size_t *out_index);
+static int json_set_path_append_member(
+    struct json_set_path *path,
+    const char *member,
+    size_t member_length
+);
+static int json_set_path_append_array_index(struct json_set_path *path, size_t index);
+static int json_set_path_reserve(struct json_set_path *path, size_t required_capacity);
+static int apply_json_set_path(
+    struct json_value *document,
+    const struct json_set_path *path,
+    struct json_value *value
+);
+static int apply_json_set_member_leg(
+    struct json_value *target,
+    const struct json_set_path_leg *leg,
+    struct json_value *value
+);
+static int apply_json_set_array_leg(
+    struct json_value *target,
+    size_t index,
+    struct json_value *value
+);
+static struct json_value *object_member_value_mutable(
+    struct json_value *value,
+    const char *member,
+    size_t member_length
+);
+static struct json_value *array_index_value_mutable(struct json_value *value, size_t index);
+static void json_set_path_deinit(struct json_set_path *path);
 static bool path_identifier_start_byte(char byte);
 static bool path_identifier_byte(char byte);
 static bool path_text_is_ascii(const char *text, size_t text_length);
@@ -870,6 +929,74 @@ int mylite_json_contains_path(
     }
     if (rc == MYLITE_OK && (require_all || any_match)) {
         *out_contains = 1;
+    }
+
+    value_deinit(&document);
+    return rc;
+}
+
+int mylite_json_set(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL ||
+        (pair_count != 0U && (paths == NULL || path_lengths == NULL || values == NULL))) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    for (size_t pair_index = 0U; rc == MYLITE_OK && pair_index < pair_count; ++pair_index) {
+        struct json_parser path_parser = {
+            .text = paths[pair_index],
+            .length = path_lengths[pair_index],
+            .position = 0U,
+            .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+        };
+        struct json_set_path path = {0};
+        struct json_value value = {0};
+
+        rc = parse_json_set_path(&path_parser, &path);
+        *out_result = path_parser.result;
+        if (rc != MYLITE_OK && out_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
+            out_result->status = MYLITE_JSON_NORMALIZE_INVALID_PATH;
+        }
+        if (rc == MYLITE_OK) {
+            rc = json_value_from_sql_value(&values[pair_index], &value, out_result);
+        }
+        if (rc == MYLITE_OK) {
+            rc = apply_json_set_path(&document, &path, &value);
+        }
+        value_deinit(&value);
+        json_set_path_deinit(&path);
+    }
+    if (rc == MYLITE_OK) {
+        rc = emit_constructed_json(&document, out_text, out_text_length);
     }
 
     value_deinit(&document);
@@ -2658,6 +2785,357 @@ static int parse_path_array_index(struct json_parser *parser, size_t *out_index)
     }
     *out_index = value;
     return MYLITE_OK;
+}
+
+static int parse_json_set_path(struct json_parser *parser, struct json_set_path *out_path) {
+    int rc = MYLITE_OK;
+
+    if (out_path == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_path = (struct json_set_path){0};
+    if (!parser_match(parser, '$')) {
+        return parser_invalid(parser, parser->position);
+    }
+
+    while (rc == MYLITE_OK && !parser_at_end(parser)) {
+        char byte = parser_peek(parser);
+
+        if (byte == '.') {
+            rc = parse_json_set_path_member_leg(parser, out_path);
+        } else if (byte == '[') {
+            rc = parse_json_set_path_array_leg(parser, out_path);
+        } else if (byte == '*') {
+            rc = parser_unsupported(parser, parser->position);
+        } else {
+            rc = parser_invalid(parser, parser->position);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        json_set_path_deinit(out_path);
+    }
+    return rc;
+}
+
+static int parse_json_set_path_member_leg(struct json_parser *parser, struct json_set_path *path) {
+    if (!parser_match(parser, '.')) {
+        return parser_invalid(parser, parser->position);
+    }
+    if (parser_peek(parser) == '"') {
+        return parse_json_set_path_quoted_member_leg(parser, path);
+    }
+    if (!path_identifier_start_byte(parser_peek(parser))) {
+        if (parser_at_end(parser)) {
+            return parser_invalid(parser, parser->position);
+        }
+        if (parser_peek(parser) == '*') {
+            return parser_unsupported(parser, parser->position);
+        }
+        return parser_invalid(parser, parser->position);
+    }
+    return parse_json_set_path_identifier_member_leg(parser, path);
+}
+
+static int parse_json_set_path_quoted_member_leg(
+    struct json_parser *parser,
+    struct json_set_path *path
+) {
+    char *member = NULL;
+    size_t member_length = 0U;
+    size_t start = parser->position;
+    int rc = parse_string(parser, &member, &member_length);
+
+    if (rc == MYLITE_OK && !path_text_is_ascii(member, member_length)) {
+        rc = parser_unsupported(parser, start);
+    }
+    if (rc == MYLITE_OK) {
+        rc = json_set_path_append_member(path, member, member_length);
+        if (rc == MYLITE_OK) {
+            member = NULL;
+        }
+    }
+
+    free(member);
+    return rc;
+}
+
+static int parse_json_set_path_identifier_member_leg(
+    struct json_parser *parser,
+    struct json_set_path *path
+) {
+    char *member = NULL;
+    size_t start = parser->position;
+    size_t member_length = 0U;
+    int rc = MYLITE_OK;
+
+    ++parser->position;
+    while (path_identifier_byte(parser_peek(parser))) {
+        ++parser->position;
+    }
+    member_length = parser->position - start;
+    rc = copy_result_text(&parser->text[start], member_length, &member, &member_length);
+    if (rc == MYLITE_OK) {
+        rc = json_set_path_append_member(path, member, member_length);
+        if (rc == MYLITE_OK) {
+            member = NULL;
+        }
+    }
+
+    free(member);
+    return rc;
+}
+
+static int parse_json_set_path_array_leg(struct json_parser *parser, struct json_set_path *path) {
+    size_t index = 0U;
+    int rc = MYLITE_OK;
+
+    if (!parser_match(parser, '[')) {
+        return parser_invalid(parser, parser->position);
+    }
+    rc = parse_json_set_path_array_index(parser, &index);
+    if (rc == MYLITE_OK && !parser_match(parser, ']')) {
+        rc = parser_invalid(parser, parser->position);
+    }
+    if (rc == MYLITE_OK) {
+        rc = json_set_path_append_array_index(path, index);
+    }
+    return rc;
+}
+
+static int parse_json_set_path_array_index(struct json_parser *parser, size_t *out_index) {
+    size_t start = parser->position;
+    size_t value = 0U;
+    bool has_digit = false;
+
+    if (parser_peek(parser) == '*' || parser_peek(parser) == 'l' || parser_peek(parser) == 'L') {
+        return parser_unsupported(parser, parser->position);
+    }
+    while (is_decimal_digit(parser_peek(parser))) {
+        unsigned int digit = (unsigned int)(parser_peek(parser) - '0');
+
+        has_digit = true;
+        if (value > (SIZE_MAX - digit) / json_decimal_base) {
+            return parser_unsupported(parser, start);
+        }
+        value = (value * json_decimal_base) + digit;
+        ++parser->position;
+    }
+    if (!has_digit) {
+        return parser_invalid(parser, parser->position);
+    }
+    *out_index = value;
+    return MYLITE_OK;
+}
+
+static int json_set_path_append_member(
+    struct json_set_path *path,
+    const char *member,
+    size_t member_length
+) {
+    int rc = json_set_path_reserve(path, path->count + 1U);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    path->legs[path->count] = (struct json_set_path_leg){
+        .kind = JSON_SET_PATH_MEMBER,
+        .member = member,
+        .member_length = member_length,
+        .index = 0U,
+    };
+    ++path->count;
+    return MYLITE_OK;
+}
+
+static int json_set_path_append_array_index(struct json_set_path *path, size_t index) {
+    int rc = json_set_path_reserve(path, path->count + 1U);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    path->legs[path->count] = (struct json_set_path_leg){
+        .kind = JSON_SET_PATH_ARRAY,
+        .member = NULL,
+        .member_length = 0U,
+        .index = index,
+    };
+    ++path->count;
+    return MYLITE_OK;
+}
+
+static int json_set_path_reserve(struct json_set_path *path, size_t required_capacity) {
+    struct json_set_path_leg *legs = NULL;
+    size_t capacity = path->capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = json_initial_container_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*legs)) {
+        return MYLITE_NOMEM;
+    }
+
+    legs = realloc(path->legs, capacity * sizeof(*legs));
+    if (legs == NULL) {
+        return MYLITE_NOMEM;
+    }
+    path->legs = legs;
+    path->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static int apply_json_set_path(
+    struct json_value *document,
+    const struct json_set_path *path,
+    struct json_value *value
+) {
+    struct json_value *target = document;
+
+    if (document == NULL || path == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (path->count == 0U) {
+        value_deinit(document);
+        *document = *value;
+        *value = (struct json_value){0};
+        return MYLITE_OK;
+    }
+
+    for (size_t leg_index = 0U; leg_index + 1U < path->count; ++leg_index) {
+        const struct json_set_path_leg *leg = &path->legs[leg_index];
+
+        if (leg->kind == JSON_SET_PATH_MEMBER) {
+            target = object_member_value_mutable(target, leg->member, leg->member_length);
+        } else {
+            target = array_index_value_mutable(target, leg->index);
+        }
+        if (target == NULL) {
+            return MYLITE_OK;
+        }
+    }
+
+    const struct json_set_path_leg *last = &path->legs[path->count - 1U];
+
+    if (last->kind == JSON_SET_PATH_MEMBER) {
+        return apply_json_set_member_leg(target, last, value);
+    }
+    return apply_json_set_array_leg(target, last->index, value);
+}
+
+static int apply_json_set_member_leg(
+    struct json_value *target,
+    const struct json_set_path_leg *leg,
+    struct json_value *value
+) {
+    char *member = NULL;
+    size_t member_length = 0U;
+    struct json_value *stored_value = NULL;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || leg == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->kind != JSON_VALUE_OBJECT) {
+        return MYLITE_OK;
+    }
+    rc = copy_result_text(leg->member, leg->member_length, &member, &member_length);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = object_append_member(&target->payload.object, member, member_length, value, &stored_value);
+    if (rc == MYLITE_OK) {
+        member = NULL;
+        sort_object_members_by_mysql_display_order(&target->payload.object);
+    }
+
+    free(member);
+    return rc;
+}
+
+static int apply_json_set_array_leg(
+    struct json_value *target,
+    size_t index,
+    struct json_value *value
+) {
+    struct json_value *stored_value = NULL;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->kind == JSON_VALUE_ARRAY) {
+        if (index < target->payload.array.count) {
+            value_deinit(&target->payload.array.values[index]);
+            target->payload.array.values[index] = *value;
+            *value = (struct json_value){0};
+            return MYLITE_OK;
+        }
+        return array_append_value(&target->payload.array, value, &stored_value);
+    }
+    if (index == 0U) {
+        value_deinit(target);
+        *target = *value;
+        *value = (struct json_value){0};
+        return MYLITE_OK;
+    }
+
+    struct json_value array = {.kind = JSON_VALUE_ARRAY};
+
+    rc = array_reserve_values(&array.payload.array, 2U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    array.payload.array.values[0] = *target;
+    array.payload.array.values[1] = *value;
+    array.payload.array.count = 2U;
+    *target = array;
+    *value = (struct json_value){0};
+    return MYLITE_OK;
+}
+
+static struct json_value *object_member_value_mutable(
+    struct json_value *value,
+    const char *member,
+    size_t member_length
+) {
+    if (value == NULL || value->kind != JSON_VALUE_OBJECT || member == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < value->payload.object.count; ++index) {
+        struct json_member *candidate = &value->payload.object.members[index];
+
+        if (candidate->key_length == member_length &&
+            memcmp(candidate->key, member, member_length) == 0) {
+            return candidate->value;
+        }
+    }
+    return NULL;
+}
+
+static struct json_value *array_index_value_mutable(struct json_value *value, size_t index) {
+    if (value == NULL || value->kind != JSON_VALUE_ARRAY || index >= value->payload.array.count) {
+        return NULL;
+    }
+    return &value->payload.array.values[index];
+}
+
+static void json_set_path_deinit(struct json_set_path *path) {
+    if (path == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < path->count; ++index) {
+        free((void *)path->legs[index].member);
+    }
+    free(path->legs);
+    *path = (struct json_set_path){0};
 }
 
 static bool path_identifier_start_byte(char byte) {

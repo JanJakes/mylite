@@ -9,6 +9,7 @@ enum mylite_json_normalize_status {
     MYLITE_JSON_NORMALIZE_OK = 0,
     MYLITE_JSON_NORMALIZE_INVALID = 1,
     MYLITE_JSON_NORMALIZE_UNSUPPORTED = 2,
+    MYLITE_JSON_NORMALIZE_INVALID_PATH = 3,
 };
 
 struct mylite_json_normalize_result {
@@ -97,6 +98,17 @@ int mylite_json_contains_path(
     size_t path_count,
     bool require_all,
     int64_t *out_contains,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_set(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_path_validate(

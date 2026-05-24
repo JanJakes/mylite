@@ -66,6 +66,7 @@ static int test_field_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
 static int test_json_construction_functions(void);
+static int test_json_set_function(void);
 static int test_json_introspection_functions(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
@@ -392,6 +393,7 @@ int main(void) {
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
     failures += test_json_construction_functions();
+    failures += test_json_set_function();
     failures += test_json_introspection_functions();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
@@ -2829,6 +2831,81 @@ static int test_json_construction_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT JSON_ARRAY(*);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_json_set_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_item = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT JSON_SET('{\"a\":1}', '$.a', 2), json_set(j, '$.b', JSON_ARRAY(1)) "
+        "AS changed FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_item = child_at(select_list, 1U);
+    second_expression = child_at(second_item, 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_JSON_SET_FUNCTION, "json_set function");
+    failures +=
+        expect_span_text(first_expression, "JSON_SET('{\"a\":1}', '$.a', 2)", "json_set span");
+    failures += expect_child_count(first_expression, 1U, "json_set argument-list child count");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "json_set args");
+    failures += expect_child_count(arguments, 3U, "json_set argument count");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_STRING, "json_set document");
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_STRING, "json_set path");
+    failures +=
+        expect_literal(child_at(arguments, 2U), MYLITE_SQL_AST_LITERAL_INTEGER, "json_set value");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_JSON_SET_FUNCTION, "lower json_set");
+    failures += expect_node(child_at(second_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "json_set alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_SET();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR,
+        "json_set zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO JSON_SET('{\"a\":1}', '$.a', NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "json_set do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_JSON_SET_FUNCTION, "do json_set");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE json_set (json_set INT); SELECT json_set FROM json_set;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT JSON_SET('{\"a\":1}', '$.a', 2) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

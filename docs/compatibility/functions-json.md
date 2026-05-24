@@ -30,7 +30,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_SCHEMA_VALID()` | ❌ | JSON Schema validation boolean |
 | `JSON_SCHEMA_VALIDATION_REPORT()` | ❌ | JSON Schema validation report |
 | `JSON_SEARCH()` | ❌ | Path to value within JSON document |
-| `JSON_SET()` | ❌ | Insert data into JSON document |
+| `JSON_SET()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection over SQL string/`NULL`, JSON descriptor, and nonbinary string descriptor documents, simple path string/`NULL` literals, and admitted string, signed-64 integer, boolean, `NULL`, JSON descriptor, integer descriptor, boolean-like integer descriptor, and nonbinary string descriptor values; no-source scalar values additionally admit current `JSON_EXTRACT()`, `JSON_ARRAY()`, and `JSON_OBJECT()` results, while row-scalar values admit current `JSON_ARRAY()` and `JSON_OBJECT()` results. Supports root replacement, member replacement/insertion, array replacement/append, scalar final-leg replacement/autowrap, duplicate paths left-to-right, and missing-intermediate no-op; no stored partial updates, wildcard/range paths, recursive `JSON_SET()` values, row-scalar `JSON_EXTRACT()` values, arbitrary expression arguments, predicates, ordering/grouping expressions, DML assignment expressions, binary strings, decimal/float/temporal values, or protocol metadata beyond limited scalar/row-scalar result-column metadata |
 | `JSON_STORAGE_FREE()` | ❌ | Partial-update free space |
 | `JSON_STORAGE_SIZE()` | ❌ | Binary JSON storage size |
 | `JSON_TABLE()` | ❌ | Return data from a JSON expression as a relational table |

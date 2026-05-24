@@ -189,6 +189,7 @@ struct json_set_path {
 enum json_mutation_mode {
     JSON_MUTATION_SET,
     JSON_MUTATION_REPLACE,
+    JSON_MUTATION_REMOVE,
 };
 
 static int parse_document(struct json_parser *parser, struct json_value *out_value);
@@ -456,6 +457,16 @@ static int apply_json_replace_array_leg(
     struct json_value *target,
     size_t index,
     struct json_value *value
+);
+static int apply_json_remove_path(struct json_value *document, const struct json_set_path *path);
+static int apply_json_remove_member_leg(
+    struct json_value *target,
+    const struct json_set_path_leg *leg
+);
+static int apply_json_remove_array_leg(struct json_value *target, size_t index);
+static struct json_value *remove_path_array_index_value_mutable(
+    struct json_value *value,
+    size_t index
 );
 static struct json_value *object_member_value_mutable(
     struct json_value *value,
@@ -1023,6 +1034,81 @@ int mylite_json_replace(
     );
 }
 
+int mylite_json_remove(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    return mutate_json_document(
+        text,
+        text_length,
+        paths,
+        path_lengths,
+        JSON_MUTATION_REMOVE,
+        NULL,
+        path_count,
+        out_text,
+        out_text_length,
+        out_result
+    );
+}
+
+int mylite_json_remove_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL || (path_count != 0U && (paths == NULL || path_lengths == NULL))) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    for (size_t path_index = 0U; rc == MYLITE_OK && path_index < path_count; ++path_index) {
+        struct json_parser path_parser = {
+            .text = paths[path_index],
+            .length = path_lengths[path_index],
+            .position = 0U,
+            .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+        };
+        struct json_set_path path = {0};
+
+        rc = parse_json_set_path(&path_parser, &path);
+        *out_result = path_parser.result;
+        if (rc != MYLITE_OK && out_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
+            out_result->status = MYLITE_JSON_NORMALIZE_INVALID_PATH;
+        }
+        json_set_path_deinit(&path);
+    }
+
+    value_deinit(&document);
+    return rc;
+}
+
 static int mutate_json_document(
     const char *text,
     size_t text_length,
@@ -1053,8 +1139,8 @@ static int mutate_json_document(
         .status = MYLITE_JSON_NORMALIZE_INVALID,
         .position = 0U,
     };
-    if (text == NULL ||
-        (pair_count != 0U && (paths == NULL || path_lengths == NULL || values == NULL))) {
+    if (text == NULL || (pair_count != 0U && (paths == NULL || path_lengths == NULL)) ||
+        (mode != JSON_MUTATION_REMOVE && pair_count != 0U && values == NULL)) {
         return MYLITE_ERROR;
     }
 
@@ -1075,7 +1161,11 @@ static int mutate_json_document(
         if (rc != MYLITE_OK && out_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
             out_result->status = MYLITE_JSON_NORMALIZE_INVALID_PATH;
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && mode == JSON_MUTATION_REMOVE && path.count == 0U) {
+            out_result->status = MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED;
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK && mode != JSON_MUTATION_REMOVE) {
             rc = json_value_from_sql_value(&values[pair_index], &value, out_result);
         }
         if (rc == MYLITE_OK) {
@@ -3092,6 +3182,8 @@ static int apply_json_mutation_path(
         return apply_json_set_path(document, path, value);
     case JSON_MUTATION_REPLACE:
         return apply_json_replace_path(document, path, value);
+    case JSON_MUTATION_REMOVE:
+        return apply_json_remove_path(document, path);
     }
 
     return MYLITE_MISUSE;
@@ -3290,6 +3382,94 @@ static int apply_json_replace_array_leg(
         *value = (struct json_value){0};
     }
     return MYLITE_OK;
+}
+
+static int apply_json_remove_path(struct json_value *document, const struct json_set_path *path) {
+    struct json_value *target = document;
+
+    if (document == NULL || path == NULL || path->count == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t leg_index = 0U; leg_index + 1U < path->count; ++leg_index) {
+        const struct json_set_path_leg *leg = &path->legs[leg_index];
+
+        if (leg->kind == JSON_SET_PATH_MEMBER) {
+            target = object_member_value_mutable(target, leg->member, leg->member_length);
+        } else {
+            target = remove_path_array_index_value_mutable(target, leg->index);
+        }
+        if (target == NULL) {
+            return MYLITE_OK;
+        }
+    }
+
+    const struct json_set_path_leg *last = &path->legs[path->count - 1U];
+
+    if (last->kind == JSON_SET_PATH_MEMBER) {
+        return apply_json_remove_member_leg(target, last);
+    }
+    return apply_json_remove_array_leg(target, last->index);
+}
+
+static int apply_json_remove_member_leg(
+    struct json_value *target,
+    const struct json_set_path_leg *leg
+) {
+    if (target == NULL || leg == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->kind != JSON_VALUE_OBJECT) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < target->payload.object.count; ++index) {
+        struct json_member *member = &target->payload.object.members[index];
+
+        if (member->key_length == leg->member_length &&
+            memcmp(member->key, leg->member, leg->member_length) == 0) {
+            value_deinit(member->value);
+            free(member->value);
+            free(member->key);
+            for (size_t move_index = index + 1U; move_index < target->payload.object.count;
+                 ++move_index) {
+                target->payload.object.members[move_index - 1U] =
+                    target->payload.object.members[move_index];
+            }
+            --target->payload.object.count;
+            target->payload.object.members[target->payload.object.count] = (struct json_member){0};
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_json_remove_array_leg(struct json_value *target, size_t index) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->kind != JSON_VALUE_ARRAY || index >= target->payload.array.count) {
+        return MYLITE_OK;
+    }
+    value_deinit(&target->payload.array.values[index]);
+    for (size_t move_index = index + 1U; move_index < target->payload.array.count; ++move_index) {
+        target->payload.array.values[move_index - 1U] = target->payload.array.values[move_index];
+    }
+    --target->payload.array.count;
+    target->payload.array.values[target->payload.array.count] = (struct json_value){0};
+    return MYLITE_OK;
+}
+
+static struct json_value *remove_path_array_index_value_mutable(
+    struct json_value *value,
+    size_t index
+) {
+    if (value == NULL) {
+        return NULL;
+    }
+    if (value->kind == JSON_VALUE_ARRAY) {
+        return array_index_value_mutable(value, index);
+    }
+    return index == 0U ? value : NULL;
 }
 
 static struct json_value *object_member_value_mutable(

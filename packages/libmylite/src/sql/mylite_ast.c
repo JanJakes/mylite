@@ -1434,6 +1434,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_replace_function";
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
         return "json_replace_argument_count_error";
+    case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
+        return "json_remove_function";
+    case MYLITE_SQL_AST_JSON_REMOVE_ARGUMENT_COUNT_ERROR:
+        return "json_remove_argument_count_error";
     case MYLITE_SQL_AST_FIELD_FUNCTION:
         return "field_function";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:

@@ -46,6 +46,7 @@ struct json_set_sqlite_arguments {
     struct mylite_json_sql_value *values;
     size_t pair_count;
     int document_length;
+    bool document_is_null;
     bool force_null;
 };
 
@@ -55,6 +56,7 @@ struct json_mutation_sqlite_messages {
     const char *invalid_path_type;
     const char *unsupported;
     const char *invalid_path;
+    const char *path_not_allowed;
     const char *invalid_text_or_path;
     const char *failed;
 };
@@ -65,6 +67,7 @@ static const struct json_mutation_sqlite_messages json_set_sqlite_messages = {
     .invalid_path_type = "Invalid JSON path in JSON_SET()",
     .unsupported = "Unsupported JSON path or JSON document in JSON_SET()",
     .invalid_path = "Invalid JSON path in JSON_SET()",
+    .path_not_allowed = "JSON_SET path not allowed",
     .invalid_text_or_path = "Invalid JSON text or JSON path in JSON_SET()",
     .failed = "MyLite JSON_SET failed",
 };
@@ -75,8 +78,20 @@ static const struct json_mutation_sqlite_messages json_replace_sqlite_messages =
     .invalid_path_type = "Invalid JSON path in JSON_REPLACE()",
     .unsupported = "Unsupported JSON path or JSON document in JSON_REPLACE()",
     .invalid_path = "Invalid JSON path in JSON_REPLACE()",
+    .path_not_allowed = "JSON_REPLACE path not allowed",
     .invalid_text_or_path = "Invalid JSON text or JSON path in JSON_REPLACE()",
     .failed = "MyLite JSON_REPLACE failed",
+};
+
+static const struct json_mutation_sqlite_messages json_remove_sqlite_messages = {
+    .invalid_callback = "invalid MyLite JSON_REMOVE callback",
+    .invalid_document_type = "Invalid data type for JSON data in JSON_REMOVE()",
+    .invalid_path_type = "Invalid JSON path in JSON_REMOVE()",
+    .unsupported = "Unsupported JSON path or JSON document in JSON_REMOVE()",
+    .invalid_path = "Invalid JSON path in JSON_REMOVE()",
+    .path_not_allowed = "JSON_REMOVE path not allowed",
+    .invalid_text_or_path = "Invalid JSON text or JSON path in JSON_REMOVE()",
+    .failed = "MyLite JSON_REMOVE failed",
 };
 
 static void json_array_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -93,6 +108,7 @@ static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqli
 static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_replace_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_remove_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_type_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_unquote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_valid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -172,6 +188,18 @@ static int collect_json_set_sqlite_pairs(
     sqlite3_value **argv,
     struct json_set_sqlite_arguments *arguments,
     const struct json_mutation_sqlite_messages *messages
+);
+static int decode_json_remove_sqlite_arguments(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_set_sqlite_arguments *arguments
+);
+static int collect_json_remove_sqlite_paths(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_set_sqlite_arguments *arguments
 );
 static void json_set_sqlite_arguments_deinit(struct json_set_sqlite_arguments *arguments);
 static void finish_json_set_sqlite_error(
@@ -345,6 +373,20 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_replace_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_remove",
+            .argument_count = -1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_remove_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -1132,6 +1174,71 @@ static void json_replace_sqlite_callback(sqlite3_context *context, int argc, sql
     json_set_sqlite_arguments_deinit(&arguments);
 }
 
+static void json_remove_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct json_set_sqlite_arguments arguments = {0};
+    char *result = NULL;
+    size_t result_length = 0U;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    rc = decode_json_remove_sqlite_arguments(context, argc, argv, &arguments);
+    if (rc != MYLITE_OK) {
+        return;
+    }
+    if (arguments.document_is_null) {
+        sqlite3_result_null(context);
+        json_set_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+    if (arguments.force_null) {
+        rc = mylite_json_remove_validate_before_null(
+            (const char *)arguments.document,
+            (size_t)arguments.document_length,
+            arguments.paths,
+            arguments.path_lengths,
+            arguments.pair_count,
+            &normalize_result
+        );
+        if (rc != MYLITE_OK) {
+            finish_json_set_sqlite_error(
+                context,
+                rc,
+                &normalize_result,
+                &json_remove_sqlite_messages
+            );
+            json_set_sqlite_arguments_deinit(&arguments);
+            return;
+        }
+        sqlite3_result_null(context);
+        json_set_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+
+    rc = mylite_json_remove(
+        (const char *)arguments.document,
+        (size_t)arguments.document_length,
+        arguments.paths,
+        arguments.path_lengths,
+        arguments.pair_count,
+        &result,
+        &result_length,
+        &normalize_result
+    );
+    if (rc != MYLITE_OK) {
+        finish_json_set_sqlite_error(context, rc, &normalize_result, &json_remove_sqlite_messages);
+        json_set_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+    if (result_length > (size_t)INT_MAX) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        json_set_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+    sqlite3_result_text(context, result, (int)result_length, free);
+    json_set_sqlite_arguments_deinit(&arguments);
+}
+
 static int decode_json_set_sqlite_arguments(
     sqlite3_context *context,
     int argc,
@@ -1239,6 +1346,93 @@ static int collect_json_set_sqlite_pairs(
     return MYLITE_OK;
 }
 
+static int decode_json_remove_sqlite_arguments(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_set_sqlite_arguments *arguments
+) {
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON mutation callback", -1);
+        return MYLITE_MISUSE;
+    }
+    *arguments = (struct json_set_sqlite_arguments){0};
+
+    if (context == NULL || argc < 2 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, json_remove_sqlite_messages.invalid_callback, -1);
+        return MYLITE_ERROR;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        arguments->document_is_null = true;
+        arguments->force_null = true;
+        return MYLITE_OK;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, json_remove_sqlite_messages.invalid_document_type, -1);
+        return MYLITE_ERROR;
+    }
+    arguments->document = sqlite3_value_text(argv[0]);
+    arguments->document_length = sqlite3_value_bytes(argv[0]);
+    if (arguments->document == NULL || arguments->document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+
+    rc = collect_json_remove_sqlite_paths(context, argc, argv, arguments);
+    if (rc != MYLITE_OK) {
+        json_set_sqlite_arguments_deinit(arguments);
+    }
+    return rc;
+}
+
+static int collect_json_remove_sqlite_paths(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_set_sqlite_arguments *arguments
+) {
+    arguments->pair_count = (size_t)(argc - 1);
+    if (arguments->pair_count > SIZE_MAX / sizeof(*arguments->paths) ||
+        arguments->pair_count > SIZE_MAX / sizeof(*arguments->path_lengths)) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+    arguments->paths = (const char **)calloc(arguments->pair_count, sizeof(*arguments->paths));
+    arguments->path_lengths =
+        (size_t *)calloc(arguments->pair_count, sizeof(*arguments->path_lengths));
+    if (arguments->paths == NULL || arguments->path_lengths == NULL) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t path_index = 0U; path_index < arguments->pair_count; ++path_index) {
+        size_t argument_index = 1U + path_index;
+
+        if (argv[argument_index] == NULL) {
+            sqlite3_result_error(context, json_remove_sqlite_messages.invalid_callback, -1);
+            return MYLITE_ERROR;
+        }
+        if (sqlite3_value_type(argv[argument_index]) == SQLITE_NULL) {
+            arguments->force_null = true;
+            arguments->pair_count = path_index;
+            return MYLITE_OK;
+        }
+        if (sqlite3_value_type(argv[argument_index]) != SQLITE_TEXT) {
+            sqlite3_result_error(context, json_remove_sqlite_messages.invalid_path_type, -1);
+            return MYLITE_ERROR;
+        }
+        arguments->paths[path_index] = (const char *)sqlite3_value_text(argv[argument_index]);
+        if (arguments->paths[path_index] == NULL) {
+            sqlite3_result_error_nomem(context);
+            return MYLITE_NOMEM;
+        }
+        arguments->path_lengths[path_index] = (size_t)sqlite3_value_bytes(argv[argument_index]);
+    }
+    return MYLITE_OK;
+}
+
 static void json_set_sqlite_arguments_deinit(struct json_set_sqlite_arguments *arguments) {
     if (arguments == NULL) {
         return;
@@ -1270,6 +1464,11 @@ static void finish_json_set_sqlite_error(
     if (normalize_result != NULL &&
         normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID_PATH) {
         sqlite3_result_error(context, messages->invalid_path, -1);
+        return;
+    }
+    if (normalize_result != NULL &&
+        normalize_result->status == MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED) {
+        sqlite3_result_error(context, messages->path_not_allowed, -1);
         return;
     }
     if (normalize_result != NULL && normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {

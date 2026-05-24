@@ -10,6 +10,7 @@ enum mylite_json_normalize_status {
     MYLITE_JSON_NORMALIZE_INVALID = 1,
     MYLITE_JSON_NORMALIZE_UNSUPPORTED = 2,
     MYLITE_JSON_NORMALIZE_INVALID_PATH = 3,
+    MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED = 4,
 };
 
 struct mylite_json_normalize_result {
@@ -120,6 +121,24 @@ int mylite_json_replace(
     size_t pair_count,
     char **out_text,
     size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_remove(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_remove_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_path_validate(

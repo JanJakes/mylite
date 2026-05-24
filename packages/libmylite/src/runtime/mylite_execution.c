@@ -20156,6 +20156,12 @@ static int advance_auto_increment_after_duplicate_attempt(
     size_t row_index,
     int64_t *auto_increment_next_after_rows
 );
+static int advance_auto_increment_after_ignored_duplicate(
+    const struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    int64_t *auto_increment_next_after_rows
+);
 static void record_inserted_generated_auto_increment(
     const struct planned_insert *plan,
     size_t row_index,
@@ -73085,6 +73091,14 @@ static int handle_insert_plan_constraint(
     }
 
     rc = handle_insert_unique_key_conflict(database, sqlite_step_rc, statement, plan, row_index);
+    if (rc == MYLITE_OK && plan->has_auto_increment && plan->ignore_errors) {
+        rc = advance_auto_increment_after_ignored_duplicate(
+            database,
+            plan,
+            row_index,
+            &counters->auto_increment_next_after_rows
+        );
+    }
     *out_row_complete = rc == MYLITE_OK;
     return rc;
 }
@@ -73298,6 +73312,24 @@ static int advance_auto_increment_after_duplicate_attempt(
     int64_t *auto_increment_next_after_rows
 ) {
     if (row_index >= plan->row_count || !plan->rows[row_index].generated_auto_increment) {
+        return MYLITE_OK;
+    }
+
+    return advance_auto_increment_after_insert_row(
+        database,
+        plan,
+        row_index,
+        auto_increment_next_after_rows
+    );
+}
+
+static int advance_auto_increment_after_ignored_duplicate(
+    const struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    int64_t *auto_increment_next_after_rows
+) {
+    if (row_index >= plan->row_count || plan->rows[row_index].generated_auto_increment) {
         return MYLITE_OK;
     }
 
@@ -73838,14 +73870,6 @@ static int plan_insert_select(
     }
     if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
         set_unsupported_error(database, "INSERT IGNORE ... SELECT does not support UNION sources");
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE &&
-        out_plan->target.has_auto_increment) {
-        set_unsupported_error(
-            database,
-            "INSERT IGNORE ... SELECT does not support AUTO_INCREMENT targets"
-        );
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {

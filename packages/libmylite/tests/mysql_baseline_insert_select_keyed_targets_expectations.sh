@@ -258,10 +258,71 @@ expect_output \
          FROM child_ignore;"
 
 expect_output \
+    "auto-increment insert ignore skips duplicate and missing parent rows" \
+    "1	2	1
+1:a,2:b
+0	1	1
+1:a
+1	1	1
+1:1
+1	11	1
+1:dup,11:ok
+0	1	2
+1:a,2:b" \
+    "CREATE TABLE auto_ignore(
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         label VARCHAR(20) UNIQUE
+     ) ENGINE=InnoDB;
+     INSERT INTO auto_ignore(label) VALUES ('a');
+     INSERT IGNORE INTO auto_ignore(label)
+         SELECT label FROM src WHERE id <= 2 ORDER BY id;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_ignore;
+     CREATE TABLE auto_ignore_all_skip(
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         label VARCHAR(20) UNIQUE
+     ) ENGINE=InnoDB;
+     INSERT INTO auto_ignore_all_skip(label) VALUES ('a');
+     INSERT IGNORE INTO auto_ignore_all_skip(label) SELECT label FROM src WHERE id = 1;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_ignore_all_skip;
+     CREATE TABLE auto_child_ignore(
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         parent_id INT,
+         CONSTRAINT fk_auto_child_ignore FOREIGN KEY(parent_id) REFERENCES parent(id)
+     ) ENGINE=InnoDB;
+     INSERT IGNORE INTO auto_child_ignore(parent_id)
+         SELECT parent_id FROM src WHERE id IN (1, 3) ORDER BY id DESC;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', parent_id) ORDER BY id) FROM auto_child_ignore;
+     CREATE TABLE auto_high_duplicate_src(id INT, label VARCHAR(20)) ENGINE=InnoDB;
+     INSERT INTO auto_high_duplicate_src VALUES (10, 'dup'), (NULL, 'ok');
+     CREATE TABLE auto_high_duplicate_ignore(
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         label VARCHAR(20) UNIQUE
+     ) ENGINE=InnoDB;
+     INSERT INTO auto_high_duplicate_ignore VALUES (1, 'dup');
+     INSERT IGNORE INTO auto_high_duplicate_ignore(id, label)
+         SELECT id, label FROM auto_high_duplicate_src ORDER BY label;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_high_duplicate_ignore;
+     CREATE TABLE same_auto_ignore(
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         label VARCHAR(20) UNIQUE
+     ) ENGINE=InnoDB;
+     INSERT INTO same_auto_ignore(label) VALUES ('a'), ('b');
+     INSERT IGNORE INTO same_auto_ignore(label)
+         SELECT label FROM same_auto_ignore ORDER BY id;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM same_auto_ignore;"
+
+expect_output \
     "auto-increment generated and mixed rows" \
     "3	1	0
 1:a,2:b,3:c
 4	6	0
+5:five,6:null,7:seven,8:zero
+3	6	1
 5:five,6:null,7:seven,8:zero" \
     "CREATE TABLE auto_dst(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20)) ENGINE=InnoDB;
      INSERT INTO auto_dst(label) SELECT label FROM src WHERE id <= 3 ORDER BY id;
@@ -272,11 +333,21 @@ expect_output \
      CREATE TABLE auto_mixed(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20)) ENGINE=InnoDB;
      INSERT INTO auto_mixed(id, label) SELECT id, label FROM auto_src ORDER BY label;
      SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
-     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_mixed;"
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_mixed;
+     CREATE TABLE auto_explicit_ignore(
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         label VARCHAR(20)
+     ) ENGINE=InnoDB;
+     INSERT INTO auto_explicit_ignore VALUES (5, 'five');
+     INSERT IGNORE INTO auto_explicit_ignore(id, label) SELECT id, label FROM auto_src ORDER BY label;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_explicit_ignore;"
 
 expect_output \
     "no auto value on zero treats zero as explicit" \
     "3	6	0
+0:zero,5:five,6:null
+3	6	0
 0:zero,5:five,6:null" \
     "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_AUTO_VALUE_ON_ZERO';
      CREATE TABLE auto_zero(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20)) ENGINE=InnoDB;
@@ -284,6 +355,11 @@ expect_output \
          SELECT id, label FROM auto_src WHERE label IN ('zero', 'null', 'five') ORDER BY label;
      SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
      SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_zero;
+     CREATE TABLE auto_zero_ignore(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20)) ENGINE=InnoDB;
+     INSERT IGNORE INTO auto_zero_ignore(id, label)
+         SELECT id, label FROM auto_src WHERE label IN ('zero', 'null', 'five') ORDER BY label;
+     SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;
+     SELECT GROUP_CONCAT(CONCAT(id, ':', label) ORDER BY id) FROM auto_zero_ignore;
      SET SESSION sql_mode = 'STRICT_TRANS_TABLES';"
 
 expect_error \

@@ -71,8 +71,9 @@ MySQL 8.4.9 establishes these expectations for the supported slice:
   range clip to the descriptor endpoint and warn once per adjusted selected
   row.
 - `INSERT IGNORE ... SELECT` performs the same adjustment even while strict SQL
-  mode remains active, for the existing table-backed non-`AUTO_INCREMENT`
-  `IGNORE` envelope.
+  mode remains active, for the existing table-backed `IGNORE` envelope. The
+  later `baseline-insert-ignore-select-auto-increment` slice also admits this
+  envelope for supported auto-increment targets.
 - When one statement has omitted-column warnings and selected-row warnings,
   omitted-column warnings appear first, followed by row-order selected-value
   warnings.
@@ -89,8 +90,8 @@ Supported statement envelopes are the ones already admitted before this phase:
 - descriptor-backed single-table source `SELECT`;
 - existing row-scalar no-source and `FROM DUAL` sources;
 - existing unparenthesized compound sources whose branches are already admitted;
-- table-backed non-`AUTO_INCREMENT` `INSERT IGNORE ... SELECT`, where that
-  shape is already supported.
+- table-backed `INSERT IGNORE ... SELECT`, where that shape is already
+  supported.
 
 The new behavior is limited to:
 
@@ -125,7 +126,8 @@ This phase does not add:
   decimal-to-integer, approximate-to-integer, binary, `BIT`, `ENUM`, `SET`,
   JSON, or spatial conversion beyond shapes already admitted before this phase;
 - row-scalar or compound-source `INSERT IGNORE ... SELECT`;
-- table-backed `INSERT IGNORE ... SELECT` on `AUTO_INCREMENT` targets;
+- exact InnoDB bulk auto-increment reserve-gap emulation after
+  `INSERT ... SELECT`;
 - `REPLACE ... SELECT` warning demotion;
 - `ON DUPLICATE KEY UPDATE` changes;
 - expression projection, parameters, subqueries beyond the already admitted

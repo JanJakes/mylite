@@ -67,10 +67,12 @@ records runtime probes for this feature. Observed behavior:
   current counter. `NULL` and zero generate values unless
   `NO_AUTO_VALUE_ON_ZERO` makes zero explicit.
 - MySQL also supports `INSERT IGNORE ... SELECT` into `AUTO_INCREMENT`
-  targets, but skipped duplicate-key and missing-parent rows can affect the
-  next generated value in pattern-specific ways. MyLite defers that combined
-  behavior and rejects table-backed `INSERT IGNORE ... SELECT` into
-  `AUTO_INCREMENT` targets for this slice.
+  targets, but skipped duplicate-key and missing-parent rows can interact with
+  InnoDB bulk auto-increment reserve gaps. This original slice deferred that
+  combination; the later
+  `docs/specs/baseline-insert-ignore-select-auto-increment/specs.md` slice
+  admits the row behavior while still documenting exact reserve-gap emulation
+  as reduced fidelity.
 - MySQL allows selecting from the same persistent target table. It uses an
   internal temporary table so the selected row set is fixed before insertion.
   MyLite already has the same high-level shape through its internal SQLite
@@ -87,12 +89,12 @@ The implementation must add table-backed `INSERT ... SELECT` support for:
   supported integer-family child descriptors;
 - supported indexed `AUTO_INCREMENT` targets, including omitted generated
   values, explicit positive values, `NULL`, zero, and
-  `NO_AUTO_VALUE_ON_ZERO` behavior already implemented for `INSERT`, except
-  when combined with table-backed `INSERT IGNORE ... SELECT`;
+  `NO_AUTO_VALUE_ON_ZERO` behavior already implemented for `INSERT`;
 - strict duplicate-key and missing-parent diagnostics with all-or-nothing
   statement rollback;
-- limited `INSERT IGNORE ... SELECT` duplicate-key and missing-parent demotion
-  for non-`AUTO_INCREMENT` targets;
+- limited `INSERT IGNORE ... SELECT` duplicate-key and missing-parent demotion,
+  including supported `AUTO_INCREMENT` targets after the later
+  `baseline-insert-ignore-select-auto-increment` slice;
 - affected rows, warnings, `ROW_COUNT()`, and `LAST_INSERT_ID()` following the
   verified MySQL behavior for the admitted subset;
 - same-table persistent source/target statements through the existing internal
@@ -112,7 +114,6 @@ This feature does not implement:
 - `INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`;
 - `REPLACE ... SELECT` into key-bearing targets, which is specified separately
   in `docs/specs/baseline-replace-select-keyed-targets/specs.md`;
-- table-backed `INSERT IGNORE ... SELECT` into `AUTO_INCREMENT` targets;
 - table-backed `INSERT IGNORE ... SELECT` warning demotion for selected-row
   range, nullability, default, string length, temporal, decimal, approximate,
   binary, `BIT`, `ENUM`, `SET`, or JSON conversion issues beyond paths already
@@ -203,8 +204,8 @@ Supported strict failures use existing MyLite diagnostics:
 - missing parent row: `1452 / 23000`;
 - key-bearing `REPLACE ... SELECT`: specified separately in
   `docs/specs/baseline-replace-select-keyed-targets/specs.md`;
-- unsupported table-backed `INSERT IGNORE ... SELECT` into `AUTO_INCREMENT`
-  targets: existing `1064 / 42000` unsupported diagnostics;
+- unsupported row-scalar or compound-source `INSERT IGNORE ... SELECT`:
+  existing `1064 / 42000` unsupported diagnostics;
 - selected-row conversion failures: existing `INSERT ... SELECT` diagnostics;
 - physical SQLite or allocation failures: existing internal diagnostics.
 
@@ -233,9 +234,10 @@ Add MySQL-runtime expectation coverage and C runtime tests for:
 - foreign-key child success, missing-parent error rollback, nullable child key,
   and `INSERT IGNORE` missing-parent skip;
 - auto-increment omitted/generated, explicit values, mixed explicit/generated
-  table-backed input, `NO_AUTO_VALUE_ON_ZERO`, `LAST_INSERT_ID()`, and durable
-  counter persistence after reopen, plus deterministic rejection when combined
-  with table-backed `INSERT IGNORE ... SELECT`;
+  table-backed input, `NO_AUTO_VALUE_ON_ZERO`, `LAST_INSERT_ID()`, durable
+  counter persistence after reopen, and the later accepted table-backed
+  `INSERT IGNORE ... SELECT` row behavior with documented bulk reserve-gap
+  limits;
 - same-table persistent source/target behavior through temporary
   materialization;
 - affected rows, warning count, absence of result rows, remaining rows after

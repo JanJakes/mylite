@@ -1162,6 +1162,9 @@ static int test_insert_select_keyed_targets(void) {
     static const char *const child_rows[] = {"1", "1", "2", "2"};
     static const char *const child_ignore_rows[] = {"1", "1", "2", "2", "4", NULL};
     static const char *const auto_rows[] = {"1", "a", "2", "b", "3", "c"};
+    static const char *const auto_ignore_rows[] = {"1", "a", "2", "b"};
+    static const char *const auto_child_ignore_rows[] = {"1", "1"};
+    static const char *const auto_high_duplicate_ignore_rows[] = {"1", "dup", "11", "ok"};
     static const char *const auto_mixed_rows[] = {
         "5",
         "five",
@@ -1174,7 +1177,10 @@ static int test_insert_select_keyed_targets(void) {
     };
     static const char *const auto_zero_rows[] = {"0", "zero", "5", "five", "6", "null"};
     static const char *const last_insert_id_one[] = {"1"};
+    static const char *const last_insert_id_two[] = {"2"};
+    static const char *const last_insert_id_eleven[] = {"11"};
     static const char *const last_insert_id_six[] = {"6"};
+    static const char *const same_auto_ignore_rows[] = {"1", "a", "2", "b"};
     static const char *const zero_rows[] = {"0"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -1532,18 +1538,117 @@ static int test_insert_select_keyed_targets(void) {
     );
     failures += execute_ok(
         database,
-        "CREATE TABLE auto_ignore(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        "CREATE TABLE auto_ignore(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) UNIQUE)",
         &result
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
+    failures += expect_dml_ok(database, "INSERT INTO auto_ignore(label) VALUES ('a')", 1);
+    failures += expect_dml_ok_with_warnings(
         database,
         "INSERT IGNORE INTO auto_ignore(label) SELECT label FROM src WHERE id <= 2 ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT IGNORE ... SELECT does not support AUTO_INCREMENT targets",
+        (struct expected_dml_warning_status){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_two,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto ignore insert select first generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_ignore ORDER BY id",
+            .values = auto_ignore_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "auto ignore insert select rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_ignore_all_skip("
+        "id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) UNIQUE)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO auto_ignore_all_skip(label) VALUES ('a')", 1);
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO auto_ignore_all_skip(label) "
+        "SELECT label FROM src WHERE id = 1",
+        (struct expected_dml_warning_status){
+            .affected_rows = 0,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_ignore_all_skip ORDER BY id",
+            .values = (const char *const[]){"1", "a"},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "auto ignore all skipped rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto ignore all skipped preserves last insert id",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_child_ignore("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_auto_child_ignore FOREIGN KEY(parent_id) REFERENCES parent(id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO auto_child_ignore(parent_id) "
+        "SELECT parent_id FROM src WHERE id IN (1, 3) ORDER BY id DESC",
+        (struct expected_dml_warning_status){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, parent_id FROM auto_child_ignore ORDER BY id",
+            .values = auto_child_ignore_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "auto ignore foreign-key skipped rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto ignore foreign-key first generated id",
         }
     );
 
@@ -1590,6 +1695,96 @@ static int test_insert_select_keyed_targets(void) {
 
     failures += execute_ok(
         database,
+        "CREATE TABLE auto_explicit_ignore(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO auto_explicit_ignore VALUES (5, 'five')", 1);
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO auto_explicit_ignore(id, label) "
+        "SELECT id, label FROM auto_src ORDER BY label",
+        (struct expected_dml_warning_status){
+            .affected_rows = 3,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_six,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto ignore explicit first generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_explicit_ignore ORDER BY id",
+            .values = auto_mixed_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "auto ignore explicit rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_high_duplicate_src(id INT, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_high_duplicate_src VALUES (10, 'dup'), (NULL, 'ok')",
+        2
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_high_duplicate_ignore("
+        "id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) UNIQUE)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_dml_ok(database, "INSERT INTO auto_high_duplicate_ignore VALUES (1, 'dup')", 1);
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO auto_high_duplicate_ignore(id, label) "
+        "SELECT id, label FROM auto_high_duplicate_src ORDER BY label",
+        (struct expected_dml_warning_status){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_eleven,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto ignore skipped explicit high advances generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_high_duplicate_ignore ORDER BY id",
+            .values = auto_high_duplicate_ignore_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "auto ignore skipped explicit high rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
         "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_AUTO_VALUE_ON_ZERO'",
         &result
     );
@@ -1629,6 +1824,40 @@ static int test_insert_select_keyed_targets(void) {
         }
     );
 
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_zero_ignore(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT IGNORE INTO auto_zero_ignore(id, label) "
+        "SELECT id, label FROM auto_src WHERE id IS NULL OR id = 0 OR id = 5 ORDER BY label",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_six,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto ignore no-auto-value-on-zero first generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_zero_ignore ORDER BY id",
+            .values = auto_zero_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "auto ignore no-auto-value-on-zero rows",
+        }
+    );
+
     failures += execute_ok(database, "CREATE TABLE same_pk(id INT PRIMARY KEY, v INT)", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1650,6 +1879,44 @@ static int test_insert_select_keyed_targets(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "same-table duplicate rollback",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE same_auto_ignore("
+        "id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) UNIQUE)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_dml_ok(database, "INSERT INTO same_auto_ignore(label) VALUES ('a'), ('b')", 2);
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO same_auto_ignore(label) SELECT label FROM same_auto_ignore ORDER BY id",
+        (struct expected_dml_warning_status){
+            .affected_rows = 0,
+            .warning_count = 2U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "same-table auto ignore preserves last insert id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM same_auto_ignore ORDER BY id",
+            .values = same_auto_ignore_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "same-table auto ignore rows",
         }
     );
 
@@ -1679,6 +1946,16 @@ static int test_insert_select_keyed_targets(void) {
             .column_count = 2U,
             .row_count = 4U,
             .context = "persisted auto mixed insert select rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_ignore ORDER BY id",
+            .values = auto_ignore_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "persisted auto ignore insert select rows",
         }
     );
 

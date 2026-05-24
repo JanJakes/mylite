@@ -127,6 +127,26 @@ expect_output_with_headers \
             ROUND(5 DIV 2) d,ROUND(IFNULL(NULL,-7)) e;" \
     "$DATABASE"
 
+expect_output_with_headers \
+    "round places values" \
+    "ROUND(123,0)	ROUND(123,2)	ROUND(123,-1)	ROUND(999,-2)	ROUND(15,-1)	ROUND(14,-1)	ROUND(5,-1)	ROUND(4,-1)	ROUND(-15,-1)	ROUND(-14,-1)	ROUND(-5,-1)	ROUND(-4,-1)	ROUND(NULL,1)	ROUND(123,NULL)	ROUND(123,TRUE)	ROUND(123,FALSE)	ROUND(123,+2)	ROUND(123,-0)	ROUND(123,-31)
+123	123	120	1000	20	10	10	0	-20	-10	-10	0	NULL	NULL	123	123	123	123	0" \
+    "SELECT ROUND(123,0),ROUND(123,2),ROUND(123,-1),ROUND(999,-2),
+            ROUND(15,-1),ROUND(14,-1),ROUND(5,-1),ROUND(4,-1),
+            ROUND(-15,-1),ROUND(-14,-1),ROUND(-5,-1),ROUND(-4,-1),
+            ROUND(NULL,1),ROUND(123,NULL),ROUND(123,TRUE),ROUND(123,FALSE),
+            ROUND(123,+2),ROUND(123,-0),ROUND(123,-31);" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "round places boundaries and operands" \
+    "ROUND(9223372036854775804,-1)	ROUND(-9223372036854775804,-1)	ROUND(-9223372036854775808,-20)	ROUND(1+2*3,-1)	ROUND(5 DIV 2,-1)	ROUND(1<<64,-1)
+9223372036854775800	-9223372036854775800	0	10	0	0" \
+    "SELECT ROUND(9223372036854775804,-1),ROUND(-9223372036854775804,-1),
+            ROUND(-9223372036854775808,-20),ROUND(1+2*3,-1),
+            ROUND(5 DIV 2,-1),ROUND(1<<64,-1);" \
+    "$DATABASE"
+
 expect_output \
     "select child warning staging" \
     "NULL	0	0
@@ -137,9 +157,30 @@ Warning	1365	Division by 0
     "$DATABASE"
 
 expect_output \
+    "round places child warning staging" \
+    "NULL	NULL	NULL	0
+Warning	1365	Division by 0
+Warning	1365	Division by 0
+Warning	1365	Division by 0
+Warning	1365	Division by 0
+4	-1" \
+    "DO 0; SELECT ROUND(5 DIV 0,NULL),ROUND(NULL,5 DIV 0),
+            ROUND(5 DIV 0,5 DIV 0),@@warning_count;
+     SHOW WARNINGS; SELECT @@warning_count,ROW_COUNT();" \
+    "$DATABASE"
+
+expect_output \
     "do round child warning staging" \
     "Warning	1365	Division by 0" \
     "DO ROUND(5 DIV 0); SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "do round places child warning staging" \
+    "Warning	1365	Division by 0
+1	-1" \
+    "DO 0; DO ROUND(123,-1),ROUND(NULL,5 DIV 0);
+     SHOW WARNINGS; SELECT @@warning_count,ROW_COUNT();" \
     "$DATABASE"
 
 expect_error \
@@ -166,17 +207,25 @@ expect_error \
     "SELECT ROUND(3037000500*3037000500);" \
     "$DATABASE"
 
+expect_error \
+    "round places signed overflow" \
+    1690 \
+    22003 \
+    "BIGINT value is out of range" \
+    "SELECT ROUND(9223372036854775805,-1);" \
+    "$DATABASE"
+
 accepted_but_deferred=$(run_mysql_with_headers \
-    "SELECT ROUND(123,0),ROUND(123,2),ROUND(123,-1),ROUND(999,-2),
-            ROUND(NULL,1),ROUND(123,NULL),ROUND(123,TRUE),ROUND(123,FALSE);
+    "SELECT ROUND(9223372036854775808,-1),ROUND(-9223372036854775809,-1),
+            ROUND(18446744073709551614,-1);
      SELECT ROUND(1.5),ROUND(-1.5),ROUND(25E-1),ROUND('64'),ROUND(X'40'),ROUND(b'1111');
      SELECT id,ROUND(id),ROUND(id,-1) FROM t ORDER BY id IS NULL,id;" \
     "$DATABASE"
 )
 expect_value \
     "mysql accepted forms deferred by this slice" \
-    "ROUND(123,0)	ROUND(123,2)	ROUND(123,-1)	ROUND(999,-2)	ROUND(NULL,1)	ROUND(123,NULL)	ROUND(123,TRUE)	ROUND(123,FALSE)
-123	123	120	1000	NULL	NULL	123	123
+    "ROUND(9223372036854775808,-1)	ROUND(-9223372036854775809,-1)	ROUND(18446744073709551614,-1)
+9223372036854775810	-9223372036854775810	18446744073709551610
 ROUND(1.5)	ROUND(-1.5)	ROUND(25E-1)	ROUND('64')	ROUND(X'40')	ROUND(b'1111')
 2	-2	2	64	64	15
 id	ROUND(id)	ROUND(id,-1)

@@ -25,6 +25,12 @@ misclassifying it as wrong arity. Decimal, floating-point, table-backed,
 string, hex, bit-literal, cast, parameter, subquery, nested expression, and
 arbitrary SQLite pass-through behavior remain deferred.
 
+Later work in
+[`baseline-round-places-function`](../baseline-round-places-function/specs.md)
+expands this initial slice with a limited two-argument signed-integer
+`ROUND(value, places)` subset. The rest of this document describes the original
+one-argument baseline and the deliberate deferrals at that time.
+
 ## Compatibility Authority
 
 - Official MySQL 8.4 documentation:

@@ -40,6 +40,7 @@ struct expected_query {
 };
 
 static int test_round_values_and_file_safety(void);
+static int test_round_places_values(void);
 static int test_round_warnings_and_do(void);
 static int test_round_errors_and_unsupported_forms(void);
 static int test_round_independent_handles(void);
@@ -74,6 +75,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_round_values_and_file_safety();
+    failures += test_round_places_values();
     failures += test_round_warnings_and_do();
     failures += test_round_errors_and_unsupported_forms();
     failures += test_round_independent_handles();
@@ -198,6 +200,74 @@ static int test_round_values_and_file_safety(void) {
     return failures;
 }
 
+static int test_round_places_values(void) {
+    static const char *const places_columns[] = {
+        "ROUND(123,0)",     "ROUND(123,2)",  "ROUND(123,-1)", "ROUND(999,-2)",   "ROUND(15,-1)",
+        "ROUND(14,-1)",     "ROUND(5,-1)",   "ROUND(4,-1)",   "ROUND(-15,-1)",   "ROUND(-14,-1)",
+        "ROUND(-5,-1)",     "ROUND(-4,-1)",  "ROUND(NULL,1)", "ROUND(123,NULL)", "ROUND(123,TRUE)",
+        "ROUND(123,FALSE)", "ROUND(123,+2)", "ROUND(123,-0)", "ROUND(123,-31)",
+    };
+    static const char *const places_values[] = {
+        "123", "123", "120", "1000", "20",  "10",  "10",  "0",   "-20", "-10",
+        "-10", "0",   NULL,  NULL,   "123", "123", "123", "123", "0",
+    };
+    static const char *const boundary_columns[] = {
+        "ROUND(9223372036854775804,-1)",
+        "ROUND(-9223372036854775804,-1)",
+        "ROUND(-9223372036854775808,-20)",
+        "ROUND(1+2*3,-1)",
+        "ROUND(5 DIV 2,-1)",
+        "ROUND(1<<64,-1)",
+    };
+    static const char *const boundary_values[] = {
+        "9223372036854775800",
+        "-9223372036854775800",
+        "0",
+        "10",
+        "0",
+        "0",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open ROUND places handle");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROUND(123,0),ROUND(123,2),ROUND(123,-1),ROUND(999,-2),"
+                   "ROUND(15,-1),ROUND(14,-1),ROUND(5,-1),ROUND(4,-1),"
+                   "ROUND(-15,-1),ROUND(-14,-1),ROUND(-5,-1),ROUND(-4,-1),"
+                   "ROUND(NULL,1),ROUND(123,NULL),ROUND(123,TRUE),ROUND(123,FALSE),"
+                   "ROUND(123,+2),ROUND(123,-0),ROUND(123,-31)",
+            .columns = places_columns,
+            .column_count = sizeof(places_columns) / sizeof(places_columns[0]),
+            .values = places_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "ROUND places values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROUND(9223372036854775804,-1),"
+                   "ROUND(-9223372036854775804,-1),ROUND(-9223372036854775808,-20),"
+                   "ROUND(1+2*3,-1),ROUND(5 DIV 2,-1),ROUND(1<<64,-1) FROM DUAL",
+            .columns = boundary_columns,
+            .column_count = sizeof(boundary_columns) / sizeof(boundary_columns[0]),
+            .values = boundary_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "ROUND places signed boundaries and operands",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_round_warnings_and_do(void) {
     static const char *const warning_columns[] = {
         "ROUND(5 DIV 0)",
@@ -205,6 +275,13 @@ static int test_round_warnings_and_do(void) {
         "ROW_COUNT()",
     };
     static const char *const warning_values[] = {NULL, "0", "0"};
+    static const char *const places_warning_columns[] = {
+        "ROUND(5 DIV 0,NULL)",
+        "ROUND(NULL,5 DIV 0)",
+        "ROUND(5 DIV 0,5 DIV 0)",
+        "@@warning_count",
+    };
+    static const char *const places_warning_values[] = {NULL, NULL, NULL, "0"};
     static const char *const count_columns[] = {"@@warning_count", "ROW_COUNT()"};
     static const char *const select_warning_values[] = {"1", "-1"};
     static const char *const no_warning_values[] = {"0", "0"};
@@ -244,6 +321,20 @@ static int test_round_warnings_and_do(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT ROUND(5 DIV 0,NULL),ROUND(NULL,5 DIV 0),"
+                   "ROUND(5 DIV 0,5 DIV 0),@@warning_count",
+            .columns = places_warning_columns,
+            .column_count = sizeof(places_warning_columns) / sizeof(places_warning_columns[0]),
+            .values = places_warning_values,
+            .row_count = 1U,
+            .warning_count = 4U,
+            .affected_rows = 0,
+            .context = "ROUND places warning staging",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "DO ROUND(NULL),ROUND(7),ROUND(18446744073709551615)",
             .columns = NULL,
             .column_count = 0U,
@@ -276,6 +367,14 @@ static int test_round_warnings_and_do(void) {
         failures += expect_int64(mylite_result_affected_rows(result), 0, "do warning affected");
     }
     mylite_result_free(result);
+    failures += execute_ok(database, "DO ROUND(123,-1),ROUND(NULL,5 DIV 0)", &result);
+    if (result != NULL) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "do places columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "do places rows");
+        failures += expect_size(mylite_result_warning_count(result), 1U, "do places warning count");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "do places affected");
+    }
+    mylite_result_free(result);
     failures += expect_query(
         database,
         (struct expected_query){
@@ -286,7 +385,7 @@ static int test_round_warnings_and_do(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "ROUND do warning snapshot",
+            .context = "ROUND do places warning snapshot",
         }
     );
 
@@ -339,29 +438,47 @@ static int test_round_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT ROUND(1,2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ROUND() currently supports only one argument",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DO ROUND(1,2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ROUND() currently supports only one argument",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT ROUND(3037000500*3037000500)",
         (struct expected_sql_error){
             .code = mysql_error_bigint_out_of_range,
             .sqlstate = "22003",
             .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ROUND(9223372036854775805,-1)",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ROUND(9223372036854775808,-1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit negative-place rounding",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ROUND(~0,-1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit negative-place rounding",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ROUND(123,'2')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit negative-place rounding",
         }
     );
     failures += execute_error(

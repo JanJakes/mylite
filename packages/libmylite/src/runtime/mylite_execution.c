@@ -237,6 +237,7 @@ enum {
     year_conversion_incorrect_integer = 2,
     decimal_base = 10,
     decimal_round_half_digit = 5,
+    rounding_negative_places_zero_threshold = 20,
     uint64_decimal_digit_capacity = 20,
     dml_integer_decimal_shift_limit = 1000000,
     time_zone_max_minute = 59,
@@ -7132,6 +7133,13 @@ struct session_scalar_cell {
     char literal_text[literal_projection_text_capacity];
     char staged_truncated_decimal_text[literal_projection_text_capacity];
     char staged_unhex_incorrect_string_text[literal_projection_text_capacity];
+};
+
+struct rounding_signed_value {
+    bool is_null;
+    bool is_negative;
+    uint64_t magnitude;
+    size_t staged_division_by_zero_warning_count;
 };
 
 struct prepared_statement_expanded_sql {
@@ -15378,6 +15386,28 @@ static int evaluate_rounding_operand(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int evaluate_rounding_places_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
+static int evaluate_rounding_signed_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct rounding_signed_value *out_value
+);
+static int evaluate_rounding_direct_signed_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct rounding_signed_value *out_value,
+    bool *out_handled
+);
+static int round_signed_value_to_negative_places(
+    struct mylite_db *database,
+    const struct rounding_signed_value *value,
+    int64_t places,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_rounding_direct_literal_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -16734,6 +16764,7 @@ static void set_abs_signed_minimum_overflow_error(struct mylite_db *database);
 static void set_abs_unsupported_error(struct mylite_db *database);
 static void set_sign_unsupported_error(struct mylite_db *database);
 static void set_rounding_unsupported_error(struct mylite_db *database);
+static int set_rounding_signed_overflow_error(struct mylite_db *database);
 static void set_sqrt_unsupported_error(struct mylite_db *database);
 static void set_angle_conversion_unsupported_error(struct mylite_db *database);
 static void set_inverse_trig_unsupported_error(struct mylite_db *database);
@@ -102032,16 +102063,288 @@ static int rounding_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    struct scalar_arithmetic_value places = {.is_null = false, .integer = 0};
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
-    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+    if (expression == NULL) {
         set_rounding_unsupported_error(database);
         return MYLITE_ERROR;
     }
 
-    return evaluate_rounding_operand(database, child_at(expression, 0U), out_cell);
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count == 1U) {
+        return evaluate_rounding_operand(database, child_at(expression, 0U), out_cell);
+    }
+    if (child_count != 2U) {
+        set_rounding_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_rounding_places_operand(database, child_at(expression, 1U), &places);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (places.is_null || places.integer >= 0) {
+        rc = evaluate_rounding_operand(database, child_at(expression, 0U), out_cell);
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count +=
+                places.division_by_zero_warning_count;
+            if (places.is_null) {
+                out_cell->value = NULL;
+            }
+        }
+        return rc;
+    }
+
+    struct rounding_signed_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .staged_division_by_zero_warning_count = 0U,
+    };
+
+    rc = evaluate_rounding_signed_operand(database, child_at(expression, 0U), &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    value.staged_division_by_zero_warning_count += places.division_by_zero_warning_count;
+    if (value.is_null) {
+        out_cell->staged_division_by_zero_warning_count =
+            value.staged_division_by_zero_warning_count;
+        return MYLITE_OK;
+    }
+
+    return round_signed_value_to_negative_places(database, &value, places.integer, out_cell);
+}
+
+static int evaluate_rounding_places_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    if (expression == NULL || !is_scalar_arithmetic_projection_expression(expression)) {
+        set_rounding_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    return evaluate_scalar_arithmetic_expression(database, expression, out_value);
+}
+
+static int evaluate_rounding_signed_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct rounding_signed_value *out_value
+) {
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct rounding_signed_value){
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .staged_division_by_zero_warning_count = 0U,
+    };
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_rounding_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_rounding_direct_signed_operand(database, expression, out_value, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    if (is_scalar_arithmetic_projection_expression(expression)) {
+        struct scalar_arithmetic_value arithmetic = {.is_null = false, .integer = 0};
+
+        rc = evaluate_scalar_arithmetic_expression(database, expression, &arithmetic);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_value->is_null = arithmetic.is_null;
+        out_value->staged_division_by_zero_warning_count =
+            arithmetic.division_by_zero_warning_count;
+        if (!arithmetic.is_null) {
+            if (arithmetic.integer < 0) {
+                out_value->is_negative = true;
+                out_value->magnitude = arithmetic.integer == INT64_MIN
+                                           ? (uint64_t)INT64_MAX + 1U
+                                           : (uint64_t)-arithmetic.integer;
+            } else {
+                out_value->magnitude = (uint64_t)arithmetic.integer;
+            }
+        }
+        return MYLITE_OK;
+    }
+    if (is_scalar_bitwise_projection_expression(expression)) {
+        struct scalar_bitwise_value bitwise = {.is_null = false, .integer = 0U};
+
+        rc = evaluate_scalar_bitwise_expression(database, expression, &bitwise);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_value->is_null = bitwise.is_null;
+        out_value->staged_division_by_zero_warning_count = bitwise.division_by_zero_warning_count;
+        if (!bitwise.is_null) {
+            if (bitwise.integer > (uint64_t)INT64_MAX) {
+                set_rounding_unsupported_error(database);
+                return MYLITE_ERROR;
+            }
+            out_value->magnitude = bitwise.integer;
+        }
+        return MYLITE_OK;
+    }
+
+    set_rounding_unsupported_error(database);
+    return MYLITE_ERROR;
+}
+
+static int evaluate_rounding_direct_signed_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct rounding_signed_value *out_value,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return MYLITE_OK;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        has_sign = true;
+        is_negative = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_handled = true;
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_handled = true;
+        out_value->magnitude = 1U;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        set_rounding_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (is_negative) {
+        if (magnitude > (uint64_t)INT64_MAX + 1U) {
+            set_rounding_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        out_value->is_negative = magnitude != 0U;
+    } else if (magnitude > (uint64_t)INT64_MAX) {
+        set_rounding_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    out_value->magnitude = magnitude;
+    return MYLITE_OK;
+}
+
+static int round_signed_value_to_negative_places(
+    struct mylite_db *database,
+    const struct rounding_signed_value *value,
+    int64_t places,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t place_count = 0U;
+    uint64_t divisor = 1U;
+    uint64_t quotient = 0U;
+    uint64_t remainder = 0U;
+    uint64_t rounded = 0U;
+    int written = 0;
+
+    if (value == NULL || out_cell == NULL || places >= 0) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    out_cell->staged_division_by_zero_warning_count = value->staged_division_by_zero_warning_count;
+
+    if (places <= -(int64_t)rounding_negative_places_zero_threshold) {
+        out_cell->value = "0";
+        return MYLITE_OK;
+    }
+    place_count = (uint64_t)-places;
+    for (uint64_t index = 0U; index < place_count; ++index) {
+        divisor *= decimal_base;
+    }
+
+    quotient = value->magnitude / divisor;
+    remainder = value->magnitude % divisor;
+    if (remainder >= divisor / 2U) {
+        ++quotient;
+    }
+    if (quotient > UINT64_MAX / divisor) {
+        return set_rounding_signed_overflow_error(database);
+    }
+    rounded = quotient * divisor;
+    if (rounded == 0U) {
+        out_cell->value = "0";
+        return MYLITE_OK;
+    }
+    if (rounded > (uint64_t)INT64_MAX) {
+        return set_rounding_signed_overflow_error(database);
+    }
+
+    if (value->is_negative) {
+        written =
+            snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "-%" PRIu64, rounded);
+    } else {
+        written =
+            snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRIu64, rounded);
+    }
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format scalar rounding value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
 }
 
 static int evaluate_rounding_operand(
@@ -112490,8 +112793,18 @@ static void set_rounding_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
         "CEIL()/CEILING()/FLOOR()/ROUND() support only top-level integer-domain scalar "
-        "use; ROUND() currently supports only one argument"
+        "use; ROUND(value, places) supports only signed 64-bit negative-place rounding"
     );
+}
+
+static int set_rounding_signed_overflow_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_bigint_out_of_range,
+        "22003",
+        "BIGINT value is out of range in 'round()'"
+    );
+    return MYLITE_ERROR;
 }
 
 static void set_sqrt_unsupported_error(struct mylite_db *database) {

@@ -448,6 +448,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"EACH", MYLITE_SQL_KEYWORD_RESERVED},
         {"ELSE", MYLITE_SQL_KEYWORD_RESERVED},
         {"ELSEIF", MYLITE_SQL_KEYWORD_RESERVED},
+        {"ELT", 0U},
         {"EMPTY", MYLITE_SQL_KEYWORD_RESERVED},
         {"ENABLE", 0U},
         {"ENCLOSED", MYLITE_SQL_KEYWORD_RESERVED},

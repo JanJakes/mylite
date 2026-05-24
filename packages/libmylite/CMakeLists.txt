@@ -1008,6 +1008,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_temporal_extract_functions_test)
 
+  add_executable(mylite_runtime_elt_function_test
+    tests/runtime_elt_function_test.c
+  )
+  target_link_libraries(mylite_runtime_elt_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_elt_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_elt_function_test)
+
   add_executable(mylite_runtime_field_function_test
     tests/runtime_field_function_test.c
   )
@@ -4080,6 +4091,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.temporal_extract_functions
     COMMAND mylite_runtime_temporal_extract_functions_test
+  )
+  add_test(
+    NAME libmylite.runtime.elt_function
+    COMMAND mylite_runtime_elt_function_test
   )
   add_test(
     NAME libmylite.runtime.field_function

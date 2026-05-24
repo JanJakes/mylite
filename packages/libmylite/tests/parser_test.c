@@ -62,6 +62,7 @@ static int test_concat_ws_function(void);
 static int test_replace_function(void);
 static int test_reverse_function(void);
 static int test_quote_function(void);
+static int test_elt_function(void);
 static int test_field_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
@@ -389,6 +390,7 @@ int main(void) {
     failures += test_replace_function();
     failures += test_reverse_function();
     failures += test_quote_function();
+    failures += test_elt_function();
     failures += test_field_function();
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
@@ -2473,6 +2475,87 @@ static int test_field_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT FIELD('b', 'a', 'b') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_elt_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT ELT(2, 'a', 'b'), elt(TRUE, 10) AS e FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ELT_FUNCTION, "elt function");
+    failures += expect_span_text(first_expression, "ELT(2, 'a', 'b')", "elt span");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "elt args");
+    failures += expect_child_count(arguments, 3U, "elt three arguments");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "elt index");
+    failures += expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_STRING, "elt first");
+    failures +=
+        expect_literal(child_at(arguments, 2U), MYLITE_SQL_AST_LITERAL_STRING, "elt second");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ELT_FUNCTION, "lower elt");
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 2U, "elt lower arguments");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_TRUE, "elt true index");
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_INTEGER, "elt integer");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "elt alias"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "elt from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ELT();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR,
+        "elt zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ELT(1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ELT_FUNCTION,
+        "elt one argument runtime marker"
+    );
+    arguments = child_at(first_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "elt one argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO ELT(2, 'a', 'b'), ELT(NULL, 'x');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "elt do");
+    failures += expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_ELT_FUNCTION, "do elt");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_ELT_FUNCTION, "do null elt");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE elt (elt INT); SELECT elt FROM elt;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

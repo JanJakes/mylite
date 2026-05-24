@@ -15165,6 +15165,37 @@ static int field_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int elt_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_elt_scalar_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_index,
+    bool *out_is_null
+);
+static int evaluate_elt_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+);
+static int evaluate_elt_scalar_string_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct field_scalar_argument *out_argument
+);
+static int evaluate_elt_scalar_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+);
+static int format_elt_scalar_result(
+    struct mylite_db *database,
+    const struct field_scalar_argument *value,
+    struct session_scalar_cell *out_cell
+);
 static int greatest_least_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -17167,6 +17198,18 @@ static bool is_last_insert_id_set_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_numeric_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_string_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_temporal_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_json_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_scalar_subquery_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -17230,6 +17273,7 @@ static bool is_date_interval_second_projection_expression(
 static bool is_time_arithmetic_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_temporal_extract_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_elt_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_field_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_greatest_least_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_regexp_like_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -28890,6 +28934,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
+    case MYLITE_SQL_AST_ELT_FUNCTION:
+    case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
@@ -39751,7 +39797,7 @@ static int execute_do_statement(
             "CRC32()/HEX()/UNHEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY/CHAR/"
             "SIGNED/UNSIGNED), limited CONVERT(value, BINARY/CHAR/SIGNED/UNSIGNED), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited temporal "
-            "extract, limited FIELD(), GREATEST(), LEAST(), limited CONCAT_WS(), limited "
+            "extract, limited ELT(), FIELD(), GREATEST(), LEAST(), limited CONCAT_WS(), limited "
             "JSON_VALID(), JSON_ARRAY(), JSON_OBJECT(), and limited string length, string case, "
             "string slice, CHARSET(), COLLATION(), and COERCIBILITY() functions, and top-level "
             "CASE expressions"
@@ -39892,7 +39938,8 @@ static int execute_select_statement(
             "CRC32()/FORMAT()/TRUNCATE(), and "
             "CAST(value AS BINARY/CHAR/SIGNED/UNSIGNED), CONVERT(value, BINARY/CHAR/SIGNED/"
             "UNSIGNED), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
-            "limited FIELD(), GREATEST(), LEAST(), JSON_VALID(), JSON_ARRAY(), JSON_OBJECT(), "
+            "limited ELT(), FIELD(), GREATEST(), LEAST(), JSON_VALID(), JSON_ARRAY(), "
+            "JSON_OBJECT(), "
             "string length, string case, string trim, and string slice functions"
         );
         return MYLITE_ERROR;
@@ -51368,6 +51415,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
+    case MYLITE_SQL_AST_ELT_FUNCTION:
+    case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
@@ -89625,6 +89674,8 @@ static const char *argument_count_error_node_function_name(
         return "CONCAT";
     case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
         return "CONCAT_WS";
+    case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
+        return "ELT";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         return "FIELD";
     case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
@@ -90253,6 +90304,11 @@ static int session_scalar_value(
         return time_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
         return str_to_date_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "ELT");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_ELT_FUNCTION:
+        return elt_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FIELD");
         return MYLITE_ERROR;
@@ -100088,6 +100144,322 @@ static bool concat_operator_scalar_arithmetic_node_is_admitted(
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
     return false;
+}
+
+static int elt_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *selected_value = NULL;
+    struct field_scalar_argument value = {0};
+    int64_t selector = 0;
+    bool selector_is_null = false;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_ELT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "ELT() supports only ELT(index, value, ...)");
+        return MYLITE_ERROR;
+    }
+
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, "ELT");
+        return MYLITE_ERROR;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count < 2U) {
+        set_native_function_parameter_count_error(database, "ELT");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_elt_scalar_index(database, child_at(arguments, 0U), &selector, &selector_is_null);
+    if (rc != MYLITE_OK || selector_is_null || selector < 1) {
+        return rc;
+    }
+    if ((uint64_t)selector > (uint64_t)(argument_count - 1U)) {
+        return MYLITE_OK;
+    }
+
+    selected_value = child_at(arguments, (size_t)selector);
+    rc = evaluate_elt_scalar_value(database, selected_value, &value);
+    if (rc == MYLITE_OK) {
+        rc = format_elt_scalar_result(database, &value, out_cell);
+    }
+    field_scalar_argument_deinit(&value);
+    return rc;
+}
+
+static int evaluate_elt_scalar_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_index,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool has_sign = false;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+
+    if (out_index == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_index = 0;
+    *out_is_null = false;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "ELT() index supports only signed integer, boolean, and NULL literals"
+            );
+            return MYLITE_ERROR;
+        }
+        has_sign = true;
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "ELT() index supports only signed integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_index = 1;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_index = 0;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "ELT() index supports only signed integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(database, "ELT() index literals must fit the signed 64-bit range");
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        *out_index = INT64_MIN;
+    } else if (is_negative) {
+        *out_index = -(int64_t)magnitude;
+    } else {
+        *out_index = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_elt_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_argument = (struct field_scalar_argument){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "ELT() supports only string, integer, boolean, and NULL value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return evaluate_elt_scalar_integer_value(database, expression, out_argument);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "ELT() supports only string, integer, boolean, and NULL value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        return evaluate_elt_scalar_string_value(database, expression, out_argument);
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return evaluate_elt_scalar_integer_value(database, expression, out_argument);
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+        out_argument->integer = 1;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+        out_argument->integer = 0;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_argument->is_null = true;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "ELT() supports only string, integer, boolean, and NULL value arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int evaluate_elt_scalar_string_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct field_scalar_argument *out_argument
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "ELT() supports only string literals",
+        "ELT() string literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!field_ascii_text_is_supported(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "ELT() string literals support only ASCII values");
+        return MYLITE_ERROR;
+    }
+
+    out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+    out_argument->text = text;
+    out_argument->text_length = text_length;
+    return MYLITE_OK;
+}
+
+static int evaluate_elt_scalar_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "ELT() supports only string, integer, boolean, and NULL value arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "ELT() supports only string, integer, boolean, and NULL value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "ELT() value integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        out_argument->integer = INT64_MIN;
+    } else if (is_negative) {
+        out_argument->integer = -(int64_t)magnitude;
+    } else {
+        out_argument->integer = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static int format_elt_scalar_result(
+    struct mylite_db *database,
+    const struct field_scalar_argument *value,
+    struct session_scalar_cell *out_cell
+) {
+    if (value == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value->is_null) {
+        return MYLITE_OK;
+    }
+    if (value->domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING) {
+        out_cell->owned_text = (char *)malloc(value->text_length + 1U);
+        if (out_cell->owned_text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(out_cell->owned_text, value->text, value->text_length);
+        out_cell->owned_text[value->text_length] = '\0';
+        out_cell->value = out_cell->owned_text;
+        out_cell->value_size = value->text_length;
+        out_cell->has_value_size = true;
+        return MYLITE_OK;
+    }
+    if (value->domain != PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER) {
+        return MYLITE_OK;
+    }
+
+    int written = snprintf(
+        out_cell->integer_text,
+        sizeof(out_cell->integer_text),
+        "%" PRId64,
+        value->integer
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format ELT() value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
 }
 
 static int field_function_value(
@@ -114976,6 +115348,16 @@ static bool is_last_insert_id_set_projection_expression(
 }
 
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression) {
+    return (is_numeric_scalar_function_projection_expression(expression) ||
+            is_string_scalar_function_projection_expression(expression) ||
+            is_scalar_conversion_projection_expression(expression) ||
+            is_temporal_scalar_function_projection_expression(expression) ||
+            is_json_scalar_function_projection_expression(expression)) != 0;
+}
+
+static bool is_numeric_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
     if (is_abs_projection_expression(expression)) {
         return true;
     }
@@ -115012,6 +115394,12 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_crc32_projection_expression(expression)) {
         return true;
     }
+    return false;
+}
+
+static bool is_string_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
     if (is_binary_string_projection_expression(expression)) {
         return true;
     }
@@ -115024,19 +115412,7 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_string_metadata_projection_expression(expression)) {
         return true;
     }
-    if (is_scalar_conversion_projection_expression(expression)) {
-        return true;
-    }
-    if (is_date_interval_second_projection_expression(expression)) {
-        return true;
-    }
-    if (is_time_arithmetic_projection_expression(expression)) {
-        return true;
-    }
-    if (is_date_format_projection_expression(expression)) {
-        return true;
-    }
-    if (is_temporal_extract_projection_expression(expression)) {
+    if (is_elt_projection_expression(expression)) {
         return true;
     }
     if (is_field_projection_expression(expression)) {
@@ -115048,6 +115424,27 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_regexp_like_projection_expression(expression)) {
         return true;
     }
+    return false;
+}
+
+static bool is_temporal_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (is_date_interval_second_projection_expression(expression)) {
+        return true;
+    }
+    if (is_time_arithmetic_projection_expression(expression)) {
+        return true;
+    }
+    if (is_date_format_projection_expression(expression)) {
+        return true;
+    }
+    return is_temporal_extract_projection_expression(expression);
+}
+
+static bool is_json_scalar_function_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
     return (is_json_valid_projection_expression(expression) ||
             is_json_contains_projection_expression(expression) ||
             is_json_extract_projection_expression(expression) ||
@@ -116201,6 +116598,22 @@ static bool is_field_projection_expression(const struct mylite_sql_ast_node *exp
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_FIELD_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        return false;
+    }
+    return mylite_sql_ast_node_child_count(arguments) >= 1U;
+}
+
+static bool is_elt_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_ELT_FUNCTION ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
     }

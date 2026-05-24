@@ -14,6 +14,7 @@
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
 #include "mylite_string_concat.h"
+#include "mylite_string_insert.h"
 #include "mylite_string_padding.h"
 #include "mylite_string_quote.h"
 #include "mylite_string_replace.h"
@@ -48,6 +49,7 @@ static int initialize_function_registration_surface(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
 );
+static int initialize_string_function_registration_surface(sqlite3 *sqlite);
 static int initialize_temporal_core_function_registration_surface(sqlite3 *sqlite);
 static int initialize_collation_registration_surface(
     sqlite3 *sqlite,
@@ -237,8 +239,29 @@ static int initialize_function_registration_surface(
         rc = mylite_sqlite_register_unix_timestamp_function(sqlite);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_string_case_functions(sqlite);
+        rc = initialize_string_function_registration_surface(sqlite);
     }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_uuid_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_regexp_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_json_functions(sqlite);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    state->function_registration_surface_is_initialized = true;
+
+    return MYLITE_OK;
+}
+
+static int initialize_string_function_registration_surface(sqlite3 *sqlite) {
+    int rc = mylite_sqlite_register_string_case_functions(sqlite);
+
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_char_function(sqlite);
     }
@@ -247,6 +270,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_concat_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_insert_function(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_padding_functions(sqlite);
@@ -275,22 +301,7 @@ static int initialize_function_registration_surface(
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_unhex_function(sqlite);
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_uuid_functions(sqlite);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_regexp_functions(sqlite);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_sqlite_register_json_functions(sqlite);
-    }
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-
-    state->function_registration_surface_is_initialized = true;
-
-    return MYLITE_OK;
+    return rc;
 }
 
 static int initialize_temporal_core_function_registration_surface(sqlite3 *sqlite) {

@@ -586,6 +586,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_VALUES_ROW = 577,
     MYLITE_SQL_AST_JSON_KEYS_FUNCTION = 578,
     MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR = 579,
+    MYLITE_SQL_AST_INSERT_STRING_FUNCTION = 580,
 };
 
 enum mylite_sql_ast_literal_kind {

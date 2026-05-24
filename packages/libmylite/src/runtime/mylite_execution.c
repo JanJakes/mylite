@@ -19,6 +19,7 @@
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
 #include "mylite_string_concat.h"
+#include "mylite_string_insert.h"
 #include "mylite_string_padding.h"
 #include "mylite_string_quote.h"
 #include "mylite_string_replace.h"
@@ -2906,6 +2907,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64 = 58,
     PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE = 59,
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS = 60,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT = 61,
 };
 
 enum {
@@ -14727,6 +14729,11 @@ static int string_replace_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int string_insert_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int string_reverse_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -14753,6 +14760,27 @@ static int evaluate_string_replace_scalar_argument(
 );
 static bool string_replace_scalar_argument_is_admitted(
     const struct mylite_sql_ast_node *expression
+);
+static int evaluate_string_insert_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_string_insert_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_position,
+    bool *out_is_null
+);
+static int evaluate_string_insert_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_length,
+    bool *out_is_null
 );
 static int evaluate_string_reverse_scalar_argument(
     struct mylite_db *database,
@@ -17040,6 +17068,7 @@ static bool is_string_search_projection_expression(const struct mylite_sql_ast_n
 static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_concat_ws_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_replace_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_string_insert_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_reverse_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_quote_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_charset_collation_projection_expression(
@@ -22949,6 +22978,15 @@ static int plan_row_scalar_string_replace_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_string_insert_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_string_replace_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -22957,6 +22995,26 @@ static int plan_row_scalar_string_replace_argument(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_insert_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_insert_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_insert_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_replace_column(
@@ -22968,6 +23026,18 @@ static int plan_row_scalar_string_replace_column(
     struct planned_row_scalar_expression *out_expression
 );
 static bool string_replace_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int plan_row_scalar_string_insert_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_insert_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
@@ -25696,6 +25766,11 @@ static int append_row_scalar_string_replace_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_string_insert_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_string_reverse_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -27008,6 +27083,11 @@ static int bind_row_scalar_string_search_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_replace_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_insert_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -28563,6 +28643,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
@@ -40019,6 +40100,7 @@ static bool compound_expression_uses_string_collation(
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
     case MYLITE_SQL_AST_HEX_FUNCTION:
     case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
@@ -50866,6 +50948,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
@@ -84864,6 +84947,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -89413,6 +89497,8 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
         return string_replace_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
+        return string_insert_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
         return string_reverse_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
@@ -96151,6 +96237,107 @@ static int string_replace_function_value(
     return rc;
 }
 
+static int string_insert_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell value_cell = {0};
+    struct session_scalar_cell replacement_cell = {0};
+    char *owned_value = NULL;
+    char *owned_replacement = NULL;
+    const char *value = NULL;
+    const char *replacement = NULL;
+    size_t value_length = 0U;
+    size_t replacement_length = 0U;
+    size_t result_length = 0U;
+    int64_t position = 0;
+    int64_t length = 0;
+    bool value_is_null = false;
+    bool position_is_null = false;
+    bool length_is_null = false;
+    bool replacement_is_null = false;
+    bool helper_called = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_INSERT_STRING_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 4U) {
+        set_native_function_parameter_count_error(database, "INSERT");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_insert_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &value_cell,
+        &owned_value,
+        &value,
+        &value_length,
+        &value_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_insert_position_argument(
+            database,
+            child_at(expression, 1U),
+            &position,
+            &position_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_insert_length_argument(
+            database,
+            child_at(expression, 2U),
+            &length,
+            &length_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_insert_scalar_argument(
+            database,
+            child_at(expression, 3U),
+            &replacement_cell,
+            &owned_replacement,
+            &replacement,
+            &replacement_length,
+            &replacement_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !value_is_null && !position_is_null && !length_is_null &&
+        !replacement_is_null) {
+        helper_called = true;
+        rc = mylite_string_insert_value(
+            database,
+            &(struct mylite_string_insert_arguments){
+                .value = {.text = value, .length = value_length},
+                .position = position,
+                .length = length,
+                .replacement = {.text = replacement, .length = replacement_length},
+            },
+            &out_cell->owned_text,
+            &result_length
+        );
+        (void)result_length;
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (helper_called && rc != MYLITE_OK) {
+        set_runtime_error(database, "invalid UTF-8 value in INSERT()");
+    } else if (out_cell->owned_text != NULL) {
+        out_cell->value = out_cell->owned_text;
+    }
+
+    free(owned_value);
+    free(owned_replacement);
+    session_scalar_cell_deinit(&value_cell);
+    session_scalar_cell_deinit(&replacement_cell);
+    return rc;
+}
+
 static int evaluate_string_replace_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -96222,6 +96409,132 @@ static bool string_replace_scalar_argument_is_admitted(
     const struct mylite_sql_ast_node *expression
 ) {
     return string_length_scalar_argument_is_admitted(expression);
+}
+
+static int evaluate_string_insert_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_replace_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "INSERT() supports only string, integer, boolean, NULL, session scalar, "
+            "and system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "INSERT() supports only string literals",
+                "INSERT() literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_string_insert_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_position,
+    bool *out_is_null
+) {
+    if (out_position == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_position = 0;
+    *out_is_null = false;
+
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "INSERT() position supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    return string_slice_signed_integer_value(
+        database,
+        expression,
+        "INSERT() position supports only integer, boolean, and NULL literals",
+        "INSERT() position literals must fit the signed 64-bit range",
+        out_position,
+        out_is_null
+    );
+}
+
+static int evaluate_string_insert_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_length,
+    bool *out_is_null
+) {
+    if (out_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_length = 0;
+    *out_is_null = false;
+
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "INSERT() length supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    return string_slice_signed_integer_value(
+        database,
+        expression,
+        "INSERT() length supports only integer, boolean, and NULL literals",
+        "INSERT() length literals must fit the signed 64-bit range",
+        out_length,
+        out_is_null
+    );
 }
 
 static int string_reverse_function_value(
@@ -114464,6 +114777,18 @@ static bool is_string_replace_projection_expression(const struct mylite_sql_ast_
             string_replace_scalar_argument_is_admitted(child_at(expression, 2U))) != 0;
 }
 
+static bool is_string_insert_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_INSERT_STRING_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 4U) {
+        return false;
+    }
+    return (string_replace_scalar_argument_is_admitted(child_at(expression, 0U)) &&
+            string_slice_length_argument_is_admitted(child_at(expression, 1U)) &&
+            string_slice_length_argument_is_admitted(child_at(expression, 2U)) &&
+            string_replace_scalar_argument_is_admitted(child_at(expression, 3U))) != 0;
+}
+
 static bool is_string_reverse_projection_expression(const struct mylite_sql_ast_node *expression) {
     const struct mylite_sql_ast_node *argument = NULL;
 
@@ -114542,6 +114867,9 @@ static bool is_string_metadata_projection_expression(const struct mylite_sql_ast
         return true;
     }
     if (is_string_replace_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_insert_projection_expression(expression)) {
         return true;
     }
     if (is_string_reverse_projection_expression(expression)) {
@@ -132399,6 +132727,7 @@ static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_ki
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
     case MYLITE_SQL_AST_STRCMP_FUNCTION:
@@ -132497,6 +132826,17 @@ static int plan_row_scalar_string_expression(
     }
     if (expression->kind == MYLITE_SQL_AST_REPLACE_FUNCTION) {
         return plan_row_scalar_string_replace_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_INSERT_STRING_FUNCTION) {
+        return plan_row_scalar_string_insert_expression(
             database,
             expression,
             has_source,
@@ -134528,6 +134868,74 @@ static int plan_row_scalar_string_replace_expression(
     return rc;
 }
 
+static int plan_row_scalar_string_insert_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_INSERT_STRING_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 4U) {
+        set_native_function_parameter_count_error(database, "INSERT");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(4U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT;
+    out_expression->argument_count = 4U;
+
+    rc = plan_row_scalar_string_insert_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "INSERT() supports only string, integer, boolean, NULL, session scalar, "
+        "system variable, and descriptor column value arguments",
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_insert_position_argument(
+            database,
+            child_at(expression, 1U),
+            &out_expression->arguments[1]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_insert_length_argument(
+            database,
+            child_at(expression, 2U),
+            &out_expression->arguments[2]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_insert_argument(
+            database,
+            child_at(expression, 3U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "INSERT() supports only string, integer, boolean, NULL, session scalar, "
+            "system variable, and descriptor column replacement arguments",
+            &out_expression->arguments[3]
+        );
+    }
+    return rc;
+}
+
 static int plan_row_scalar_string_replace_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -134596,6 +135004,142 @@ static int plan_row_scalar_string_replace_argument(
     return plan_row_scalar_session_value(database, expression, out_expression);
 }
 
+static int plan_row_scalar_string_insert_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_insert_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "INSERT() does not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_replace_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_insert_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "INSERT() position supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "INSERT() position supports only integer, boolean, and NULL literals",
+        "INSERT() position literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_insert_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "INSERT() length supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "INSERT() length supports only integer, boolean, and NULL literals",
+        "INSERT() length literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
 static int plan_row_scalar_string_replace_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -134659,6 +135203,74 @@ static bool string_replace_column_descriptor_is_supported(
     set_unsupported_error(
         database,
         "row-scalar SELECT REPLACE() supports only integer, DECIMAL, nonbinary string, YEAR, "
+        "and temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_string_insert_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT INSERT() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_insert_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_insert_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT INSERT() does not support binary string or BIT columns"
+        );
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT INSERT() does not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "row-scalar SELECT INSERT() supports only integer, DECIMAL, nonbinary string, YEAR, "
         "and temporal columns"
     );
     return false;
@@ -140210,6 +140822,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -144648,6 +145261,7 @@ static bool row_scalar_expression_contains_row_function(
             is_string_padding_function_kind(current->kind) ||
             is_string_search_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_REPLACE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_INSERT_STRING_FUNCTION ||
             current->kind == MYLITE_SQL_AST_REVERSE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_QUOTE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR ||
@@ -159816,6 +160430,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -160746,6 +161361,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_string_search_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
         return append_row_scalar_string_replace_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
+        return append_row_scalar_string_insert_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
         return append_row_scalar_string_reverse_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
@@ -160875,6 +161492,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -161020,6 +161638,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -161530,6 +162149,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -161648,6 +162268,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -161724,6 +162345,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -162458,6 +163080,36 @@ static int append_row_scalar_string_replace_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_string_insert_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 4U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_insert_string(");
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_string_reverse_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -162850,6 +163502,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -163087,6 +163740,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -163167,6 +163821,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -163580,6 +164235,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -163664,6 +164320,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -169857,6 +170514,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
+        return bind_row_scalar_string_insert_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
         return bind_row_scalar_string_reverse_expression_parameters(
             statement,
@@ -170019,6 +170682,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -170142,6 +170806,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -170594,6 +171259,26 @@ static int bind_row_scalar_string_replace_expression_parameters(
     return rc;
 }
 
+static int bind_row_scalar_string_insert_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 4U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_string_reverse_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -170845,6 +171530,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -171057,6 +171743,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -171132,6 +171819,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -171397,6 +172085,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -171501,6 +172190,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:

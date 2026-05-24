@@ -4682,6 +4682,11 @@ expression(A) ::= REPLACE(T) LPAREN expression(B) COMMA expression(C)
     A = mylite_sql_parser_make_three_argument_function(
         state, T, MYLITE_SQL_AST_REPLACE_FUNCTION, B, C, D, R);
 }
+expression(A) ::= INSERT(T) LPAREN expression(B) COMMA expression(C)
+                  COMMA expression(D) COMMA expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_four_argument_function(
+        state, T, MYLITE_SQL_AST_INSERT_STRING_FUNCTION, B, C, D, E, R);
+}
 expression(A) ::= REVERSE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_REVERSE_FUNCTION, B, R);

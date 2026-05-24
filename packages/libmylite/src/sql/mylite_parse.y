@@ -2671,6 +2671,45 @@ insert_value(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
 }
+insert_value(A) ::= insert_unix_timestamp_value(B). {
+    A = B;
+}
+
+insert_unix_timestamp_value(A) ::= insert_unix_timestamp_now(B). {
+    A = B;
+}
+insert_unix_timestamp_value(A) ::=
+    insert_unix_timestamp_now(B) PLUS(T) insert_unix_timestamp_delta(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+insert_unix_timestamp_value(A) ::=
+    insert_unix_timestamp_now(B) MINUS(T) insert_unix_timestamp_delta(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+
+insert_unix_timestamp_now(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
+}
+
+insert_unix_timestamp_delta(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+insert_unix_timestamp_delta(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+insert_unix_timestamp_delta(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+insert_unix_timestamp_delta(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
 
 update_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);

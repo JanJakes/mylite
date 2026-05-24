@@ -20355,6 +20355,46 @@ static int convert_insert_value(
     bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
+static bool insert_value_is_unix_timestamp_arithmetic(const struct mylite_sql_ast_node *value_node);
+static int convert_insert_unix_timestamp_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int evaluate_insert_unix_timestamp_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct scalar_arithmetic_value *out_value
+);
+static int evaluate_insert_unix_timestamp_delta(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct scalar_arithmetic_value *out_value
+);
+static int parse_insert_unix_timestamp_delta_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct scalar_arithmetic_value *out_value
+);
+static int finish_insert_unix_timestamp_integer_value(
+    struct mylite_db *database,
+    int64_t integer,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static bool insert_unix_timestamp_now_node_is_admitted(
+    const struct mylite_sql_ast_node *value_node
+);
+static bool insert_unix_timestamp_delta_node_is_admitted(
+    const struct mylite_sql_ast_node *value_node
+);
+static void set_insert_unix_timestamp_arithmetic_unsupported_error(struct mylite_db *database);
 static int convert_statement_time_value_for_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -127634,6 +127674,16 @@ static int convert_insert_value(
 
     planned_value_deinit(out_value);
     *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (insert_value_is_unix_timestamp_arithmetic(value_node)) {
+        return convert_insert_unix_timestamp_arithmetic_value(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (column_descriptor_is_auto_increment(column)) {
         return convert_auto_increment_insert_value(
             database,
@@ -127669,6 +127719,306 @@ static int convert_insert_value(
         ignore_errors,
         allow_string_truncation_adjustment,
         out_value
+    );
+}
+
+static bool insert_value_is_unix_timestamp_arithmetic(
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *left = NULL;
+    const struct mylite_sql_ast_node *right = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (insert_unix_timestamp_now_node_is_admitted(value_node)) {
+        return true;
+    }
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_child_count(value_node) != 2U) {
+        return false;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        return false;
+    }
+
+    left = child_at(value_node, 0U);
+    right = child_at(value_node, 1U);
+    return (insert_unix_timestamp_now_node_is_admitted(left) &&
+            insert_unix_timestamp_delta_node_is_admitted(right)) != 0;
+}
+
+static int convert_insert_unix_timestamp_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    struct integer_column_range range = {0};
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = MYLITE_OK;
+
+    if (column_descriptor_is_auto_increment(column)) {
+        set_unsupported_error(
+            database,
+            "INSERT UNIX_TIMESTAMP arithmetic does not yet support AUTO_INCREMENT targets"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = integer_range_for_column(
+        database,
+        column,
+        "INSERT UNIX_TIMESTAMP arithmetic supports only integer targets",
+        &range
+    );
+    (void)range;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = evaluate_insert_unix_timestamp_arithmetic_value(database, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.is_null) {
+        return convert_null_insert_value(database, column, ignore_errors, out_value);
+    }
+
+    return finish_insert_unix_timestamp_integer_value(
+        database,
+        value.integer,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int evaluate_insert_unix_timestamp_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct scalar_arithmetic_value *out_value
+) {
+    const struct mylite_sql_ast_node *right = NULL;
+    struct scalar_arithmetic_value delta = {.is_null = false, .integer = 0};
+    int64_t result = 0;
+    bool overflow = false;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){
+        .is_null = false,
+        .integer = current_timestamp_epoch(database),
+    };
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (insert_unix_timestamp_now_node_is_admitted(value_node)) {
+        return MYLITE_OK;
+    }
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_child_count(value_node) != 2U ||
+        !insert_unix_timestamp_now_node_is_admitted(child_at(value_node, 0U))) {
+        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    right = child_at(value_node, 1U);
+    rc = evaluate_insert_unix_timestamp_delta(database, right, &delta);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (delta.is_null) {
+        out_value->is_null = true;
+        out_value->integer = 0;
+        return MYLITE_OK;
+    }
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_ADD) {
+        overflow = checked_int64_add(out_value->integer, delta.integer, &result);
+    } else {
+        overflow = checked_int64_subtract(out_value->integer, delta.integer, &result);
+    }
+    if (overflow) {
+        set_scalar_arithmetic_overflow_error(database);
+        return MYLITE_ERROR;
+    }
+
+    out_value->integer = result;
+    return MYLITE_OK;
+}
+
+static int evaluate_insert_unix_timestamp_delta(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct scalar_arithmetic_value *out_value
+) {
+    const struct mylite_sql_ast_node *operand = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL) {
+        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL) {
+        if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+            out_value->is_null = true;
+            return MYLITE_OK;
+        }
+        return parse_insert_unix_timestamp_delta_literal(database, value_node, false, out_value);
+    }
+    if (value_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    operand = unwrap_parenthesized_expression(child_at(value_node, 0U));
+    return parse_insert_unix_timestamp_delta_literal(
+        database,
+        operand,
+        operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        out_value
+    );
+}
+
+static int parse_insert_unix_timestamp_delta_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct scalar_arithmetic_value *out_value
+) {
+    static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    uint64_t limit = (uint64_t)INT64_MAX;
+    uint64_t magnitude = 0U;
+
+    if (is_negative) {
+        limit = int64_min_magnitude;
+    }
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        magnitude > limit) {
+        set_unsupported_error(
+            database,
+            "INSERT UNIX_TIMESTAMP arithmetic supports only signed 64-bit integer deltas"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude == int64_min_magnitude) {
+        out_value->integer = INT64_MIN;
+    } else if (is_negative) {
+        out_value->integer = -(int64_t)magnitude;
+    } else {
+        out_value->integer = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static int finish_insert_unix_timestamp_integer_value(
+    struct mylite_db *database,
+    int64_t integer,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    bool is_negative = integer < 0;
+    uint64_t magnitude = 0U;
+
+    if (integer == INT64_MIN) {
+        magnitude = int64_min_magnitude;
+    } else if (is_negative) {
+        magnitude = (uint64_t)-integer;
+    } else {
+        magnitude = (uint64_t)integer;
+    }
+
+    out_value->is_null = false;
+    return convert_integer_for_column_with_policy(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        row_number,
+        ignore_errors,
+        &out_value->integer
+    );
+}
+
+static bool insert_unix_timestamp_now_node_is_admitted(
+    const struct mylite_sql_ast_node *value_node
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION &&
+            mylite_sql_ast_node_child_count(value_node) == 0U) != 0;
+}
+
+static bool insert_unix_timestamp_delta_node_is_admitted(
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *operand = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL) {
+        return false;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return false;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        return false;
+    }
+
+    operand = unwrap_parenthesized_expression(child_at(value_node, 0U));
+    return (operand != NULL && operand->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(operand) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+}
+
+static void set_insert_unix_timestamp_arithmetic_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "INSERT UNIX_TIMESTAMP arithmetic supports only UNIX_TIMESTAMP(), "
+        "UNIX_TIMESTAMP() +/- signed integer literals, and UNIX_TIMESTAMP() +/- NULL"
     );
 }
 

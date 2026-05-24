@@ -24423,6 +24423,47 @@ static int test_insert_modifier_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, expires_at, nullable_at) VALUES "
+        "(UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + +60, UNIX_TIMESTAMP() - NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert unix timestamp values");
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "insert unix timestamp bare"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 2U), 0U), 1U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "insert unix timestamp plus"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(statement, 2U), 0U), 1U), 0U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "insert unix timestamp plus source"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(statement, 2U), 0U), 1U), 1U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "insert unix timestamp plus signed delta"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 2U), 0U), 2U),
+        MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        "insert unix timestamp null subtract"
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(child_at(statement, 2U), 0U), 2U), 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "insert unix timestamp null delta"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle SET id = DEFAULT;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -24433,6 +24474,26 @@ static int test_insert_modifier_statements(void) {
         child_at(child_at(child_at(statement, 1U), 0U), 1U),
         MYLITE_SQL_AST_DML_DEFAULT_VALUE,
         "insert set default value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle SET id = UNIX_TIMESTAMP() - -1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "insert set unix timestamp");
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        "insert set unix timestamp subtract"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(statement, 1U), 0U), 1U), 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "insert set unix timestamp negative delta"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -24641,6 +24702,28 @@ static int test_insert_on_duplicate_key_update_statement(void) {
         child_at(assignment, 1U),
         MYLITE_SQL_AST_DML_DEFAULT_VALUE,
         "duplicate default value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) VALUES (1, 2) "
+        "ON DUPLICATE KEY UPDATE amount = UNIX_TIMESTAMP() + 30;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    clause = child_at(statement, 3U);
+    assignments = child_at(clause, 0U);
+    assignment = child_at(assignments, 0U);
+    failures += expect_operator(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "duplicate unix timestamp assignment"
+    );
+    failures += expect_node(
+        child_at(child_at(assignment, 1U), 0U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "duplicate unix timestamp assignment source"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -505,10 +505,10 @@ Performance Schema variable tables remain unsupported.
 | `lock_order_trace_missing_unlock` | ❌ | Value, scope, SET, diagnostics |
 | `lock_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `locked_in_memory` | ❌ | Value, scope, SET, diagnostics |
-| `log_bin` | ❌ | Value, scope, SET, diagnostics |
-| `log_bin_basename` | ❌ | Value, scope, SET, diagnostics |
-| `log_bin_index` | ❌ | Value, scope, SET, diagnostics |
-| `log_bin_trust_function_creators` | ❌ | Value, scope, SET, diagnostics |
+| `log_bin` | 🟡 | Limited fixed global scalar value `1`; `SHOW VARIABLES` displays `ON`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log files, GTID recovery, replication side effects, startup option handling, or mutable state |
+| `log_bin_basename` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no configured data directory, binary log files, path expansion, rotation, or startup option handling |
+| `log_bin_index` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog.index`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log index file, configured path, rotation, or startup option handling |
+| `log_bin_trust_function_creators` | 🟡 | Limited fixed global scalar value `0`; `SHOW VARIABLES` displays `OFF`; default/global scalar reads and `SHOW VARIABLES` rows are supported; scalar reads and successful exact no-op global `SET` forms emit MySQL-style deprecation warning `1287`; session/local scalar reads and non-global `SET` return MySQL-style global-variable diagnostics; no mutable global state, stored-function privilege behavior, trigger behavior, binary logging, or startup option handling |
 | `log_error` | ❌ | Value, scope, SET, diagnostics |
 | `log_error_services` | ❌ | Value, scope, SET, diagnostics |
 | `log_error_suppression_list` | ❌ | Value, scope, SET, diagnostics |
@@ -834,9 +834,9 @@ Performance Schema variable tables remain unsupported.
 | `select_into_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `select_into_disk_sync` | ❌ | Value, scope, SET, diagnostics |
 | `select_into_disk_sync_delay` | ❌ | Value, scope, SET, diagnostics |
-| `server_id` | ❌ | Value, scope, SET, diagnostics |
-| `server_id_bits` | ❌ | Value, scope, SET, diagnostics |
-| `server_uuid` | ❌ | Value, scope, SET, diagnostics |
+| `server_id` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `1`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads and non-global `SET` return MySQL-style global-variable diagnostics; exact no-op global `SET` forms may preserve `1`; no mutable global state, configured replication identity, startup option handling, or replication side effects |
+| `server_id_bits` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `32`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads and non-global `SET` return MySQL-style global-variable diagnostics; exact no-op global `SET` forms may preserve `32`; no mutable global state, server ID bit-width changes, startup option handling, or replication side effects |
+| `server_uuid` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` UUID-shaped MyLite placeholder `4d796c69-7465-4000-8000-000000000001`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no persisted server UUID, auto.cnf, replication identity, startup option handling, or binary log interaction |
 | `session_track_gtids` | ❌ | Value, scope, SET, diagnostics |
 | `session_track_schema` | ❌ | Value, scope, SET, diagnostics |
 | `session_track_state_change` | ❌ | Value, scope, SET, diagnostics |

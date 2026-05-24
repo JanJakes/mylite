@@ -8,6 +8,11 @@ Binary log, replica, source, and Group Replication statement compatibility.
 | `PURGE BINARY LOGS` | ❌ | Binary log purge syntax |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | Binary log and GTID reset syntax |
 | `@@sql_log_bin` | 🟡 | Limited read-only scalar value `1` for no-scope, `session`, and `local` forms; no mutable session state, global scope, binary log files, GTID behavior, or replication side effects |
+| `@@log_bin` | 🟡 | Limited fixed global scalar value `1` and `SHOW VARIABLES` value `ON`; no binary log files, GTID recovery, startup options, replication side effects, or mutable state |
+| `@@log_bin_basename` | 🟡 | Limited fixed global placeholder `binlog`; no configured data directory, binary log sequence, path expansion, rotation, or file creation |
+| `@@log_bin_index` | 🟡 | Limited fixed global placeholder `binlog.index`; no binary log index file, path expansion, rotation, or file creation |
+| `@@log_bin_trust_function_creators` | 🟡 | Limited fixed global `0` / `OFF` placeholder with MySQL-style deprecation warnings for scalar reads and exact no-op global `SET` forms; no stored-function trust behavior, trigger behavior, binary logging, privileges, or mutable state |
+| `@@server_id` / `@@server_id_bits` / `@@server_uuid` | 🟡 | Limited fixed global identity placeholders; no configured replication identity, persisted server UUID, startup options, or mutable state |
 | `@@sql_require_primary_key` | 🟡 | Limited read-only scalar value `0` for no-scope, `session`, `local`, and `global` forms; no mutable state, replicated primary-key policy, table import behavior, or replication applier privilege semantics |
 | `@@sql_replica_skip_counter` | 🟡 | Limited read-only scalar value `0` for no-scope and `global` forms; `session` and `local` scopes are rejected as global-only; no mutable state, relay-log event skipping, `START REPLICA` effects, channels, or GTID restrictions; deprecated `@@sql_slave_skip_counter` alias support is tracked separately |
 | `@@sql_slave_skip_counter` | 🟡 | Limited read-only deprecated alias for `@@sql_replica_skip_counter`; returns `0` for no-scope and `global` forms and emits deprecation warning `1287`; `session` and `local` scopes are rejected as global-only; no mutable state, relay-log event skipping, `START REPLICA` effects, channels, or GTID restrictions |

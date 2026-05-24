@@ -130,10 +130,36 @@ static int test_no_source_dual_and_do_json_introspection(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_keys[] = {
+        "root_keys",
+        "nested_keys",
+        "empty_keys",
+        "array_keys",
+        "missing_keys",
+        "scalar_path_keys",
+        "null_doc_keys",
+        "null_path_keys",
+        "null_doc_bad_path_keys",
+        "ordered_keys",
+        "duplicate_keys",
+    };
+    static const char *const values_keys[] = {
+        "[\"a\", \"b\"]",
+        "[\"c\"]",
+        "[]",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "[\"a\", \"m\", \"z\"]",
+        "[\"a\"]",
+    };
     static const char *const columns_nested[] = {"nested_type", "nested_length"};
     static const char *const values_nested[] = {"ARRAY", "2"};
-    static const char *const columns_dual[] = {"jt", "jl"};
-    static const char *const values_dual[] = {"OBJECT", "2"};
+    static const char *const columns_dual[] = {"jt", "jl", "jk"};
+    static const char *const values_dual[] = {"OBJECT", "2", "[\"a\"]"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -179,6 +205,26 @@ static int test_no_source_dual_and_do_json_introspection(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT JSON_KEYS('{\"a\":1,\"b\":{\"c\":30}}') AS root_keys, "
+                   "JSON_KEYS('{\"a\":1,\"b\":{\"c\":30}}', '$.b') AS nested_keys, "
+                   "JSON_KEYS('{}') AS empty_keys, JSON_KEYS('[]') AS array_keys, "
+                   "JSON_KEYS('{\"a\":1}', '$.missing') AS missing_keys, "
+                   "JSON_KEYS('{\"a\":1}', '$.a') AS scalar_path_keys, "
+                   "JSON_KEYS(NULL) AS null_doc_keys, "
+                   "JSON_KEYS('{\"a\":1}', NULL) AS null_path_keys, "
+                   "JSON_KEYS(NULL, 'bad') AS null_doc_bad_path_keys, "
+                   "JSON_KEYS('{\"z\":1,\"a\":2,\"m\":3}') AS ordered_keys, "
+                   "JSON_KEYS('{\"a\":1,\"a\":2}') AS duplicate_keys",
+            .columns = columns_keys,
+            .column_count = sizeof(columns_keys) / sizeof(columns_keys[0]),
+            .values = values_keys,
+            .row_count = 1U,
+            .context = "literal json_keys values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT JSON_TYPE(JSON_EXTRACT('{\"a\":[1,true]}', '$.a')) AS nested_type, "
                    "JSON_LENGTH(JSON_EXTRACT('{\"a\":[1,true]}', '$.a')) AS nested_length",
             .columns = columns_nested,
@@ -192,7 +238,8 @@ static int test_no_source_dual_and_do_json_introspection(void) {
         database,
         (struct expected_query){
             .sql = "SELECT JSON_TYPE('{\"a\":1}') AS jt, "
-                   "JSON_LENGTH('{\"a\":1,\"b\":2}') AS jl FROM DUAL",
+                   "JSON_LENGTH('{\"a\":1,\"b\":2}') AS jl, "
+                   "JSON_KEYS('{\"a\":1}') AS jk FROM DUAL",
             .columns = columns_dual,
             .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
             .values = values_dual,
@@ -212,7 +259,11 @@ static int test_no_source_dual_and_do_json_introspection(void) {
         }
     );
 
-    failures += execute_ok(database, "DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]')", &result);
+    failures += execute_ok(
+        database,
+        "DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]'), JSON_KEYS('{\"a\":1}')",
+        &result
+    );
     if (failures == 0) {
         failures +=
             expect_size(mylite_result_column_count(result), 0U, "json introspection do columns");
@@ -245,26 +296,22 @@ static int test_table_backed_json_introspection_and_reopen(void) {
         "id",
         "JSON_TYPE(j)",
         "JSON_LENGTH(j)",
+        "JSON_KEYS(j)",
         "JSON_TYPE(JSON_EXTRACT(j, '$.a'))",
         "JSON_LENGTH(JSON_EXTRACT(j, '$.a'))",
+        "JSON_KEYS(JSON_EXTRACT(j, '$.b'))",
         "JSON_LENGTH(v, '$.x')",
+        "JSON_KEYS(v)",
         "JSON_LENGTH(j, NULL)",
+        "JSON_KEYS(j, NULL)",
     };
     static const char *const values_table[] = {
-        "1",
-        "OBJECT",
-        "2",
-        "ARRAY",
-        "2",
-        "2",
-        NULL,
-        "2",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
+        "1",       "OBJECT", "2",       "[\"a\", \"b\"]",
+        "ARRAY",   "2",      "[\"c\"]", "2",
+        "[\"x\"]", NULL,     NULL,      "2",
+        NULL,      NULL,     NULL,      NULL,
+        NULL,      NULL,     NULL,      NULL,
+        NULL,      NULL,
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -275,7 +322,7 @@ static int test_table_backed_json_introspection_and_reopen(void) {
     failures += expect_dml_ok(
         database,
         "INSERT INTO t VALUES "
-        "(1, '{\"a\":[1,2],\"b\":null}', '{\"x\":[10,20]}'), "
+        "(1, '{\"a\":[1,2],\"b\":{\"c\":3}}', '{\"x\":[10,20]}'), "
         "(2, NULL, NULL)",
         (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
     );
@@ -283,9 +330,11 @@ static int test_table_backed_json_introspection_and_reopen(void) {
         database,
         (struct expected_query){
             .sql = "SELECT id, JSON_TYPE(j), JSON_LENGTH(j), "
+                   "JSON_KEYS(j), "
                    "JSON_TYPE(JSON_EXTRACT(j, '$.a')), "
-                   "JSON_LENGTH(JSON_EXTRACT(j, '$.a')), JSON_LENGTH(v, '$.x'), "
-                   "JSON_LENGTH(j, NULL) "
+                   "JSON_LENGTH(JSON_EXTRACT(j, '$.a')), "
+                   "JSON_KEYS(JSON_EXTRACT(j, '$.b')), JSON_LENGTH(v, '$.x'), "
+                   "JSON_KEYS(v), JSON_LENGTH(j, NULL), JSON_KEYS(j, NULL) "
                    "FROM t ORDER BY id",
             .columns = columns_table,
             .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
@@ -302,9 +351,11 @@ static int test_table_backed_json_introspection_and_reopen(void) {
         database,
         (struct expected_query){
             .sql = "SELECT id, JSON_TYPE(j), JSON_LENGTH(j), "
+                   "JSON_KEYS(j), "
                    "JSON_TYPE(JSON_EXTRACT(j, '$.a')), "
-                   "JSON_LENGTH(JSON_EXTRACT(j, '$.a')), JSON_LENGTH(v, '$.x'), "
-                   "JSON_LENGTH(j, NULL) "
+                   "JSON_LENGTH(JSON_EXTRACT(j, '$.a')), "
+                   "JSON_KEYS(JSON_EXTRACT(j, '$.b')), JSON_LENGTH(v, '$.x'), "
+                   "JSON_KEYS(v), JSON_LENGTH(j, NULL), JSON_KEYS(j, NULL) "
                    "FROM t ORDER BY id",
             .columns = columns_table,
             .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
@@ -368,6 +419,24 @@ static int test_json_introspection_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_KEYS()",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function 'JSON_KEYS'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_KEYS('{}', '$', '$.a')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function 'JSON_KEYS'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT JSON_TYPE(1)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_data,
@@ -378,6 +447,15 @@ static int test_json_introspection_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT JSON_LENGTH(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_data,
+            .sqlstate = "22032",
+            .message_part = "Invalid data type for JSON data",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_KEYS(1)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_data,
             .sqlstate = "22032",
@@ -404,7 +482,25 @@ static int test_json_introspection_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_KEYS('bad')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT JSON_LENGTH('bad', NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_KEYS('bad', NULL)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_text,
             .sqlstate = "22032",
@@ -431,7 +527,25 @@ static int test_json_introspection_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_KEYS(CAST('{\"a\":1}' AS BINARY))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_charset,
+            .sqlstate = "22032",
+            .message_part = "Cannot create a JSON value from a string with CHARACTER SET 'binary'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT JSON_LENGTH('{\"a\":1}', 'bad')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_path,
+            .sqlstate = "42000",
+            .message_part = "Invalid JSON path expression",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_KEYS('{\"a\":1}', 'bad')",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_path,
             .sqlstate = "42000",
@@ -449,7 +563,25 @@ static int test_json_introspection_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_KEYS('{\"a\":1}', '$.*')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "JSON_KEYS() path expression is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT JSON_TYPE(missing) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_KEYS(missing) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -467,7 +599,25 @@ static int test_json_introspection_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_KEYS(s) FROM t WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT JSON_LENGTH(s, NULL) FROM t WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_KEYS(s, NULL) FROM t WHERE id = 2",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_text,
             .sqlstate = "22032",

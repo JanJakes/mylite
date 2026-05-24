@@ -56,6 +56,17 @@ int mylite_json_length(
     bool *out_is_null,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_keys(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_extract(
     const char *text,
     size_t text_length,

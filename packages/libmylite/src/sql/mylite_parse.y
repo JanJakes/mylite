@@ -4757,6 +4757,14 @@ expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) COMMA expression(C) RPAREN
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_JSON_LENGTH_FUNCTION, B, C, R);
 }
+expression(A) ::= JSON_KEYS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_KEYS_FUNCTION, B, R);
+}
+expression(A) ::= JSON_KEYS(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_KEYS_FUNCTION, B, C, R);
+}
 expression(A) ::= JSON_TYPE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_TYPE_FUNCTION, B, R);
@@ -5480,6 +5488,17 @@ expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) COMMA expression(C) COMMA
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= JSON_KEYS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_KEYS(T) LPAREN expression(B) COMMA expression(C) COMMA
+    function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= JSON_TYPE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -6705,6 +6724,9 @@ identifier(A) ::= JSON_EXTRACT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_LENGTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_KEYS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_TYPE(T). {

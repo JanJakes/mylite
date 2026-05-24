@@ -392,6 +392,7 @@ static int emit_object_next_member(
     struct json_emit_stack *stack,
     const struct json_value **out_child
 );
+static int emit_object_keys(struct json_writer *writer, const struct json_object *object);
 static int emit_bool_value(struct json_writer *writer, bool boolean);
 static int emit_stack_push(struct json_emit_stack *stack, const struct json_value *container);
 static int emit_string(struct json_writer *writer, const char *text, size_t text_length);
@@ -586,6 +587,79 @@ int mylite_json_length(
     }
 
     value_deinit(&document);
+    return rc;
+}
+
+int mylite_json_keys(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser path_parser = {
+        .text = path,
+        .length = path_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    struct json_writer writer = {0};
+    const struct json_value *selected_value = NULL;
+    bool matched = false;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL || (has_path && path == NULL)) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    if (rc == MYLITE_OK && has_path) {
+        rc = extract_path_value(&path_parser, &document, &selected_value, &matched);
+        *out_result = path_parser.result;
+        if (rc == MYLITE_OK && !matched) {
+            *out_is_null = true;
+        }
+    } else if (rc == MYLITE_OK) {
+        selected_value = &document;
+        matched = true;
+    }
+    if (rc == MYLITE_OK && matched && selected_value->kind != JSON_VALUE_OBJECT) {
+        *out_is_null = true;
+    } else if (rc == MYLITE_OK && matched) {
+        rc = emit_object_keys(&writer, &selected_value->payload.object);
+        if (rc == MYLITE_OK) {
+            *out_text_length = writer.length;
+            *out_text = writer_take(&writer);
+            if (*out_text == NULL) {
+                rc = MYLITE_NOMEM;
+            }
+        }
+    }
+
+    value_deinit(&document);
+    writer_deinit(&writer);
     return rc;
 }
 
@@ -2735,6 +2809,29 @@ static int emit_object_next_member(
     if (rc == MYLITE_OK) {
         *out_child = member->value;
         ++frame->index;
+    }
+    return rc;
+}
+
+static int emit_object_keys(struct json_writer *writer, const struct json_object *object) {
+    int rc = MYLITE_OK;
+
+    if (writer == NULL || object == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = writer_append_char(writer, '[');
+    for (size_t index = 0U; rc == MYLITE_OK && index < object->count; ++index) {
+        const struct json_member *member = &object->members[index];
+
+        if (index > 0U) {
+            rc = writer_append_text(writer, ", ", json_member_separator_length);
+        }
+        if (rc == MYLITE_OK) {
+            rc = emit_string(writer, member->key, member->key_length);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = writer_append_char(writer, ']');
     }
     return rc;
 }

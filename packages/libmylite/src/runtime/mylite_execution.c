@@ -20396,20 +20396,29 @@ static int convert_insert_unix_timestamp_arithmetic_value(
     bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
+
+struct unix_timestamp_arithmetic_messages {
+    const char *unsupported;
+    const char *delta_range;
+};
+
 static int evaluate_insert_unix_timestamp_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const struct unix_timestamp_arithmetic_messages *messages,
     struct scalar_arithmetic_value *out_value
 );
 static int evaluate_insert_unix_timestamp_delta(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const struct unix_timestamp_arithmetic_messages *messages,
     struct scalar_arithmetic_value *out_value
 );
 static int parse_insert_unix_timestamp_delta_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     bool is_negative,
+    const char *delta_range_message,
     struct scalar_arithmetic_value *out_value
 );
 static int finish_insert_unix_timestamp_integer_value(
@@ -20440,7 +20449,6 @@ static bool insert_unix_timestamp_now_node_is_admitted(
 static bool insert_unix_timestamp_delta_node_is_admitted(
     const struct mylite_sql_ast_node *value_node
 );
-static void set_insert_unix_timestamp_arithmetic_unsupported_error(struct mylite_db *database);
 static int convert_statement_time_value_for_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -22758,6 +22766,10 @@ static int validate_update_arithmetic_assignment_target(
     struct mylite_db *database,
     const struct planned_update *plan
 );
+static int validate_update_unix_timestamp_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static bool update_assignment_column_is_keyed(const struct planned_update *plan);
 static bool update_column_id_is_keyed(const struct planned_update *plan, int64_t column_id);
 static bool update_assignment_value_is_multi_constant_supported(
@@ -22803,6 +22815,12 @@ static int convert_update_value_for_column(
     struct planned_value *out_value
 );
 static int convert_update_constant_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_update_unix_timestamp_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
@@ -128088,6 +128106,13 @@ static int convert_insert_unix_timestamp_arithmetic_value(
     bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 ) {
+    static const struct unix_timestamp_arithmetic_messages messages = {
+        .unsupported =
+            "INSERT UNIX_TIMESTAMP arithmetic supports only UNIX_TIMESTAMP(), "
+            "UNIX_TIMESTAMP() +/- signed integer literals, and UNIX_TIMESTAMP() +/- NULL",
+        .delta_range =
+            "INSERT UNIX_TIMESTAMP arithmetic supports only signed 64-bit integer deltas",
+    };
     struct integer_column_range range = {0};
     struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
     int rc = MYLITE_OK;
@@ -128113,7 +128138,7 @@ static int convert_insert_unix_timestamp_arithmetic_value(
         }
     }
 
-    rc = evaluate_insert_unix_timestamp_arithmetic_value(database, value_node, &value);
+    rc = evaluate_insert_unix_timestamp_arithmetic_value(database, value_node, &messages, &value);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -128144,6 +128169,7 @@ static int convert_insert_unix_timestamp_arithmetic_value(
 static int evaluate_insert_unix_timestamp_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const struct unix_timestamp_arithmetic_messages *messages,
     struct scalar_arithmetic_value *out_value
 ) {
     const struct mylite_sql_ast_node *right = NULL;
@@ -128153,7 +128179,7 @@ static int evaluate_insert_unix_timestamp_arithmetic_value(
     enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
     int rc = MYLITE_OK;
 
-    if (out_value == NULL) {
+    if (messages == NULL || out_value == NULL) {
         return MYLITE_MISUSE;
     }
     *out_value = (struct scalar_arithmetic_value){
@@ -128168,19 +128194,19 @@ static int evaluate_insert_unix_timestamp_arithmetic_value(
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
         mylite_sql_ast_node_child_count(value_node) != 2U ||
         !insert_unix_timestamp_now_node_is_admitted(child_at(value_node, 0U))) {
-        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        set_unsupported_error(database, messages->unsupported);
         return MYLITE_ERROR;
     }
 
     operator_kind = mylite_sql_ast_node_operator(value_node);
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
         operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
-        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        set_unsupported_error(database, messages->unsupported);
         return MYLITE_ERROR;
     }
 
     right = child_at(value_node, 1U);
-    rc = evaluate_insert_unix_timestamp_delta(database, right, &delta);
+    rc = evaluate_insert_unix_timestamp_delta(database, right, messages, &delta);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -128207,19 +128233,20 @@ static int evaluate_insert_unix_timestamp_arithmetic_value(
 static int evaluate_insert_unix_timestamp_delta(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const struct unix_timestamp_arithmetic_messages *messages,
     struct scalar_arithmetic_value *out_value
 ) {
     const struct mylite_sql_ast_node *operand = NULL;
     enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
-    if (out_value == NULL) {
+    if (messages == NULL || out_value == NULL) {
         return MYLITE_MISUSE;
     }
     *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
 
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL) {
-        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        set_unsupported_error(database, messages->unsupported);
         return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL) {
@@ -128227,17 +128254,23 @@ static int evaluate_insert_unix_timestamp_delta(
             out_value->is_null = true;
             return MYLITE_OK;
         }
-        return parse_insert_unix_timestamp_delta_literal(database, value_node, false, out_value);
+        return parse_insert_unix_timestamp_delta_literal(
+            database,
+            value_node,
+            false,
+            messages->delta_range,
+            out_value
+        );
     }
     if (value_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        set_unsupported_error(database, messages->unsupported);
         return MYLITE_ERROR;
     }
 
     operator_kind = mylite_sql_ast_node_operator(value_node);
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
         operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-        set_insert_unix_timestamp_arithmetic_unsupported_error(database);
+        set_unsupported_error(database, messages->unsupported);
         return MYLITE_ERROR;
     }
 
@@ -128246,6 +128279,7 @@ static int evaluate_insert_unix_timestamp_delta(
         database,
         operand,
         operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        messages->delta_range,
         out_value
     );
 }
@@ -128254,6 +128288,7 @@ static int parse_insert_unix_timestamp_delta_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     bool is_negative,
+    const char *delta_range_message,
     struct scalar_arithmetic_value *out_value
 ) {
     static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
@@ -128268,10 +128303,7 @@ static int parse_insert_unix_timestamp_delta_literal(
         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
         parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
         magnitude > limit) {
-        set_unsupported_error(
-            database,
-            "INSERT UNIX_TIMESTAMP arithmetic supports only signed 64-bit integer deltas"
-        );
+        set_unsupported_error(database, delta_range_message);
         return MYLITE_ERROR;
     }
 
@@ -128440,14 +128472,6 @@ static bool insert_unix_timestamp_delta_node_is_admitted(
     operand = unwrap_parenthesized_expression(child_at(value_node, 0U));
     return (operand != NULL && operand->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(operand) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
-}
-
-static void set_insert_unix_timestamp_arithmetic_unsupported_error(struct mylite_db *database) {
-    set_unsupported_error(
-        database,
-        "INSERT UNIX_TIMESTAMP arithmetic supports only UNIX_TIMESTAMP(), "
-        "UNIX_TIMESTAMP() +/- signed integer literals, and UNIX_TIMESTAMP() +/- NULL"
-    );
 }
 
 static int convert_insert_value_for_plan(
@@ -155776,7 +155800,16 @@ static int plan_update_arithmetic_assignment(
     int rc = MYLITE_OK;
 
     value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+    if (value_node == NULL) {
+        return MYLITE_OK;
+    }
+    if (insert_value_is_unix_timestamp_arithmetic(value_node)) {
+        return validate_update_unix_timestamp_arithmetic_assignment_target(
+            database,
+            &out_plan->assignment_column
+        );
+    }
+    if (value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         return MYLITE_OK;
     }
     rc = update_value_is_constant_arithmetic_expression(
@@ -155988,6 +156021,34 @@ static int validate_update_arithmetic_assignment_target(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_update_unix_timestamp_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+    int rc = MYLITE_OK;
+
+    if (column_descriptor_is_auto_increment(column)) {
+        set_unsupported_error(
+            database,
+            "UPDATE UNIX_TIMESTAMP arithmetic does not yet support AUTO_INCREMENT targets"
+        );
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_string_family(column)) {
+        return MYLITE_OK;
+    }
+
+    rc = integer_range_for_column(
+        database,
+        column,
+        "UPDATE UNIX_TIMESTAMP arithmetic supports only integer and nonbinary string targets",
+        &range
+    );
+    (void)range;
+    return rc;
 }
 
 static bool update_assignment_column_is_keyed(const struct planned_update *plan) {
@@ -156332,6 +156393,14 @@ static int convert_update_value_for_column(
         }
         return MYLITE_OK;
     }
+    if (insert_value_is_unix_timestamp_arithmetic(value_node)) {
+        return convert_update_unix_timestamp_arithmetic_value(
+            database,
+            value_node,
+            column,
+            out_value
+        );
+    }
     rc = update_value_is_constant_arithmetic_expression(
         database,
         value_node,
@@ -156407,6 +156476,70 @@ static int convert_update_constant_arithmetic_value(
         }
         *out_value = (struct planned_value){.is_null = true};
         return MYLITE_OK;
+    }
+
+    if (value.integer < 0) {
+        is_negative = true;
+        if (value.integer == INT64_MIN) {
+            magnitude = int64_min_magnitude;
+        } else {
+            magnitude = (uint64_t)-value.integer;
+        }
+    } else {
+        magnitude = (uint64_t)value.integer;
+    }
+
+    out_value->is_null = false;
+    return convert_integer_for_column(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        1U,
+        &out_value->integer
+    );
+}
+
+static int convert_update_unix_timestamp_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    static const struct unix_timestamp_arithmetic_messages messages = {
+        .unsupported =
+            "UPDATE UNIX_TIMESTAMP arithmetic supports only UNIX_TIMESTAMP(), "
+            "UNIX_TIMESTAMP() +/- signed integer literals, and UNIX_TIMESTAMP() +/- NULL",
+        .delta_range =
+            "UPDATE UNIX_TIMESTAMP arithmetic supports only signed 64-bit integer deltas",
+    };
+    static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = validate_update_unix_timestamp_arithmetic_assignment_target(database, column);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = evaluate_insert_unix_timestamp_arithmetic_value(database, value_node, &messages, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.is_null) {
+        return convert_null_insert_value(database, column, adjust_missing_default, out_value);
+    }
+
+    if (column_descriptor_is_string_family(column)) {
+        return finish_insert_unix_timestamp_text_value(
+            database,
+            value.integer,
+            column,
+            1U,
+            dml_allows_string_truncation_adjustment(database, false),
+            out_value
+        );
     }
 
     if (value.integer < 0) {

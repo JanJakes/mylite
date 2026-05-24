@@ -25426,6 +25426,51 @@ static int test_update_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "UPDATE simple_lifecycle SET amount = UNIX_TIMESTAMP();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "update unix timestamp assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE simple_lifecycle SET amount = UNIX_TIMESTAMP() + -90;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_operator(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "update unix timestamp plus assignment"
+    );
+    failures += expect_node(
+        child_at(child_at(assignment, 1U), 0U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "update unix timestamp plus source"
+    );
+    failures += expect_operator(
+        child_at(child_at(assignment, 1U), 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "update unix timestamp negative delta"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE simple_lifecycle SET amount = UNIX_TIMESTAMP(1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "UPDATE simple_lifecycle SET amount = NULL WHERE id = +1 ORDER BY nn DESC LIMIT 2;",
         MYLITE_SQL_PARSE_OK,
         &result

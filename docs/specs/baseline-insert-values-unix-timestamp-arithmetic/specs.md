@@ -134,9 +134,9 @@ This slice intentionally does not support:
 - decimal, approximate, temporal, `YEAR`, `BIT`, binary string, `ENUM`, `SET`,
   `JSON`, or spatial target conversion for these expressions;
 - explicit `AUTO_INCREMENT` target assignment with these expressions;
-- `UPDATE` assignments, defaults, generated columns, predicates, `ORDER BY`,
-  `GROUP BY`, `HAVING`, indexes, constraints, triggers, privilege semantics, or
-  arbitrary SQLite pass-through.
+- defaults, generated columns, predicates, `ORDER BY`, `GROUP BY`, `HAVING`,
+  indexes, constraints, triggers, privilege semantics, or arbitrary SQLite
+  pass-through.
 
 ## Grammar
 

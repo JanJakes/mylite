@@ -2786,6 +2786,9 @@ update_value(A) ::= utc_time_value(T). {
 update_value(A) ::= utc_timestamp_value(T). {
     A = T;
 }
+update_value(A) ::= insert_unix_timestamp_value(B). {
+    A = B;
+}
 update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }

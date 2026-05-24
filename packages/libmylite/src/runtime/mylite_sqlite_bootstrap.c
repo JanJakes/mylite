@@ -7,6 +7,7 @@
 #include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
+#include "mylite_rand.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_base64.h"
@@ -249,6 +250,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_json_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_rand_functions(sqlite);
     }
     if (rc != MYLITE_OK) {
         return rc;

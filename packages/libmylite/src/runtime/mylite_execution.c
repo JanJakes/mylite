@@ -10,6 +10,7 @@
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
 #include "mylite_parser.h"
+#include "mylite_rand.h"
 #include "mylite_regexp.h"
 #include "mylite_result.h"
 #include "mylite_sqlite_registration.h"
@@ -472,14 +473,6 @@ enum {
     scalar_exact_decimal_part_capacity = literal_projection_max_significant_digits + 1,
     scalar_format_max_decimals = 30,
     crc32_bits_per_byte = 8,
-    rand_double_value_bits = 53,
-    rand_double_discard_bits = scalar_bitwise_integer_bits - rand_double_value_bits,
-    rand_seed_state_modulus = 0x3fffffff,
-    rand_seed_first_multiplier = 0x10001,
-    rand_seed_second_multiplier = 0x10000001,
-    rand_seed_first_addend = 55555555,
-    rand_seed_step_multiplier = 3,
-    rand_seed_step_addend = 33,
     double_format_error_capacity = 80,
     float_text_max_significant_digits = 6,
     approximate_numeric_text_capacity = 48,
@@ -2675,6 +2668,7 @@ struct planned_row_scalar_expression;
 enum planned_select_order_item_kind {
     PLANNED_SELECT_ORDER_ITEM_COLUMN = 0,
     PLANNED_SELECT_ORDER_ITEM_FIELD = 1,
+    PLANNED_SELECT_ORDER_ITEM_RAND = 2,
 };
 
 struct select_predicate_plan_options {
@@ -2909,6 +2903,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS = 60,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT = 61,
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET = 62,
+    PLANNED_ROW_SCALAR_EXPRESSION_RAND = 63,
 };
 
 enum {
@@ -3005,6 +3000,8 @@ struct planned_row_scalar_expression {
     struct planned_value value;
     enum mylite_json_sql_value_kind json_value_kind;
     bool regexp_case_sensitive;
+    bool has_rand_seed;
+    uint32_t rand_seed;
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
@@ -14069,10 +14066,6 @@ static int rand_seed_literal_value(
     bool is_negative,
     uint32_t *out_seed
 );
-static double random_unit_double(void);
-static double seeded_random_unit_double(uint32_t seed);
-static double rand_seed_next_unit_double(uint32_t *seed1, uint32_t *seed2);
-static uint32_t rand_seed_initial_word(uint32_t seed, uint32_t multiplier, uint32_t addend);
 static int current_timestamp_scalar_value(
     struct mylite_db *database,
     struct session_scalar_cell *out_cell
@@ -22362,6 +22355,7 @@ static int plan_select_order(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order *out_order
 );
 static int plan_select_order_item_list(
@@ -22372,6 +22366,7 @@ static int plan_select_order_item_list(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order *out_order
 );
 static int plan_select_order_ast_item_and_append(
@@ -22382,6 +22377,7 @@ static int plan_select_order_ast_item_and_append(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order *out_order
 );
 static int plan_select_order_ast_item(
@@ -22392,16 +22388,24 @@ static int plan_select_order_ast_item(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order_item *out_item
 );
 static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items);
+static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items);
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
+static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key);
 static int plan_select_order_field_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct planned_select_order_item *out_item
+);
+static int plan_select_order_rand_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
     struct planned_select_order_item *out_item
 );
 static int validate_select_order_field_expression(
@@ -22703,6 +22707,17 @@ static int plan_row_scalar_expression(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int normalize_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node **out_expression
+);
+static bool row_scalar_expression_is_rand_function(const struct mylite_sql_ast_node *expression);
+static int plan_row_scalar_rand_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_integer_arithmetic_expression(
@@ -24662,6 +24677,9 @@ static bool row_scalar_column_descriptor_is_supported(
 static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_expression_contains_rand_function(
+    const struct mylite_sql_ast_node *expression
+);
 static bool row_scalar_expression_contains_any_value_function(
     const struct mylite_sql_ast_node *expression
 );
@@ -25686,6 +25704,11 @@ static int append_row_scalar_tableless_filter_sql(
     size_t *next_parameter
 );
 static int append_row_scalar_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_rand_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -27088,6 +27111,11 @@ static int bind_row_scalar_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_non_concat_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_rand_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -76455,6 +76483,7 @@ static int plan_single_table_update(
             table_columns,
             table_column_count,
             false,
+            false,
             &out_plan->order
         );
     }
@@ -78822,6 +78851,7 @@ static int plan_select(
             table_columns,
             table_column_count,
             allow_field_order,
+            true,
             &out_plan->order
         );
     }
@@ -79046,6 +79076,7 @@ static int plan_joined_select(
             out_plan,
             NULL,
             0U,
+            false,
             false,
             &out_plan->order
         );
@@ -79883,6 +79914,7 @@ static int plan_row_scalar_select_row_envelope(
             table_columns,
             table_column_count,
             allow_order_by_field,
+            true,
             &out_plan->order
         );
     }
@@ -84581,6 +84613,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(child_at(select_item, 0U)) ||
              (has_table_source &&
+              row_scalar_expression_contains_rand_function(child_at(select_item, 0U))) ||
+             (has_table_source &&
               row_scalar_expression_contains_any_value_function(child_at(select_item, 0U))) ||
              (has_table_source &&
               row_scalar_expression_is_concat_operator(child_at(select_item, 0U))) ||
@@ -85036,6 +85070,18 @@ static int populate_row_scalar_expression_result_column_descriptor(
                 .decimals = 0U,
                 .extra_flags = 0U,
                 .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_approximate_decimals,
+                .extra_flags = 0U,
+                .nullable = false,
             }
         );
         return MYLITE_OK;
@@ -90175,11 +90221,11 @@ static int rand_function_value(
 
     child_count = mylite_sql_ast_node_child_count(expression);
     if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION && child_count == 0U) {
-        value = random_unit_double();
+        value = mylite_rand_unseeded_unit_double();
     } else if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION && child_count == 1U) {
         rc = rand_seed_value(database, child_at(expression, 0U), &seed);
         if (rc == MYLITE_OK) {
-            value = seeded_random_unit_double(seed);
+            value = mylite_rand_seeded_unit_double(seed);
         }
     } else {
         set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
@@ -90305,44 +90351,6 @@ static int rand_seed_literal_value(
     }
 
     return MYLITE_OK;
-}
-
-static double random_unit_double(void) {
-    uint64_t random_bits = 0U;
-
-    sqlite3_randomness((int)sizeof(random_bits), &random_bits);
-    random_bits >>= rand_double_discard_bits;
-    return ldexp((double)random_bits, -rand_double_value_bits);
-}
-
-static double seeded_random_unit_double(uint32_t seed) {
-    uint32_t seed1 =
-        rand_seed_initial_word(seed, rand_seed_first_multiplier, rand_seed_first_addend);
-    uint32_t seed2 = rand_seed_initial_word(seed, rand_seed_second_multiplier, 0U);
-
-    return rand_seed_next_unit_double(&seed1, &seed2);
-}
-
-static double rand_seed_next_unit_double(uint32_t *seed1, uint32_t *seed2) {
-    uint64_t next_seed1 = 0U;
-    uint64_t next_seed2 = 0U;
-
-    if (seed1 == NULL || seed2 == NULL) {
-        return 0.0;
-    }
-
-    next_seed1 = ((uint64_t)(*seed1) * rand_seed_step_multiplier) + *seed2;
-    *seed1 = (uint32_t)(next_seed1 % rand_seed_state_modulus);
-    next_seed2 = (uint64_t)(*seed1) + *seed2 + rand_seed_step_addend;
-    *seed2 = (uint32_t)(next_seed2 % rand_seed_state_modulus);
-
-    return (double)(*seed1) / (double)rand_seed_state_modulus;
-}
-
-static uint32_t rand_seed_initial_word(uint32_t seed, uint32_t multiplier, uint32_t addend) {
-    uint32_t overflowed = (uint32_t)(((uint64_t)seed * multiplier) + addend);
-
-    return overflowed % rand_seed_state_modulus;
 }
 
 static int current_timestamp_scalar_value(
@@ -116681,6 +116689,7 @@ static int plan_single_table_delete(
             table_columns,
             table_column_count,
             false,
+            false,
             &out_plan->order
         );
     }
@@ -132688,15 +132697,10 @@ static int plan_row_scalar_expression(
     bool handled = false;
     int rc = MYLITE_OK;
 
-    expression = unwrap_any_value_function_expression(expression);
     planned_row_scalar_expression_deinit(out_expression);
-    if (expression == NULL) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    if (expression->kind == MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR) {
-        set_native_function_parameter_count_error(database, "ANY_VALUE");
-        return MYLITE_ERROR;
+    rc = normalize_row_scalar_expression(database, expression, &expression);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     if (row_scalar_expression_is_concat_operator(expression)) {
         return plan_row_scalar_concat_operator_expression(
@@ -132868,6 +132872,9 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (row_scalar_expression_is_rand_function(expression)) {
+        return plan_row_scalar_rand_expression(database, expression, out_expression);
+    }
     if (has_source && row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
         return plan_row_scalar_integer_arithmetic_expression(
             database,
@@ -132892,6 +132899,99 @@ static int plan_row_scalar_expression(
         allow_scalar_subquery,
         out_expression
     );
+}
+
+static int normalize_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node **out_expression
+) {
+    const struct mylite_sql_ast_node *expression = source_expression;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_expression = NULL;
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (row_scalar_expression_contains_any_value_function(expression) &&
+        row_scalar_expression_contains_rand_function(expression)) {
+        set_unsupported_error(database, "RAND() inside ANY_VALUE() is not supported");
+        return MYLITE_ERROR;
+    }
+    expression = unwrap_any_value_function_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "ANY_VALUE");
+        return MYLITE_ERROR;
+    }
+    *out_expression = expression;
+    return MYLITE_OK;
+}
+
+static bool row_scalar_expression_is_rand_function(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR) {
+        return true;
+    }
+    return false;
+}
+
+static int plan_row_scalar_rand_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    size_t child_count = 0U;
+    uint32_t seed = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    planned_row_scalar_expression_deinit(out_expression);
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "RAND");
+        return MYLITE_ERROR;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION && child_count == 0U) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_RAND;
+        out_expression->has_rand_seed = false;
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION && child_count == 1U) {
+        rc = rand_seed_value(database, child_at(expression, 0U), &seed);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_RAND;
+        out_expression->has_rand_seed = true;
+        out_expression->rand_seed = seed;
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
+    return MYLITE_ERROR;
 }
 
 static int plan_row_scalar_integer_arithmetic_expression(
@@ -141847,6 +141947,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -146357,6 +146458,45 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_CHAR_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION ||
             is_charset_collation_function_kind(current->kind)) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return found;
+}
+
+static bool row_scalar_expression_contains_rand_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        size_t child_count = 0U;
+
+        current = unwrap_parenthesized_expression(current);
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR) {
             found = true;
             break;
         }
@@ -152909,6 +153049,7 @@ static int plan_select_order(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order *out_order
 ) {
     const struct mylite_sql_ast_node *order_items = NULL;
@@ -152938,6 +153079,7 @@ static int plan_select_order(
             table_columns,
             table_column_count,
             allow_field_order,
+            allow_rand_order,
             out_order
         );
     } else {
@@ -152952,6 +153094,7 @@ static int plan_select_order(
             table_columns,
             table_column_count,
             allow_field_order,
+            allow_rand_order,
             out_order
         );
     }
@@ -152979,6 +153122,7 @@ static int plan_select_order_item_list(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order *out_order
 ) {
     const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
@@ -152986,6 +153130,11 @@ static int plan_select_order_item_list(
     if (order_item_list_contains_field_order_key(order_items) &&
         mylite_sql_ast_node_child_count(order_items) != 1U) {
         set_unsupported_error(database, "SELECT ORDER BY FIELD() supports only one order key");
+        return MYLITE_ERROR;
+    }
+    if (order_item_list_contains_rand_order_key(order_items) &&
+        mylite_sql_ast_node_child_count(order_items) != 1U) {
+        set_unsupported_error(database, "SELECT ORDER BY RAND() supports only one order key");
         return MYLITE_ERROR;
     }
 
@@ -153007,6 +153156,7 @@ static int plan_select_order_item_list(
             table_columns,
             table_column_count,
             allow_field_order,
+            allow_rand_order,
             out_order
         );
         if (rc != MYLITE_OK) {
@@ -153026,6 +153176,7 @@ static int plan_select_order_ast_item_and_append(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order *out_order
 ) {
     struct planned_select_order_item planned_item = {0};
@@ -153037,6 +153188,7 @@ static int plan_select_order_ast_item_and_append(
         table_columns,
         table_column_count,
         allow_field_order,
+        allow_rand_order,
         &planned_item
     );
 
@@ -153058,6 +153210,7 @@ static int plan_select_order_ast_item(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     bool allow_field_order,
+    bool allow_rand_order,
     struct planned_select_order_item *out_item
 ) {
     bool resolved_alias = false;
@@ -153082,6 +153235,18 @@ static int plan_select_order_ast_item(
             table_column_count,
             out_item
         );
+        if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
+                                   MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+            out_item->direction = PLANNED_SELECT_ORDER_DESC;
+        }
+        return rc;
+    }
+    if (select_order_key_is_rand_function(item_nodes.order_key)) {
+        if (!allow_rand_order || select_source_context_is_joined(source_context)) {
+            set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
+            return MYLITE_ERROR;
+        }
+        rc = plan_select_order_rand_expression(database, item_nodes.order_key, out_item);
         if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
                                    MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
             out_item->direction = PLANNED_SELECT_ORDER_DESC;
@@ -153163,6 +153328,23 @@ static bool order_item_list_contains_field_order_key(
     return false;
 }
 
+static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items) {
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (order_items == NULL || order_items->kind != MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        return false;
+    }
+    item = child_at(order_items, 0U);
+    while (item != NULL) {
+        if (item->kind == MYLITE_SQL_AST_ORDER_BY_ITEM &&
+            select_order_key_is_rand_function(child_at(item, 0U))) {
+            return true;
+        }
+        item = item->next_sibling;
+    }
+    return false;
+}
+
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key) {
     order_key = unwrap_parenthesized_expression(order_key);
     if (order_key == NULL) {
@@ -153172,6 +153354,19 @@ static bool select_order_key_is_field_function(const struct mylite_sql_ast_node 
         return true;
     }
     if (order_key->kind == MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR) {
+        return true;
+    }
+    return false;
+}
+
+static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key) {
+    order_key = unwrap_parenthesized_expression(order_key);
+    if (order_key == NULL) {
+        return false;
+    }
+    if (order_key->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+        order_key->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION ||
+        order_key->kind == MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR) {
         return true;
     }
     return false;
@@ -153228,6 +153423,32 @@ static int plan_select_order_field_expression(
     }
 
     out_item->kind = PLANNED_SELECT_ORDER_ITEM_FIELD;
+    out_item->expression = expression;
+    return MYLITE_OK;
+}
+
+static int plan_select_order_rand_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    struct planned_select_order_item *out_item
+) {
+    struct planned_row_scalar_expression *expression = NULL;
+    int rc = MYLITE_OK;
+
+    expression = (struct planned_row_scalar_expression *)calloc(1U, sizeof(*expression));
+    if (expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_rand_expression(database, order_key, expression);
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(expression);
+        free(expression);
+        return rc;
+    }
+
+    out_item->kind = PLANNED_SELECT_ORDER_ITEM_RAND;
     out_item->expression = expression;
     return MYLITE_OK;
 }
@@ -161529,6 +161750,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
@@ -162498,11 +162720,39 @@ static int append_row_scalar_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+        return append_row_scalar_rand_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_row_scalar_rand_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_RAND ||
+        next_parameter == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (!expression->has_rand_seed) {
+        return dynamic_string_append(string, "_mylite_rand()");
+    }
+
+    rc = dynamic_string_append(string, "_mylite_rand_seeded(");
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_row_scalar_non_concat_expression_sql(
@@ -162571,6 +162821,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -162718,6 +162969,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -163236,6 +163488,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -163355,6 +163608,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -163434,6 +163688,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         return NULL;
     }
@@ -164591,6 +164846,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -164807,6 +165063,7 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -164992,6 +165249,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
     return MYLITE_ERROR;
@@ -165074,6 +165332,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
     return MYLITE_ERROR;
@@ -165489,6 +165748,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
     return MYLITE_ERROR;
@@ -165575,6 +165835,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -167680,7 +167941,8 @@ static int append_select_order_item_sql(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD) {
+    if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
+        item->kind == PLANNED_SELECT_ORDER_ITEM_RAND) {
         if (next_parameter == NULL || item->expression == NULL) {
             return MYLITE_ERROR;
         }
@@ -171526,7 +171788,8 @@ static int bind_select_order_parameters(
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < order->item_count; ++item_index) {
         const struct planned_select_order_item *item = &order->items[item_index];
 
-        if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD) {
+        if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
+            item->kind == PLANNED_SELECT_ORDER_ITEM_RAND) {
             rc =
                 bind_row_scalar_expression_parameters(statement, item->expression, parameter_index);
         }
@@ -171866,11 +172129,35 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+        return bind_row_scalar_rand_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
 
     return MYLITE_ERROR;
+}
+
+static int bind_row_scalar_rand_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (statement == NULL || expression == NULL || parameter_index == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_RAND) {
+        return MYLITE_MISUSE;
+    }
+    if (!expression->has_rand_seed) {
+        return MYLITE_OK;
+    }
+
+    rc = bind_int64_parameter(statement, *parameter_index, (int64_t)expression->rand_seed);
+    if (rc == MYLITE_OK) {
+        ++(*parameter_index);
+    }
+    return rc;
 }
 
 static int bind_row_scalar_non_concat_expression_parameters(
@@ -171939,6 +172226,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -172069,6 +172357,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -172803,6 +173092,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
 
@@ -172981,6 +173271,7 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
 
@@ -173158,6 +173449,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
     return MYLITE_ERROR;
@@ -173235,6 +173527,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -173503,6 +173796,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -173608,6 +173902,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:

@@ -8015,6 +8015,26 @@ static int test_rand_function(void) {
     failures += expect_child_count(child_at(second_expression, 0U), 1U, "rand extra arguments");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT id FROM t ORDER BY RAND(1) DESC;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    parenthesized = child_at(statement, 2U);
+    failures += expect_node(parenthesized, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "rand order clause");
+    first_expression = child_at(parenthesized, 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_RAND_SEED_FUNCTION, "rand order key");
+    failures += expect_child_count(first_expression, 1U, "rand order seed argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t ORDER BY RAND(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    parenthesized = child_at(statement, 2U);
+    first_expression = child_at(parenthesized, 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR,
+        "rand order argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("DO RAND(), RAND(1);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     first_expression = child_at(child_at(statement, 0U), 0U);

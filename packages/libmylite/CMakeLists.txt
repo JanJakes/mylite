@@ -49,6 +49,7 @@ add_library(mylite STATIC
   src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_json.c
   src/runtime/mylite_json_functions.c
+  src/runtime/mylite_rand.c
   src/runtime/mylite_regexp.c
   src/runtime/mylite_result.c
   src/runtime/mylite_result_metadata.c

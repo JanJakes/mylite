@@ -167,10 +167,81 @@ expect_output \
     "DO RAND(1), RAND(NULL), RAND(-1); SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
-expect_accepts \
-    "table-backed seeded RAND accepted by MySQL" \
-    "DROP TABLE IF EXISTS t; CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2), (3); "\
-"SELECT id, RAND(1) FROM t ORDER BY id;" \
+run_mysql \
+    "DROP TABLE IF EXISTS t; CREATE TABLE t(id INT, k INT NULL); "\
+"INSERT INTO t VALUES (1, NULL), (2, 2), (3, 2), (4, 4), (5, NULL);" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "table-backed seeded RAND exact values" \
+    "1	0.40540353712197724
+2	0.8716141803857071
+3	0.1418603212962489
+4	0.09445909605776807
+5	0.04671454713373868" \
+    "SELECT id, RAND(1) FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "table-backed seeded RAND(3) exact values" \
+    "1	0.9057697559760601
+2	0.37307905813034536
+3	0.14808605345719125
+4	0.6211931236285653
+5	0.6617074885048974" \
+    "SELECT id, RAND(3) FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "duplicate table-backed seeded RAND exact values" \
+    "1	0.40540353712197724	0.40540353712197724
+2	0.8716141803857071	0.8716141803857071
+3	0.1418603212962489	0.1418603212962489
+4	0.09445909605776807	0.09445909605776807
+5	0.04671454713373868	0.04671454713373868" \
+    "SELECT id, RAND(1), RAND(1) FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "seeded ORDER BY RAND exact order" \
+    "5
+4
+3
+1
+2" \
+    "SELECT id FROM t ORDER BY RAND(1);" \
+    "$DATABASE"
+
+expect_output \
+    "seeded ORDER BY RAND LIMIT exact order" \
+    "5
+4
+3" \
+    "SELECT id FROM t ORDER BY RAND(1) LIMIT 3;" \
+    "$DATABASE"
+
+expect_output \
+    "seeded ORDER BY RAND ASC LIMIT exact order" \
+    "5
+4
+3" \
+    "SELECT id FROM t ORDER BY RAND(1) ASC LIMIT 3;" \
+    "$DATABASE"
+
+expect_output \
+    "seeded ORDER BY RAND DESC LIMIT exact order" \
+    "2
+1
+3" \
+    "SELECT id FROM t ORDER BY RAND(1) DESC LIMIT 3;" \
+    "$DATABASE"
+
+expect_output \
+    "signed seeded ORDER BY RAND LIMIT exact order" \
+    "5
+4
+3" \
+    "SELECT id FROM t ORDER BY RAND(+1) LIMIT 3;" \
     "$DATABASE"
 
 expect_error \

@@ -98,6 +98,45 @@ expect_accepts() {
     fi
 }
 
+expect_table_rand_projection_range() {
+    label=$1
+    sql=$2
+    shift 2
+
+    output=$(run_mysql "$sql" "$@")
+    printf '%s\n' "$output" | awk -F '\t' '
+        NF != 2 { exit 1 }
+        $1 != NR { exit 1 }
+        $2 !~ /^[0-9]+([.][0-9]+)?$/ { exit 1 }
+        {
+            value = $2 + 0
+            if (!(value >= 0 && value < 1)) {
+                exit 1
+            }
+        }
+        END { if (NR != 5) exit 1 }
+    ' || fail "$label: expected ids 1..5 with RAND values in [0,1), got [$output]"
+}
+
+expect_table_rand_order_set() {
+    label=$1
+    sql=$2
+    shift 2
+
+    output=$(run_mysql "$sql" "$@")
+    printf '%s\n' "$output" | awk -F '\t' '
+        NF != 1 { exit 1 }
+        $1 !~ /^[1-5]$/ { exit 1 }
+        seen[$1]++ { exit 1 }
+        END {
+            if (NR != 5) exit 1
+            for (i = 1; i <= 5; ++i) {
+                if (seen[i] != 1) exit 1
+            }
+        }
+    ' || fail "$label: expected ids 1..5 exactly once, got [$output]"
+}
+
 expect_rand_header_and_range() {
     label=$1
     expected_header=$2
@@ -177,10 +216,19 @@ expect_accepts \
     "SELECT RAND(3), RAND(NULL), RAND(TRUE), RAND(FALSE), RAND(-1);" \
     "$DATABASE"
 
-expect_accepts \
-    "table-backed RAND accepted by MySQL" \
-    "DROP TABLE IF EXISTS t; CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (2); "\
-"SELECT id, RAND() FROM t ORDER BY id;" \
+run_mysql \
+    "DROP TABLE IF EXISTS t; CREATE TABLE t(id INT, k INT NULL); "\
+"INSERT INTO t VALUES (1, NULL), (2, 2), (3, 2), (4, 4), (5, NULL);" \
+    "$DATABASE" >/dev/null
+
+expect_table_rand_projection_range \
+    "table-backed RAND projection" \
+    "SELECT id, RAND() FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_table_rand_order_set \
+    "table-backed ORDER BY RAND rowset" \
+    "SELECT id FROM t ORDER BY RAND() LIMIT 5;" \
     "$DATABASE"
 
 expect_error \

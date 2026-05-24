@@ -559,6 +559,67 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT RAND(), RAND(0) FROM meta LIMIT 0", &result);
+    if (failures == 0) {
+        enum {
+            not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                            MYLITE_RESULT_COLUMN_FLAG_NUM,
+            table_rand_column_count = 2,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            table_rand_column_count,
+            "table RAND metadata column count"
+        );
+        failures += expect_size(mylite_result_row_count(result), 0U, "table RAND metadata rows");
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "table RAND metadata warnings");
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "RAND()",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 0,
+            },
+            "table RAND metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "RAND(0)",
+                .schema_name = "",
+                .table_name = "",
+                .origin_schema_name = "",
+                .origin_table_name = "",
+                .origin_column_name = "",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+                .flags = not_null_binary_numeric_flags,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 0,
+            },
+            "table seeded RAND metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
     failures += expect_statement_ok(database, "SET NAMES utf8mb4");
     failures += expect_statement_ok(
         database,

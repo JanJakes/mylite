@@ -4033,6 +4033,9 @@ select_order_key(A) ::= qualified_identifier(K). {
 select_order_key(A) ::= select_field_order_expression(K). {
     A = K;
 }
+select_order_key(A) ::= select_rand_order_expression(K). {
+    A = K;
+}
 
 select_field_order_expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
@@ -4043,6 +4046,37 @@ select_field_order_expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
         state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 select_field_order_expression(A) ::= LPAREN(L) select_field_order_expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+select_rand_order_expression(A) ::= RAND(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state,
+        T,
+        MYLITE_SQL_AST_RAND_FUNCTION,
+        R
+    );
+}
+select_rand_order_expression(A) ::= RAND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state,
+        T,
+        MYLITE_SQL_AST_RAND_SEED_FUNCTION,
+        B,
+        R
+    );
+}
+select_rand_order_expression(A) ::=
+    RAND(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state,
+        T,
+        MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR,
+        C,
+        R
+    );
+}
+select_rand_order_expression(A) ::= LPAREN(L) select_rand_order_expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 

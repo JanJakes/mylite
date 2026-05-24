@@ -22,8 +22,11 @@ enum {
     rand_seed_mixed_column_count = 3,
     rand_alias_column_count = 2,
     rand_mixed_column_count = 3,
+    rand_table_row_count = 5,
+    rand_table_seen_capacity = rand_table_row_count + 1,
     diagnostic_column_count = 2,
     show_warning_column_count = 3,
+    decimal_base = 10,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
     mysql_error_native_function_arity = 1582,
@@ -47,7 +50,13 @@ struct expected_query {
     const char *context;
 };
 
+struct rand_order_id_set_query {
+    const char *sql;
+    const char *context;
+};
+
 static int test_rand_values_and_file_safety(void);
+static int test_rand_table_backed_selects(void);
 static int test_rand_do_and_independent_handles(void);
 static int test_rand_errors_and_unsupported_forms(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -60,6 +69,7 @@ static int expect_result_value(
     const struct expected_query *expected
 );
 static int expect_rand_value(const char *actual, const char *context);
+static int expect_rand_order_id_set(mylite_db *database, struct rand_order_id_set_query expected);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -81,6 +91,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_rand_values_and_file_safety();
+    failures += test_rand_table_backed_selects();
     failures += test_rand_do_and_independent_handles();
     failures += test_rand_errors_and_unsupported_forms();
 
@@ -281,6 +292,170 @@ static int test_rand_values_and_file_safety(void) {
     return failures;
 }
 
+static int test_rand_table_backed_selects(void) {
+    static const char *const table_projection_columns[] = {"id", "RAND()", "RAND(1)", "RAND(3)"};
+    static const char *const table_projection_values[] = {
+        "1", NULL, "0.40540353712197724", "0.9057697559760601",
+        "2", NULL, "0.8716141803857071",  "0.37307905813034536",
+        "3", NULL, "0.1418603212962489",  "0.14808605345719125",
+        "4", NULL, "0.09445909605776807", "0.6211931236285653",
+        "5", NULL, "0.04671454713373868", "0.6617074885048974",
+    };
+    static const bool table_projection_ranges[] = {false, true, false, false};
+    static const char *const table_duplicate_columns[] = {"id", "RAND(1)", "RAND(1)"};
+    static const char *const table_duplicate_values[] = {
+        "1",
+        "0.40540353712197724",
+        "0.40540353712197724",
+        "2",
+        "0.8716141803857071",
+        "0.8716141803857071",
+        "3",
+        "0.1418603212962489",
+        "0.1418603212962489",
+        "4",
+        "0.09445909605776807",
+        "0.09445909605776807",
+        "5",
+        "0.04671454713373868",
+        "0.04671454713373868",
+    };
+    static const char *const id_column[] = {"id"};
+    static const char *const seeded_order_values[] = {"5", "4", "3", "1", "2"};
+    static const char *const seeded_limit_values[] = {"5", "4", "3"};
+    static const char *const seeded_asc_limit_values[] = {"5", "4", "3"};
+    static const char *const seeded_desc_limit_values[] = {"2", "1", "3"};
+    static const char *const seeded_signed_limit_values[] = {"5", "4", "3"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "table_backed") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open table-backed rand file");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(database, "CREATE TABLE t(id INT, k INT NULL)", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO t VALUES (1, NULL), (2, 2), (3, 2), (4, 4), (5, NULL)",
+        NULL
+    );
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,RAND(),RAND(1),RAND(3) FROM t ORDER BY id",
+            .columns = table_projection_columns,
+            .column_count = 4U,
+            .values = table_projection_values,
+            .range_columns = table_projection_ranges,
+            .row_count = rand_table_row_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "table-backed rand projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,RAND(1),RAND(1) FROM t ORDER BY id",
+            .columns = table_duplicate_columns,
+            .column_count = 3U,
+            .values = table_duplicate_values,
+            .range_columns = NULL,
+            .row_count = rand_table_row_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "duplicate seeded table-backed rand projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY RAND(1)",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = seeded_order_values,
+            .range_columns = NULL,
+            .row_count = rand_table_row_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY RAND(1) LIMIT 3",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = seeded_limit_values,
+            .range_columns = NULL,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY RAND(1) ASC LIMIT 3",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = seeded_asc_limit_values,
+            .range_columns = NULL,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand asc order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY RAND(1) DESC LIMIT 3",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = seeded_desc_limit_values,
+            .range_columns = NULL,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand desc order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY RAND(+1) LIMIT 3",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = seeded_signed_limit_values,
+            .range_columns = NULL,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "signed seeded rand order limit",
+        }
+    );
+    failures += expect_rand_order_id_set(
+        database,
+        (struct rand_order_id_set_query){
+            .sql = "SELECT id FROM t ORDER BY RAND() LIMIT 5",
+            .context = "unseeded rand order rowset",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_rand_do_and_independent_handles(void) {
     static const char *const diagnostic_columns[] = {"@@warning_count", "ROW_COUNT()"};
     static const char *const do_values[] = {"0", "0"};
@@ -449,20 +624,47 @@ static int test_rand_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT RAND() FROM t ORDER BY id",
+        "SELECT id FROM t ORDER BY RAND(1), id",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "SELECT ORDER BY RAND() supports only one order key",
         }
     );
     failures += execute_error(
         database,
-        "SELECT RAND(1) FROM t ORDER BY id",
+        "SELECT id FROM t ORDER BY RAND('1')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t ORDER BY RAND(1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_arity,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function 'RAND'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ANY_VALUE(RAND()) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND() inside ANY_VALUE() is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ANY_VALUE(RAND(1)) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND() inside ANY_VALUE() is not supported",
         }
     );
     failures += execute_error(
@@ -625,6 +827,58 @@ static int expect_rand_value(const char *actual, const char *context) {
         return 1;
     }
     return 0;
+}
+
+static int expect_rand_order_id_set(mylite_db *database, struct rand_order_id_set_query expected) {
+    bool seen[rand_table_seen_capacity] = {false};
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, expected.sql, &result);
+
+    if (failures != 0) {
+        return failures;
+    }
+    failures += expect_size(mylite_result_column_count(result), 1U, expected.context);
+    failures +=
+        expect_size(mylite_result_row_count(result), rand_table_row_count, expected.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += expect_text(mylite_result_column_name(result, 0U), "id", expected.context);
+
+    for (size_t row = 0U; row < mylite_result_row_count(result); ++row) {
+        const char *text = mylite_result_value_text(result, row, 0U);
+        char *end = NULL;
+        long value = 0;
+        size_t id = 0U;
+
+        if (text == NULL) {
+            fprintf(stderr, "%s: expected non-NULL id at row %zu\n", expected.context, row);
+            ++failures;
+            continue;
+        }
+        value = strtol(text, &end, decimal_base);
+        if (end == text || end == NULL || *end != '\0' || value < 1 ||
+            value > rand_table_row_count) {
+            fprintf(stderr, "%s: unexpected id [%s]\n", expected.context, text);
+            ++failures;
+            continue;
+        }
+        id = (size_t)value;
+        if (seen[id]) {
+            fprintf(stderr, "%s: duplicate id [%s]\n", expected.context, text);
+            ++failures;
+            continue;
+        }
+        seen[id] = true;
+    }
+    for (size_t id = 1U; id <= rand_table_row_count; ++id) {
+        if (!seen[id]) {
+            fprintf(stderr, "%s: missing id %zu\n", expected.context, id);
+            ++failures;
+        }
+    }
+
+    mylite_result_free(result);
+    return failures;
 }
 
 static int make_test_path(char *path, size_t path_size, const char *name) {

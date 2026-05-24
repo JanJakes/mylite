@@ -501,6 +501,11 @@ static int test_table_backed_string_slices_and_reopen(void) {
     static const char *const values_substring_index_labels[] = {"www", "mysql.com"};
     static const char *const columns_substring_index_qualified[] = {"s"};
     static const char *const values_substring_index_qualified[] = {"www.mysql"};
+    static const char *const columns_id[] = {"id"};
+    static const char *const substring_case_predicate_rows[] = {"2"};
+    static const char *const substring_null_safe_rows[] = {"3"};
+    static const char *const substring_is_not_null_rows[] = {"1", "2", "4"};
+    static const char *const substring_not_equal_rows[] = {"1"};
     static const char *const columns_substring_index_reopen[] = {"s", "tail"};
     static const char *const values_substring_index_reopen[] = {"www.mysql", "c"};
     char path[test_path_capacity];
@@ -708,6 +713,50 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .values = values_substring_index_qualified,
             .row_count = 1U,
             .context = "substring_index qualified descriptor arguments",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM si WHERE SUBSTRING(v, 1, 1) = 'a'",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = substring_case_predicate_rows,
+            .row_count = 1U,
+            .context = "substring case-insensitive predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM si WHERE SUBSTR(v FROM 1 FOR 1) <=> NULL",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = substring_null_safe_rows,
+            .row_count = 1U,
+            .context = "substring null-safe predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM si WHERE MID(v, 1, 1) IS NOT NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = substring_is_not_null_rows,
+            .row_count = 3U,
+            .context = "substring is not null predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM si WHERE SUBSTRING(v, 1, 1) <> 'a' AND id < 4 ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = substring_not_equal_rows,
+            .row_count = 1U,
+            .context = "substring not equal predicate rows",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -1038,6 +1087,43 @@ static int test_string_slice_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SUBSTRING_INDEX() supports only string, integer, boolean, NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE SUBSTRING(missing, 1, 1) = 'a'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE SUBSTRING(f, 1, 1) = 'a'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string slice functions do not support approximate numeric columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE SUBSTRING(v, '1') = 'a'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string slice functions support only integer, boolean, and NULL position literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE SUBSTRING(v, 1, 1) = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE string predicates support only string literals",
         }
     );
     failures += execute_error(

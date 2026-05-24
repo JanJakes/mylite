@@ -3621,6 +3621,35 @@ predicate_atom(A) ::= json_contains_predicate_expression(C). {
 predicate_atom(A) ::= regexp_like_expression(C). {
     A = C;
 }
+predicate_atom(A) ::= string_length_expression(C). {
+    A = C;
+}
+predicate_atom(A) ::= string_length_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
+predicate_atom(A) ::= string_length_expression(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+predicate_atom(A) ::= string_length_expression(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+predicate_atom(A) ::= substring_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
+predicate_atom(A) ::= substring_expression(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+predicate_atom(A) ::= substring_expression(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
 predicate_atom(A) ::= find_in_set_expression(C) EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
@@ -5128,23 +5157,27 @@ expression(A) ::= ORD(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ORD_FUNCTION, B, R);
 }
-expression(A) ::= LENGTH(T) LPAREN expression(B) RPAREN(R). {
+expression(A) ::= string_length_expression(B). {
+    A = B;
+}
+
+string_length_expression(A) ::= LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LENGTH_FUNCTION, B, R);
 }
-expression(A) ::= OCTET_LENGTH(T) LPAREN expression(B) RPAREN(R). {
+string_length_expression(A) ::= OCTET_LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION, B, R);
 }
-expression(A) ::= BIT_LENGTH(T) LPAREN expression(B) RPAREN(R). {
+string_length_expression(A) ::= BIT_LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_BIT_LENGTH_FUNCTION, B, R);
 }
-expression(A) ::= CHAR_LENGTH(T) LPAREN expression(B) RPAREN(R). {
+string_length_expression(A) ::= CHAR_LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION, B, R);
 }
-expression(A) ::= CHARACTER_LENGTH(T) LPAREN expression(B) RPAREN(R). {
+string_length_expression(A) ::= CHARACTER_LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION, B, R);
 }
@@ -5191,51 +5224,55 @@ expression(A) ::= POSITION(T) LPAREN(L) expression(B) IN expression(C) RPAREN(R)
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_POSITION_FUNCTION, B, C, R);
 }
-expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
+expression(A) ::= substring_expression(B). {
+    A = B;
+}
+
+substring_expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTRING_FUNCTION, B, C, R);
 }
-expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+substring_expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTRING_FUNCTION, B, C, D, R);
 }
-expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) FROM expression(C) RPAREN(R). {
+substring_expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) FROM expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTRING_FUNCTION, B, C, R);
 }
-expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
+substring_expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTRING_FUNCTION, B, C, D, R);
 }
-expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
+substring_expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTR_FUNCTION, B, C, R);
 }
-expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+substring_expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTR_FUNCTION, B, C, D, R);
 }
-expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) FROM expression(C) RPAREN(R). {
+substring_expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) FROM expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTR_FUNCTION, B, C, R);
 }
-expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
+substring_expression(A) ::= SUBSTR(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTR_FUNCTION, B, C, D, R);
 }
-expression(A) ::= MID(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
+substring_expression(A) ::= MID(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, R);
 }
-expression(A) ::= MID(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+substring_expression(A) ::= MID(T) LPAREN(L) expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, D, R);
 }
-expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) RPAREN(R). {
+substring_expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, R);
 }
-expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
+substring_expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, D, R);
 }

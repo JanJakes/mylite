@@ -13,9 +13,11 @@ CHARACTER_LENGTH(expr)
 ```
 
 The supported slice covers no-source, `FROM DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection contexts. It deliberately does not add general
-expression predicates, expression ordering, DML assignments, generated columns,
-or arbitrary nested expression planning.
+row-scalar `SELECT` projection contexts. A later
+`baseline-string-function-predicates` slice reuses this row-scalar expression
+for narrow descriptor-backed `WHERE` predicates. This phase deliberately does
+not add general expression predicates, expression ordering, DML assignments,
+generated columns, or arbitrary nested expression planning.
 
 The core behavior is:
 
@@ -167,8 +169,10 @@ formatting semantics outside the existing dedicated slices.
 
 The following remain outside this phase:
 
-- `WHERE LENGTH(column) ...`, `HAVING LENGTH(...) ...`, expression `ORDER BY`,
-  grouping, distinct expression rows, and aggregate arguments;
+- length-function predicate shapes outside the later
+  `baseline-string-function-predicates` subset, `HAVING LENGTH(...) ...`,
+  expression `ORDER BY`, grouping, distinct expression rows, and aggregate
+  arguments;
 - DML assignment values such as `UPDATE t SET c = LENGTH(v)`;
 - nested row functions such as `LENGTH(CONCAT(v, '-'))`;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already

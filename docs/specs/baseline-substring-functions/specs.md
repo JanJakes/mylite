@@ -16,9 +16,11 @@ MID(...)
 
 The supported surface mirrors the current `LEFT()` / `RIGHT()` boundary:
 no-source scalar `SELECT`, `SELECT ... FROM DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection. It does not add expression predicates,
-expression ordering, DML assignment values, generated columns, defaults, or a
-general expression engine.
+row-scalar `SELECT` projection. A later `baseline-string-function-predicates`
+slice reuses this row-scalar expression for narrow descriptor-backed `WHERE`
+predicates. This phase does not add general expression predicates, expression
+ordering, DML assignment values, generated columns, defaults, or a general
+expression engine.
 
 Core behavior:
 
@@ -85,8 +87,9 @@ Runtime probes establish the behavior used by this phase:
 
 MySQL also accepts deferred behavior such as noninteger `pos` / `len`
 conversion, string numeric positions, binary-string slicing, predicates over
-substring expressions, nested functions, and very large out-of-range positions
-with conversion warnings. Those forms remain outside this baseline.
+substring expressions outside the later `baseline-string-function-predicates`
+subset, nested functions, and very large out-of-range positions with conversion
+warnings. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -203,7 +206,8 @@ deferred.
 
 The following remain outside this phase:
 
-- `WHERE SUBSTRING(column, 1, 1) ...`, `HAVING SUBSTRING(...) ...`,
+- substring predicate shapes outside the later
+  `baseline-string-function-predicates` subset, `HAVING SUBSTRING(...) ...`,
   expression `ORDER BY`, grouping, distinct expression rows, and aggregate
   arguments;
 - DML assignment values such as `UPDATE t SET c = SUBSTRING(v, 1, 1)`;

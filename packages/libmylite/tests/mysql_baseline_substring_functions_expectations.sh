@@ -191,9 +191,29 @@ expect_output \
     "$DATABASE"
 
 expect_output \
-    "mysql accepted deferred predicate" \
+    "substring predicate count" \
     "1" \
     "SELECT COUNT(*) FROM t WHERE SUBSTRING(v, 1, 1) = 'a';" \
+    "$DATABASE"
+
+substring_predicate_expected=$(cat <<\EXPECTED
+1,2
+2,4
+1,2,3
+3
+EXPECTED
+)
+expect_output \
+    "substring predicates" \
+    "$substring_predicate_expected" \
+    "CREATE TABLE predicates(id INT, v VARCHAR(20), n VARCHAR(20)); "\
+"INSERT INTO predicates VALUES (1, 'a', 'x'), (2, 'AB', NULL), (3, 'é', ''), "\
+"(4, NULL, NULL); "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE SUBSTRING(v, 1, 1) = 'a'; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE SUBSTR(n FROM 1 FOR 1) <=> NULL; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE MID(v, 1, 1) IS NOT NULL; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates "\
+"WHERE SUBSTRING(v, 1, 1) <> 'a' AND id < 4;" \
     "$DATABASE"
 
 expect_error \

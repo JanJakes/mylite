@@ -21897,6 +21897,16 @@ static int plan_comparison_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_row_scalar_function_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
 static int plan_scalar_literal_truth_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -21975,6 +21985,83 @@ static bool predicate_node_is_json_contains_expression(
 );
 static bool predicate_node_is_regexp_like_expression(
     const struct mylite_sql_ast_node *predicate_node
+);
+static bool predicate_node_is_string_length_expression(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static bool predicate_node_is_substring_expression(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int plan_string_length_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_string_length_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_string_length_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_string_length_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_string_length_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+);
+static int plan_substring_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_substring_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_substring_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_substring_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
 );
 static int plan_find_in_set_truth_predicate(
     struct mylite_db *database,
@@ -23062,6 +23149,7 @@ static int plan_row_scalar_string_length_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_length_argument(
@@ -23071,6 +23159,7 @@ static int plan_row_scalar_string_length_argument(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_length_column(
@@ -23079,6 +23168,7 @@ static int plan_row_scalar_string_length_column(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
 static bool string_length_column_descriptor_is_supported(
@@ -23201,6 +23291,7 @@ static int plan_row_scalar_string_slice_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_slice_value_argument(
@@ -23210,6 +23301,7 @@ static int plan_row_scalar_string_slice_value_argument(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_slice_length_argument(
@@ -23228,6 +23320,7 @@ static int plan_row_scalar_string_slice_column(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
 static bool string_slice_column_descriptor_is_supported(
@@ -135474,6 +135567,7 @@ static int plan_row_scalar_string_expression(
             source_context,
             table_columns,
             table_column_count,
+            COLUMN_REFERENCE_FIELD,
             out_expression
         );
     }
@@ -135518,6 +135612,7 @@ static int plan_row_scalar_string_expression(
             source_context,
             table_columns,
             table_column_count,
+            COLUMN_REFERENCE_FIELD,
             out_expression
         );
     }
@@ -135930,6 +136025,7 @@ static int plan_row_scalar_string_length_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 ) {
     enum planned_string_length_function_kind function_kind = PLANNED_STRING_LENGTH_FUNCTION_NONE;
@@ -135961,6 +136057,7 @@ static int plan_row_scalar_string_length_expression(
         source_context,
         table_columns,
         table_column_count,
+        column_diagnostic_context,
         &out_expression->arguments[0]
     );
     return rc;
@@ -135973,6 +136070,7 @@ static int plan_row_scalar_string_length_argument(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
@@ -136013,6 +136111,7 @@ static int plan_row_scalar_string_length_argument(
             source_context,
             table_columns,
             table_column_count,
+            column_diagnostic_context,
             out_expression
         );
     }
@@ -136047,6 +136146,7 @@ static int plan_row_scalar_string_length_column(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
@@ -136054,7 +136154,7 @@ static int plan_row_scalar_string_length_column(
         database,
         expression,
         source_context,
-        COLUMN_REFERENCE_FIELD,
+        column_diagnostic_context,
         "row-scalar SELECT string length functions support only descriptor columns",
         table_columns,
         table_column_count,
@@ -136762,6 +136862,7 @@ static int plan_row_scalar_string_slice_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 ) {
     enum planned_string_slice_function_kind function_kind = PLANNED_STRING_SLICE_FUNCTION_NONE;
@@ -136803,6 +136904,7 @@ static int plan_row_scalar_string_slice_expression(
         source_context,
         table_columns,
         table_column_count,
+        column_diagnostic_context,
         &out_expression->arguments[0]
     );
     if (rc == MYLITE_OK && function_kind == PLANNED_STRING_SLICE_FUNCTION_SUBSTRING) {
@@ -136836,6 +136938,7 @@ static int plan_row_scalar_string_slice_value_argument(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
@@ -136876,6 +136979,7 @@ static int plan_row_scalar_string_slice_value_argument(
             source_context,
             table_columns,
             table_column_count,
+            column_diagnostic_context,
             out_expression
         );
     }
@@ -136964,6 +137068,7 @@ static int plan_row_scalar_string_slice_column(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
@@ -136971,7 +137076,7 @@ static int plan_row_scalar_string_slice_column(
         database,
         expression,
         source_context,
-        COLUMN_REFERENCE_FIELD,
+        column_diagnostic_context,
         "row-scalar SELECT string slice functions support only descriptor columns",
         table_columns,
         table_column_count,
@@ -150495,6 +150600,7 @@ static int plan_select_predicate_ast_node(
                             predicate_node_is_regexp_like_expression(current) ||
                             predicate_node_is_json_valid_expression(current) ||
                             predicate_node_is_json_contains_expression(current) ||
+                            predicate_node_is_string_length_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
@@ -150544,6 +150650,7 @@ static int plan_select_predicate_ast_node_without_exists(
                             predicate_node_is_regexp_like_expression(current) ||
                             predicate_node_is_json_valid_expression(current) ||
                             predicate_node_is_json_contains_expression(current) ||
+                            predicate_node_is_string_length_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
@@ -150708,6 +150815,16 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node_is_string_length_expression(predicate_node)) {
+        rc = plan_string_length_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
     } else if (predicate_node_is_scalar_literal_expression(predicate_node)) {
         rc = plan_scalar_literal_truth_predicate(
             database,
@@ -150833,6 +150950,16 @@ static int plan_select_predicate_leaf_node_without_exists(
         );
     } else if (predicate_node_is_json_contains_expression(predicate_node)) {
         rc = plan_json_contains_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node_is_string_length_expression(predicate_node)) {
+        rc = plan_string_length_truth_predicate(
             database,
             predicate_node,
             source_context,
@@ -150983,51 +151110,22 @@ static int plan_comparison_predicate(
         .left_index = SIZE_MAX,
         .right_index = SIZE_MAX,
     };
+    bool row_scalar_function_handled = false;
+    int row_scalar_function_rc = plan_row_scalar_function_comparison_predicate(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        predicate,
+        out_node_index,
+        &row_scalar_function_handled
+    );
 
-    if (predicate_node_is_find_in_set_expression(child_at(predicate_node, 0U))) {
-        return plan_find_in_set_comparison_predicate(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            predicate,
-            out_node_index
-        );
+    if (row_scalar_function_handled || row_scalar_function_rc != MYLITE_OK) {
+        return row_scalar_function_rc;
     }
-    if (predicate_node_is_regexp_like_expression(child_at(predicate_node, 0U))) {
-        return plan_regexp_like_comparison_predicate(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            predicate,
-            out_node_index
-        );
-    }
-    if (predicate_node_is_json_valid_expression(child_at(predicate_node, 0U))) {
-        return plan_json_valid_comparison_predicate(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            predicate,
-            out_node_index
-        );
-    }
-    if (predicate_node_is_json_contains_expression(child_at(predicate_node, 0U))) {
-        return plan_json_contains_comparison_predicate(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            predicate,
-            out_node_index
-        );
-    }
+
     if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U))) {
         if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 1U))) {
             return plan_scalar_literal_comparison_predicate(
@@ -151130,6 +151228,90 @@ static int plan_comparison_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_row_scalar_function_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *left_node = child_at(predicate_node, 0U);
+
+    *out_handled = true;
+    if (predicate_node_is_find_in_set_expression(left_node)) {
+        return plan_find_in_set_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_regexp_like_expression(left_node)) {
+        return plan_regexp_like_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_json_valid_expression(left_node)) {
+        return plan_json_valid_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_json_contains_expression(left_node)) {
+        return plan_json_contains_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_string_length_expression(left_node)) {
+        return plan_string_length_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_substring_expression(left_node)) {
+        return plan_substring_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+
+    *out_handled = false;
+    return MYLITE_OK;
 }
 
 static int plan_scalar_literal_truth_predicate(
@@ -151536,6 +151718,369 @@ static bool predicate_node_is_regexp_like_expression(
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
     return (predicate_node != NULL &&
             predicate_node->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) != 0;
+}
+
+static bool predicate_node_is_string_length_expression(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    predicate_node = unwrap_parenthesized_predicate(predicate_node);
+    return (predicate_node != NULL && is_string_length_function_kind(predicate_node->kind)) != 0;
+}
+
+static bool predicate_node_is_substring_expression(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    predicate_node = unwrap_parenthesized_predicate(predicate_node);
+    if (predicate_node == NULL) {
+        return false;
+    }
+
+    switch (predicate_node->kind) {
+    case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTR_FUNCTION:
+    case MYLITE_SQL_AST_MID_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int plan_string_length_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_string_length_predicate_expression(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_string_length_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_string_length_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc =
+            plan_string_length_predicate_value(database, child_at(predicate_node, 1U), &node.value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_string_length_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_string_length_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_string_length_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    int rc = MYLITE_OK;
+
+    if (select_source_context_is_joined(source_context)) {
+        set_unsupported_error(
+            database,
+            "string length function predicates support only one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    node->row_scalar_expression = calloc(1U, sizeof(*node->row_scalar_expression));
+    if (node->row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_string_length_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_WHERE,
+        node->row_scalar_expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node->row_scalar_expression);
+        free(node->row_scalar_expression);
+        node->row_scalar_expression = NULL;
+    }
+    return rc;
+}
+
+static int plan_string_length_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "string length predicates support only integer, boolean, and NULL comparison literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
+        literal_kind != MYLITE_SQL_AST_LITERAL_TRUE &&
+        literal_kind != MYLITE_SQL_AST_LITERAL_FALSE &&
+        literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
+        set_unsupported_error(
+            database,
+            "string length predicates support only integer, boolean, and NULL comparison literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "string length predicates support only integer, boolean, and NULL comparison literals",
+        "string length predicate comparison literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    int64_t planned_integer = value;
+    if (is_null) {
+        planned_integer = 0;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){
+        .is_null = is_null,
+        .is_text = false,
+        .integer = planned_integer,
+    };
+    return MYLITE_OK;
+}
+
+static int plan_substring_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_substring_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_substring_predicate_value(database, child_at(predicate_node, 1U), &node.value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_substring_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_substring_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_substring_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    int rc = MYLITE_OK;
+
+    if (select_source_context_is_joined(source_context)) {
+        set_unsupported_error(
+            database,
+            "SUBSTRING function predicates support only one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    node->row_scalar_expression = calloc(1U, sizeof(*node->row_scalar_expression));
+    if (node->row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_string_slice_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_WHERE,
+        node->row_scalar_expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node->row_scalar_expression);
+        free(node->row_scalar_expression);
+        node->row_scalar_expression = NULL;
+    }
+    return rc;
+}
+
+static int plan_substring_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+) {
+    if (predicate_comparison_value_is_null(expression)) {
+        planned_value_deinit(out_value);
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+
+    return convert_predicate_string_literal(database, expression, out_value);
 }
 
 static int plan_find_in_set_truth_predicate(
@@ -152891,6 +153436,28 @@ static int plan_is_null_predicate(
     }
     if (predicate_node_is_json_contains_expression(child_at(predicate_node, 0U))) {
         return plan_json_contains_is_null_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_string_length_expression(child_at(predicate_node, 0U))) {
+        return plan_string_length_is_null_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_substring_expression(child_at(predicate_node, 0U))) {
+        return plan_substring_is_null_predicate(
             database,
             predicate_node,
             source_context,
@@ -169393,6 +169960,11 @@ static int append_select_row_scalar_predicate_sql(
 
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH) {
         return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON) {
+        if (row_scalar_expression_uses_string_collation(node->row_scalar_expression)) {
+            rc = append_string_key_collation_sql(string);
+        }
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON) {
         rc = dynamic_string_append_char(string, ' ');

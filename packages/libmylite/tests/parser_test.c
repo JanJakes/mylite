@@ -6782,6 +6782,8 @@ static int test_string_length_functions(void) {
     const struct mylite_sql_ast_node *expression = NULL;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *expression_list = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -6881,6 +6883,35 @@ static int test_string_length_functions(void) {
         MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION,
         "do char_length"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t WHERE LENGTH(v);", MYLITE_SQL_PARSE_OK, &result);
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "length truth where");
+    failures += expect_node(predicate, MYLITE_SQL_AST_LENGTH_FUNCTION, "length truth predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE CHAR_LENGTH(v) = 1;", MYLITE_SQL_PARSE_OK, &result);
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_COMPARISON_PREDICATE, "char_length comparison");
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION,
+        "char_length comparison lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE BIT_LENGTH(v) IS NULL;", MYLITE_SQL_PARSE_OK, &result);
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IS_NULL_PREDICATE, "bit_length is null");
+    failures +=
+        expect_node(child_at(predicate, 0U), MYLITE_SQL_AST_BIT_LENGTH_FUNCTION, "bit_length lhs");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -7168,6 +7199,8 @@ static int test_string_slice_functions(void) {
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *expression_list = NULL;
     const struct mylite_sql_ast_node *from_join = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -7368,6 +7401,46 @@ static int test_string_slice_functions(void) {
         MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION,
         "do substring_index"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE SUBSTRING(v, 1, 1) = 'a';", MYLITE_SQL_PARSE_OK, &result);
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_COMPARISON_PREDICATE, "substring predicate");
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_SUBSTRING_FUNCTION,
+        "substring predicate lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE SUBSTR(v FROM 1 FOR 1) <=> NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_operator(
+        predicate,
+        MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+        "substr null-safe predicate"
+    );
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_SUBSTR_FUNCTION,
+        "substr predicate lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE MID(v, 1, 1) IS NOT NULL;", MYLITE_SQL_PARSE_OK, &result);
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IS_NULL_PREDICATE, "mid is not null");
+    failures +=
+        expect_node(child_at(predicate, 0U), MYLITE_SQL_AST_MID_FUNCTION, "mid predicate lhs");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

@@ -221,6 +221,20 @@ static int test_table_backed_lengths_and_reopen(void) {
         "BIT_LENGTH(v)",
     };
     static const char *const values_labels[] = {"3", "3", "3", "3", "24"};
+    static const char *const columns_count[] = {"COUNT(*)"};
+    static const char *const values_count[] = {"1"};
+    static const char *const columns_id[] = {"id"};
+    static const char *const length_byte_predicate_rows[] = {"1"};
+    static const char *const length_octet_predicate_rows[] = {"2", "3"};
+    static const char *const length_bit_predicate_rows[] = {"2", "3"};
+    static const char *const length_char_predicate_rows[] = {"1", "3"};
+    static const char *const length_not_null_predicate_rows[] = {"1", "3"};
+    static const char *const length_null_predicate_rows[] = {"2", "4"};
+    static const char *const length_truth_predicate_rows[] = {"1"};
+    static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_two_rows_no_warnings[] = {"2", "0"};
+    static const char *const columns_mutated[] = {"id", "txt"};
+    static const char *const mutated_rows[] = {"1", "hit", "3", "byte"};
     static const char *const columns_reopen[] = {"bytes", "chars", "hidden_bytes"};
     static const char *const values_reopen[] = {"6", "2", "1"};
     char path[test_path_capacity];
@@ -288,6 +302,172 @@ static int test_table_backed_lengths_and_reopen(void) {
             .values = values_labels,
             .row_count = 1U,
             .context = "string length labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE LENGTH(v) = 3",
+            .columns = columns_count,
+            .column_count = 1U,
+            .values = values_count,
+            .row_count = 1U,
+            .context = "aggregate source string length predicate",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE predicates(id INT, v VARCHAR(20), n VARCHAR(20), txt TEXT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO predicates VALUES "
+        "(1, 'a', 'x', 'alpha'), "
+        "(2, 'AB', NULL, 'Beta'), "
+        "(3, '\xC3\xA9', '', ''), "
+        "(4, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE LENGTH(v) = 1 ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_byte_predicate_rows,
+            .row_count = 1U,
+            .context = "length byte predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE OCTET_LENGTH(v) = 2 ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_octet_predicate_rows,
+            .row_count = 2U,
+            .context = "octet_length predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE BIT_LENGTH(v) = 16 ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_bit_predicate_rows,
+            .row_count = 2U,
+            .context = "bit_length predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE CHAR_LENGTH(v) = 1 ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_char_predicate_rows,
+            .row_count = 2U,
+            .context = "char_length predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE CHARACTER_LENGTH(v) = 1 ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_char_predicate_rows,
+            .row_count = 2U,
+            .context = "character_length predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE LENGTH(n) IS NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_null_predicate_rows,
+            .row_count = 2U,
+            .context = "length is null predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE LENGTH(n) IS NOT NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_not_null_predicate_rows,
+            .row_count = 2U,
+            .context = "length is not null predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE LENGTH(n) ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_truth_predicate_rows,
+            .row_count = 1U,
+            .context = "length truth predicate rows",
+        }
+    );
+    failures +=
+        execute_ok(database, "UPDATE predicates SET txt = 'byte' WHERE OCTET_LENGTH(v) = 2", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_status,
+            .column_count = 2U,
+            .values = values_two_rows_no_warnings,
+            .row_count = 1U,
+            .context = "length predicate update status",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "UPDATE predicates SET txt = 'hit' WHERE SUBSTRING(v, 1, 1) = 'a'",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_status,
+            .column_count = 2U,
+            .values = values_two_rows_no_warnings,
+            .row_count = 1U,
+            .context = "substring predicate update status",
+        }
+    );
+    failures +=
+        execute_ok(database, "DELETE FROM predicates WHERE SUBSTRING(n, 1, 1) <=> NULL", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_status,
+            .column_count = 2U,
+            .values = values_two_rows_no_warnings,
+            .row_count = 1U,
+            .context = "substring predicate delete status",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, txt FROM predicates ORDER BY id",
+            .columns = columns_mutated,
+            .column_count = 2U,
+            .values = mutated_rows,
+            .row_count = 2U,
+            .context = "substring predicate update and delete rows",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -384,13 +564,44 @@ static int test_string_length_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE LENGTH(v) = 1",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "length predicate diagnostic setup success",
+        }
+    );
     failures += execute_error(
         database,
-        "SELECT id FROM t WHERE LENGTH(v) = 1",
+        "SELECT id FROM t WHERE LENGTH(missing) = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE LENGTH(f) = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '('",
+            .message_part = "string length functions do not support approximate numeric columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE LENGTH(v) = '1'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string length predicates support only integer, boolean, and NULL comparison "
+                "literals",
         }
     );
     failures += execute_error(

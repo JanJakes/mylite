@@ -173,9 +173,47 @@ expect_output \
     "$DATABASE"
 
 expect_output \
-    "mysql accepted deferred predicate" \
+    "length predicate count" \
     "1" \
     "SELECT COUNT(*) FROM t WHERE LENGTH(v) = 3;" \
+    "$DATABASE"
+
+length_predicate_expected=$(cat <<\EXPECTED
+1
+2,3
+2,3
+1,3
+2,4
+1,3
+1
+2	0
+2	0
+2	0
+1:hit,3:byte
+EXPECTED
+)
+expect_output \
+    "length and substring predicate DML reuse" \
+    "$length_predicate_expected" \
+    "CREATE TABLE predicates(id INT, v VARCHAR(20), n VARCHAR(20), txt TEXT); "\
+"INSERT INTO predicates VALUES "\
+"(1, 'a', 'x', 'alpha'), (2, 'AB', NULL, 'Beta'), (3, 'é', '', ''), "\
+"(4, NULL, NULL, NULL); "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE LENGTH(v) = 1; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE OCTET_LENGTH(v) = 2; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE BIT_LENGTH(v) = 16; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE CHAR_LENGTH(v) = 1; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE LENGTH(n) IS NULL; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE LENGTH(n) IS NOT NULL; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM predicates WHERE LENGTH(n); "\
+"UPDATE predicates SET txt = 'byte' WHERE OCTET_LENGTH(v) = 2; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"UPDATE predicates SET txt = 'hit' WHERE SUBSTRING(v, 1, 1) = 'a'; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"DELETE FROM predicates WHERE SUBSTRING(n, 1, 1) <=> NULL; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', COALESCE(txt, 'NULL')) ORDER BY id SEPARATOR ',') "\
+"FROM predicates;" \
     "$DATABASE"
 
 expect_error \

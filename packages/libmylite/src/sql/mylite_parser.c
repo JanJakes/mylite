@@ -2708,6 +2708,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_plugins_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token plugins_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&plugins_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,
@@ -7953,6 +7965,7 @@ static bool map_keyword_token(
         {"FUNCTION", MYLITE_SQL_PARSE_FUNCTION},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
+        {"PLUGINS", MYLITE_SQL_PARSE_PLUGINS},
         {"ENUM", MYLITE_SQL_PARSE_ENUM},
         {"COMMENT", MYLITE_SQL_PARSE_COMMENT},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},

@@ -35,7 +35,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW MASTER STATUS` | ❌ | Removed; use SHOW BINARY LOG STATUS |
 | `SHOW OPEN TABLES` | 🟡 | Limited embedded empty open-table introspection with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; unknown explicit schemas are empty successes; no NUL-producing pattern escapes, table-cache rows, `In_use` counts, `Name_locked` state, temporary tables, `HANDLER`, table locks, `WHERE`, privileges, or performance-schema metadata |
 | `SHOW PARSE_TREE` | ❌ | Conditional parse-tree debug output |
-| `SHOW PLUGINS` | ❌ | Result shape, filters, privileges |
+| `SHOW PLUGINS` | 🟡 | Limited one-row result for MyLite's embedded active `InnoDB` storage-engine plugin surface with MySQL 8.4.9 column labels; related `INFORMATION_SCHEMA.PLUGINS` is a separate limited synthetic catalog; no filters, privileges, loadable plugins, disabled plugin rows, alternate engines, or complete MySQL plugin inventory |
 | `SHOW PRIVILEGES` | ❌ | Result shape, filters, privileges |
 | `SHOW PROCEDURE CODE` | ❌ | Debug-only routine bytecode listing |
 | `SHOW PROCEDURE STATUS` | 🟡 | Limited empty routine introspection with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; global and default-schema independent; related empty `INFORMATION_SCHEMA.ROUTINES` metadata is queryable, but there are no NUL-producing pattern escapes, routine descriptors, routine rows, routine DDL, `SHOW CREATE PROCEDURE`, `WHERE`, or privileges |

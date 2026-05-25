@@ -398,6 +398,7 @@ enum {
     information_schema_keywords_column_count = 2,
     information_schema_parameters_column_count = 16,
     information_schema_partitions_column_count = 25,
+    information_schema_plugins_column_count = 11,
     information_schema_processlist_column_count = 8,
     information_schema_processlist_db_column = 3,
     information_schema_processlist_info_column = 7,
@@ -434,6 +435,7 @@ enum {
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
     show_engines_result_column_count = 6,
+    show_plugins_result_column_count = 5,
     select_item_alias_max_length = 256,
     select_item_alias_capacity = select_item_alias_max_length + 1,
     avg_fraction_digits = 4,
@@ -3696,6 +3698,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_KEYWORDS = 22,
     INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE = 23,
     INFORMATION_SCHEMA_TABLE_PARTITIONS = 24,
+    INFORMATION_SCHEMA_TABLE_PLUGINS = 25,
 };
 
 struct information_schema_column_definition {
@@ -4736,6 +4739,141 @@ static const struct information_schema_column_definition information_schema_engi
      "utf8mb3",
      "utf8mb3_general_ci",
      "varchar(3)"},
+};
+
+static const struct information_schema_column_definition information_schema_plugins_columns[] = {
+    {"PLUGIN_NAME",
+     "",
+     "NO",
+     "varchar",
+     "21",
+     "64",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"PLUGIN_VERSION",
+     "",
+     "NO",
+     "varchar",
+     "6",
+     "20",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(20)"},
+    {"PLUGIN_STATUS",
+     "",
+     "NO",
+     "varchar",
+     "3",
+     "10",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(10)"},
+    {"PLUGIN_TYPE",
+     "",
+     "NO",
+     "varchar",
+     "26",
+     "80",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(80)"},
+    {"PLUGIN_TYPE_VERSION",
+     "",
+     "NO",
+     "varchar",
+     "6",
+     "20",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(20)"},
+    {"PLUGIN_LIBRARY",
+     NULL,
+     "YES",
+     "varchar",
+     "21",
+     "64",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"PLUGIN_LIBRARY_VERSION",
+     NULL,
+     "YES",
+     "varchar",
+     "6",
+     "20",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(20)"},
+    {"PLUGIN_AUTHOR",
+     NULL,
+     "YES",
+     "varchar",
+     "21",
+     "64",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"PLUGIN_DESCRIPTION",
+     NULL,
+     "YES",
+     "varchar",
+     "21845",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(65535)"},
+    {"PLUGIN_LICENSE",
+     NULL,
+     "YES",
+     "varchar",
+     "26",
+     "80",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(80)"},
+    {"LOAD_OPTION",
+     "",
+     "NO",
+     "varchar",
+     "21",
+     "64",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
 };
 
 static const struct information_schema_column_definition information_schema_keywords_columns[] = {
@@ -7072,6 +7210,10 @@ static const struct information_schema_table_definition information_schema_table
      "PARTITIONS",
      information_schema_partitions_columns,
      information_schema_partitions_column_count},
+    {INFORMATION_SCHEMA_TABLE_PLUGINS,
+     "PLUGINS",
+     information_schema_plugins_columns,
+     information_schema_plugins_column_count},
     {INFORMATION_SCHEMA_TABLE_PROCESSLIST,
      "PROCESSLIST",
      information_schema_processlist_columns,
@@ -9511,6 +9653,10 @@ static int append_information_schema_engines_system_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_information_schema_plugins_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_information_schema_keywords_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -10361,6 +10507,7 @@ static int execute_show_create_database_statement(
     mylite_result **out_result
 );
 static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_show_plugins_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -29198,6 +29345,8 @@ static int execute_non_prepared_statement(
         return execute_show_create_database_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
         return execute_show_engines_statement(database, out_result);
+    case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
+        return execute_show_plugins_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return execute_show_databases_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
@@ -41613,6 +41762,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_collation_applicability_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_ENGINES:
         return append_information_schema_engines_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_PLUGINS:
+        return append_information_schema_plugins_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_KEYWORDS:
         return append_information_schema_keywords_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
@@ -41659,6 +41810,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_KEYWORDS:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
+    case INFORMATION_SCHEMA_TABLE_PLUGINS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -41989,6 +42141,27 @@ static int append_information_schema_engines_system_row(
         "YES",
         "YES",
         "YES",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_plugins_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_plugins_column_count] = {
+        "InnoDB",
+        "8.4",
+        "ACTIVE",
+        "STORAGE ENGINE",
+        "80409.0",
+        NULL,
+        NULL,
+        "Oracle Corporation",
+        "Supports transactions, row-level locking, and foreign keys",
+        "GPL",
+        "FORCE",
     };
 
     return append_information_schema_row(database, rows, values);
@@ -49831,6 +50004,51 @@ static int execute_show_engines_statement(struct mylite_db *database, mylite_res
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_plugins_statement(struct mylite_db *database, mylite_result **out_result) {
+    static const char *const result_columns[show_plugins_result_column_count] = {
+        "Name",
+        "Status",
+        "Type",
+        "Library",
+        "License",
+    };
+    static const char *const values[show_plugins_result_column_count] = {
+        "InnoDB",
+        "ACTIVE",
+        "STORAGE ENGINE",
+        NULL,
+        "GPL",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_plugins_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -51694,6 +51912,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
     case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:

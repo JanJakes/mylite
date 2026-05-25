@@ -198,6 +198,7 @@ static int test_show_events_empty_introspection_statements(void);
 static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
 static int test_show_processlist_introspection_statements(void);
+static int test_show_plugins_metadata_statement(void);
 static int test_show_grants_statement(void);
 static int test_show_warnings_diagnostics_statements(void);
 static int test_show_errors_diagnostics_statements(void);
@@ -527,6 +528,7 @@ int main(void) {
     failures += test_show_open_tables_empty_introspection_statements();
     failures += test_show_routine_status_empty_introspection_statements();
     failures += test_show_processlist_introspection_statements();
+    failures += test_show_plugins_metadata_statement();
     failures += test_show_grants_statement();
     failures += test_show_warnings_diagnostics_statements();
     failures += test_show_errors_diagnostics_statements();
@@ -20815,6 +20817,35 @@ static int test_show_processlist_introspection_statements(void) {
     return failures;
 }
 
+static int test_show_plugins_metadata_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW PLUGINS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT, "show plugins");
+    failures += expect_child_count(statement, 0U, "show plugins child count");
+    failures += expect_span_text(statement, "SHOW PLUGINS", "show plugins span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("show plugins;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT, "lowercase show plugins");
+    failures += expect_child_count(statement, 0U, "lowercase show plugins child count");
+    failures += expect_span_text(statement, "show plugins", "lowercase show plugins span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE plugins (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "plugins table");
+    failures += expect_span_text(child_at(statement, 0U), "plugins", "plugins identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_show_grants_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -26571,6 +26602,19 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL ENGINES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PLUGINS LIKE 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW PLUGINS WHERE Name = 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL PLUGINS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PLUGINS FROM mysql;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW ENGINE InnoDB STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

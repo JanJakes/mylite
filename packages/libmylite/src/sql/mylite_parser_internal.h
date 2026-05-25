@@ -822,6 +822,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_token engines_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_plugins_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token plugins_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,

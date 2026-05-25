@@ -23,6 +23,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_column_ambiguous = 1052,
     mysql_error_unknown_column = 1054,
     mysql_error_not_group_by = 1055,
     mysql_error_incorrect_database_name = 1102,
@@ -247,6 +248,53 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const string_having_desc_limit_values[] = {"bob", "2"};
     static const char *const string_having_null_values[] = {NULL, "1"};
     static const char *const string_where_offset_values[] = {"alice", "2", "BOB", "1"};
+    static const char *const string_selected_alias_columns[] = {"grouped_name", "c"};
+    static const char *const string_selected_alias_values[] = {
+        NULL,
+        "1",
+        "alice",
+        "2",
+        "bob",
+        "2",
+        "carol",
+        "1",
+    };
+    static const char *const string_selected_alias_desc_limit_values[] = {
+        "carol",
+        "1",
+        "bob",
+        "2",
+    };
+    static const char *const integer_selected_alias_columns[] = {"grouped_n", "c"};
+    static const char *const integer_selected_alias_values[] = {
+        NULL,
+        "2",
+        "10",
+        "1",
+        "20",
+        "1",
+        "30",
+        "1",
+    };
+    static const char *const multi_selected_alias_columns[] = {
+        "grouped_name",
+        "grouped_label",
+        "c",
+    };
+    static const char *const multi_selected_alias_values[] = {
+        NULL,
+        NULL,
+        "1",
+        "alice",
+        "A",
+        "2",
+        "bob",
+        "B",
+        "2",
+        "carol",
+        "C",
+        "1",
+    };
     static const char *const string_desc_values[] = {
         "carol",
         "1",
@@ -783,6 +831,56 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT name AS grouped_name, COUNT(*) AS c FROM string_grouped "
+                   "GROUP BY grouped_name ORDER BY grouped_name",
+            .columns = string_selected_alias_columns,
+            .column_count = 2U,
+            .values = string_selected_alias_values,
+            .row_count = 4U,
+            .context = "string grouped by selected descriptor alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS grouped_name, COUNT(*) AS c FROM string_grouped "
+                   "GROUP BY grouped_name HAVING grouped_name IS NOT NULL "
+                   "ORDER BY grouped_name DESC LIMIT 2",
+            .columns = string_selected_alias_columns,
+            .column_count = 2U,
+            .values = string_selected_alias_desc_limit_values,
+            .row_count = 2U,
+            .context = "selected descriptor alias grouped having order limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT n AS grouped_n, COUNT(*) AS c FROM grouped_numbers "
+                   "GROUP BY grouped_n ORDER BY grouped_n",
+            .columns = integer_selected_alias_columns,
+            .column_count = 2U,
+            .values = integer_selected_alias_values,
+            .row_count = 4U,
+            .context = "integer grouped by selected descriptor alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS grouped_name, label AS grouped_label, COUNT(*) AS c "
+                   "FROM string_grouped GROUP BY grouped_name, grouped_label "
+                   "ORDER BY grouped_name",
+            .columns = multi_selected_alias_columns,
+            .column_count = 3U,
+            .values = multi_selected_alias_values,
+            .row_count = 4U,
+            .context = "multiple grouped selected descriptor aliases",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
                    "HAVING k IS NULL",
             .columns = string_having_columns,
@@ -1292,6 +1390,52 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "GROUP BY supports ORDER BY only on unique selected group aliases",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g AS n, COUNT(*) FROM grouped_numbers GROUP BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_not_group_by,
+            .sqlstate = "42000",
+            .message_part = "Expression #1 of SELECT list is not in GROUP BY clause",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g AS x, n AS x, COUNT(*) FROM grouped_numbers GROUP BY x",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'x' in group statement is ambiguous",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(*) AS x FROM grouped_numbers GROUP BY x",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports selected descriptor-column aliases only",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(*) AS x FROM grouped_numbers GROUP BY x, g",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports selected descriptor-column aliases only",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT n + 1 AS x, COUNT(*) FROM grouped_numbers GROUP BY x",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "GROUP BY supports selected descriptor group columns followed by aggregate results",
         }
     );
     failures += expect_grouped_query(

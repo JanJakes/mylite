@@ -111,6 +111,8 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
     static const char *const composite_values[] = {"1", "1", "aa", "1", "2", "ab", "2", "1", "ba"};
     static const char *const title_columns[] = {"title"};
     static const char *const title_values[] = {"Alpha", "Beta", "Gamma"};
+    static const char *const aliased_pk_columns[] = {"post_id", "title"};
+    static const char *const aliased_pk_values[] = {"1", "Alpha", "2", "Beta", "3", "Gamma"};
     static const char *const order_columns[] = {"id", "c"};
     static const char *const order_values[] = {"1", "1", "2", "1", "3", "1"};
     char path[test_path_capacity];
@@ -198,6 +200,17 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
             .values = title_values,
             .row_count = 3U,
             .context = "unselected group key determines selected column",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id AS post_id, title FROM posts GROUP BY post_id ORDER BY post_id",
+            .columns = aliased_pk_columns,
+            .column_count = 2U,
+            .values = aliased_pk_values,
+            .row_count = 3U,
+            .context = "selected primary key alias determines selected column",
         }
     );
     failures += expect_query(

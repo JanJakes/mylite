@@ -4461,6 +4461,19 @@ expression(A) ::= FROM_UNIXTIME(T) LPAREN expression(B) COMMA expression(C) RPAR
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION, B, C, R);
 }
+expression(A) ::= FROM_DAYS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_FROM_DAYS_FUNCTION, B, R);
+}
+expression(A) ::= MAKEDATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_MAKEDATE_FUNCTION, B, C, R);
+}
+expression(A) ::=
+    MAKETIME(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_MAKETIME_FUNCTION, B, C, D, R);
+}
 expression(A) ::= DATE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FUNCTION, B, R);
@@ -5934,6 +5947,54 @@ expression(A) ::=
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR, D, R);
 }
+expression(A) ::= FROM_DAYS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    FROM_DAYS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= MAKEDATE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= MAKEDATE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    MAKEDATE(T) LPAREN expression(B) COMMA expression(C) COMMA
+    function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= MAKETIME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= MAKETIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= MAKETIME(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    MAKETIME(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) COMMA
+    function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR, E, R);
+}
 expression(A) ::= TIME_TO_SEC(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -7051,6 +7112,15 @@ identifier(A) ::= UNIX_TIMESTAMP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FROM_UNIXTIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= FROM_DAYS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MAKEDATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MAKETIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TIME_TO_SEC(T). {

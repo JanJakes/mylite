@@ -84,6 +84,7 @@ static int test_timestampdiff_function(void);
 static int test_unix_timestamp_function(void);
 static int test_from_unixtime_function(void);
 static int test_time_second_conversion_functions(void);
+static int test_temporal_constructor_functions(void);
 static int test_temporal_extract_functions(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
@@ -418,6 +419,7 @@ int main(void) {
     failures += test_unix_timestamp_function();
     failures += test_from_unixtime_function();
     failures += test_time_second_conversion_functions();
+    failures += test_temporal_constructor_functions();
     failures += test_temporal_extract_functions();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
@@ -5158,6 +5160,111 @@ static int test_time_second_conversion_functions(void) {
     failures += parse_sql(
         "CREATE TABLE time_second_keywords(time_to_sec INT, sec_to_time INT); "
         "SELECT time_to_sec, sec_to_time FROM time_second_keywords;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_temporal_constructor_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT FROM_DAYS(366), MAKEDATE(2024, 60), MAKETIME(1, 2, 3) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_FROM_DAYS_FUNCTION, "from_days function");
+    failures += expect_child_count(first_expression, 1U, "from_days count");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_MAKEDATE_FUNCTION, "makedate function");
+    failures += expect_child_count(second_expression, 2U, "makedate count");
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_MAKETIME_FUNCTION, "maketime function");
+    failures += expect_child_count(third_expression, 3U, "maketime count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT FROM_DAYS (+366) AS d, MAKEDATE (2024, +1) AS md, "
+        "MAKETIME (-1, +2, +3) AS mt FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO FROM_DAYS(366), MAKEDATE(2024, 1), MAKETIME(1, 2, 3);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "temporal constructor do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_FROM_DAYS_FUNCTION,
+        "do from_days"
+    );
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_MAKEDATE_FUNCTION, "do makedate");
+    failures +=
+        expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_MAKETIME_FUNCTION, "do maketime");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FROM_DAYS();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR,
+        "from_days zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FROM_DAYS(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR,
+        "from_days extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MAKEDATE(1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR,
+        "makedate one argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MAKETIME(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR,
+        "maketime two argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE temporal_constructor_keywords(from_days INT, makedate INT, maketime INT); "
+        "SELECT from_days, makedate, maketime FROM temporal_constructor_keywords;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

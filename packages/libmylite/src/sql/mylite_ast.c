@@ -916,6 +916,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "from_unixtime_function";
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
         return "from_unixtime_argument_count_error";
+    case MYLITE_SQL_AST_FROM_DAYS_FUNCTION:
+        return "from_days_function";
+    case MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR:
+        return "from_days_argument_count_error";
+    case MYLITE_SQL_AST_MAKEDATE_FUNCTION:
+        return "makedate_function";
+    case MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR:
+        return "makedate_argument_count_error";
+    case MYLITE_SQL_AST_MAKETIME_FUNCTION:
+        return "maketime_function";
+    case MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR:
+        return "maketime_argument_count_error";
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
         return "extract_function";
     case MYLITE_SQL_AST_WEEK_FUNCTION:

@@ -70,6 +70,7 @@ add_library(mylite STATIC
   src/runtime/mylite_string_substring_index.c
   src/runtime/mylite_string_trim.c
   src/runtime/mylite_string_unhex.c
+  src/runtime/mylite_temporal_constructor.c
   src/runtime/mylite_temporal_extract.c
   src/runtime/mylite_temporary_catalog.c
   src/runtime/mylite_timediff.c
@@ -1018,6 +1019,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_to_days_to_seconds_functions_test)
+
+  add_executable(mylite_runtime_temporal_constructor_functions_test
+    tests/runtime_temporal_constructor_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_temporal_constructor_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_temporal_constructor_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_temporal_constructor_functions_test)
 
   add_executable(mylite_runtime_temporal_extract_functions_test
     tests/runtime_temporal_extract_functions_test.c
@@ -4237,6 +4249,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.to_days_to_seconds_functions
     COMMAND mylite_runtime_to_days_to_seconds_functions_test
+  )
+  add_test(
+    NAME libmylite.runtime.temporal_constructor_functions
+    COMMAND mylite_runtime_temporal_constructor_functions_test
   )
 
   add_test(

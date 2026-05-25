@@ -118,6 +118,9 @@ static int test_keywords(void) {
     failures += expect_keyword("upper", 0U);
     failures += expect_keyword("nullif", 0U);
     failures += expect_keyword("isnull", 0U);
+    failures += expect_keyword("from_days", 0U);
+    failures += expect_keyword("makedate", 0U);
+    failures += expect_keyword("maketime", 0U);
     failures += expect_keyword("sign", 0U);
     failures += expect_keyword("signal", MYLITE_SQL_KEYWORD_RESERVED);
     failures += expect_keyword("bit_and", 0U);

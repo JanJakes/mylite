@@ -24,6 +24,7 @@
 #include "mylite_string_substring_index.h"
 #include "mylite_string_trim.h"
 #include "mylite_string_unhex.h"
+#include "mylite_temporal_constructor.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_timediff.h"
 #include "mylite_timestampdiff.h"
@@ -229,6 +230,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_temporal_extract_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_temporal_constructor_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_timestampdiff_function(sqlite);

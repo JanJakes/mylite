@@ -4919,6 +4919,10 @@ expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA expression(C) RPARE
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION, B, C, R);
 }
+expression(A) ::= JSON_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_VALUE_FUNCTION, B, C, R);
+}
 expression(A) ::= JSON_UNQUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION, B, R);
@@ -6914,6 +6918,9 @@ identifier(A) ::= JSON_VALID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_EXTRACT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_VALUE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_LENGTH(T). {

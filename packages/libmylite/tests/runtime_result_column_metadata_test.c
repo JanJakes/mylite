@@ -27,6 +27,7 @@ enum {
     mysql_database_function_display_length = 256,
     mysql_user_function_display_length = 1152,
     mysql_version_function_display_length = 20,
+    mysql_json_value_display_length = 2048,
     mysql_json_type_display_length = 68,
     mysql_scalar_var_string_decimals = 31,
     mysql_datetime_display_length = 19,
@@ -34,6 +35,7 @@ enum {
     mysql_literal_string_abc_display_length = 12,
     mysql_bigint_literal_display_length = 20,
     mysql_large_integer_literal_display_length = 82,
+    mysql_timestampadd_string_column_index = 3,
     mysql_session_scalar_column_count = 11,
     mysql_user_function_first_column_index = 2,
     mysql_version_column_index = 6,
@@ -41,13 +43,18 @@ enum {
     mysql_last_insert_id_column_index = 8,
     mysql_unseeded_rand_column_index = 9,
     mysql_seeded_rand_column_index = 10,
-    mysql_json_scalar_column_count = 9,
-    mysql_json_quote_column_index = 5,
-    mysql_json_document_first_column_index = 6,
-    mysql_row_scalar_column_count = 10,
+    mysql_json_scalar_column_count = 10,
+    mysql_json_value_column_index = 2,
+    mysql_json_length_column_index = 3,
+    mysql_json_contains_column_index = 4,
+    mysql_json_contains_path_column_index = 5,
+    mysql_json_quote_column_index = 6,
+    mysql_json_document_first_column_index = 7,
+    mysql_row_scalar_column_count = 11,
     mysql_row_json_type_column_index = 5,
-    mysql_row_json_quote_column_index = 6,
-    mysql_row_json_document_first_column_index = 7,
+    mysql_row_json_value_column_index = 6,
+    mysql_row_json_quote_column_index = 7,
+    mysql_row_json_document_first_column_index = 8,
 };
 
 static const uint64_t mysql_json_document_display_length = 4294967292ULL;
@@ -716,7 +723,7 @@ static int test_descriptor_result_column_metadata(void) {
         );
         failures += expect_column_metadata(
             result,
-            3U,
+            mysql_timestampadd_string_column_index,
             (struct expected_column_metadata){
                 .label = "v_shift",
                 .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
@@ -864,7 +871,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         );
         failures += expect_column_metadata(
             result,
-            3U,
+            mysql_json_length_column_index,
             (struct expected_column_metadata){
                 .label = "str",
                 .schema_name = "",
@@ -1261,6 +1268,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
     failures += execute_ok(
         database,
         "SELECT JSON_VALID('{}') AS valid_json, JSON_TYPE('{}') AS json_type, "
+        "JSON_VALUE('{\"a\":1}','$.a') AS json_value, "
         "JSON_LENGTH('{}') AS json_length, JSON_CONTAINS('{}','{}') AS contains_json, "
         "JSON_CONTAINS_PATH('{}','one','$') AS contains_path, "
         "JSON_QUOTE('abc') AS quoted_json, "
@@ -1311,7 +1319,22 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         );
         failures += expect_column_metadata(
             result,
-            2U,
+            mysql_json_value_column_index,
+            (struct expected_column_metadata){
+                .label = "json_value",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_json_value_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "JSON_VALUE scalar metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            3U,
             (struct expected_column_metadata){
                 .label = "json_length",
                 .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
@@ -1326,7 +1349,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         );
         failures += expect_column_metadata(
             result,
-            3U,
+            mysql_json_contains_column_index,
             (struct expected_column_metadata){
                 .label = "contains_json",
                 .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
@@ -1341,7 +1364,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         );
         failures += expect_column_metadata(
             result,
-            4U,
+            mysql_json_contains_path_column_index,
             (struct expected_column_metadata){
                 .label = "contains_path",
                 .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
@@ -1415,8 +1438,8 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         database,
         "SELECT id, JSON_VALID(j) AS valid_j, JSON_LENGTH(j) AS len_j, "
         "JSON_CONTAINS(j,'1','$.a') AS c, JSON_CONTAINS_PATH(j,'one','$.a') AS cp, "
-        "JSON_TYPE(j) AS jt, JSON_QUOTE(s) AS jq, JSON_EXTRACT(j,'$.a') AS je, "
-        "JSON_ARRAY(id,s) AS ja, "
+        "JSON_TYPE(j) AS jt, JSON_VALUE(j,'$.a') AS jv, JSON_QUOTE(s) AS jq, "
+        "JSON_EXTRACT(j,'$.a') AS je, JSON_ARRAY(id,s) AS ja, "
         "JSON_OBJECT('a',id) AS jo FROM js AS src LIMIT 0",
         &result
     );
@@ -1519,6 +1542,21 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 .nullable = 1,
             },
             "row-scalar JSON_QUOTE metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            mysql_row_json_value_column_index,
+            (struct expected_column_metadata){
+                .label = "jv",
+                .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_json_value_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "row-scalar JSON_VALUE metadata"
         );
         {
             static const char *const json_document_labels[] = {"je", "ja", "jo"};

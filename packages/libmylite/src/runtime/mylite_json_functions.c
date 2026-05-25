@@ -2,14 +2,22 @@
 
 #include <mylite/mylite.h>
 
+#include "mylite_connection.h"
+#include "mylite_diagnostics.h"
 #include "mylite_json.h"
+#include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+enum {
+    mysql_error_invalid_json_text_in_function = 3141,
+};
 
 struct json_search_sqlite_result {
     int rc;
@@ -114,6 +122,11 @@ static void json_contains_path_sqlite_callback(
     sqlite3_value **argv
 );
 static void json_extract_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_value_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static int append_json_value_invalid_document_warning(
+    sqlite3_context *context,
+    const struct mylite_json_normalize_result *result
+);
 static void json_keys_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -301,6 +314,20 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_extract_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_value",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_value_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -563,6 +590,128 @@ static void json_extract_sqlite_callback(sqlite3_context *context, int argc, sql
         return;
     }
     sqlite3_result_text(context, result, (int)result_length, free);
+}
+
+static void json_value_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const unsigned char *document = NULL;
+    const unsigned char *path = NULL;
+    int document_length = 0;
+    int path_length = 0;
+    char *result = NULL;
+    size_t result_length = 0U;
+    bool is_null = false;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_VALUE callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT || sqlite3_value_type(argv[1]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid data type for JSON data in JSON_VALUE()", -1);
+        return;
+    }
+
+    document = sqlite3_value_text(argv[0]);
+    path = sqlite3_value_text(argv[1]);
+    document_length = sqlite3_value_bytes(argv[0]);
+    path_length = sqlite3_value_bytes(argv[1]);
+    if (document == NULL || path == NULL || document_length < 0 || path_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_value(
+        (const char *)document,
+        (size_t)document_length,
+        (const char *)path,
+        (size_t)path_length,
+        &result,
+        &result_length,
+        &is_null,
+        &normalize_result
+    );
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        if (normalize_result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(
+                context,
+                "Unsupported JSON path or JSON document in JSON_VALUE()",
+                -1
+            );
+        } else if (normalize_result.status == MYLITE_JSON_NORMALIZE_INVALID) {
+            rc = append_json_value_invalid_document_warning(context, &normalize_result);
+            if (rc == MYLITE_NOMEM) {
+                sqlite3_result_error_nomem(context);
+            } else if (rc != MYLITE_OK) {
+                sqlite3_result_error(context, "MyLite JSON_VALUE warning failed", -1);
+            } else {
+                sqlite3_result_null(context);
+            }
+        } else {
+            sqlite3_result_error(context, "MyLite JSON_VALUE failed", -1);
+        }
+        return;
+    }
+    if (is_null) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (result_length > (size_t)INT_MAX) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_text(context, result, (int)result_length, free);
+}
+
+static int append_json_value_invalid_document_warning(
+    sqlite3_context *context,
+    const struct mylite_json_normalize_result *result
+) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t position = result == NULL ? 0U : result->position;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid JSON text in argument 1 to function json_value: \"%s\" at position %zu.",
+        mylite_json_invalid_text_error_message(result),
+        position
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_json_text_in_function,
+        "22032",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory while recording JSON_VALUE() warning"
+        );
+    }
+    return rc;
 }
 
 static void json_contains_sqlite_callback(

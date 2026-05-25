@@ -13,10 +13,20 @@ enum mylite_json_normalize_status {
     MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED = 4,
 };
 
+enum mylite_json_error_detail {
+    MYLITE_JSON_ERROR_INVALID_VALUE = 0,
+    MYLITE_JSON_ERROR_MISSING_OBJECT_MEMBER_NAME = 1,
+};
+
 struct mylite_json_normalize_result {
     enum mylite_json_normalize_status status;
     size_t position;
+    enum mylite_json_error_detail error_detail;
 };
+
+const char *mylite_json_invalid_text_error_message(
+    const struct mylite_json_normalize_result *result
+);
 
 enum mylite_json_sql_value_kind {
     MYLITE_JSON_SQL_VALUE_NULL = 0,
@@ -70,6 +80,16 @@ int mylite_json_keys(
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_extract(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_value(
     const char *text,
     size_t text_length,
     const char *path,

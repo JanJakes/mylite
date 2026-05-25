@@ -547,6 +547,11 @@ static bool parser_match(struct json_parser *parser, char expected);
 static bool is_decimal_digit(char byte);
 static bool is_hex_digit(char byte);
 static int parser_invalid(struct json_parser *parser, size_t position);
+static int parser_invalid_with_detail(
+    struct json_parser *parser,
+    size_t position,
+    enum mylite_json_error_detail detail
+);
 static int parser_unsupported(struct json_parser *parser, size_t position);
 
 int mylite_json_normalize(
@@ -837,6 +842,90 @@ int mylite_json_extract(
     }
     if (rc == MYLITE_OK && !matched) {
         *out_is_null = true;
+    } else if (rc == MYLITE_OK) {
+        rc = emit_value(&writer, matched_value);
+        if (rc == MYLITE_OK) {
+            *out_text_length = writer.length;
+            *out_text = writer_take(&writer);
+            if (*out_text == NULL) {
+                rc = MYLITE_NOMEM;
+            }
+        }
+    }
+
+    value_deinit(&document);
+    writer_deinit(&writer);
+    return rc;
+}
+
+int mylite_json_value(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser path_parser = {
+        .text = path,
+        .length = path_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    struct json_writer writer = {0};
+    const struct json_value *matched_value = NULL;
+    bool matched = false;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL || path == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    if (rc == MYLITE_OK) {
+        rc = extract_path_value(&path_parser, &document, &matched_value, &matched);
+        *out_result = path_parser.result;
+    }
+    if (rc == MYLITE_OK && (!matched || matched_value->kind == JSON_VALUE_NULL)) {
+        *out_is_null = true;
+    } else if (
+        rc == MYLITE_OK &&
+        (matched_value->kind == JSON_VALUE_STRING || matched_value->kind == JSON_VALUE_NUMBER)
+    ) {
+        rc = copy_result_text(
+            matched_value->payload.text.text,
+            matched_value->payload.text.length,
+            out_text,
+            out_text_length
+        );
+    } else if (rc == MYLITE_OK && matched_value->kind == JSON_VALUE_BOOL) {
+        const char *literal = "false";
+
+        if ((int)matched_value->payload.boolean != 0) {
+            literal = "true";
+        }
+
+        rc = copy_result_text(literal, strlen(literal), out_text, out_text_length);
     } else if (rc == MYLITE_OK) {
         rc = emit_value(&writer, matched_value);
         if (rc == MYLITE_OK) {
@@ -1358,6 +1447,15 @@ int mylite_json_quote_string(
     }
     writer_deinit(&writer);
     return rc;
+}
+
+const char *mylite_json_invalid_text_error_message(
+    const struct mylite_json_normalize_result *result
+) {
+    if (result != NULL && result->error_detail == MYLITE_JSON_ERROR_MISSING_OBJECT_MEMBER_NAME) {
+        return "Missing a name for object member.";
+    }
+    return "Invalid value.";
 }
 
 static const char *json_value_type_name(const struct json_value *value) {
@@ -2012,7 +2110,11 @@ static int parse_next_object_member(struct json_parser *parser, struct json_pars
     int rc = MYLITE_OK;
 
     if (parser_peek(parser) != '"') {
-        return parser_invalid(parser, parser->position);
+        return parser_invalid_with_detail(
+            parser,
+            parser->position,
+            MYLITE_JSON_ERROR_MISSING_OBJECT_MEMBER_NAME
+        );
     }
     rc = parse_string(parser, &key, &key_length);
     if (rc == MYLITE_OK) {
@@ -4133,9 +4235,18 @@ static bool is_hex_digit(char byte) {
 }
 
 static int parser_invalid(struct json_parser *parser, size_t position) {
+    return parser_invalid_with_detail(parser, position, MYLITE_JSON_ERROR_INVALID_VALUE);
+}
+
+static int parser_invalid_with_detail(
+    struct json_parser *parser,
+    size_t position,
+    enum mylite_json_error_detail detail
+) {
     parser->result = (struct mylite_json_normalize_result){
         .status = MYLITE_JSON_NORMALIZE_INVALID,
         .position = position,
+        .error_detail = detail,
     };
     return MYLITE_ERROR;
 }

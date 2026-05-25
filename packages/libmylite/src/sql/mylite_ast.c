@@ -1428,6 +1428,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_keys_function";
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
         return "json_keys_argument_count_error";
+    case MYLITE_SQL_AST_JSON_VALUE_FUNCTION:
+        return "json_value_function";
     case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
         return "insert_string_function";
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:

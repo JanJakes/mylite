@@ -139,4 +139,15 @@ expect_contains "connection collation selects utf8mb4_bin metadata" \
 expect_contains "connection collation does not imply binary flag" \
     'Flags:      MULTIPLE_KEY PART_KEY ' "$connection_collation_output"
 
+json_value_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT JSON_VALUE('{\"a\":1}', '$.a') AS json_value;" \
+    "$DATABASE")
+
+expect_contains "json_value type" 'Type:       VAR_STRING' "$json_value_output"
+expect_contains "json_value collation" 'Collation:  utf8mb4_0900_ai_ci (255)' \
+    "$json_value_output"
+expect_contains "json_value length" 'Length:     2048' "$json_value_output"
+expect_contains "json_value flags" 'Flags:      BINARY ' "$json_value_output"
+
 printf '%s\n' "mysql_baseline_result_column_metadata_expectations: ok"

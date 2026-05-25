@@ -4832,6 +4832,10 @@ expression(A) ::= JSON_OBJECT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_JSON_OBJECT_FUNCTION, B, R);
 }
+expression(A) ::= JSON_INSERT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_INSERT_FUNCTION, B, R);
+}
 expression(A) ::= JSON_SET(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_JSON_SET_FUNCTION, B, R);
@@ -5655,6 +5659,10 @@ expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) COMMA function_argument_lis
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= JSON_INSERT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= JSON_SET(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -6886,6 +6894,9 @@ identifier(A) ::= JSON_TYPE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_QUOTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_INSERT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_SET(T). {

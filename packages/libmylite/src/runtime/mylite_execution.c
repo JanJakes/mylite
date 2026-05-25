@@ -2986,7 +2986,8 @@ enum planned_string_padding_function_kind {
 enum planned_json_mutation_kind {
     PLANNED_JSON_MUTATION_SET = 0,
     PLANNED_JSON_MUTATION_REPLACE = 1,
-    PLANNED_JSON_MUTATION_REMOVE = 2,
+    PLANNED_JSON_MUTATION_INSERT = 2,
+    PLANNED_JSON_MUTATION_REMOVE = 3,
 };
 
 enum planned_charset_collation_function_kind {
@@ -13135,6 +13136,10 @@ static int row_scalar_select_step_error(
     int sqlite_rc
 );
 static bool map_json_extract_row_scalar_step_error(struct mylite_db *database, const char *message);
+static bool map_json_mutation_row_scalar_step_error(
+    struct mylite_db *database,
+    const char *message
+);
 static bool map_json_search_row_scalar_step_error(struct mylite_db *database, const char *message);
 static bool map_json_type_row_scalar_step_error(struct mylite_db *database, const char *message);
 static bool map_json_constructor_row_scalar_step_error(
@@ -14284,6 +14289,11 @@ static int apply_json_mutation_scalar_function(
     struct mylite_json_normalize_result *out_result
 );
 static int json_set_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int json_insert_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
@@ -23887,14 +23897,13 @@ static int plan_row_scalar_json_remove_path_arguments(
 static int plan_row_scalar_json_set_pair_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,
-    size_t argument_count,
     const char *function_name,
     bool has_source,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     enum column_reference_diagnostic_context column_diagnostic_context,
-    struct planned_row_scalar_expression *out_arguments
+    struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_json_set_document_argument(
     struct mylite_db *database,
@@ -29296,6 +29305,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
@@ -51781,6 +51792,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
@@ -85388,6 +85401,7 @@ static int row_scalar_select_step_error(
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
     if (map_json_extract_row_scalar_step_error(database, message) ||
+        map_json_mutation_row_scalar_step_error(database, message) ||
         map_json_search_row_scalar_step_error(database, message) ||
         map_json_type_row_scalar_step_error(database, message) ||
         map_json_constructor_row_scalar_step_error(database, message)) {
@@ -85449,6 +85463,13 @@ static bool map_json_extract_row_scalar_step_error(
         set_unsupported_error(database, "JSON_KEYS() path or document shape is not supported");
         return true;
     }
+    return false;
+}
+
+static bool map_json_mutation_row_scalar_step_error(
+    struct mylite_db *database,
+    const char *message
+) {
     if (strcmp(message, "Invalid data type for JSON data in JSON_SET()") == 0) {
         set_invalid_json_data_type_error(database, "JSON_SET");
         return true;
@@ -85463,6 +85484,22 @@ static bool map_json_extract_row_scalar_step_error(
     }
     if (strcmp(message, "Unsupported JSON path or JSON document in JSON_SET()") == 0) {
         set_unsupported_error(database, "JSON_SET() path or document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_INSERT()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_INSERT");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON path in JSON_INSERT()") == 0) {
+        set_invalid_json_path_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text or JSON path in JSON_INSERT()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON path or JSON document in JSON_INSERT()") == 0) {
+        set_unsupported_error(database, "JSON_INSERT() path or document shape is not supported");
         return true;
     }
     if (strcmp(message, "Invalid data type for JSON data in JSON_REPLACE()") == 0) {
@@ -89136,6 +89173,7 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
@@ -90391,6 +90429,11 @@ static int session_scalar_value(
         return json_set_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_SET");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
+        return json_insert_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_INSERT");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         return json_replace_function_value(database, expression, out_cell);
@@ -92284,6 +92327,21 @@ static int json_set_function_value(
     );
 }
 
+static int json_insert_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return json_mutation_function_value(
+        database,
+        expression,
+        MYLITE_SQL_AST_JSON_INSERT_FUNCTION,
+        "JSON_INSERT",
+        PLANNED_JSON_MUTATION_INSERT,
+        out_cell
+    );
+}
+
 static int json_replace_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -92397,8 +92455,8 @@ static int json_mutation_function_value(
     if (rc != MYLITE_OK) {
         goto done;
     }
-    if (buffers.force_null && mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
-        rc = mylite_json_remove_validate_before_null(
+    if (buffers.force_null) {
+        rc = mylite_json_mutation_validate_before_null(
             document,
             document_length,
             buffers.paths,
@@ -92410,9 +92468,6 @@ static int json_mutation_function_value(
         if (rc == MYLITE_OK) {
             out_cell->value = NULL;
         }
-        goto done;
-    }
-    if (buffers.force_null) {
         goto done;
     }
 
@@ -92524,6 +92579,19 @@ static int apply_json_mutation_scalar_function(
             out_result
         );
     }
+    if (mutation_kind == PLANNED_JSON_MUTATION_INSERT) {
+        return mylite_json_insert(
+            document,
+            document_length,
+            buffers->paths,
+            buffers->path_lengths,
+            buffers->values,
+            buffers->pair_count,
+            out_result_text,
+            out_result_length,
+            out_result
+        );
+    }
     if (mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
         return mylite_json_remove(
             document,
@@ -92581,6 +92649,10 @@ static int json_set_document_scalar_argument(
         document_message = "JSON_REPLACE() supports only string and NULL documents";
         literal_message = "JSON_REPLACE() supports only string document literals";
         nul_message = "JSON_REPLACE() document literals do not support NUL bytes";
+    } else if (strcmp(function_name, "JSON_INSERT") == 0) {
+        document_message = "JSON_INSERT() supports only string and NULL documents";
+        literal_message = "JSON_INSERT() supports only string document literals";
+        nul_message = "JSON_INSERT() document literals do not support NUL bytes";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         document_message = "JSON_REMOVE() supports only string and NULL documents";
         literal_message = "JSON_REMOVE() supports only string document literals";
@@ -92796,6 +92868,7 @@ static int evaluate_json_set_scalar_pairs(
         );
         if (rc == MYLITE_OK && path_is_null) {
             buffers->force_null = true;
+            buffers->pair_count = pair_index;
             return MYLITE_OK;
         }
         argument = argument == NULL ? NULL : argument->next_sibling;
@@ -92887,6 +92960,10 @@ static int json_set_path_scalar_argument(
         path_message = "JSON_REPLACE() supports only string and NULL path literals";
         literal_message = "JSON_REPLACE() supports only string path literals";
         nul_message = "JSON_REPLACE() path literals do not support NUL bytes";
+    } else if (strcmp(function_name, "JSON_INSERT") == 0) {
+        path_message = "JSON_INSERT() supports only string and NULL path literals";
+        literal_message = "JSON_INSERT() supports only string path literals";
+        nul_message = "JSON_INSERT() path literals do not support NUL bytes";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         path_message = "JSON_REMOVE() supports only string and NULL path literals";
         literal_message = "JSON_REMOVE() supports only string path literals";
@@ -93327,17 +93404,20 @@ static int json_extract_scalar_argument(
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_REPLACE(), and "
-            "JSON_REMOVE() document arguments"
+            "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
+            "JSON_REPLACE(), and JSON_REMOVE() document arguments"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         int rc_set = MYLITE_OK;
 
-        if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
+        if (expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION) {
+            rc_set = json_insert_function_value(database, expression, inout_cell);
+        } else if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
             rc_set = json_replace_function_value(database, expression, inout_cell);
         } else if (expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
             rc_set = json_remove_function_value(database, expression, inout_cell);
@@ -93394,8 +93474,8 @@ static int json_extract_scalar_argument(
 
     set_unsupported_error(
         database,
-        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_REPLACE(), and JSON_REMOVE() "
-        "document arguments"
+        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), JSON_REPLACE(), "
+        "and JSON_REMOVE() document arguments"
     );
     return MYLITE_ERROR;
 }
@@ -93427,7 +93507,7 @@ static int json_introspection_scalar_argument(
         set_unsupported_error(
             database,
             "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-            "JSON_REPLACE(), JSON_REMOVE(), and descriptor column arguments"
+            "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column arguments"
         );
         return MYLITE_ERROR;
     }
@@ -93492,7 +93572,7 @@ static int json_introspection_scalar_argument(
     set_unsupported_error(
         database,
         "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-        "JSON_REPLACE(), JSON_REMOVE(), and descriptor column arguments"
+        "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column arguments"
     );
     return MYLITE_ERROR;
 }
@@ -93502,6 +93582,9 @@ static bool is_json_mutation_function_expression(const struct mylite_sql_ast_nod
         return false;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
@@ -93523,7 +93606,9 @@ static int json_mutation_scalar_argument(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
+    if (expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION) {
+        rc = json_insert_function_value(database, expression, inout_cell);
+    } else if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
         rc = json_replace_function_value(database, expression, inout_cell);
     } else if (expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         rc = json_remove_function_value(database, expression, inout_cell);
@@ -94100,6 +94185,8 @@ static int finish_json_set_scalar_result(
     if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
         if (function_name != NULL && strcmp(function_name, "JSON_REPLACE") == 0) {
             unsupported_message = "JSON_REPLACE() path or document shape is not supported";
+        } else if (function_name != NULL && strcmp(function_name, "JSON_INSERT") == 0) {
+            unsupported_message = "JSON_INSERT() path or document shape is not supported";
         } else if (function_name != NULL && strcmp(function_name, "JSON_REMOVE") == 0) {
             unsupported_message = "JSON_REMOVE() path or document shape is not supported";
         }
@@ -117776,6 +117863,7 @@ static bool is_json_set_projection_expression(const struct mylite_sql_ast_node *
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || (expression->kind != MYLITE_SQL_AST_JSON_SET_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_JSON_INSERT_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_JSON_REPLACE_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_JSON_REMOVE_FUNCTION)) {
         return false;
@@ -136118,6 +136206,8 @@ static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expr
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
+    case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REMOVE_ARGUMENT_COUNT_ERROR:
@@ -136258,6 +136348,7 @@ static int plan_row_scalar_json_expression(
         set_native_function_parameter_count_error(database, "JSON_SET");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
         return plan_row_scalar_json_set_expression(
@@ -136270,6 +136361,9 @@ static int plan_row_scalar_json_expression(
             column_diagnostic_context,
             out_expression
         );
+    case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_INSERT");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_REPLACE");
         return MYLITE_ERROR;
@@ -140662,6 +140756,10 @@ static int json_mutation_kind_from_ast(
     switch (expression->kind) {
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
         return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
+        *out_function_name = "JSON_INSERT";
+        *out_mutation_kind = PLANNED_JSON_MUTATION_INSERT;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         *out_function_name = "JSON_REPLACE";
         *out_mutation_kind = PLANNED_JSON_MUTATION_REPLACE;
@@ -140718,14 +140816,13 @@ static int plan_row_scalar_json_mutation_arguments(
     return plan_row_scalar_json_set_pair_arguments(
         database,
         argument,
-        argument_count,
         function_name,
         has_source,
         source_context,
         table_columns,
         table_column_count,
         column_diagnostic_context,
-        out_expression->arguments
+        out_expression
     );
 }
 
@@ -140759,17 +140856,21 @@ static int plan_row_scalar_json_remove_path_arguments(
 static int plan_row_scalar_json_set_pair_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,
-    size_t argument_count,
     const char *function_name,
     bool has_source,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     enum column_reference_diagnostic_context column_diagnostic_context,
-    struct planned_row_scalar_expression *out_arguments
+    struct planned_row_scalar_expression *out_expression
 ) {
+    size_t argument_count = 0U;
     int rc = MYLITE_OK;
 
+    if (out_expression == NULL || out_expression->arguments == NULL) {
+        return MYLITE_MISUSE;
+    }
+    argument_count = out_expression->argument_count;
     for (size_t argument_index = 1U;
          rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
          argument_index += 2U) {
@@ -140777,9 +140878,19 @@ static int plan_row_scalar_json_set_pair_arguments(
             database,
             argument,
             function_name,
-            &out_arguments[argument_index]
+            &out_expression->arguments[argument_index]
         );
         argument = argument->next_sibling;
+        if (rc == MYLITE_OK &&
+            out_expression->arguments[argument_index].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE &&
+            out_expression->arguments[argument_index].value.is_null) {
+            out_expression->arguments[argument_index + 1U].kind =
+                PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->arguments[argument_index + 1U].value =
+                (struct planned_value){.is_null = true};
+            out_expression->argument_count = argument_index + 2U;
+            return MYLITE_OK;
+        }
         if (rc == MYLITE_OK) {
             rc = plan_row_scalar_json_set_value_argument(
                 database,
@@ -140790,7 +140901,7 @@ static int plan_row_scalar_json_set_pair_arguments(
                 table_columns,
                 table_column_count,
                 column_diagnostic_context,
-                &out_arguments[argument_index + 1U]
+                &out_expression->arguments[argument_index + 1U]
             );
         }
         argument = argument == NULL ? NULL : argument->next_sibling;
@@ -140829,6 +140940,11 @@ static int plan_row_scalar_json_set_document_argument(
             "JSON_REPLACE() supports only string, NULL, and descriptor column documents";
         column_message =
             "JSON_REPLACE() supports only JSON and nonbinary string descriptor column documents";
+    } else if (strcmp(function_name, "JSON_INSERT") == 0) {
+        document_message =
+            "JSON_INSERT() supports only string, NULL, and descriptor column documents";
+        column_message =
+            "JSON_INSERT() supports only JSON and nonbinary string descriptor column documents";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         document_message =
             "JSON_REMOVE() supports only string, NULL, and descriptor column documents";
@@ -141247,11 +141363,12 @@ static int plan_row_scalar_json_introspection_document_argument(
         set_unsupported_error(
             database,
             "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-            "JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
+            "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         return plan_row_scalar_json_set_expression(
@@ -141347,7 +141464,7 @@ static int plan_row_scalar_json_introspection_document_argument(
     set_unsupported_error(
         database,
         "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-        "JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
+        "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
     );
     return MYLITE_ERROR;
 }
@@ -141368,12 +141485,13 @@ static int plan_row_scalar_json_document_argument(
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_REPLACE(), "
-            "JSON_REMOVE(), and descriptor column documents"
+            "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
+            "JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         return plan_row_scalar_json_set_expression(
@@ -141443,8 +141561,8 @@ static int plan_row_scalar_json_document_argument(
 
     set_unsupported_error(
         database,
-        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_REPLACE(), JSON_REMOVE(), "
-        "and descriptor column documents"
+        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), JSON_REPLACE(), "
+        "JSON_REMOVE(), and descriptor column documents"
     );
     return MYLITE_ERROR;
 }
@@ -141505,6 +141623,8 @@ static int plan_row_scalar_json_set_path_argument(
 
     if (strcmp(function_name, "JSON_REPLACE") == 0) {
         path_message = "JSON_REPLACE() supports only string and NULL path literals";
+    } else if (strcmp(function_name, "JSON_INSERT") == 0) {
+        path_message = "JSON_INSERT() supports only string and NULL path literals";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         path_message = "JSON_REMOVE() supports only string and NULL path literals";
     }
@@ -141539,14 +141659,18 @@ static int plan_row_scalar_json_set_value_argument(
         return MYLITE_MISUSE;
     }
     if (expression == NULL) {
-        set_unsupported_error(
-            database,
-            strcmp(function_name, "JSON_REPLACE") == 0
-                ? "JSON_REPLACE() values support only string, integer, boolean, NULL, JSON "
-                  "functions, and descriptor column arguments"
-                : "JSON_SET() values support only string, integer, boolean, NULL, JSON "
-                  "functions, and descriptor column arguments"
-        );
+        const char *message =
+            "JSON_SET() values support only string, integer, boolean, NULL, JSON functions, "
+            "and descriptor column arguments";
+
+        if (strcmp(function_name, "JSON_REPLACE") == 0) {
+            message = "JSON_REPLACE() values support only string, integer, boolean, NULL, JSON "
+                      "functions, and descriptor column arguments";
+        } else if (strcmp(function_name, "JSON_INSERT") == 0) {
+            message = "JSON_INSERT() values support only string, integer, boolean, NULL, JSON "
+                      "functions, and descriptor column arguments";
+        }
+        set_unsupported_error(database, message);
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_FUNCTION) {
@@ -148921,6 +149045,8 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION ||
@@ -168145,6 +168271,12 @@ static int json_mutation_sqlite_function_name(
             return MYLITE_ERROR;
         }
         *out_function_name = "_mylite_json_set(";
+        return MYLITE_OK;
+    case PLANNED_JSON_MUTATION_INSERT:
+        if (expression->argument_count < 3U || (expression->argument_count % 2U) == 0U) {
+            return MYLITE_ERROR;
+        }
+        *out_function_name = "_mylite_json_insert(";
         return MYLITE_OK;
     case PLANNED_JSON_MUTATION_REPLACE:
         if (expression->argument_count < 3U || (expression->argument_count % 2U) == 0U) {

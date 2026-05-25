@@ -123,6 +123,17 @@ int mylite_json_replace(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_insert(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_remove(
     const char *text,
     size_t text_length,
@@ -131,6 +142,14 @@ int mylite_json_remove(
     size_t path_count,
     char **out_text,
     size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_mutation_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_remove_validate_before_null(

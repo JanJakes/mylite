@@ -314,6 +314,19 @@ static int test_table_backed_json_set_values(void) {
     };
     static const char *const columns_limited[] = {"id", "JSON_SET(j, '$.i', i)"};
     static const char *const values_limited[] = {"1", "{\"a\": 1, \"i\": 7}"};
+    static const char *const columns_null_path[] = {
+        "id",
+        "JSON_SET(j, NULL, i + 1)",
+        "JSON_SET(j, '$.i', i, NULL, i + 1)",
+    };
+    static const char *const values_null_path[] = {
+        "1",
+        NULL,
+        NULL,
+        "2",
+        NULL,
+        NULL,
+    };
     static const char *const columns_nested[] = {
         "id",
         "extracted_i",
@@ -378,6 +391,18 @@ static int test_table_backed_json_set_values(void) {
             .values = values_limited,
             .row_count = 1U,
             .context = "table json_set where order limit projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, JSON_SET(j, NULL, i + 1), "
+                   "JSON_SET(j, '$.i', i, NULL, i + 1) FROM t ORDER BY id",
+            .columns = columns_null_path,
+            .column_count = sizeof(columns_null_path) / sizeof(columns_null_path[0]),
+            .values = values_null_path,
+            .row_count = 2U,
+            .context = "table json_set null path skips value planning",
         }
     );
     failures += expect_query(

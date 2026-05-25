@@ -4,8 +4,8 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 
 | SHOW statement | Status | Notes |
 | --- | --- | --- |
-| `SHOW BINARY LOG STATUS` | ❌ | Result shape, filters, privileges |
-| `SHOW BINARY LOGS` | ❌ | Result shape, filters, privileges |
+| `SHOW BINARY LOG STATUS` | 🟡 | Limited embedded placeholder with MySQL 8.4.9 column labels `File`, `Position`, `Binlog_Do_DB`, `Binlog_Ignore_DB`, and `Executed_Gtid_Set`, returning one synthetic `binlog.000001` row at position `4` with empty database filters and empty GTID set; no physical binary log file, live source position, privileges, filters, or modifiers |
+| `SHOW BINARY LOGS` | 🟡 | Limited embedded placeholder with MySQL 8.4.9 column labels `Log_name`, `File_size`, and `Encrypted`, returning one synthetic `binlog.000001` row with file size `4` and `Encrypted = No`; no physical binary log files, rotation, purge, privileges, filters, or modifiers |
 | `SHOW BINLOG EVENTS` | ❌ | Result shape, filters, privileges |
 | `SHOW CHARACTER SET` / `SHOW CHARSET` | 🟡 | Limited static `binary`, `ascii`, and `utf8mb4` rows with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; related `INFORMATION_SCHEMA.CHARACTER_SETS` is a separate limited synthetic catalog; no NUL-producing pattern escapes, `WHERE`, alternate charsets, or privileges |
 | `SHOW COLLATION` | 🟡 | Limited static rows for `binary`, `ascii_general_ci`, `ascii_bin`, `utf8mb4_0900_ai_ci`, `utf8mb4_0900_bin`, `utf8mb4_general_ci`, `utf8mb4_bin`, `utf8mb4_unicode_ci`, and `utf8mb4_unicode_520_ci` with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; related `INFORMATION_SCHEMA.COLLATIONS` is a separate limited synthetic catalog; no NUL-producing pattern escapes, `WHERE`, other collations, or privileges |

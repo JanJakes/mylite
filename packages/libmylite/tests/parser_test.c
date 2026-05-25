@@ -201,6 +201,7 @@ static int test_show_processlist_introspection_statements(void);
 static int test_show_plugins_metadata_statement(void);
 static int test_show_grants_statement(void);
 static int test_show_privileges_statement(void);
+static int test_show_binary_log_metadata_statements(void);
 static int test_show_warnings_diagnostics_statements(void);
 static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
@@ -532,6 +533,7 @@ int main(void) {
     failures += test_show_plugins_metadata_statement();
     failures += test_show_grants_statement();
     failures += test_show_privileges_statement();
+    failures += test_show_binary_log_metadata_statements();
     failures += test_show_warnings_diagnostics_statements();
     failures += test_show_errors_diagnostics_statements();
     failures += test_show_index_empty_introspection_statements();
@@ -20962,6 +20964,79 @@ static int test_show_privileges_statement(void) {
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "privileges table");
     failures += expect_span_text(child_at(statement, 0U), "privileges", "privileges identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    for (size_t index = 0U; index < sizeof(unsupported_sql) / sizeof(unsupported_sql[0]); ++index) {
+        failures += parse_sql(unsupported_sql[index], MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        mylite_sql_parse_result_deinit(&result);
+    }
+
+    return failures;
+}
+
+static int test_show_binary_log_metadata_statements(void) {
+    static const char *const unsupported_sql[] = {
+        "SHOW BINARY LOG STATUS LIKE '%';",
+        "SHOW BINARY LOG STATUS WHERE File IS NOT NULL;",
+        "SHOW BINARY LOG STATUS LIMIT 1;",
+        "SHOW BINARY LOGS LIKE '%';",
+        "SHOW BINARY LOGS WHERE Log_name IS NOT NULL;",
+        "SHOW BINARY LOGS LIMIT 1;",
+        "SHOW FULL BINARY LOG STATUS;",
+        "SHOW FULL BINARY LOGS;",
+        "SHOW MASTER STATUS;",
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW BINARY LOG STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT,
+        "show binary log status"
+    );
+    failures += expect_child_count(statement, 0U, "show binary log status child count");
+    failures +=
+        expect_span_text(statement, "SHOW BINARY LOG STATUS", "show binary log status span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("show binary log status;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT,
+        "lowercase show binary log status"
+    );
+    failures += expect_child_count(statement, 0U, "lowercase show binary log status child count");
+    failures +=
+        expect_span_text(statement, "show binary log status", "lowercase show binary log status");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW BINARY LOGS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT, "show binary logs");
+    failures += expect_child_count(statement, 0U, "show binary logs child count");
+    failures += expect_span_text(statement, "SHOW BINARY LOGS", "show binary logs span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("show binary logs;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT,
+        "lowercase show binary logs"
+    );
+    failures += expect_child_count(statement, 0U, "lowercase show binary logs child count");
+    failures += expect_span_text(statement, "show binary logs", "lowercase show binary logs");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE logs (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "logs table");
+    failures += expect_span_text(child_at(statement, 0U), "logs", "logs identifier");
     mylite_sql_parse_result_deinit(&result);
 
     for (size_t index = 0U; index < sizeof(unsupported_sql) / sizeof(unsupported_sql[0]); ++index) {

@@ -2732,6 +2732,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_privileges_statement(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_log_status_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token status_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&status_token))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_logs_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token logs_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&logs_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,
@@ -7765,6 +7789,7 @@ static bool map_keyword_token(
         {"EXP", MYLITE_SQL_PARSE_EXP},
         {"LN", MYLITE_SQL_PARSE_LN},
         {"LOG", MYLITE_SQL_PARSE_LOG},
+        {"LOGS", MYLITE_SQL_PARSE_LOGS},
         {"LOG10", MYLITE_SQL_PARSE_LOG10},
         {"LOG2", MYLITE_SQL_PARSE_LOG2},
         {"POW", MYLITE_SQL_PARSE_POW},

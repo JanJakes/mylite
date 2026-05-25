@@ -5,6 +5,8 @@ Binary log, replica, source, and Group Replication statement compatibility.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `BINLOG` | ❌ | Base64 binary log event statement syntax diagnostics |
+| `SHOW BINARY LOG STATUS` | 🟡 | Limited embedded placeholder row for current binary-log coordinates: `binlog.000001`, position `4`, empty database filters, and empty executed GTID set; no physical binary log, live source position, privilege filtering, or replication side effects |
+| `SHOW BINARY LOGS` | 🟡 | Limited embedded placeholder listing one synthetic `binlog.000001` entry with file size `4` and `Encrypted = No`; no physical binary log files, log index, rotation, purge, encryption state, privilege filtering, or replication side effects |
 | `PURGE BINARY LOGS` | ❌ | Binary log purge syntax |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | Binary log and GTID reset syntax |
 | `@@sql_log_bin` | 🟡 | Limited read-only scalar value `1` for no-scope, `session`, and `local` forms; no mutable session state, global scope, binary log files, GTID behavior, or replication side effects |

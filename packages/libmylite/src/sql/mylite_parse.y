@@ -236,6 +236,12 @@ statement(A) ::= show_plugins_statement(B). {
 statement(A) ::= show_privileges_statement(B). {
     A = B;
 }
+statement(A) ::= show_binary_log_status_statement(B). {
+    A = B;
+}
+statement(A) ::= show_binary_logs_statement(B). {
+    A = B;
+}
 statement(A) ::= show_databases_statement(B). {
     A = B;
 }
@@ -1506,6 +1512,14 @@ show_plugins_statement(A) ::= SHOW(S) PLUGINS(P). {
 
 show_privileges_statement(A) ::= SHOW(S) PRIVILEGES(P). {
     A = mylite_sql_parser_make_show_privileges_statement(state, S, P);
+}
+
+show_binary_log_status_statement(A) ::= SHOW(S) BINARY LOG STATUS(T). {
+    A = mylite_sql_parser_make_show_binary_log_status_statement(state, S, T);
+}
+
+show_binary_logs_statement(A) ::= SHOW(S) BINARY LOGS(L). {
+    A = mylite_sql_parser_make_show_binary_logs_statement(state, S, L);
 }
 
 describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {
@@ -7199,6 +7213,9 @@ identifier(A) ::= LN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOG(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LOGS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOG10(T). {

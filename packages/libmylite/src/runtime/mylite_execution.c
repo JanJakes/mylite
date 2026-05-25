@@ -381,6 +381,8 @@ enum {
     show_processlist_result_column_count = 8,
     show_grants_result_column_count = 1,
     show_privileges_result_column_count = 3,
+    show_binary_log_status_result_column_count = 5,
+    show_binary_logs_result_column_count = 3,
     show_warnings_result_column_count = 3,
     show_count_warnings_result_column_count = 1,
     show_errors_result_column_count = 3,
@@ -1572,6 +1574,10 @@ static const char *const show_grants_embedded_root_rows[] = {
     "TELEMETRY_LOG_ADMIN,TRANSACTION_GTID_TAG,XA_RECOVER_ADMIN ON *.* TO `root`@`%` WITH "
     "GRANT OPTION",
 };
+
+static const char *const show_binary_log_file_name = "binlog.000001";
+static const char *const show_binary_log_placeholder_position = "4";
+static const char *const show_binary_log_placeholder_file_size = "4";
 
 struct show_privileges_row {
     const char *privilege;
@@ -10453,6 +10459,14 @@ static int execute_show_processlist_statement(
 );
 static int execute_show_grants_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_privileges_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+);
+static int execute_show_binary_log_status_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+);
+static int execute_show_binary_logs_statement(
     struct mylite_db *database,
     mylite_result **out_result
 );
@@ -29415,6 +29429,10 @@ static int execute_non_prepared_statement(
         return execute_show_grants_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT:
         return execute_show_privileges_statement(database, out_result);
+    case MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT:
+        return execute_show_binary_log_status_statement(database, out_result);
+    case MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT:
+        return execute_show_binary_logs_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
         return execute_show_warnings_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
@@ -48979,6 +48997,98 @@ static int execute_show_privileges_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_binary_log_status_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_binary_log_status_result_column_count] = {
+        "File",
+        "Position",
+        "Binlog_Do_DB",
+        "Binlog_Ignore_DB",
+        "Executed_Gtid_Set",
+    };
+    static const char *const values[show_binary_log_status_result_column_count] = {
+        show_binary_log_file_name,
+        show_binary_log_placeholder_position,
+        "",
+        "",
+        "",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_binary_log_status_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_binary_logs_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_binary_logs_result_column_count] = {
+        "Log_name",
+        "File_size",
+        "Encrypted",
+    };
+    static const char *const values[show_binary_logs_result_column_count] = {
+        show_binary_log_file_name,
+        show_binary_log_placeholder_file_size,
+        "No",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_binary_logs_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_warnings_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -52038,6 +52148,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:

@@ -233,6 +233,9 @@ statement(A) ::= show_engines_statement(B). {
 statement(A) ::= show_plugins_statement(B). {
     A = B;
 }
+statement(A) ::= show_privileges_statement(B). {
+    A = B;
+}
 statement(A) ::= show_databases_statement(B). {
     A = B;
 }
@@ -1499,6 +1502,10 @@ show_engines_statement(A) ::= SHOW(S) STORAGE ENGINES(E). {
 
 show_plugins_statement(A) ::= SHOW(S) PLUGINS(P). {
     A = mylite_sql_parser_make_show_plugins_statement(state, S, P);
+}
+
+show_privileges_statement(A) ::= SHOW(S) PRIVILEGES(P). {
+    A = mylite_sql_parser_make_show_privileges_statement(state, S, P);
 }
 
 describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {
@@ -7459,6 +7466,9 @@ identifier(A) ::= ENGINES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= PLUGINS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PRIVILEGES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= STATUS(T). {

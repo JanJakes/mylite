@@ -200,6 +200,7 @@ static int test_show_routine_status_empty_introspection_statements(void);
 static int test_show_processlist_introspection_statements(void);
 static int test_show_plugins_metadata_statement(void);
 static int test_show_grants_statement(void);
+static int test_show_privileges_statement(void);
 static int test_show_warnings_diagnostics_statements(void);
 static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
@@ -530,6 +531,7 @@ int main(void) {
     failures += test_show_processlist_introspection_statements();
     failures += test_show_plugins_metadata_statement();
     failures += test_show_grants_statement();
+    failures += test_show_privileges_statement();
     failures += test_show_warnings_diagnostics_statements();
     failures += test_show_errors_diagnostics_statements();
     failures += test_show_index_empty_introspection_statements();
@@ -20921,6 +20923,51 @@ static int test_show_grants_statement(void) {
     failures +=
         parse_sql("SHOW GRANTS WHERE User = 'root';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_privileges_statement(void) {
+    static const char *const unsupported_sql[] = {
+        "SHOW PRIVILEGES LIKE 'Select';",
+        "SHOW PRIVILEGES WHERE Privilege = 'Select';",
+        "SHOW FULL PRIVILEGES;",
+        "SHOW PRIVILEGES FROM mysql;",
+        "SHOW PRIVILEGES ORDER BY Privilege;",
+        "SHOW PRIVILEGES LIMIT 1;",
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW PRIVILEGES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT, "show privileges");
+    failures += expect_child_count(statement, 0U, "show privileges child count");
+    failures += expect_span_text(statement, "SHOW PRIVILEGES", "show privileges span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("show privileges;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT,
+        "lowercase show privileges"
+    );
+    failures += expect_child_count(statement, 0U, "lowercase show privileges child count");
+    failures += expect_span_text(statement, "show privileges", "lowercase show privileges span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE privileges (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "privileges table");
+    failures += expect_span_text(child_at(statement, 0U), "privileges", "privileges identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    for (size_t index = 0U; index < sizeof(unsupported_sql) / sizeof(unsupported_sql[0]); ++index) {
+        failures += parse_sql(unsupported_sql[index], MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        mylite_sql_parse_result_deinit(&result);
+    }
 
     return failures;
 }

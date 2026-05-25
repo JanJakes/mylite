@@ -4816,6 +4816,10 @@ expression(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
 }
+expression(A) ::= INTERVAL(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_INTERVAL_FUNCTION, B, C, R);
+}
 expression(A) ::= JSON_ARRAY(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_JSON_ARRAY_FUNCTION, R);

@@ -41,6 +41,7 @@ enum {
     storage_table_option_count = 7,
     storage_stats_auto_recalc_option_index = 5,
     storage_stats_sample_pages_option_index = 6,
+    interval_parser_threshold_count = 6,
 };
 
 struct parse_sql_modes {
@@ -64,6 +65,7 @@ static int test_reverse_function(void);
 static int test_quote_function(void);
 static int test_elt_function(void);
 static int test_field_function(void);
+static int test_interval_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
 static int test_json_construction_functions(void);
@@ -392,6 +394,7 @@ int main(void) {
     failures += test_quote_function();
     failures += test_elt_function();
     failures += test_field_function();
+    failures += test_interval_function();
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
     failures += test_json_construction_functions();
@@ -2475,6 +2478,87 @@ static int test_field_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT FIELD('b', 'a', 'b') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_interval_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *thresholds = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT INTERVAL(23, 1, 15, 17, 30, 44, 200), "
+        "interval(v, 1, 2) AS bucket FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_INTERVAL_FUNCTION, "interval function");
+    failures +=
+        expect_span_text(first_expression, "INTERVAL(23, 1, 15, 17, 30, 44, 200)", "interval span");
+    failures += expect_child_count(first_expression, 2U, "interval child count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "interval search"
+    );
+    thresholds = child_at(first_expression, 1U);
+    failures +=
+        expect_node(thresholds, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "interval thresholds");
+    failures +=
+        expect_child_count(thresholds, interval_parser_threshold_count, "interval threshold count");
+    failures +=
+        expect_literal(child_at(thresholds, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "first threshold");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_INTERVAL_FUNCTION, "lower interval");
+    failures +=
+        expect_node(child_at(second_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "interval column");
+    thresholds = child_at(second_expression, 1U);
+    failures += expect_child_count(thresholds, 2U, "row interval threshold count");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "interval alias"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "interval from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO INTERVAL(NULL, 1, 2), INTERVAL(TRUE, FALSE, TRUE);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "interval do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_INTERVAL_FUNCTION,
+        "do interval null"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_INTERVAL_FUNCTION,
+        "do interval boolean"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT INTERVAL();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT INTERVAL(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT INTERVAL(1, 2) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

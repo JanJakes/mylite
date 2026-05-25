@@ -26543,6 +26543,35 @@ static int test_comments_are_skipped(void) {
         expect_node(child_at(result.root, 0U), MYLITE_SQL_AST_SELECT_STATEMENT, "comment select");
 
     mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT /*+ MAX_EXECUTION_TIME(1000) */ 1;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "INSERT /*+ SET_VAR(sort_buffer_size=262144) */ INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "REPLACE /*+ SET_VAR(sort_buffer_size=262144) */ INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "UPDATE /*+ SET_VAR(sort_buffer_size=262144) */ t SET id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "DELETE /*+ SET_VAR(sort_buffer_size=262144) */ FROM t WHERE id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

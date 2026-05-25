@@ -842,6 +842,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_logs_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_token logs_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_replica_status_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token status_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_replicas_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token replicas_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,

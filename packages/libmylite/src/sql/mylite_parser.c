@@ -2756,6 +2756,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_logs_statement(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_replica_status_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token status_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_REPLICA_STATUS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&status_token))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_replicas_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token replicas_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_REPLICAS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&replicas_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,
@@ -7801,6 +7825,8 @@ static bool map_keyword_token(
         {"ROUND", MYLITE_SQL_PARSE_ROUND},
         {"PI", MYLITE_SQL_PARSE_PI},
         {"RAND", MYLITE_SQL_PARSE_RAND},
+        {"REPLICA", MYLITE_SQL_PARSE_REPLICA},
+        {"REPLICAS", MYLITE_SQL_PARSE_REPLICAS},
         {"SIN", MYLITE_SQL_PARSE_SIN},
         {"SQRT", MYLITE_SQL_PARSE_SQRT},
         {"TAN", MYLITE_SQL_PARSE_TAN},

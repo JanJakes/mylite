@@ -1878,6 +1878,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_binary_log_status_statement";
     case MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT:
         return "show_binary_logs_statement";
+    case MYLITE_SQL_AST_SHOW_REPLICA_STATUS_STATEMENT:
+        return "show_replica_status_statement";
+    case MYLITE_SQL_AST_SHOW_REPLICAS_STATEMENT:
+        return "show_replicas_statement";
     case MYLITE_SQL_AST_TABLE_OPTION_LIST:
         return "table_option_list";
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:

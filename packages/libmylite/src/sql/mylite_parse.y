@@ -242,6 +242,12 @@ statement(A) ::= show_binary_log_status_statement(B). {
 statement(A) ::= show_binary_logs_statement(B). {
     A = B;
 }
+statement(A) ::= show_replica_status_statement(B). {
+    A = B;
+}
+statement(A) ::= show_replicas_statement(B). {
+    A = B;
+}
 statement(A) ::= show_databases_statement(B). {
     A = B;
 }
@@ -1520,6 +1526,14 @@ show_binary_log_status_statement(A) ::= SHOW(S) BINARY LOG STATUS(T). {
 
 show_binary_logs_statement(A) ::= SHOW(S) BINARY LOGS(L). {
     A = mylite_sql_parser_make_show_binary_logs_statement(state, S, L);
+}
+
+show_replica_status_statement(A) ::= SHOW(S) REPLICA STATUS(T). {
+    A = mylite_sql_parser_make_show_replica_status_statement(state, S, T);
+}
+
+show_replicas_statement(A) ::= SHOW(S) REPLICAS(R). {
+    A = mylite_sql_parser_make_show_replicas_statement(state, S, R);
 }
 
 describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {
@@ -7216,6 +7230,12 @@ identifier(A) ::= LOG(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOGS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= REPLICA(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= REPLICAS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOG10(T). {

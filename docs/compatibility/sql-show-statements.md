@@ -21,10 +21,10 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE VIEW` | 🟡 | Limited descriptor-driven output for baseline metadata-only views with MySQL-shaped columns `View`, `Create View`, `character_set_client`, and `collation_connection`; rejects base tables as not-view and does not support view options beyond fixed descriptor metadata, privilege filtering, mutable quote-control state, or executable/updatable views |
 | `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited descriptor-driven catalog schema listing with `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `WHERE`, system schemas, or privileges |
-| `SHOW ENGINE` | ❌ | Subcommands and result shape |
+| `SHOW ENGINE` | 🟡 | Limited to `SHOW ENGINE InnoDB STATUS`, with non-`InnoDB` engine names rejected by MyLite's embedded InnoDB-only policy; no `MUTEX`, `LOGS`, Performance Schema engine status, alternate engines, filters, privileges, or live engine internals |
 | `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINE MUTEX` | ❌ | Result shape, filters, privileges |
-| `SHOW ENGINE STATUS` | ❌ | Result shape, filters, privileges |
+| `SHOW ENGINE STATUS` | 🟡 | Limited `SHOW ENGINE InnoDB STATUS` exposes MySQL 8.4.9 columns `Type`, `Name`, and `Status` with one synthetic `InnoDB` row and stable MyLite-owned status text; no live InnoDB monitor output, non-`InnoDB` status rows, filters, privileges, or mutable engine state |
 | `SHOW ENGINES` | 🟡 | Limited `SHOW [STORAGE] ENGINES` exposes one embedded InnoDB default row with MySQL 8.4.9 column labels; related `INFORMATION_SCHEMA.ENGINES` is a separate limited one-row synthetic catalog; no alternate engines, filters, privileges, or plugins |
 | `SHOW ERRORS` | 🟡 | Limited previous-statement error-condition rows with `Level`, `Code`, and `Message`, plus unsigned decimal `LIMIT` slicing; reports MyLite's previous error condition only; related scalar `@@error_count` is limited separately; no warning/note rows, `WHERE`, `LIKE`, expression filters, `max_error_count`, `GET DIAGNOSTICS`, privileges, or full diagnostics-area behavior |
 | `SHOW EVENTS` | 🟡 | Limited empty event introspection with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; unknown explicit schemas are empty successes; related empty `INFORMATION_SCHEMA.EVENTS` metadata is queryable, but there are no NUL-producing pattern escapes, event descriptors, event rows, event DDL, `SHOW CREATE EVENT`, `WHERE`, Event Scheduler, or privileges |

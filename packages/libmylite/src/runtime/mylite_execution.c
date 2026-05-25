@@ -440,6 +440,7 @@ enum {
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
     show_engines_result_column_count = 6,
+    show_engine_status_result_column_count = 3,
     show_plugins_result_column_count = 5,
     select_item_alias_max_length = 256,
     select_item_alias_capacity = select_item_alias_max_length + 1,
@@ -10617,6 +10618,15 @@ static int execute_show_create_database_statement(
     mylite_result **out_result
 );
 static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_show_engine_status_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int validate_show_engine_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static int execute_show_plugins_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_databases_statement(
     struct mylite_db *database,
@@ -29465,6 +29475,8 @@ static int execute_non_prepared_statement(
         return execute_show_create_database_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
         return execute_show_engines_statement(database, out_result);
+    case MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT:
+        return execute_show_engine_status_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
         return execute_show_plugins_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
@@ -50383,6 +50395,89 @@ static int execute_show_engines_statement(struct mylite_db *database, mylite_res
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_engine_status_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_engine_status_result_column_count] = {
+        "Type",
+        "Name",
+        "Status",
+    };
+    static const char *const values[show_engine_status_result_column_count] = {
+        "InnoDB",
+        "",
+        "MyLite embedded InnoDB-compatible storage engine is active",
+    };
+    mylite_result *result = NULL;
+    int rc = validate_show_engine_name(database, statement);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_engine_status_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int validate_show_engine_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    char engine_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_table_option_name_text(
+        database,
+        child_at(statement, 0U),
+        engine_name,
+        sizeof(engine_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "storage engine",
+            .nul_message = "storage engine names do not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(engine_name, "InnoDB")) {
+        set_unknown_storage_engine_error(database, engine_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int execute_show_plugins_statement(struct mylite_db *database, mylite_result **out_result) {
     static const char *const result_columns[show_plugins_result_column_count] = {
         "Name",
@@ -52296,6 +52391,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
     case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:

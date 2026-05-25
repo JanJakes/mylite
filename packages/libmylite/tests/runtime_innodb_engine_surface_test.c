@@ -18,6 +18,7 @@ enum {
     test_path_capacity = 1024,
     show_create_sql_capacity = 256,
     show_engines_column_count = 6,
+    show_engine_status_column_count = 3,
     show_create_column_count = 2,
     default_storage_engine_variable_column_count = 6,
     scoped_default_storage_engine_variable_column_count = 4,
@@ -73,6 +74,18 @@ static const char *const show_engines_values[show_engines_column_count] = {
     "YES",
 };
 
+static const char *const show_engine_status_columns[show_engine_status_column_count] = {
+    "Type",
+    "Name",
+    "Status",
+};
+
+static const char *const show_engine_status_values[show_engine_status_column_count] = {
+    "InnoDB",
+    "",
+    "MyLite embedded InnoDB-compatible storage engine is active",
+};
+
 static const char *const show_create_columns[show_create_column_count] = {
     "Table",
     "Create Table",
@@ -83,6 +96,11 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
 static int test_innodb_engine_diagnostics(void);
 static int test_independent_innodb_engine_handles(void);
 static int expect_show_engines_result(mylite_db *database, const char *sql, const char *context);
+static int expect_show_engine_status_result(
+    mylite_db *database,
+    const char *sql,
+    const char *context
+);
 static int expect_show_create_single_int(
     mylite_db *database,
     struct expected_show_create_single_int expected
@@ -136,6 +154,16 @@ int main(void) {
 static int test_innodb_create_forms_persistence_and_preamble(void) {
     static const char *const select_columns[] = {"id"};
     static const char *const select_values[] = {"1"};
+    static const char *const status_diagnostic_columns[] = {
+        "ROW_COUNT()",
+        "@@warning_count",
+        "@@error_count",
+    };
+    static const char *const status_diagnostic_values[] = {
+        "-1",
+        "0",
+        "0",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -152,6 +180,27 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
     failures += expect_show_engines_result(database, "SHOW ENGINES", "show engines");
     failures +=
         expect_show_engines_result(database, "SHOW STORAGE ENGINES", "show storage engines");
+    failures += expect_show_engine_status_result(
+        database,
+        "SHOW ENGINE InnoDB STATUS",
+        "show engine status"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT ROW_COUNT(), @@warning_count, @@error_count",
+        (struct expected_single_row_result){
+            .columns = status_diagnostic_columns,
+            .values = status_diagnostic_values,
+            .column_count =
+                sizeof(status_diagnostic_columns) / sizeof(status_diagnostic_columns[0]),
+        },
+        "show engine status diagnostics"
+    );
+    failures += expect_show_engine_status_result(
+        database,
+        "SHOW ENGINE 'InnoDB' STATUS",
+        "show engine string status"
+    );
     failures += expect_row_count(database, -1, "row count after show engines");
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
@@ -263,7 +312,7 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "preamble after explicit engine create"
+        "preamble after explicit engine create and status"
     );
 
     mylite_close(database);
@@ -641,9 +690,59 @@ static int test_innodb_engine_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
+    failures += expect_show_engine_status_result(
+        database,
+        "SHOW ENGINE innodb STATUS",
+        "diagnostics lower show engine status"
+    );
     failures += execute_error(
         database,
-        "SHOW ENGINE InnoDB STATUS",
+        "SHOW ENGINE MyISAM STATUS",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_storage_engine,
+            .sqlstate = "42000",
+            .message_part = "Unknown storage engine 'MyISAM'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW ENGINE PERFORMANCE_SCHEMA STATUS",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_storage_engine,
+            .sqlstate = "42000",
+            .message_part = "Unknown storage engine 'PERFORMANCE_SCHEMA'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW ENGINE InnoDB MUTEX",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW ENGINE InnoDB LOGS",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW ENGINE InnoDB STATUS LIKE '%'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW FULL ENGINE InnoDB STATUS",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -743,6 +842,16 @@ static int test_independent_innodb_engine_handles(void) {
     );
     failures += expect_show_engines_result(first, "SHOW ENGINES", "first show engines");
     failures += expect_show_engines_result(second, "SHOW ENGINES", "second show engines");
+    failures += expect_show_engine_status_result(
+        first,
+        "SHOW ENGINE InnoDB STATUS",
+        "first show engine status"
+    );
+    failures += expect_show_engine_status_result(
+        second,
+        "SHOW ENGINE InnoDB STATUS",
+        "second show engine status"
+    );
     failures += expect_single_row_result(
         first,
         "SELECT @@default_storage_engine, @@global.default_storage_engine",
@@ -787,6 +896,23 @@ static int expect_show_engines_result(mylite_db *database, const char *sql, cons
             .columns = show_engines_columns,
             .values = show_engines_values,
             .column_count = show_engines_column_count,
+        },
+        context
+    );
+}
+
+static int expect_show_engine_status_result(
+    mylite_db *database,
+    const char *sql,
+    const char *context
+) {
+    return expect_single_row_result(
+        database,
+        sql,
+        (struct expected_single_row_result){
+            .columns = show_engine_status_columns,
+            .values = show_engine_status_values,
+            .column_count = show_engine_status_column_count,
         },
         context
     );

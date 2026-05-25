@@ -199,6 +199,7 @@ static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
 static int test_show_processlist_introspection_statements(void);
 static int test_show_plugins_metadata_statement(void);
+static int test_show_engine_status_statement(void);
 static int test_show_grants_statement(void);
 static int test_show_privileges_statement(void);
 static int test_show_binary_log_metadata_statements(void);
@@ -532,6 +533,7 @@ int main(void) {
     failures += test_show_routine_status_empty_introspection_statements();
     failures += test_show_processlist_introspection_statements();
     failures += test_show_plugins_metadata_statement();
+    failures += test_show_engine_status_statement();
     failures += test_show_grants_statement();
     failures += test_show_privileges_statement();
     failures += test_show_binary_log_metadata_statements();
@@ -20852,6 +20854,68 @@ static int test_show_plugins_metadata_statement(void) {
     return failures;
 }
 
+static int test_show_engine_status_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW ENGINE InnoDB STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT, "show engine status");
+    failures += expect_child_count(statement, 1U, "show engine status child count");
+    failures += expect_node(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "show engine status engine name"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "InnoDB", "show engine status engine span");
+    failures += expect_span_text(statement, "SHOW ENGINE InnoDB STATUS", "show engine status span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE innodb STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT,
+        "show lower engine status"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "innodb", "show lower engine status engine span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE `InnoDB` STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT,
+        "show quoted engine status"
+    );
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "`InnoDB`",
+        "show quoted engine status engine span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE 'InnoDB' STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT,
+        "show string engine status"
+    );
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "show string engine status engine"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_show_grants_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -26813,7 +26877,18 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SHOW PLUGINS FROM mysql;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SHOW ENGINE InnoDB STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SHOW ENGINE InnoDB MUTEX;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE InnoDB LOGS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW ENGINE InnoDB STATUS LIKE '%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW FULL ENGINE InnoDB STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

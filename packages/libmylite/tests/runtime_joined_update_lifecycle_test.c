@@ -149,6 +149,16 @@ static int test_joined_update_success_persistence_and_table_lifecycle(void) {
         "4",
         "400",
     };
+    static const char *const straight_update_values[] = {
+        "1",
+        "17",
+        "2",
+        "200",
+        "3",
+        "300",
+        "4",
+        "400",
+    };
     static const char *const right_update_values[] = {
         "9",
         "777",
@@ -331,6 +341,27 @@ static int test_joined_update_success_persistence_and_table_lifecycle(void) {
             .row_count = 4U,
             .column_count = 2U,
             .context = "unqualified unique assignment target",
+        }
+    );
+
+    failures += create_join_tables(
+        database,
+        (struct join_table_names){.left_name = "left_straight", .right_name = "right_straight"}
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE left_straight AS l STRAIGHT_JOIN right_straight AS r ON l.k = r.k "
+        "SET l.v = 17 WHERE r.w = 900",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM left_straight ORDER BY id",
+            .values = straight_update_values,
+            .row_count = 4U,
+            .column_count = 2U,
+            .context = "straight joined update reuses inner join path",
         }
     );
 

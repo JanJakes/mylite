@@ -24224,6 +24224,54 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT l.id FROM lefts l STRAIGHT_JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "straight join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "straight join kind"
+    );
+    failures += expect_child_count(from_join, 3U, "straight join child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT l.id FROM lefts l STRAIGHT_JOIN rights r;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "straight cartesian join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "straight cartesian join kind"
+    );
+    failures += expect_child_count(from_join, 2U, "straight cartesian join child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l STRAIGHT_JOIN rights r ON l.k = r.k "
+        "STRAIGHT_JOIN extras e ON r.id = e.id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    nested_join = child_at(from_join, 0U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "straight chain root");
+    failures += expect_node(nested_join, MYLITE_SQL_AST_FROM_JOIN, "straight chain nested");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "straight chain root kind"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(nested_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "straight chain nested kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT l.id FROM lefts l LEFT JOIN rights r ON l.k = r.k;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -24306,6 +24354,12 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT l.id FROM lefts l, rights r JOIN extras e ON r.id = e.id;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT id FROM t STRAIGHT_JOIN other USING (id);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -25449,6 +25503,24 @@ static int test_delete_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "DELETE l FROM lefts AS l STRAIGHT_JOIN rights AS r ON l.k = r.k "
+        "WHERE r.id IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_JOINED_DELETE_STATEMENT,
+        "straight joined delete statement"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(child_at(statement, 1U)) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "straight joined delete kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "DELETE FROM app.lefts USING app.lefts LEFT JOIN app.rights ON lefts.k = rights.k "
         "WHERE rights.id IS NULL;",
         MYLITE_SQL_PARSE_OK,
@@ -25507,6 +25579,24 @@ static int test_delete_statement(void) {
     );
     failures += expect_span_text(child_at(assignment, 0U), "l.v", "joined update assignment");
     failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "joined update where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE lefts AS l STRAIGHT_JOIN rights AS r ON l.k = r.k SET l.v = 7 "
+        "WHERE r.id IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT,
+        "straight joined update statement"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(child_at(statement, 0U)) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "straight joined update kind"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

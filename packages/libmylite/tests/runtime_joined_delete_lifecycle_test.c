@@ -170,6 +170,27 @@ static int test_joined_delete_success_persistence_and_table_lifecycle(void) {
 
     failures += create_join_tables(
         database,
+        (struct join_table_names){.left_name = "left_straight", .right_name = "right_straight"}
+    );
+    failures += expect_delete_ok(
+        database,
+        "DELETE l FROM left_straight AS l STRAIGHT_JOIN right_straight AS r "
+        "ON l.k = r.k WHERE r.v > 900",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM left_straight ORDER BY id",
+            .values = ids_2_4,
+            .row_count = 2U,
+            .column_count = 1U,
+            .context = "straight joined delete reuses inner join path",
+        }
+    );
+
+    failures += create_join_tables(
+        database,
         (struct join_table_names){.left_name = "left_d", .right_name = "right_d"}
     );
     failures += expect_delete_ok(

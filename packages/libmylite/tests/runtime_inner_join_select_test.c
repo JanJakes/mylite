@@ -362,6 +362,51 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT * FROM lefts STRAIGHT_JOIN rights ON lefts.k = rights.k "
+                   "ORDER BY rights.id",
+            .columns = star_columns,
+            .values = star_rows,
+            .column_count = sizeof(star_columns) / sizeof(star_columns[0]),
+            .row_count = 2U,
+            .context = "straight join expands left then right",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.id FROM lefts l STRAIGHT_JOIN rights r "
+                   "WHERE l.id = 1 ORDER BY r.id LIMIT 2",
+            .values = limited_cartesian_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "straight join without on cartesian product",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id FROM lefts STRAIGHT_JOIN rights "
+                   "ON lefts.name = rights.name ORDER BY rights.id",
+            .values = string_join_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "straight join string equality uses registered collation",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STRAIGHT_JOIN l.id, r.id FROM lefts l STRAIGHT_JOIN rights r "
+                   "ON l.k = r.k ORDER BY r.id",
+            .values = limited_cartesian_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "select straight join modifier with straight join operator",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT l.id AS left_id, r.id AS right_id FROM lefts AS l JOIN rights AS r "
                    "ON l.k = r.k ORDER BY right_id DESC",
             .values = alias_order_rows,
@@ -433,6 +478,18 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 3U,
             .row_count = 2U,
             .context = "three-source inner join chain",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id, extras.id "
+                   "FROM lefts STRAIGHT_JOIN rights ON lefts.k = rights.k "
+                   "STRAIGHT_JOIN extras ON rights.w = extras.right_w ORDER BY extras.id",
+            .values = three_join_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "three-source straight join chain",
         }
     );
     failures += expect_query_values(

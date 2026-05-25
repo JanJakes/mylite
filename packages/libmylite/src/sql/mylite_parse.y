@@ -3263,6 +3263,9 @@ join_operator(A) ::= INNER JOIN. {
 join_operator(A) ::= CROSS JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_INNER;
 }
+join_operator(A) ::= STRAIGHT_JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
 join_operator(A) ::= LEFT JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER;
 }
@@ -3283,6 +3286,9 @@ inner_join_operator(A) ::= INNER JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_INNER;
 }
 inner_join_operator(A) ::= CROSS JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+inner_join_operator(A) ::= STRAIGHT_JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_INNER;
 }
 

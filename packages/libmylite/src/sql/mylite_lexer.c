@@ -1041,6 +1041,8 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"TLS", 0U},
         {"TO", MYLITE_SQL_KEYWORD_RESERVED},
         {"TO_BASE64", 0U},
+        {"TO_DAYS", 0U},
+        {"TO_SECONDS", 0U},
         {"TRAILING", MYLITE_SQL_KEYWORD_RESERVED},
         {"TRANSACTION", 0U},
         {"TRIGGER", MYLITE_SQL_KEYWORD_RESERVED},

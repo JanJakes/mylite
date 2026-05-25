@@ -900,6 +900,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "time_to_sec_function";
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
         return "time_to_sec_argument_count_error";
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+        return "to_days_function";
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+        return "to_days_argument_count_error";
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
+        return "to_seconds_function";
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
+        return "to_seconds_argument_count_error";
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
         return "sec_to_time_function";
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:

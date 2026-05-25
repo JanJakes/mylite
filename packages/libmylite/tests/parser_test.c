@@ -5307,6 +5307,36 @@ static int test_temporal_extract_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT TO_DAYS(d), TO_SECONDS(dt), TO_DAYS ('2008-01-02') AS day_no, "
+        "TO_SECONDS ('2008-01-02 13:29:17') AS seconds_no FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_TO_DAYS_FUNCTION,
+        "to_days extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_TO_SECONDS_FUNCTION,
+        "to_seconds extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 2U), 0U),
+        MYLITE_SQL_AST_TO_DAYS_FUNCTION,
+        "spaced to_days extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_TO_SECONDS_FUNCTION,
+        "spaced to_seconds extract function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "DO DATE(NULL), DAYOFWEEK('2008-01-02'), DAYOFYEAR('2008-01-02'), "
         "LAST_DAY('2008-01-02'), WEEK('2008-02-20'), WEEKDAY('2008-02-20'), "
         "WEEKOFYEAR('2008-02-20'), YEARWEEK('2008-02-20', 3), QUARTER('2008-04-01'), "
@@ -5496,12 +5526,48 @@ static int test_temporal_extract_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT TO_DAYS();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR,
+        "to_days zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TO_DAYS('2008-01-02', 'x');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR,
+        "to_days extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TO_SECONDS();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR,
+        "to_seconds zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TO_SECONDS('2008-01-02', 'x');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR,
+        "to_seconds extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "CREATE TABLE temporal_extract_keywords(day INT, dayofmonth INT, dayofweek INT, "
         "dayofyear INT, dayname INT, last_day INT, hour INT, minute INT, month INT, "
         "monthname INT, second INT, year INT, date DATE, time TIME, extract INT, "
         "microsecond INT, quarter INT, week INT, "
-        "weekday INT, weekofyear INT, yearweek INT);",
+        "weekday INT, weekofyear INT, yearweek INT, to_days INT, to_seconds INT);",
         MYLITE_SQL_PARSE_OK,
         &result
     );

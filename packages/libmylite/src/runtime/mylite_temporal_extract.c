@@ -46,6 +46,7 @@ enum {
     time_minute_second_digit_count = 2,
     time_to_sec_seconds_per_minute = 60,
     time_to_sec_seconds_per_hour = 3600,
+    seconds_per_day = 86400,
     sec_to_time_second_abs_max = 3020399,
     leap_quadrennial_year_cycle = 4,
     leap_century_year_cycle = 100,
@@ -130,6 +131,22 @@ static int extract_calendar_date_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 );
+static int extract_to_days_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
+static int extract_to_seconds_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
+static bool parse_to_days_date_value(
+    const struct temporal_extract_request *request,
+    struct temporal_date_parts *out_date
+);
+static bool parse_to_seconds_datetime_value(
+    const struct temporal_extract_request *request,
+    struct temporal_datetime_parts *out_datetime
+);
 static int parse_calendar_date_value(
     const struct temporal_extract_request *request,
     struct temporal_date_parts *out_date
@@ -171,6 +188,7 @@ static int format_time_result(
     char **out_text
 );
 static int format_integer_result(struct mylite_db *database, int value, char **out_text);
+static int format_integer64_result(struct mylite_db *database, int64_t value, char **out_text);
 static int signed_time_component(const struct temporal_time_parts *time, int component);
 static int signed_time_composite(const struct temporal_time_parts *time, int value);
 static int append_sec_to_time_truncation_warning(struct mylite_db *database, int64_t seconds);
@@ -254,6 +272,10 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "time";
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
         return "time_to_sec";
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+        return "to_days";
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
+        return "to_seconds";
     case MYLITE_TEMPORAL_EXTRACT_QUARTER:
         return "quarter";
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
@@ -348,6 +370,8 @@ bool mylite_temporal_extract_kind_from_name(
         {"hour_second", MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND},
         {"minute_second", MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND},
         {"time_to_sec", MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC},
+        {"to_days", MYLITE_TEMPORAL_EXTRACT_TO_DAYS},
+        {"to_seconds", MYLITE_TEMPORAL_EXTRACT_TO_SECONDS},
     };
 
     if (name == NULL || out_kind == NULL) {
@@ -375,6 +399,8 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_YEARWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
         return true;
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
@@ -409,6 +435,8 @@ bool mylite_temporal_extract_kind_is_calendar_name(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
     case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
@@ -448,6 +476,8 @@ bool mylite_temporal_extract_kind_is_week_temporal(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
     case MYLITE_TEMPORAL_EXTRACT_QUARTER:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
@@ -492,6 +522,8 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_WEEKDAY:
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_YEARWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
         return true;
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
@@ -544,6 +576,8 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_YEARWEEK:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
         return false;
     }
     return false;
@@ -915,6 +949,12 @@ static int extract_date_part_value(
     struct temporal_datetime_parts datetime = {0};
     int rc = MYLITE_OK;
 
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TO_DAYS) {
+        return extract_to_days_value(database, request);
+    }
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TO_SECONDS) {
+        return extract_to_seconds_value(database, request);
+    }
     if (mylite_temporal_extract_kind_is_calendar_date(request->extract_kind)) {
         return extract_calendar_date_value(database, request);
     }
@@ -998,6 +1038,8 @@ static int extract_date_part_value(
     case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
         break;
     }
     return MYLITE_ERROR;
@@ -1088,9 +1130,106 @@ static int extract_calendar_date_value(
     case MYLITE_TEMPORAL_EXTRACT_HOUR_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
         break;
     }
     return MYLITE_ERROR;
+}
+
+static int extract_to_days_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    struct temporal_date_parts date = {0};
+
+    if (!parse_to_days_date_value(request, &date) || !calendar_complete_date_is_valid(&date)) {
+        return invalid_calendar_date_value(database, request);
+    }
+    return format_integer64_result(database, calendar_day_number(&date), request->out_text);
+}
+
+static int extract_to_seconds_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    struct temporal_datetime_parts datetime = {0};
+    int64_t seconds = 0;
+
+    if (!parse_to_seconds_datetime_value(request, &datetime) ||
+        !calendar_complete_date_is_valid(&datetime.date)) {
+        return invalid_calendar_date_value(database, request);
+    }
+
+    seconds = (calendar_day_number(&datetime.date) * seconds_per_day) +
+              ((int64_t)datetime.time.hour * time_to_sec_seconds_per_hour) +
+              ((int64_t)datetime.time.minute * time_to_sec_seconds_per_minute) +
+              datetime.time.second;
+    return format_integer64_result(database, seconds, request->out_text);
+}
+
+static bool parse_to_days_date_value(
+    const struct temporal_extract_request *request,
+    struct temporal_date_parts *out_date
+) {
+    struct temporal_datetime_parts datetime = {0};
+
+    if (request == NULL || out_date == NULL) {
+        return false;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
+        request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
+        if (parse_calendar_datetime_text(request->value, request->value_length, &datetime)) {
+            *out_date = datetime.date;
+            return true;
+        }
+        return false;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATE) {
+        return parse_calendar_date_text(request->value, request->value_length, out_date);
+    }
+    if (parse_calendar_date_text(request->value, request->value_length, out_date)) {
+        return true;
+    }
+    if (parse_calendar_datetime_text(request->value, request->value_length, &datetime)) {
+        *out_date = datetime.date;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_to_seconds_datetime_value(
+    const struct temporal_extract_request *request,
+    struct temporal_datetime_parts *out_datetime
+) {
+    struct temporal_datetime_parts datetime = {0};
+    struct temporal_date_parts date = {0};
+
+    if (request == NULL || out_datetime == NULL) {
+        return false;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
+        request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
+        return parse_calendar_datetime_text(request->value, request->value_length, out_datetime);
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATE) {
+        if (parse_calendar_date_text(request->value, request->value_length, &date)) {
+            out_datetime->date = date;
+            out_datetime->time = (struct temporal_time_parts){.negative = false};
+            return true;
+        }
+        return false;
+    }
+    if (parse_calendar_date_text(request->value, request->value_length, &date)) {
+        out_datetime->date = date;
+        out_datetime->time = (struct temporal_time_parts){.negative = false};
+        return true;
+    }
+    if (parse_calendar_datetime_text(request->value, request->value_length, &datetime)) {
+        *out_datetime = datetime;
+        return true;
+    }
+    return false;
 }
 
 static int parse_calendar_date_value(
@@ -1339,6 +1478,8 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_WEEKOFYEAR:
     case MYLITE_TEMPORAL_EXTRACT_YEARWEEK:
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
+    case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
+    case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
         break;
     }
     return MYLITE_ERROR;
@@ -1550,6 +1691,31 @@ static int format_time_result(
 static int format_integer_result(struct mylite_db *database, int value, char **out_text) {
     char buffer[integer_result_buffer_capacity];
     int written = snprintf(buffer, sizeof(buffer), "%d", value);
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return MYLITE_ERROR;
+    }
+    *out_text = (char *)malloc((size_t)written + 1U);
+    if (*out_text == NULL) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory"
+        );
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_text, buffer, (size_t)written + 1U);
+    return MYLITE_OK;
+}
+
+static int format_integer64_result(struct mylite_db *database, int64_t value, char **out_text) {
+    char buffer[integer_result_buffer_capacity];
+    int written = snprintf(buffer, sizeof(buffer), "%" PRId64, value);
 
     if (out_text == NULL) {
         return MYLITE_MISUSE;

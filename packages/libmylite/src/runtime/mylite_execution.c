@@ -29208,6 +29208,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
@@ -51695,6 +51699,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
@@ -90469,6 +90477,10 @@ static const char *argument_count_error_node_function_name(
         return "UNIX_TIMESTAMP";
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
         return "TIME_TO_SEC";
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+        return "TO_DAYS";
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
+        return "TO_SECONDS";
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
         return "SEC_TO_TIME";
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
@@ -90643,6 +90655,12 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIME_TO_SEC");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "TO_DAYS");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "TO_SECONDS");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
         return current_date_scalar_value(database, out_cell);
@@ -91027,6 +91045,8 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_MINUTE_FUNCTION:
     case MYLITE_SQL_AST_SECOND_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
         return temporal_extract_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "LOWER");
@@ -96838,6 +96858,10 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
         return MYLITE_TEMPORAL_EXTRACT_TIME;
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC;
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_TO_DAYS;
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_TO_SECONDS;
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_QUARTER;
     case MYLITE_SQL_AST_WEEK_FUNCTION:
@@ -96881,6 +96905,8 @@ static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
     case MYLITE_SQL_AST_QUARTER_FUNCTION:
     case MYLITE_SQL_AST_WEEK_FUNCTION:
     case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
@@ -116338,6 +116364,10 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_DAYNAME_FUNCTION:
     case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
@@ -136577,6 +136607,10 @@ static const char *calendar_date_argument_count_error_function_name(
         return "DAYOFYEAR";
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         return "LAST_DAY";
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+        return "TO_DAYS";
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
+        return "TO_SECONDS";
     case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
         return "MONTHNAME";
     case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
@@ -150011,6 +150045,8 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR ||

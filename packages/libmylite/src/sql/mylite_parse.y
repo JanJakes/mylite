@@ -4418,6 +4418,14 @@ expression(A) ::= TIME_TO_SEC(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION, B, R);
 }
+expression(A) ::= TO_DAYS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TO_DAYS_FUNCTION, B, R);
+}
+expression(A) ::= TO_SECONDS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TO_SECONDS_FUNCTION, B, R);
+}
 expression(A) ::= SEC_TO_TIME(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION, B, R);
@@ -5877,6 +5885,26 @@ expression(A) ::=
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR, C, R);
 }
+expression(A) ::= TO_DAYS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    TO_DAYS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= TO_SECONDS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    TO_SECONDS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR, C, R);
+}
 expression(A) ::= SEC_TO_TIME(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -6964,6 +6992,12 @@ identifier(A) ::= FROM_UNIXTIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TIME_TO_SEC(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TO_DAYS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TO_SECONDS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SEC_TO_TIME(T). {

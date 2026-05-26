@@ -28237,8 +28237,43 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("UPDATE LOW_PRIORITY t SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("UPDATE LOW_PRIORITY t SET id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER),
+        MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER,
+        "update low priority modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE IGNORE t SET id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER),
+        MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER,
+        "update ignore modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE LOW_PRIORITY IGNORE t SET id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER),
+        MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER,
+        "update low priority ignore low priority modifier"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER),
+        MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER,
+        "update low priority ignore modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE IGNORE LOW_PRIORITY t SET id = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t AS x SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

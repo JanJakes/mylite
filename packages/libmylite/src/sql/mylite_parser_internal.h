@@ -19,6 +19,8 @@ struct mylite_sql_update_statement_parts {
     struct mylite_sql_ast_node *where_clause;
     struct mylite_sql_ast_node *order_clause;
     struct mylite_sql_ast_node *limit_clause;
+    struct mylite_sql_ast_node *low_priority_modifier;
+    struct mylite_sql_ast_node *ignore_modifier;
 };
 
 struct mylite_sql_integer_type_name_tokens {
@@ -1167,6 +1169,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_delayed_modifier(
     struct mylite_sql_token token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_ignore_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_low_priority_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_ignore_modifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token
 );

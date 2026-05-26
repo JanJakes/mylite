@@ -1630,6 +1630,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_delayed_modifier";
     case MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER:
         return "insert_ignore_modifier";
+    case MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER:
+        return "update_low_priority_modifier";
+    case MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER:
+        return "update_ignore_modifier";
     case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
         return "insert_duplicate_update_clause";
     case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST:

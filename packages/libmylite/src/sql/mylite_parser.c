@@ -4002,6 +4002,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_ignore_modifier(
     return make_node(state, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER, span_from_token(&token));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_low_priority_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER, span_from_token(&token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_ignore_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER, span_from_token(&token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_replace_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token replace_token,
@@ -4391,6 +4405,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     if (parts.limit_clause != NULL) {
         span = span_join(span, parts.limit_clause->span);
     }
+    if (parts.low_priority_modifier != NULL) {
+        span = span_join(span, parts.low_priority_modifier->span);
+    }
+    if (parts.ignore_modifier != NULL) {
+        span = span_join(span, parts.ignore_modifier->span);
+    }
 
     statement = make_node(state, MYLITE_SQL_AST_UPDATE_STATEMENT, span);
     if (statement == NULL) {
@@ -4402,6 +4422,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     mylite_sql_ast_node_append_child(statement, parts.where_clause);
     mylite_sql_ast_node_append_child(statement, parts.order_clause);
     mylite_sql_ast_node_append_child(statement, parts.limit_clause);
+    mylite_sql_ast_node_append_child(statement, parts.low_priority_modifier);
+    mylite_sql_ast_node_append_child(statement, parts.ignore_modifier);
     return statement;
 }
 

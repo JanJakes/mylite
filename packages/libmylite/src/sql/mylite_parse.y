@@ -2467,6 +2467,54 @@ update_statement(A) ::=
             .limit_clause = L,
         });
 }
+update_statement(A) ::=
+    UPDATE(U) LOW_PRIORITY(LP) update_table_source(T) SET update_assignment_list(S)
+    where_clause_opt(W) order_clause_opt(O) update_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        U,
+        (struct mylite_sql_update_statement_parts){
+            .target_table = T,
+            .assignment_list = S,
+            .where_clause = W,
+            .order_clause = O,
+            .limit_clause = L,
+            .low_priority_modifier =
+                mylite_sql_parser_make_update_low_priority_modifier(state, LP),
+        });
+}
+update_statement(A) ::=
+    UPDATE(U) IGNORE(I) update_table_source(T) SET update_assignment_list(S)
+    where_clause_opt(W) order_clause_opt(O) update_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        U,
+        (struct mylite_sql_update_statement_parts){
+            .target_table = T,
+            .assignment_list = S,
+            .where_clause = W,
+            .order_clause = O,
+            .limit_clause = L,
+            .ignore_modifier = mylite_sql_parser_make_update_ignore_modifier(state, I),
+        });
+}
+update_statement(A) ::=
+    UPDATE(U) LOW_PRIORITY(LP) IGNORE(I) update_table_source(T) SET update_assignment_list(S)
+    where_clause_opt(W) order_clause_opt(O) update_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        U,
+        (struct mylite_sql_update_statement_parts){
+            .target_table = T,
+            .assignment_list = S,
+            .where_clause = W,
+            .order_clause = O,
+            .limit_clause = L,
+            .low_priority_modifier =
+                mylite_sql_parser_make_update_low_priority_modifier(state, LP),
+            .ignore_modifier = mylite_sql_parser_make_update_ignore_modifier(state, I),
+        });
+}
 joined_update_statement(A) ::=
     UPDATE(U) joined_update_table_source(LT) join_operator(JO) joined_update_table_source(RT)
     SET update_assignment_list(S) where_clause_opt(W) order_clause_opt(O)

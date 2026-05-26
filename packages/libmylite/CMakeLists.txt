@@ -3306,6 +3306,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_update_index_hints_noop_test)
 
+  add_executable(mylite_runtime_update_ignore_modifier_test
+    tests/runtime_update_ignore_modifier_test.c
+  )
+  target_link_libraries(mylite_runtime_update_ignore_modifier_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_update_ignore_modifier_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_update_ignore_modifier_test)
+
   add_executable(mylite_runtime_update_scalar_subquery_assignment_test
     tests/runtime_update_scalar_subquery_assignment_test.c
   )
@@ -5062,6 +5073,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.update_index_hints_noop
     COMMAND mylite_runtime_update_index_hints_noop_test
+  )
+  add_test(
+    NAME libmylite.runtime.update_ignore_modifier
+    COMMAND mylite_runtime_update_ignore_modifier_test
   )
   add_test(
     NAME libmylite.runtime.update_scalar_subquery_assignment

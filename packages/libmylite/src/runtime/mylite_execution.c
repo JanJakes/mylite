@@ -3492,7 +3492,15 @@ struct planned_update {
     size_t primary_key_column_index;
     int64_t primary_key_column_id;
     bool is_joined;
+    bool low_priority;
+    bool ignore_errors;
     bool generated_default_noop;
+};
+
+struct update_optional_clauses {
+    const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *order_clause;
+    const struct mylite_sql_ast_node *limit_clause;
 };
 
 struct update_unique_key_conflict_bind_request {
@@ -18317,6 +18325,12 @@ static int plan_single_table_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 );
+static int collect_single_table_update_optional_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *optional_clause,
+    struct planned_update *plan,
+    struct update_optional_clauses *clauses
+);
 static const struct mylite_sql_ast_node *single_table_update_target_name_node(
     const struct mylite_sql_ast_node *target
 );
@@ -18451,9 +18465,22 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
 );
 static int append_update_assignment_adjustment_warning(
     struct mylite_db *database,
+    const struct planned_update *plan,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
+);
+static int append_update_scalar_subquery_adjustment_warning(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static int append_update_default_function_adjustment_warning(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors
 );
 static int append_update_default_assignment_adjustment_warning(
     struct mylite_db *database,
@@ -18468,24 +18495,28 @@ static int append_update_string_truncation_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 );
 static int append_update_integer_string_adjustment_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 );
 static int append_update_decimal_string_adjustment_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 );
 static int append_update_approximate_string_adjustment_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 );
 static int prepare_executable_update_plan(
@@ -23306,6 +23337,10 @@ static int validate_update_multiple_auto_update_columns(
 );
 static void set_update_multiple_assignment_unsupported_error(struct mylite_db *database);
 static void set_update_duplicate_assignment_unsupported_error(struct mylite_db *database);
+static int validate_update_ignore_assignment_support(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
 static int validate_update_default_function_sources(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -23332,18 +23367,24 @@ static int convert_update_value_for_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 );
 static int convert_update_constant_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 );
 static int convert_update_unix_timestamp_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 );
 static int validate_update_constant_arithmetic_assignment_target(
@@ -23354,6 +23395,32 @@ static int convert_update_column_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_update_date_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_update_datetime_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_update_timestamp_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 );
 static int materialize_update_scalar_subquery_value(
@@ -23427,6 +23494,8 @@ static int convert_update_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 );
 static int plan_update_limit(
@@ -30043,6 +30112,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
+    case MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER:
+    case MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER:
         break;
     }
 
@@ -52960,6 +53031,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
+    case MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER:
+    case MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER:
         break;
     }
 
@@ -77997,9 +78070,7 @@ static int plan_single_table_update(
 ) {
     const struct mylite_sql_ast_node *target = child_at(statement, 0U);
     const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *where_clause = NULL;
-    const struct mylite_sql_ast_node *order_clause = NULL;
-    const struct mylite_sql_ast_node *limit_clause = NULL;
+    struct update_optional_clauses clauses = {0};
     const struct mylite_sql_ast_node *optional_clause = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct primary_key_info primary_key = primary_key_info_init();
@@ -78009,14 +78080,13 @@ static int plan_single_table_update(
     *out_plan = (struct planned_update){0};
     optional_clause = child_at(statement, 2U);
     while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            where_clause = optional_clause;
-        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-            order_clause = optional_clause;
-        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
-            limit_clause = optional_clause;
-        } else {
-            set_unsupported_error(database, "UPDATE supports only SET, WHERE, ORDER BY, and LIMIT");
+        rc = collect_single_table_update_optional_clause(
+            database,
+            optional_clause,
+            out_plan,
+            &clauses
+        );
+        if (rc != MYLITE_OK) {
             return MYLITE_ERROR;
         }
         optional_clause = optional_clause->next_sibling;
@@ -78075,6 +78145,9 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = validate_update_ignore_assignment_support(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_update_default_function_sources(
             database,
             out_plan,
@@ -78085,7 +78158,7 @@ static int plan_single_table_update(
     if (rc == MYLITE_OK) {
         rc = plan_select_predicate(
             database,
-            where_clause,
+            clauses.where_clause,
             NULL,
             table_columns,
             table_column_count,
@@ -78095,7 +78168,7 @@ static int plan_single_table_update(
     if (rc == MYLITE_OK) {
         rc = plan_select_order(
             database,
-            order_clause,
+            clauses.order_clause,
             NULL,
             NULL,
             table_columns,
@@ -78106,7 +78179,7 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_update_limit(database, limit_clause, &out_plan->limit);
+        rc = plan_update_limit(database, clauses.limit_clause, &out_plan->limit);
     }
     if (rc == MYLITE_OK && out_plan->limit.has_limit && out_plan->limit.row_count > 0) {
         rc = choose_sqlite_rowid_alias(
@@ -78131,6 +78204,42 @@ static int plan_single_table_update(
     }
 
     return rc;
+}
+
+static int collect_single_table_update_optional_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *optional_clause,
+    struct planned_update *plan,
+    struct update_optional_clauses *clauses
+) {
+    if (optional_clause == NULL || plan == NULL || clauses == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    switch (optional_clause->kind) {
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+        clauses->where_clause = optional_clause;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+        clauses->order_clause = optional_clause;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
+        clauses->limit_clause = optional_clause;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UPDATE_LOW_PRIORITY_MODIFIER:
+        plan->low_priority = true;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UPDATE_IGNORE_MODIFIER:
+        plan->ignore_errors = true;
+        return MYLITE_OK;
+    default:
+        set_unsupported_error(
+            database,
+            "UPDATE supports only modifiers, SET, WHERE, ORDER BY, and LIMIT"
+        );
+        return MYLITE_ERROR;
+    }
 }
 
 static const struct mylite_sql_ast_node *single_table_update_target_name_node(
@@ -78762,16 +78871,20 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
                 }
                 rc = append_update_assignment_adjustment_warning(
                     database,
+                    plan,
                     plan->assignments[index].value_node,
                     &plan->assignments[index].column,
+                    plan->ignore_errors,
                     (size_t)row_index + 1U
                 );
             }
         } else {
             rc = append_update_assignment_adjustment_warning(
                 database,
+                plan,
                 plan->assignment_value_node,
                 &plan->assignment_column,
+                plan->ignore_errors,
                 (size_t)row_index + 1U
             );
         }
@@ -78782,8 +78895,10 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
 
 static int append_update_assignment_adjustment_warning(
     struct mylite_db *database,
+    const struct planned_update *plan,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 ) {
     bool is_constant_arithmetic = false;
@@ -78793,6 +78908,18 @@ static int append_update_assignment_adjustment_warning(
     if (value_node == NULL || column == NULL) {
         return MYLITE_OK;
     }
+    if (value_node->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        return append_update_scalar_subquery_adjustment_warning(database, plan);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        return append_update_default_function_adjustment_warning(
+            database,
+            plan,
+            value_node,
+            column,
+            ignore_errors
+        );
+    }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
         if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
@@ -78800,6 +78927,7 @@ static int append_update_assignment_adjustment_warning(
                 database,
                 value_node,
                 column,
+                ignore_errors,
                 row_number
             );
         }
@@ -78808,6 +78936,7 @@ static int append_update_assignment_adjustment_warning(
                 database,
                 value_node,
                 column,
+                ignore_errors,
                 row_number
             );
         }
@@ -78816,12 +78945,21 @@ static int append_update_assignment_adjustment_warning(
                 database,
                 value_node,
                 column,
+                ignore_errors,
                 row_number
             );
         }
-        return append_update_string_truncation_diagnostic(database, value_node, column, row_number);
+        if (column_descriptor_is_string_family(column)) {
+            return append_update_string_truncation_diagnostic(
+                database,
+                value_node,
+                column,
+                ignore_errors,
+                row_number
+            );
+        }
     }
-    if (session_sql_mode_is_strict(database)) {
+    if (session_sql_mode_is_strict(database) && !ignore_errors) {
         return MYLITE_OK;
     }
     rc = update_value_is_constant_arithmetic_expression(
@@ -78843,10 +78981,69 @@ static int append_update_assignment_adjustment_warning(
         return MYLITE_OK;
     }
     if (value_node->kind != MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
-        return MYLITE_OK;
+        struct planned_value value = {.is_null = false};
+
+        rc = convert_update_value_for_column(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            &value
+        );
+        planned_value_deinit(&value);
+        return rc;
     }
 
     return append_update_default_assignment_adjustment_warning(database, column);
+}
+
+static int append_update_scalar_subquery_adjustment_warning(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    struct planned_value value = {.is_null = false};
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = materialize_update_scalar_subquery_value(database, plan, &value);
+    planned_value_deinit(&value);
+    return rc;
+}
+
+static int append_update_default_function_adjustment_warning(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors
+) {
+    struct select_source_context source_context = {0};
+    struct planned_value value = {.is_null = false};
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    source_context.source = &plan->target;
+    rc = convert_default_function_value_for_target(
+        database,
+        value_node,
+        &source_context,
+        plan->columns,
+        plan->column_count,
+        column,
+        ignore_errors,
+        &value
+    );
+    planned_value_deinit(&value);
+    return rc;
 }
 
 static int append_update_default_assignment_adjustment_warning(
@@ -78891,6 +79088,7 @@ static int append_update_integer_string_adjustment_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 ) {
     char *text = NULL;
@@ -78901,7 +79099,7 @@ static int append_update_integer_string_adjustment_diagnostic(
     enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
     int rc = MYLITE_OK;
 
-    if (session_sql_mode_is_strict(database)) {
+    if (session_sql_mode_is_strict(database) && !ignore_errors) {
         return MYLITE_OK;
     }
 
@@ -78945,6 +79143,7 @@ static int append_update_string_truncation_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 ) {
     char *text = NULL;
@@ -78969,7 +79168,8 @@ static int append_update_string_truncation_diagnostic(
             .text_length = text_length,
             .row_number = row_number,
         };
-        bool allow_nonspace_truncation = dml_allows_string_truncation_adjustment(database, false);
+        bool allow_nonspace_truncation =
+            dml_allows_string_truncation_adjustment(database, ignore_errors);
 
         if (column_descriptor_is_char(column)) {
             rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
@@ -79605,6 +79805,7 @@ static int append_update_decimal_string_adjustment_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 ) {
     struct decimal_type_info info = {0};
@@ -79620,7 +79821,7 @@ static int append_update_decimal_string_adjustment_diagnostic(
     };
     int rc = MYLITE_OK;
 
-    if (session_sql_mode_is_strict(database)) {
+    if (session_sql_mode_is_strict(database) && !ignore_errors) {
         return MYLITE_OK;
     }
     rc = decimal_type_info_for_logical_type(column->logical_type, &info);
@@ -79633,7 +79834,7 @@ static int append_update_decimal_string_adjustment_diagnostic(
         value_node,
         column,
         row_number,
-        false,
+        ignore_errors,
         &info,
         &value
     );
@@ -79645,6 +79846,7 @@ static int append_update_approximate_string_adjustment_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
     size_t row_number
 ) {
     struct approximate_type_info info = {
@@ -79663,7 +79865,7 @@ static int append_update_approximate_string_adjustment_diagnostic(
     };
     int rc = MYLITE_OK;
 
-    if (session_sql_mode_is_strict(database)) {
+    if (session_sql_mode_is_strict(database) && !ignore_errors) {
         return MYLITE_OK;
     }
     rc = approximate_type_info_for_logical_type(column->logical_type, &info);
@@ -79676,7 +79878,7 @@ static int append_update_approximate_string_adjustment_diagnostic(
         value_node,
         column,
         row_number,
-        false,
+        ignore_errors,
         &info,
         &value
     );
@@ -79741,7 +79943,7 @@ static int prepare_update_multiple_assignments(
                 plan->columns,
                 plan->column_count,
                 &plan->assignments[index].column,
-                false,
+                plan->ignore_errors,
                 &executable_plan->assignments[index].value
             );
         } else {
@@ -79749,6 +79951,8 @@ static int prepare_update_multiple_assignments(
                 database,
                 value_node,
                 &plan->assignments[index].column,
+                1U,
+                plan->ignore_errors,
                 &executable_plan->assignments[index].value
             );
         }
@@ -160020,6 +160224,43 @@ static bool update_column_id_is_keyed(const struct planned_update *plan, int64_t
     return false;
 }
 
+static int validate_update_ignore_assignment_support(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    if (plan == NULL || !plan->ignore_errors || plan->generated_default_noop) {
+        return MYLITE_OK;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            const struct planned_update_assignment *assignment = &plan->assignments[index];
+
+            if (planned_update_assignment_is_noop(assignment)) {
+                continue;
+            }
+            if (column_descriptor_is_auto_increment(&assignment->column) ||
+                update_column_id_is_keyed(plan, assignment->column.column_id)) {
+                set_unsupported_error(
+                    database,
+                    "UPDATE IGNORE does not yet support key assignment conflict demotion"
+                );
+                return MYLITE_ERROR;
+            }
+        }
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_auto_increment(&plan->assignment_column) ||
+        update_assignment_column_is_keyed(plan)) {
+        set_unsupported_error(
+            database,
+            "UPDATE IGNORE does not yet support key assignment conflict demotion"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static bool update_assignment_value_is_multi_constant_supported(
     const struct mylite_sql_ast_node *value_node
 ) {
@@ -160290,22 +160531,31 @@ static int convert_update_value(
             plan->columns,
             plan->column_count,
             column,
-            false,
+            plan->ignore_errors,
             out_value
         );
     }
 
-    return convert_update_value_for_column(database, value_node, column, out_value);
+    return convert_update_value_for_column(
+        database,
+        value_node,
+        column,
+        1U,
+        plan->ignore_errors,
+        out_value
+    );
 }
 
 static int convert_update_value_for_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     bool handled = false;
-    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
+    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, ignore_errors);
     bool is_constant_arithmetic = false;
     int rc = MYLITE_OK;
 
@@ -160344,6 +160594,8 @@ static int convert_update_value_for_column(
             database,
             value_node,
             column,
+            row_number,
+            ignore_errors,
             out_value
         );
     }
@@ -160356,16 +160608,32 @@ static int convert_update_value_for_column(
         return rc;
     }
     if (is_constant_arithmetic) {
-        return convert_update_constant_arithmetic_value(database, value_node, column, out_value);
+        return convert_update_constant_arithmetic_value(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
 
-    return convert_update_column_value(database, value_node, column, out_value);
+    return convert_update_column_value(
+        database,
+        value_node,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
 }
 
 static int convert_update_constant_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
@@ -160373,7 +160641,7 @@ static int convert_update_constant_arithmetic_value(
     bool is_negative = false;
     uint64_t magnitude = 0U;
     bool is_constant_arithmetic = false;
-    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
+    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, ignore_errors);
     int rc = MYLITE_OK;
 
     rc = update_value_is_constant_arithmetic_expression(
@@ -160436,12 +160704,13 @@ static int convert_update_constant_arithmetic_value(
     }
 
     out_value->is_null = false;
-    return convert_integer_for_column(
+    return convert_integer_for_column_with_policy(
         database,
         magnitude,
         is_negative,
         column,
-        1U,
+        row_number,
+        ignore_errors,
         &out_value->integer
     );
 }
@@ -160450,6 +160719,8 @@ static int convert_update_unix_timestamp_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     static const struct unix_timestamp_arithmetic_messages messages = {
@@ -160461,7 +160732,7 @@ static int convert_update_unix_timestamp_arithmetic_value(
     };
     static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
     struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
-    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
+    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, ignore_errors);
     bool is_negative = false;
     uint64_t magnitude = 0U;
     int rc = validate_update_unix_timestamp_arithmetic_assignment_target(database, column);
@@ -160482,8 +160753,8 @@ static int convert_update_unix_timestamp_arithmetic_value(
             database,
             value.integer,
             column,
-            1U,
-            dml_allows_string_truncation_adjustment(database, false),
+            row_number,
+            dml_allows_string_truncation_adjustment(database, ignore_errors),
             out_value
         );
     }
@@ -160500,12 +160771,13 @@ static int convert_update_unix_timestamp_arithmetic_value(
     }
 
     out_value->is_null = false;
-    return convert_integer_for_column(
+    return convert_integer_for_column_with_policy(
         database,
         magnitude,
         is_negative,
         column,
-        1U,
+        row_number,
+        ignore_errors,
         &out_value->integer
     );
 }
@@ -160595,6 +160867,8 @@ static int convert_update_column_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     if (column_descriptor_is_char(column)) {
@@ -160602,8 +160876,8 @@ static int convert_update_column_value(
             database,
             value_node,
             column,
-            1U,
-            dml_allows_string_truncation_adjustment(database, false),
+            row_number,
+            dml_allows_string_truncation_adjustment(database, ignore_errors),
             out_value
         );
     }
@@ -160612,8 +160886,8 @@ static int convert_update_column_value(
             database,
             value_node,
             column,
-            1U,
-            dml_allows_string_truncation_adjustment(database, false),
+            row_number,
+            dml_allows_string_truncation_adjustment(database, ignore_errors),
             out_value
         );
     }
@@ -160622,8 +160896,8 @@ static int convert_update_column_value(
             database,
             value_node,
             column,
-            1U,
-            dml_allows_string_truncation_adjustment(database, false),
+            row_number,
+            dml_allows_string_truncation_adjustment(database, ignore_errors),
             false,
             out_value
         );
@@ -160638,38 +160912,393 @@ static int convert_update_column_value(
         return convert_set_literal(database, value_node, column, 1U, out_value);
     }
     if (column_descriptor_is_binary_string_family(column)) {
-        return convert_binary_string_literal(database, value_node, column, 1U, false, out_value);
+        return convert_binary_string_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_bit(column)) {
-        return convert_bit_literal(database, value_node, column, 1U, false, out_value);
+        return convert_bit_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_year(column)) {
-        return convert_year_literal(database, value_node, column, 1U, false, out_value);
+        return convert_year_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_decimal(column)) {
-        return convert_decimal_literal(database, value_node, column, 1U, false, out_value);
+        return convert_decimal_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_approximate(column)) {
-        return convert_approximate_literal(database, value_node, column, 1U, false, out_value);
+        return convert_approximate_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_date(column)) {
-        return convert_date_literal(database, value_node, column, 1U, false, out_value);
+        return convert_update_date_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_time(column)) {
-        return convert_time_literal(database, value_node, column, 1U, false, out_value);
+        return convert_time_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_datetime(column)) {
-        return convert_datetime_literal(database, value_node, column, 1U, false, out_value);
+        return convert_update_datetime_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_timestamp(column)) {
-        return convert_timestamp_literal(database, value_node, column, 1U, false, out_value);
+        return convert_update_timestamp_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
     if (column_descriptor_is_spatial(column)) {
         set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
         return MYLITE_ERROR;
     }
 
-    return convert_update_integer_literal(database, value_node, column, out_value);
+    return convert_update_integer_literal(
+        database,
+        value_node,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_update_date_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char normalized[date_text_length + 1U];
+    char *copy = NULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    struct temporal_predicate_normalization_input normalization = {0};
+    enum temporal_storage_truncation truncation = TEMPORAL_STORAGE_TRUNCATION_NONE;
+    int rc = MYLITE_OK;
+
+    if (!ignore_errors || value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_date_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "DATE values support only string literals",
+        "DATE values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes =
+        database == NULL ? 0 : database->session.time_zone_offset_minutes;
+    if (normalize_date_storage_text(&normalization, normalized, &truncation)) {
+        copy = copy_temporal_text(database, normalized, date_text_length);
+        if (copy == NULL) {
+            free(text);
+            return MYLITE_NOMEM;
+        }
+        rc = canonicalize_date_text(
+            database,
+            copy,
+            date_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        if (rc != MYLITE_OK) {
+            free(text);
+            return rc;
+        }
+        if (truncation == TEMPORAL_STORAGE_TRUNCATION_NOTE) {
+            if (temporal_sql_mode_is_strict(database)) {
+                rc = append_incorrect_date_value_note(database, text, column->name, row_number);
+            } else {
+                rc = append_data_truncated_note(database, column->name, row_number);
+            }
+        } else if (truncation == TEMPORAL_STORAGE_TRUNCATION_WARNING) {
+            rc = append_data_truncated_warning(database, column->name, row_number);
+        }
+        free(text);
+        return rc;
+    }
+    if (!date_text_has_canonical_shape(text, text_length)) {
+        return make_date_zero_with_warning(database, text, column->name, row_number, out_value);
+    }
+
+    return canonicalize_date_text(
+        database,
+        text,
+        text_length,
+        column->name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_update_datetime_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char normalized[datetime_text_length + 1U];
+    char *copy = NULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    struct temporal_predicate_normalization_input normalization = {0};
+    int rc = MYLITE_OK;
+
+    if (!ignore_errors || value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_datetime_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "DATETIME values support only string literals",
+        "DATETIME values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes =
+        database == NULL ? 0 : database->session.time_zone_offset_minutes;
+    if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (normalize_z_temporal_predicate_text(text, text_length, normalized)) {
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            free(text);
+            return MYLITE_NOMEM;
+        }
+        rc = canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_data_truncated_warning(database, column->name, row_number);
+        }
+        free(text);
+        return rc;
+    }
+    if (!datetime_text_has_canonical_shape(text, text_length)) {
+        return make_datetime_zero_with_warning(database, text, column->name, row_number, out_value);
+    }
+
+    return canonicalize_datetime_text(
+        database,
+        text,
+        text_length,
+        column->name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_update_timestamp_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char normalized[datetime_text_length + 1U];
+    char *copy = NULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    struct temporal_predicate_normalization_input normalization = {0};
+    int rc = MYLITE_OK;
+
+    if (!ignore_errors || value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_timestamp_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "TIMESTAMP values support only string literals",
+        "TIMESTAMP values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes = 0;
+    if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (normalize_z_temporal_predicate_text(text, text_length, normalized)) {
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            free(text);
+            return MYLITE_NOMEM;
+        }
+        rc = canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_data_truncated_warning(database, column->name, row_number);
+        }
+        free(text);
+        return rc;
+    }
+    if (!datetime_text_has_canonical_shape(text, text_length)) {
+        return make_timestamp_zero_with_warning(
+            database,
+            text,
+            column->name,
+            row_number,
+            out_value
+        );
+    }
+
+    return canonicalize_timestamp_text(
+        database,
+        text,
+        text_length,
+        column->name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
 }
 
 static int materialize_update_scalar_subquery_value(
@@ -160746,16 +161375,12 @@ static int step_update_scalar_subquery_value(
     int rc = MYLITE_OK;
 
     if (sqlite_rc == SQLITE_DONE) {
-        if (!plan->assignment_column.is_nullable) {
-            if (column_descriptor_is_spatial(&plan->assignment_column)) {
-                set_spatial_bad_null_error(database, plan->assignment_column.name);
-                return MYLITE_ERROR;
-            }
-            set_bad_null_error(database, plan->assignment_column.name);
-            return MYLITE_ERROR;
-        }
-        *out_value = (struct planned_value){.is_null = true};
-        return MYLITE_OK;
+        return convert_null_insert_value(
+            database,
+            &plan->assignment_column,
+            plan->ignore_errors,
+            out_value
+        );
     }
     if (sqlite_rc != SQLITE_ROW) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -160790,16 +161415,7 @@ static int materialize_update_scalar_subquery_sqlite_value(
     int sqlite_type = sqlite3_column_type(statement, 0);
 
     if (sqlite_type == SQLITE_NULL) {
-        if (!target_column->is_nullable) {
-            if (column_descriptor_is_spatial(target_column)) {
-                set_spatial_bad_null_error(database, target_column->name);
-                return MYLITE_ERROR;
-            }
-            set_bad_null_error(database, target_column->name);
-            return MYLITE_ERROR;
-        }
-        *out_value = (struct planned_value){.is_null = true};
-        return MYLITE_OK;
+        return convert_null_insert_value(database, target_column, plan->ignore_errors, out_value);
     }
     if (!update_scalar_subquery_source_target_types_are_compatible(source_column, target_column)) {
         set_unsupported_error(
@@ -161070,6 +161686,8 @@ static int convert_update_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     const struct mylite_sql_ast_node *literal = value_node;
@@ -161102,23 +161720,31 @@ static int convert_update_integer_literal(
             return MYLITE_ERROR;
         }
         if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
-            return convert_integer_string_literal(database, literal, column, 1U, false, out_value);
+            return convert_integer_string_literal(
+                database,
+                literal,
+                column,
+                row_number,
+                ignore_errors,
+                out_value
+            );
         }
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
         if (rc != MYLITE_OK) {
-            set_out_of_range_error(database, column->name, 1U);
+            set_out_of_range_error(database, column->name, row_number);
             return MYLITE_ERROR;
         }
     }
 
     out_value->is_null = false;
-    rc = convert_integer_for_column(
+    rc = convert_integer_for_column_with_policy(
         database,
         magnitude,
         is_negative,
         column,
-        1U,
+        row_number,
+        ignore_errors,
         &out_value->integer
     );
     if (rc != MYLITE_OK) {

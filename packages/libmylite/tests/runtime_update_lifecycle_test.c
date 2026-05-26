@@ -937,24 +937,9 @@ static int test_update_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "UPDATE LOW_PRIORITY numbers SET i = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "UPDATE IGNORE numbers SET i = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures +=
+        expect_update_ok(database, "UPDATE LOW_PRIORITY numbers SET i = 1 WHERE id = -999", 0);
+    failures += expect_update_ok(database, "UPDATE IGNORE numbers SET i = 1 WHERE id = -999", 0);
     failures += execute_error(
         database,
         "UPDATE numbers PARTITION (p0) SET i = 1",

@@ -181,6 +181,29 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "default function null into not null" \
+    "2	2	1:0,2:0" \
+    "CREATE TABLE default_function_t(id INT PRIMARY KEY, nul INT DEFAULT NULL, nn INT NOT NULL);
+     INSERT INTO default_function_t(id, nn) VALUES (1, 5), (2, 6);
+     UPDATE IGNORE default_function_t SET nn = DEFAULT(nul);
+     SELECT ROW_COUNT(), @@warning_count,
+         GROUP_CONCAT(CONCAT(id, ':', nn) ORDER BY id)
+     FROM default_function_t;" \
+    "$DATABASE"
+
+expect_output \
+    "scalar subquery null into not null" \
+    "2	2	1:0,2:0" \
+    "CREATE TABLE scalar_source(n INT);
+     CREATE TABLE scalar_target(id INT PRIMARY KEY, nn INT NOT NULL);
+     INSERT INTO scalar_target VALUES (1, 5), (2, 6);
+     UPDATE IGNORE scalar_target SET nn = (SELECT n FROM scalar_source);
+     SELECT ROW_COUNT(), @@warning_count,
+         GROUP_CONCAT(CONCAT(id, ':', nn) ORDER BY id)
+     FROM scalar_target;" \
+    "$DATABASE"
+
+expect_output \
     "warning rows" \
     "Warning	1048	Column 'nn' cannot be null
 Warning	1048	Column 'nn' cannot be null" \

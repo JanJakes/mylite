@@ -40,10 +40,12 @@ primary-key-requirement baseline: `@@sql_require_primary_key`.
    - Update `docs/compatibility/runtime-system-variables.md`.
    - Update `docs/compatibility/sql-table-ddl.md`.
    - Update `docs/compatibility/sql-replication.md`.
-   - Do not claim mutable `sql_require_primary_key` state, `SET`, primary-key
-     constraints, DDL enforcement, generated invisible primary keys, import
-     behavior, replication policy, privileges, `SHOW VARIABLES`, or
-     Performance Schema variable tables.
+   - Do not claim behavior beyond the scalar-only baseline in this slice. Later
+     handle-local `SET`, `SHOW VARIABLES`, and limited DDL enforcement are
+     specified by `docs/specs/baseline-sql-require-primary-key-ddl/specs.md`;
+     generated invisible primary keys, import behavior, replication policy,
+     privileges, and Performance Schema variable tables remain outside both
+     slices.
 
 6. Verification
    - Run focused CTest entries for parser, runtime system variables, DDL/DML,

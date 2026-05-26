@@ -236,6 +236,7 @@ enum {
     mysql_error_failed_to_open_referenced_table = 1824,
     mysql_error_foreign_key_column_incompatible = 3780,
     mysql_error_must_have_visible_column = 4028,
+    mysql_error_primary_key_required = 3750,
     mysql_error_foreign_key_missing_unique = 6125,
     sqlite_use_nul_terminated_string = -1,
     year_conversion_incorrect_integer = 2,
@@ -7879,6 +7880,7 @@ struct set_session_snapshot {
     bool system_variables_are_placeholder;
     bool big_tables;
     bool foreign_key_checks_enabled;
+    bool sql_require_primary_key;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;
     bool next_transaction_isolation_from_system_variable;
@@ -8521,6 +8523,17 @@ static int apply_set_foreign_key_checks_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_sql_require_primary_key_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_sql_require_primary_key_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int apply_set_big_tables_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -8812,6 +8825,14 @@ static uint64_t foreign_key_checks_system_variable_uint64_value(
     bool global_scope
 );
 static const char *foreign_key_checks_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static uint64_t sql_require_primary_key_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static const char *sql_require_primary_key_system_variable_show_value(
     const struct mylite_db *database,
     bool global_scope
 );
@@ -11258,6 +11279,15 @@ static bool charset_name_is_binary(const char *name);
 static bool collation_name_is_binary(const char *name);
 static bool charset_name_is_known_unsupported(const char *name);
 static bool collation_name_is_known_unsupported(const char *name);
+static int validate_sql_require_primary_key_for_planned_create_table(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+);
+static int validate_sql_require_primary_key_for_table_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table
+);
+static bool sql_require_primary_key_session_enabled(const struct mylite_db *database);
 static void set_collation_not_valid_for_charset_error(
     struct mylite_db *database,
     const char *collation_name,
@@ -29092,6 +29122,7 @@ static void set_illegal_set_value_error(
     const char *value,
     size_t value_length
 );
+static void set_sql_require_primary_key_error(struct mylite_db *database);
 static void set_multiple_primary_key_error(struct mylite_db *database);
 static void set_wrong_auto_key_error(struct mylite_db *database);
 static void set_column_length_too_big_error(
@@ -32704,6 +32735,9 @@ static int apply_set_system_variable_assignment(
     if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         return apply_set_foreign_key_checks_value(database, &target, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY) {
+        return apply_set_sql_require_primary_key_value(database, &target, value_node);
+    }
     if (target.kind == SESSION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_value(database, &target, value_node);
     }
@@ -33919,6 +33953,7 @@ static int copy_set_session_snapshot(
     out_snapshot->system_variables_are_placeholder = session->system_variables_are_placeholder;
     out_snapshot->big_tables = session->big_tables;
     out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
+    out_snapshot->sql_require_primary_key = session->sql_require_primary_key;
     out_snapshot->has_next_transaction_isolation = session->has_next_transaction_isolation;
     out_snapshot->has_next_transaction_access_mode = session->has_next_transaction_access_mode;
     out_snapshot->next_transaction_isolation_from_system_variable =
@@ -34020,6 +34055,7 @@ static void restore_set_session_snapshot(
     session->system_variables_are_placeholder = snapshot->system_variables_are_placeholder;
     session->big_tables = snapshot->big_tables;
     session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
+    session->sql_require_primary_key = snapshot->sql_require_primary_key;
     session->has_next_transaction_isolation = snapshot->has_next_transaction_isolation;
     session->has_next_transaction_access_mode = snapshot->has_next_transaction_access_mode;
     session->next_transaction_isolation_from_system_variable =
@@ -34105,6 +34141,9 @@ static int apply_set_system_variable_cell_value(
             database->session.system_variables_are_placeholder = false;
         }
         return rc;
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY) {
+        return apply_set_sql_require_primary_key_cell_value(database, target, value, value_kind);
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_cell_value(database, target, value, value_kind);
@@ -34492,7 +34531,6 @@ static bool set_system_variable_fixed_boolean_value(
     case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
     case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
     case SESSION_SYSTEM_VARIABLE_READ_ONLY:
@@ -34639,6 +34677,73 @@ static int validate_set_fixed_boolean_value(
         );
         return MYLITE_ERROR;
     }
+    return MYLITE_OK;
+}
+
+static int apply_set_sql_require_primary_key_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    bool value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid sql_require_primary_key system variable target");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_big_tables_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (value) {
+            set_unsupported_error(
+                database,
+                "SET GLOBAL sql_require_primary_key assignment is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    database->session.sql_require_primary_key = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int apply_set_sql_require_primary_key_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    bool boolean_value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid sql_require_primary_key system variable target");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_big_tables_cell_value(database, target->name, value, value_kind, &boolean_value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (boolean_value) {
+            set_unsupported_error(
+                database,
+                "SET GLOBAL sql_require_primary_key assignment is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    database->session.sql_require_primary_key = boolean_value;
+    database->session.system_variables_are_placeholder = false;
     return MYLITE_OK;
 }
 
@@ -36808,6 +36913,9 @@ static int execute_create_table_statement(
         rc = maybe_finish_create_if_not_exists_noop(database, statement, &plan, &finished);
     }
     if (rc == MYLITE_OK && !finished) {
+        rc = validate_sql_require_primary_key_for_planned_create_table(database, &plan);
+    }
+    if (rc == MYLITE_OK && !finished) {
         rc = finalize_planned_column_defaults(database, plan.columns, plan.column_count);
     }
     if (rc == MYLITE_OK && !finished) {
@@ -36869,6 +36977,9 @@ static int execute_create_temporary_table_statement(
             maybe_finish_create_temporary_if_not_exists_noop(database, statement, &plan, &finished);
     }
     if (rc == MYLITE_OK && !finished) {
+        rc = validate_sql_require_primary_key_for_planned_create_table(database, &plan);
+    }
+    if (rc == MYLITE_OK && !finished) {
         rc = finalize_planned_column_defaults(database, plan.columns, plan.column_count);
     }
     if (rc == MYLITE_OK && !finished) {
@@ -36912,6 +37023,10 @@ static int execute_create_table_like_statement(
             &plan.create_table,
             &finished
         );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc =
+            validate_sql_require_primary_key_for_planned_create_table(database, &plan.create_table);
     }
     if (rc == MYLITE_OK && !finished) {
         rc = create_table_from_plan(database, &plan.create_table);
@@ -36970,6 +37085,10 @@ static int execute_create_temporary_table_like_statement(
         );
     }
     if (rc == MYLITE_OK && !finished) {
+        rc =
+            validate_sql_require_primary_key_for_planned_create_table(database, &plan.create_table);
+    }
+    if (rc == MYLITE_OK && !finished) {
         rc = create_temporary_table_from_plan(database, &plan.create_table);
     }
     planned_create_table_like_deinit(&plan);
@@ -37005,6 +37124,10 @@ static int execute_create_table_select_statement(
             &plan.create_table,
             &finished
         );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc =
+            validate_sql_require_primary_key_for_planned_create_table(database, &plan.create_table);
     }
     if (rc == MYLITE_OK && !finished) {
         rc = append_select_modifier_warnings(database, child_at(statement, 1U));
@@ -37054,6 +37177,10 @@ static int execute_create_temporary_table_select_statement(
             &plan.create_table,
             &finished
         );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc =
+            validate_sql_require_primary_key_for_planned_create_table(database, &plan.create_table);
     }
     if (rc == MYLITE_OK && !finished) {
         rc = append_select_modifier_warnings(database, child_at(statement, 1U));
@@ -37567,6 +37694,9 @@ static int execute_create_index_statement(
     }
 
     rc = plan_create_index(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = add_secondary_index_from_plan(database, &plan);
     }
@@ -38550,6 +38680,9 @@ static int execute_alter_table_add_column_statement(
 
     rc = plan_alter_table_add_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
     if (rc == MYLITE_OK) {
@@ -38965,6 +39098,9 @@ static int validate_alter_table_multi_action_final_state(
         }
     }
     if (rc == MYLITE_OK && table.kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &table);
+    }
+    if (rc == MYLITE_OK && table.kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
         rc = validate_alter_table_multi_action_auto_increment_keys(database, &table);
     }
 
@@ -39363,6 +39499,9 @@ static int execute_alter_table_add_index_statement(
 
     rc = plan_alter_table_add_index(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = add_secondary_index_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39392,6 +39531,9 @@ static int execute_alter_table_add_foreign_key_statement(
 
     rc = plan_alter_table_add_foreign_key(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_add_foreign_key_from_plan(database, &plan);
     }
     planned_alter_table_add_foreign_key_deinit(&plan);
@@ -39418,6 +39560,9 @@ static int execute_alter_table_drop_foreign_key_statement(
     }
 
     rc = plan_alter_table_drop_foreign_key(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_drop_foreign_key_from_plan(database, &plan);
     }
@@ -39450,18 +39595,41 @@ static int execute_alter_table_drop_constraint_statement(
     if (rc == MYLITE_OK) {
         switch (plan.kind) {
         case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY:
-            rc = alter_table_drop_primary_key_from_plan(database, &plan.primary_key);
-            affected_rows = plan.primary_key.affected_rows;
+            if (sql_require_primary_key_session_enabled(database)) {
+                set_sql_require_primary_key_error(database);
+                rc = MYLITE_ERROR;
+            } else {
+                rc = alter_table_drop_primary_key_from_plan(database, &plan.primary_key);
+                affected_rows = plan.primary_key.affected_rows;
+            }
             break;
         case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX:
-            rc = drop_index_from_plan(database, &plan.unique_index);
+            rc = validate_sql_require_primary_key_for_table_descriptor(
+                database,
+                &plan.unique_index.table
+            );
+            if (rc == MYLITE_OK) {
+                rc = drop_index_from_plan(database, &plan.unique_index);
+            }
             affected_rows = plan.unique_index.affected_rows;
             break;
         case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_FOREIGN_KEY:
-            rc = alter_table_drop_foreign_key_from_plan(database, &plan.foreign_key);
+            rc = validate_sql_require_primary_key_for_table_descriptor(
+                database,
+                &plan.foreign_key.table
+            );
+            if (rc == MYLITE_OK) {
+                rc = alter_table_drop_foreign_key_from_plan(database, &plan.foreign_key);
+            }
             break;
         case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_CHECK:
-            rc = alter_table_check_constraint_from_plan(database, &plan.check_constraint);
+            rc = validate_sql_require_primary_key_for_table_descriptor(
+                database,
+                &plan.check_constraint.table
+            );
+            if (rc == MYLITE_OK) {
+                rc = alter_table_check_constraint_from_plan(database, &plan.check_constraint);
+            }
             affected_rows = plan.check_constraint.affected_rows;
             break;
         case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE:
@@ -39497,6 +39665,9 @@ static int execute_alter_table_drop_index_statement(
 
     rc = plan_alter_table_drop_index(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = drop_index_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39525,6 +39696,9 @@ static int execute_alter_table_rename_index_statement(
     }
 
     rc = plan_alter_table_rename_index(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = rename_index_from_plan(database, &plan);
     }
@@ -39555,6 +39729,9 @@ static int execute_alter_table_add_check_statement(
 
     rc = plan_alter_table_add_check(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_check_constraint_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39584,6 +39761,9 @@ static int execute_alter_table_drop_check_statement(
 
     rc = plan_alter_table_drop_check(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_check_constraint_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39612,6 +39792,9 @@ static int execute_alter_table_alter_check_statement(
     }
 
     rc = plan_alter_table_alter_check(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_check_constraint_from_plan(database, &plan);
     }
@@ -39650,6 +39833,9 @@ static int execute_drop_index_statement(
         &plan
     );
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = drop_index_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39678,6 +39864,10 @@ static int execute_alter_table_drop_primary_key_statement(
     }
 
     rc = plan_alter_table_drop_primary_key(database, statement, &plan);
+    if (rc == MYLITE_OK && sql_require_primary_key_session_enabled(database)) {
+        set_sql_require_primary_key_error(database);
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_drop_primary_key_from_plan(database, &plan);
     }
@@ -39708,6 +39898,9 @@ static int execute_alter_table_auto_increment_statement(
 
     rc = plan_alter_table_auto_increment(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_auto_increment_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39733,6 +39926,14 @@ static int execute_alter_table_drop_column_statement(
     }
 
     rc = plan_alter_table_drop_column(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK && plan.removes_one_part_primary_key &&
+        sql_require_primary_key_session_enabled(database)) {
+        set_sql_require_primary_key_error(database);
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_drop_column_from_plan(database, &plan);
     }
@@ -39763,6 +39964,9 @@ static int execute_alter_table_rename_column_statement(
 
     rc = plan_alter_table_rename_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_rename_column_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39788,6 +39992,9 @@ static int execute_alter_table_modify_column_statement(
     }
 
     rc = plan_alter_table_modify_column(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
@@ -39824,6 +40031,9 @@ static int execute_alter_table_change_column_statement(
 
     rc = plan_alter_table_change_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
     if (rc == MYLITE_OK) {
@@ -39858,6 +40068,9 @@ static int execute_alter_table_set_default_statement(
     }
 
     rc = plan_alter_table_set_default(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
@@ -39894,6 +40107,9 @@ static int execute_alter_table_drop_default_statement(
 
     rc = plan_alter_table_drop_default(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_drop_default_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39921,6 +40137,9 @@ static int execute_alter_table_column_visibility_statement(
 
     rc = plan_alter_table_column_visibility(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_column_visibility_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -39947,6 +40166,9 @@ static int execute_alter_table_index_visibility_statement(
     }
 
     rc = plan_alter_table_index_visibility(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_index_visibility_from_plan(database, &plan);
     }
@@ -39976,11 +40198,12 @@ static int execute_alter_table_default_charset_collation_statement(
     }
 
     rc = plan_alter_table_default_charset_collation(database, statement, &plan);
-    if (rc != MYLITE_OK) {
-        mylite_result_free(result);
-        return rc;
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
     }
-    rc = alter_table_default_charset_collation_from_plan(database, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_default_charset_collation_from_plan(database, &plan);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -40039,6 +40262,9 @@ static int execute_alter_table_convert_character_set_statement(
     }
 
     rc = plan_alter_table_convert_character_set(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_convert_character_set_from_plan(database, &plan);
     }
@@ -40140,6 +40366,9 @@ static int execute_alter_table_comment_statement(
             "Temporary table DDL inside an active transaction is not supported"
         );
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
     }
     if (rc == MYLITE_OK) {
         rc = alter_table_comment_from_plan(database, &plan);
@@ -40322,6 +40551,9 @@ static int execute_alter_table_order_by_statement(
 
     rc = plan_alter_table_order_by(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_order_by_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
@@ -40350,6 +40582,9 @@ static int execute_alter_table_force_statement(
     }
 
     rc = plan_alter_table_force(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
     if (rc == MYLITE_OK) {
         rc = alter_table_force_from_plan(database, &plan);
     }
@@ -61284,6 +61519,57 @@ static void planned_create_table_deinit(struct planned_create_table *plan) {
     *plan = (struct planned_create_table){0};
 }
 
+static int validate_sql_require_primary_key_for_planned_create_table(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+) {
+    if (!sql_require_primary_key_session_enabled(database)) {
+        return MYLITE_OK;
+    }
+    if (plan != NULL && plan->has_primary_key) {
+        return MYLITE_OK;
+    }
+
+    set_sql_require_primary_key_error(database);
+    return MYLITE_ERROR;
+}
+
+static int validate_sql_require_primary_key_for_table_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct primary_key_info primary_key = primary_key_info_init();
+    size_t column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (!sql_require_primary_key_session_enabled(database) || table == NULL ||
+        (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+         table->kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY)) {
+        return MYLITE_OK;
+    }
+
+    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
+    }
+    if (rc == MYLITE_OK && !primary_key.has_primary_key) {
+        set_sql_require_primary_key_error(database);
+        rc = MYLITE_ERROR;
+    }
+
+    primary_key_info_deinit(&primary_key);
+    free(columns);
+    return rc;
+}
+
+static bool sql_require_primary_key_session_enabled(const struct mylite_db *database) {
+    if (database == NULL) {
+        return false;
+    }
+    return database->session.sql_require_primary_key;
+}
+
 static int create_table_from_plan(struct mylite_db *database, struct planned_create_table *plan) {
     struct mylite_catalog_table_descriptor existing_table = {0};
     struct mylite_catalog_table_descriptor table = {0};
@@ -69120,6 +69406,11 @@ static int plan_alter_table_drop_primary_key_with_options(
     }
     if (rc == MYLITE_OK && !primary_key.has_primary_key) {
         set_cant_drop_field_or_key_error(database, "PRIMARY");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && validate_auto_increment &&
+        sql_require_primary_key_session_enabled(database)) {
+        set_sql_require_primary_key_error(database);
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
@@ -118385,6 +118676,15 @@ static int system_variable_value(
             ),
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+        return format_session_scalar_uint64_value(
+            database,
+            sql_require_primary_key_system_variable_uint64_value(
+                database,
+                system_variable_expression_has_global_scope(expression)
+            ),
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
         return format_session_scalar_uint64_value(
             database,
@@ -118420,7 +118720,6 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         rc = format_uint64(database, 0U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
@@ -118734,6 +119033,26 @@ static const char *foreign_key_checks_system_variable_show_value(
         return "ON";
     }
     return "OFF";
+}
+
+static uint64_t sql_require_primary_key_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL || !database->session.sql_require_primary_key) {
+        return 0U;
+    }
+    return 1U;
+}
+
+static const char *sql_require_primary_key_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (sql_require_primary_key_system_variable_uint64_value(database, global_scope) == 0U) {
+        return "OFF";
+    }
+    return "ON";
 }
 
 static uint64_t big_tables_system_variable_uint64_value(
@@ -119172,6 +119491,9 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         *out_value = foreign_key_checks_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+        *out_value = sql_require_primary_key_system_variable_show_value(database, global_scope);
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
         *out_value = big_tables_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
@@ -119195,7 +119517,6 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
     case SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
     case SESSION_SYSTEM_VARIABLE_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
         *out_value = "OFF";
         return MYLITE_OK;
@@ -186107,6 +186428,19 @@ static void set_multiple_primary_key_error(struct mylite_db *database) {
         mysql_error_multiple_primary_key,
         "42000",
         "Multiple primary key defined"
+    );
+}
+
+static void set_sql_require_primary_key_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_primary_key_required,
+        "HY000",
+        "Unable to create or change a table without a primary key, when the system variable "
+        "'sql_require_primary_key' is set. Add a primary key to the table or unset this variable "
+        "to avoid this message. Note that tables without a primary key can cause performance "
+        "problems in row-based replication, so please consult your DBA before changing this "
+        "setting."
     );
 }
 

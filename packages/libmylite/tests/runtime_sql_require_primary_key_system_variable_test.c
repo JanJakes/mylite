@@ -23,6 +23,8 @@ enum {
     sql_require_primary_key_selected_column_count = 2,
     sql_require_primary_key_independent_column_count = 3,
     mysql_error_parse = 1064,
+    mysql_error_variable_cant_be_set = 1231,
+    mysql_error_primary_key_required = 3750,
     mysql_error_unknown_system_variable = 1193,
 };
 
@@ -40,6 +42,7 @@ struct expected_result {
 };
 
 static int test_sql_require_primary_key_values_and_persistence(void);
+static int test_sql_require_primary_key_set_and_ddl_enforcement(void);
 static int test_sql_require_primary_key_qualifiers_and_errors(void);
 static int test_independent_sql_require_primary_key_handles(void);
 static int expect_result(const mylite_result *result, struct expected_result expected);
@@ -78,6 +81,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_sql_require_primary_key_values_and_persistence();
+    failures += test_sql_require_primary_key_set_and_ddl_enforcement();
     failures += test_sql_require_primary_key_qualifiers_and_errors();
     failures += test_independent_sql_require_primary_key_handles();
 
@@ -415,6 +419,229 @@ static int test_sql_require_primary_key_values_and_persistence(void) {
     return failures;
 }
 
+static int test_sql_require_primary_key_set_and_ddl_enforcement(void) {
+    static const char *const value_columns[] = {
+        "@@sql_require_primary_key",
+        "@@global.sql_require_primary_key",
+        "@@session.sql_require_primary_key",
+        "@@local.sql_require_primary_key",
+        "@@warning_count",
+    };
+    static const char *const enabled_values[] = {"1", "0", "1", "1", "0"};
+    static const char *const disabled_values[] = {"0", "0", "0", "0", "0"};
+    static const char *const show_columns[] = {"Variable_name", "Value"};
+    static const char *const show_enabled_values[] = {"sql_require_primary_key", "ON"};
+    static const char *const show_global_values[] = {"sql_require_primary_key", "OFF"};
+    static const struct expected_sql_error primary_key_required = {
+        .code = mysql_error_primary_key_required,
+        .sqlstate = "HY000",
+        .message_part = "without a primary key",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "ddl") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open sql require primary key DDL file"
+    );
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+
+    failures += execute_statement_ok(database, "SET SESSION sql_require_primary_key = ON");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_require_primary_key, @@global.sql_require_primary_key, "
+        "@@session.sql_require_primary_key, @@local.sql_require_primary_key, @@warning_count",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sizeof(value_columns) / sizeof(value_columns[0]),
+            .context = "sql require primary key enabled values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_require_primary_key'",
+        (struct expected_result){
+            .columns = show_columns,
+            .values = show_enabled_values,
+            .count = sizeof(show_columns) / sizeof(show_columns[0]),
+            .context = "sql require primary key SHOW VARIABLES session value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_require_primary_key'",
+        (struct expected_result){
+            .columns = show_columns,
+            .values = show_global_values,
+            .count = sizeof(show_columns) / sizeof(show_columns[0]),
+            .context = "sql require primary key SHOW GLOBAL VARIABLES value",
+        }
+    );
+
+    failures += execute_error(database, "CREATE TABLE no_pk (id INT)", primary_key_required);
+    failures += execute_error(
+        database,
+        "CREATE TABLE unique_only (id INT NOT NULL, UNIQUE KEY u_id(id))",
+        primary_key_required
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE inline_pk (id INT PRIMARY KEY)");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE table_pk (id INT NOT NULL, v INT NOT NULL, PRIMARY KEY(id))"
+    );
+    failures +=
+        execute_error(database, "CREATE TEMPORARY TABLE temp_no_pk (id INT)", primary_key_required);
+    failures +=
+        execute_statement_ok(database, "CREATE TEMPORARY TABLE temp_pk (id INT, PRIMARY KEY(id))");
+
+    failures += execute_statement_ok(database, "SET @@local.sql_require_primary_key = FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_require_primary_key, @@global.sql_require_primary_key, "
+        "@@session.sql_require_primary_key, @@local.sql_require_primary_key, @@warning_count",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = sizeof(value_columns) / sizeof(value_columns[0]),
+            .context = "sql require primary key disabled values",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE existing_no_pk (id INT)");
+    failures += execute_statement_ok(database, "CREATE TABLE like_no_pk_source (id INT)");
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE like_pk_source (id INT PRIMARY KEY, v INT)");
+    failures += execute_statement_ok(database, "SET @@sql_require_primary_key = TRUE");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE IF NOT EXISTS existing_no_pk (id INT PRIMARY KEY)"
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE like_no_pk LIKE like_no_pk_source",
+        primary_key_required
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE like_pk LIKE like_pk_source");
+    failures += execute_error(
+        database,
+        "CREATE TABLE ctas_no_pk AS SELECT id, v FROM like_pk_source",
+        primary_key_required
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE existing_no_pk ADD COLUMN v INT",
+        primary_key_required
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE existing_no_pk ADD KEY k_id(id)",
+        primary_key_required
+    );
+    failures +=
+        execute_error(database, "CREATE INDEX k_id ON existing_no_pk(id)", primary_key_required);
+    failures += execute_error(
+        database,
+        "ALTER TABLE existing_no_pk COMMENT = 'blocked'",
+        primary_key_required
+    );
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE existing_no_pk RENAME TO renamed_no_pk");
+    failures += execute_statement_ok(database, "ALTER TABLE renamed_no_pk ADD PRIMARY KEY(id)");
+
+    failures +=
+        execute_error(database, "ALTER TABLE table_pk DROP PRIMARY KEY", primary_key_required);
+    failures += execute_ok(database, "SHOW CREATE TABLE table_pk", &result);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 1U),
+        "PRIMARY KEY (`id`)",
+        "simple DROP PRIMARY KEY rejection keeps primary key"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_error(
+        database,
+        "ALTER TABLE table_pk DROP PRIMARY KEY, ADD KEY k_v(v)",
+        primary_key_required
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE table_pk", &result);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 1U),
+        "PRIMARY KEY (`id`)",
+        "multi-action DROP PRIMARY KEY rejection rolls back primary key"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_error(
+        database,
+        "ALTER TABLE table_pk DROP CONSTRAINT `PRIMARY`",
+        primary_key_required
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE table_pk", &result);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 1U),
+        "PRIMARY KEY (`id`)",
+        "DROP CONSTRAINT PRIMARY rejection keeps primary key"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE table_pk DROP PRIMARY KEY, ADD PRIMARY KEY(v)");
+    failures += execute_ok(database, "SHOW CREATE TABLE table_pk", &result);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 1U),
+        "PRIMARY KEY (`v`)",
+        "multi-action primary key replacement succeeds"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ai_pk (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY)"
+    );
+    failures += execute_error(database, "ALTER TABLE ai_pk DROP PRIMARY KEY", primary_key_required);
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE drop_pk_column (id INT PRIMARY KEY, v INT)");
+    failures +=
+        execute_error(database, "ALTER TABLE drop_pk_column DROP COLUMN id", primary_key_required);
+
+    failures += execute_error(
+        database,
+        "SET SESSION sql_require_primary_key = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_variable_cant_be_set,
+            .sqlstate = "42000",
+            .message_part = "can't be set to the value of '2'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL sql_require_primary_key = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL sql_require_primary_key assignment is not supported",
+        }
+    );
+    failures += execute_statement_ok(database, "SET GLOBAL sql_require_primary_key = 0");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_sql_require_primary_key_qualifiers_and_errors(void) {
     static const char *const scoped_columns[] = {
         "@@SQL_REQUIRE_PRIMARY_KEY",
@@ -496,15 +723,18 @@ static int test_sql_require_primary_key_qualifiers_and_errors(void) {
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
-    failures += execute_error(
+    failures += execute_statement_ok(database, "SET SESSION sql_require_primary_key = 1");
+    failures += expect_query_result(
         database,
-        "SET SESSION sql_require_primary_key = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+        "SELECT @@sql_require_primary_key",
+        (struct expected_result){
+            .columns = scalar_columns,
+            .values = (const char *const[]){"1"},
+            .count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
+            .context = "sql require primary key changes after supported SET",
         }
     );
+    failures += execute_statement_ok(database, "SET SESSION sql_require_primary_key = DEFAULT");
     failures += expect_query_result(
         database,
         "SELECT @@sql_require_primary_key",
@@ -512,7 +742,7 @@ static int test_sql_require_primary_key_qualifiers_and_errors(void) {
             .columns = scalar_columns,
             .values = scalar_values,
             .count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
-            .context = "sql require primary key stays read-only after rejected SET",
+            .context = "sql require primary key resets to default",
         }
     );
 
@@ -526,7 +756,7 @@ static int test_independent_sql_require_primary_key_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"0", "1", "0"};
+    static const char *const first_values[] = {"1", "0", "0"};
     static const char *const second_values[] = {"0", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -544,6 +774,7 @@ static int test_independent_sql_require_primary_key_handles(void) {
         "open second sql require primary key handle"
     );
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    failures += execute_statement_ok(first, "SET SESSION sql_require_primary_key = ON");
 
     failures += execute_ok(
         first,

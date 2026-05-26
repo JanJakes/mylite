@@ -5,18 +5,23 @@
 This feature specifies a narrow scalar system-variable slice for
 `@@sql_require_primary_key`.
 
+This document describes the original scalar-only baseline. The later
+`docs/specs/baseline-sql-require-primary-key-ddl/specs.md` slice extends this
+surface with handle-local session assignment and limited DDL enforcement.
+
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 `SELECT` execution, diagnostics lifecycle, and descriptor-driven statement
 paths. MySQL exposes `sql_require_primary_key` as mutable global and session
 state that can require primary keys for table creation and table-structure
-changes. MyLite does not implement mutable system-variable assignment, primary
-key constraints, `ALTER TABLE` structure changes, temporary tables, or
-replication behavior in the baseline yet, so this slice exposes only the fixed
-default disabled scalar value.
+changes. MyLite did not implement mutable system-variable assignment,
+primary-key requirement enforcement, `ALTER TABLE` structure changes,
+temporary tables, or replication behavior in this scalar baseline, so this
+slice exposed only the fixed default disabled scalar value.
 
-This is not primary-key enforcement support. It does not implement
-`SET sql_require_primary_key`, mutable global/session state, primary key DDL,
-table-change enforcement, replication applier policy, or privilege semantics.
+This original slice was not primary-key enforcement support. It did not
+implement `SET sql_require_primary_key`, mutable global/session state, primary
+key DDL, table-change enforcement, replication applier policy, or privilege
+semantics.
 
 ## Sources
 
@@ -204,9 +209,9 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable `sql_require_primary_key` state or primary-key
-enforcement exists yet.
+For this original slice, all scopes returned the same fixed value. The later
+DDL-enforcement slice adds handle-local session state while keeping global
+state fixed.
 
 ## Runtime Semantics
 

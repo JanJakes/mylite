@@ -114,6 +114,7 @@ static int test_string_search_functions(void);
 static int test_find_in_set_function(void);
 static int test_strcmp_function(void);
 static int test_regexp_like_function(void);
+static int test_regexp_string_functions(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_any_value_function(void);
@@ -453,6 +454,7 @@ int main(void) {
     failures += test_find_in_set_function();
     failures += test_strcmp_function();
     failures += test_regexp_like_function();
+    failures += test_regexp_string_functions();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_any_value_function();
@@ -8774,6 +8776,85 @@ static int test_regexp_like_function(void) {
         child_at(result.root, 0U),
         MYLITE_SQL_AST_DELETE_STATEMENT,
         "regexp_like delete predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_regexp_string_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT REGEXP_INSTR('abc', 'b'), REGEXP_SUBSTR(v, '^ab'), "
+        "REGEXP_REPLACE(v, 'b.', 'X') FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_REGEXP_INSTR_FUNCTION, "regexp_instr function");
+    arguments = child_at(expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "regexp_instr args");
+    failures += expect_child_count(arguments, 2U, "regexp_instr argument count");
+    failures += expect_span_text(expression, "REGEXP_INSTR('abc', 'b')", "regexp_instr span");
+
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION, "regexp_substr function");
+    arguments = child_at(expression, 0U);
+    failures += expect_child_count(arguments, 2U, "regexp_substr argument count");
+    failures +=
+        expect_node(child_at(arguments, 0U), MYLITE_SQL_AST_IDENTIFIER, "regexp_substr arg");
+
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION, "regexp_replace function");
+    arguments = child_at(expression, 0U);
+    failures += expect_child_count(arguments, 3U, "regexp_replace argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT regexp_instr('abc', 'b', 1);", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_REGEXP_INSTR_FUNCTION, "regexp_instr optional");
+    arguments = child_at(expression, 0U);
+    failures += expect_child_count(arguments, 3U, "regexp_instr optional argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT REGEXP_INSTR();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_REGEXP_INSTR_ARGUMENT_COUNT_ERROR,
+        "regexp_instr zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO REGEXP_SUBSTR('abc', 'b'), REGEXP_REPLACE('abc', 'a', 'z');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "regexp string do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION,
+        "do regexp_substr"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION,
+        "do regexp_replace"
     );
     mylite_sql_parse_result_deinit(&result);
 

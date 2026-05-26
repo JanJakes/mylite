@@ -18,11 +18,13 @@ enum {
     mysql_error_native_function_argument_count = 1582,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
+    mysql_error_regexp_illegal_argument = 3685,
     mysql_error_regular_expression = 3696,
     mysql_error_regular_expression_character_range = 3697,
     string_row_count = 6,
     non_null_string_row_count = 5,
     remaining_row_count = 5,
+    regexp_string_projection_column_count = 5,
 };
 
 struct expected_sql_error {
@@ -40,6 +42,7 @@ struct expected_query {
 };
 
 static int test_scalar_regexp_like_values(void);
+static int test_regexp_string_function_values(void);
 static int test_table_backed_regexp_like_predicates_and_dml(void);
 static int test_regexp_like_diagnostics(void);
 static int populate_strings(mylite_db *database);
@@ -82,6 +85,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_scalar_regexp_like_values();
+    failures += test_regexp_string_function_values();
     failures += test_table_backed_regexp_like_predicates_and_dml();
     failures += test_regexp_like_diagnostics();
 
@@ -157,6 +161,206 @@ static int test_scalar_regexp_like_values(void) {
             .column_count = sizeof(row_status_columns) / sizeof(row_status_columns[0]),
             .row_count = 1U,
             .context = "row count after REGEXP_LIKE do",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_regexp_string_function_values(void) {
+    static const char *const scalar_values[] = {
+        "2",
+        "bc",
+        "aXaX",
+        "0",
+        NULL,
+        "abc",
+        "1",
+        "",
+        "abcX",
+        "XXbXcX",
+        "",
+        "",
+        "",
+        "",
+    };
+    static const char *const empty_row_replace_values[] = {"", ""};
+    static const char *const null_values[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    static const char *const status_values[] = {"-1", "0"};
+    static const char *const after_do_values[] = {"0", "0"};
+    static const char *const row_values[] = {
+        "1", "2", "bc", "aX",   "0", "2", "2", "BC", "AX",  "1", "3", "0",  NULL, "rss_a", "0",
+        "4", "0", NULL, "rss_", "0", "5", "0", NULL, "1+2", "0", "6", NULL, NULL, NULL,    "0",
+    };
+    static const char *const reopen_values[] = {"1", "aX", "2", "AX", "3", "rss_a"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "regexp-string", path, sizeof(path));
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT REGEXP_INSTR('abcabc', 'b'), REGEXP_SUBSTR('abcabc', 'b.'), "
+                   "REGEXP_REPLACE('abcabc', 'b.', 'X'), REGEXP_INSTR('abc', 'z'), "
+                   "REGEXP_SUBSTR('abc', 'z'), REGEXP_REPLACE('abc', 'z', 'X'), "
+                   "REGEXP_INSTR('AbC', 'a'), REGEXP_SUBSTR('abc', '$'), "
+                   "REGEXP_REPLACE('abc', '$', 'X'), REGEXP_REPLACE('abc', 'a*', 'X'), "
+                   "REGEXP_REPLACE('', 'a*', 'X'), REGEXP_REPLACE('', '.*', 'X'), "
+                   "REGEXP_REPLACE('', '^', 'X'), REGEXP_REPLACE('', '$', 'X')",
+            .values = scalar_values,
+            .column_count = sizeof(scalar_values) / sizeof(scalar_values[0]),
+            .row_count = 1U,
+            .context = "scalar REGEXP string function values",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE empty_strings(v VARCHAR(16))", NULL);
+    failures += execute_ok(database, "INSERT INTO empty_strings VALUES ('')", NULL);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT REGEXP_REPLACE(v, 'a*', 'X'), REGEXP_REPLACE(v, '$', 'X') "
+                   "FROM empty_strings",
+            .values = empty_row_replace_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "row REGEXP_REPLACE empty input zero-length match",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT REGEXP_INSTR(NULL, 'a'), REGEXP_INSTR('a', NULL), "
+                   "REGEXP_SUBSTR(NULL, 'a'), REGEXP_SUBSTR('a', NULL), "
+                   "REGEXP_REPLACE(NULL, 'a', 'x'), REGEXP_REPLACE('a', NULL, 'x'), "
+                   "REGEXP_REPLACE('a', 'a', NULL)",
+            .values = null_values,
+            .column_count = sizeof(null_values) / sizeof(null_values[0]),
+            .row_count = 1U,
+            .context = "scalar REGEXP string function NULL values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = status_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "row count after REGEXP string select",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "DO REGEXP_INSTR('abc', 'b'), REGEXP_SUBSTR('abc', 'b'), "
+        "REGEXP_REPLACE('abc', 'b', 'X')",
+        &result
+    );
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "regexp string do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "regexp string do rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "regexp string do rows");
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "regexp string do warnings");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = after_do_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "row count after REGEXP string do",
+        }
+    );
+
+    failures += populate_strings(database);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, REGEXP_INSTR(v, 'b.'), REGEXP_SUBSTR(v, 'b.'), "
+                   "REGEXP_REPLACE(v, 'b.', 'X'), REGEXP_INSTR(id, '2') "
+                   "FROM strings ORDER BY id",
+            .values = row_values,
+            .column_count = regexp_string_projection_column_count,
+            .row_count = string_row_count,
+            .context = "table-backed REGEXP string projection",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT REGEXP_INSTR('abc', 'b') AS pos, REGEXP_SUBSTR('abc', 'b') AS sub",
+        &result
+    );
+    if (failures == 0) {
+        failures += expect_int(
+            mylite_result_column_type(result, 0U),
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            "regexp_instr metadata type"
+        );
+        failures += expect_int(
+            mylite_result_column_type(result, 1U),
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            "regexp_substr metadata type"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    mylite_close(database);
+    database = NULL;
+    failures += reopen_app_database(&database, path);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, REGEXP_REPLACE(v, 'b.', 'X') FROM strings WHERE id <= 3 ORDER BY id",
+            .values = reopen_values,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "REGEXP string projection after reopen",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_INSTR('abc', '')",
+        (struct expected_sql_error){
+            .code = mysql_error_regexp_illegal_argument,
+            .sqlstate = "HY000",
+            .message_part = "Illegal argument to a regular expression",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_SUBSTR('abc', '[')",
+        (struct expected_sql_error){
+            .code = mysql_error_regular_expression,
+            .sqlstate = "HY000",
+            .message_part = "unclosed bracket",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_REPLACE('abc', 'b', 'X', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "optional arguments are not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_REPLACE()",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count",
         }
     );
 

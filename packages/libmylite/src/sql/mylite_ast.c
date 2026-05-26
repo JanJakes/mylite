@@ -1437,6 +1437,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "regexp_like_function";
     case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
         return "regexp_like_argument_count_error";
+    case MYLITE_SQL_AST_REGEXP_INSTR_FUNCTION:
+        return "regexp_instr_function";
+    case MYLITE_SQL_AST_REGEXP_INSTR_ARGUMENT_COUNT_ERROR:
+        return "regexp_instr_argument_count_error";
+    case MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION:
+        return "regexp_substr_function";
+    case MYLITE_SQL_AST_REGEXP_SUBSTR_ARGUMENT_COUNT_ERROR:
+        return "regexp_substr_argument_count_error";
+    case MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION:
+        return "regexp_replace_function";
+    case MYLITE_SQL_AST_REGEXP_REPLACE_ARGUMENT_COUNT_ERROR:
+        return "regexp_replace_argument_count_error";
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
         return "json_extract_function";
     case MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR:

@@ -11,10 +11,12 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_regexp_illegal_argument = 3685,
     mysql_error_regular_expression = 3696,
     mysql_error_regular_expression_character_range = 3697,
     regexp_pattern_length_max = 256,
     regexp_value_length_max = 4096,
+    regexp_string_buffer_initial_capacity = 64,
     ascii_max = 0x7f,
     ascii_upper_a = 'A',
     ascii_upper_z = 'Z',
@@ -58,7 +60,98 @@ struct mylite_regexp_program {
     size_t range_count;
 };
 
+enum regexp_sqlite_function_kind {
+    REGEXP_SQLITE_FUNCTION_MATCH = 1,
+    REGEXP_SQLITE_FUNCTION_INSTR = 2,
+    REGEXP_SQLITE_FUNCTION_SUBSTR = 3,
+    REGEXP_SQLITE_FUNCTION_REPLACE = 4,
+};
+
+struct regexp_sqlite_function_config {
+    enum regexp_sqlite_function_kind kind;
+    bool case_sensitive;
+};
+
+struct regexp_string_buffer {
+    char *data;
+    size_t length;
+    size_t capacity;
+};
+
+struct regexp_sqlite_match_arguments {
+    sqlite3_value *pattern_value;
+    sqlite3_value *value_value;
+};
+
+struct regexp_sqlite_compiled_program {
+    struct mylite_regexp_program *program;
+    struct mylite_regexp_program *compiled_program;
+};
+
+struct regexp_sqlite_replace_arguments {
+    const unsigned char *value;
+    const unsigned char *replacement;
+    size_t value_length;
+    size_t replacement_length;
+};
+
+struct regexp_match_span_context {
+    const struct mylite_regexp_program *program;
+    const unsigned char *value;
+    size_t value_length;
+    const unsigned char *matches;
+};
+
+struct regexp_match_span_position {
+    size_t token_index;
+    size_t value_index;
+};
+
 static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void regexp_sqlite_match_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+);
+static void regexp_sqlite_instr_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+);
+static void regexp_sqlite_substr_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+);
+static void regexp_sqlite_replace_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+);
+static bool regexp_sqlite_replace_prepare_arguments(
+    sqlite3_context *context,
+    sqlite3_value **argv,
+    struct regexp_sqlite_replace_arguments *out_arguments
+);
+static bool regexp_sqlite_replace_all(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_compiled_program *programs,
+    const struct regexp_sqlite_replace_arguments *arguments,
+    struct regexp_string_buffer *buffer
+);
+static bool regexp_sqlite_replace_find_match(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_compiled_program *programs,
+    const struct regexp_sqlite_replace_arguments *arguments,
+    size_t search_offset,
+    struct mylite_regexp_match *out_match
+);
 static bool regexp_sqlite_get_program(
     sqlite3_context *context,
     sqlite3_value *pattern_value,
@@ -66,6 +159,13 @@ static bool regexp_sqlite_get_program(
     struct mylite_regexp_program **out_program,
     struct mylite_regexp_program **out_compiled_program
 );
+static bool regexp_sqlite_pattern_is_empty(
+    sqlite3_context *context,
+    sqlite3_value *pattern_value,
+    bool *out_is_empty
+);
+static bool regexp_sqlite_any_argument_is_null(int argc, sqlite3_value **argv);
+static void regexp_sqlite_result_illegal_argument(sqlite3_context *context);
 static void regexp_sqlite_result_compile_error(
     sqlite3_context *context,
     enum mylite_regexp_compile_status status
@@ -95,6 +195,30 @@ static void regexp_sqlite_cache_program(
 static void regexp_sqlite_free_compiled_program(struct mylite_regexp_program *compiled_program);
 static const char *regexp_compile_status_message(enum mylite_regexp_compile_status status);
 static const char *regexp_match_status_message(enum mylite_regexp_match_status status);
+static bool regexp_sqlite_find_match(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_match_arguments *arguments,
+    struct mylite_regexp_match *out_match,
+    const unsigned char **out_value,
+    int *out_value_length
+);
+static bool regexp_sqlite_match_value_span(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_compiled_program *programs,
+    sqlite3_value *value_value,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match,
+    const unsigned char **out_value,
+    int *out_value_length
+);
+static void regexp_string_buffer_deinit(struct regexp_string_buffer *buffer);
+static bool regexp_string_buffer_append(
+    struct regexp_string_buffer *buffer,
+    const char *text,
+    size_t length
+);
 static enum mylite_regexp_compile_status regexp_compile_ascii(
     const char *pattern,
     size_t pattern_length,
@@ -143,6 +267,13 @@ static enum mylite_regexp_match_status regexp_program_match_ascii(
     size_t value_length,
     bool *out_matches
 );
+static enum mylite_regexp_match_status regexp_program_find_ascii(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+);
 static enum mylite_regexp_compile_status append_token(
     struct mylite_regexp_program *program,
     struct regexp_token token
@@ -164,6 +295,38 @@ static void fill_match_table(
     const unsigned char *value,
     size_t value_length,
     unsigned char *matches
+);
+static bool match_span_from(
+    const struct regexp_match_span_context *context,
+    struct regexp_match_span_position position,
+    size_t *out_end
+);
+static bool match_span_advance(
+    const struct regexp_match_span_context *context,
+    struct regexp_match_span_position *position
+);
+static bool match_span_advance_one(
+    const struct regexp_match_span_context *context,
+    bool current_byte_matches,
+    struct regexp_match_span_position *position
+);
+static bool match_span_advance_zero_or_one(
+    const struct regexp_match_span_context *context,
+    bool current_byte_matches,
+    struct regexp_match_span_position *position
+);
+static bool match_span_advance_repeated(
+    const struct regexp_match_span_context *context,
+    const struct regexp_token *token,
+    bool require_one,
+    struct regexp_match_span_position *position
+);
+static size_t token_match_run_length(
+    const struct mylite_regexp_program *program,
+    const struct regexp_token *token,
+    const unsigned char *value,
+    size_t value_length,
+    size_t value_index
 );
 static bool match_table_get(
     const unsigned char *matches,
@@ -201,7 +364,38 @@ static bool class_contains_byte(
 );
 
 int mylite_sqlite_register_regexp_functions(sqlite3 *sqlite) {
-    static int case_sensitive_marker = 1;
+    static const struct regexp_sqlite_function_config match_ci = {
+        .kind = REGEXP_SQLITE_FUNCTION_MATCH,
+        .case_sensitive = false,
+    };
+    static const struct regexp_sqlite_function_config match_cs = {
+        .kind = REGEXP_SQLITE_FUNCTION_MATCH,
+        .case_sensitive = true,
+    };
+    static const struct regexp_sqlite_function_config instr_ci = {
+        .kind = REGEXP_SQLITE_FUNCTION_INSTR,
+        .case_sensitive = false,
+    };
+    static const struct regexp_sqlite_function_config instr_cs = {
+        .kind = REGEXP_SQLITE_FUNCTION_INSTR,
+        .case_sensitive = true,
+    };
+    static const struct regexp_sqlite_function_config substr_ci = {
+        .kind = REGEXP_SQLITE_FUNCTION_SUBSTR,
+        .case_sensitive = false,
+    };
+    static const struct regexp_sqlite_function_config substr_cs = {
+        .kind = REGEXP_SQLITE_FUNCTION_SUBSTR,
+        .case_sensitive = true,
+    };
+    static const struct regexp_sqlite_function_config replace_ci = {
+        .kind = REGEXP_SQLITE_FUNCTION_REPLACE,
+        .case_sensitive = false,
+    };
+    static const struct regexp_sqlite_function_config replace_cs = {
+        .kind = REGEXP_SQLITE_FUNCTION_REPLACE,
+        .case_sensitive = true,
+    };
     static struct mylite_sqlite_function_registration registrations[] = {
         {
             .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
@@ -209,7 +403,7 @@ int mylite_sqlite_register_regexp_functions(sqlite3 *sqlite) {
             .argument_count = 2,
             .text_representation =
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
-            .application_data = NULL,
+            .application_data = (void *)&match_ci,
             .scalar_callback = regexp_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
@@ -223,7 +417,91 @@ int mylite_sqlite_register_regexp_functions(sqlite3 *sqlite) {
             .argument_count = 2,
             .text_representation =
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
-            .application_data = &case_sensitive_marker,
+            .application_data = (void *)&match_cs,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_instr_ci_ascii",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = (void *)&instr_ci,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_instr_cs_ascii",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = (void *)&instr_cs,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_substr_ci_ascii",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = (void *)&substr_ci,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_substr_cs_ascii",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = (void *)&substr_cs,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_replace_ci_ascii",
+            .argument_count = 3,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = (void *)&replace_ci,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_replace_cs_ascii",
+            .argument_count = 3,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = (void *)&replace_cs,
             .scalar_callback = regexp_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
@@ -286,6 +564,26 @@ enum mylite_regexp_match_status mylite_regexp_program_match_ascii_cs(
     return regexp_program_match_ascii(program, value, value_length, out_matches);
 }
 
+enum mylite_regexp_match_status mylite_regexp_program_find_ascii_ci(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+) {
+    return regexp_program_find_ascii(program, value, value_length, start_offset, out_match);
+}
+
+enum mylite_regexp_match_status mylite_regexp_program_find_ascii_cs(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+) {
+    return regexp_program_find_ascii(program, value, value_length, start_offset, out_match);
+}
+
 static enum mylite_regexp_compile_status regexp_compile_ascii(
     const char *pattern,
     size_t pattern_length,
@@ -329,13 +627,42 @@ static enum mylite_regexp_match_status regexp_program_match_ascii(
     size_t value_length,
     bool *out_matches
 ) {
-    unsigned char *matches = NULL;
-    size_t cell_count = 0U;
+    struct mylite_regexp_match match = {
+        .matched = false,
+        .start = 0U,
+        .end = 0U,
+    };
+    enum mylite_regexp_match_status status = MYLITE_REGEXP_MATCH_OK;
 
-    if (program == NULL || value == NULL || out_matches == NULL) {
+    if (out_matches == NULL) {
         return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
     }
     *out_matches = false;
+    status = regexp_program_find_ascii(program, value, value_length, 0U, &match);
+    if (status == MYLITE_REGEXP_MATCH_OK) {
+        *out_matches = match.matched;
+    }
+    return status;
+}
+
+static enum mylite_regexp_match_status regexp_program_find_ascii(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+) {
+    unsigned char *matches = NULL;
+    size_t cell_count = 0U;
+
+    if (program == NULL || value == NULL || out_match == NULL) {
+        return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
+    }
+    *out_match = (struct mylite_regexp_match){
+        .matched = false,
+        .start = 0U,
+        .end = 0U,
+    };
     if (!value_length_is_supported(value_length)) {
         return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
     }
@@ -354,10 +681,44 @@ static enum mylite_regexp_match_status regexp_program_match_ascii(
 
     fill_match_table(program, (const unsigned char *)value, value_length, matches);
     if (program->anchored_start) {
-        *out_matches = match_table_get(matches, value_length, 0U, 0U);
+        if (start_offset == 0U && match_table_get(matches, value_length, 0U, 0U)) {
+            const struct regexp_match_span_context span_context = {
+                .program = program,
+                .value = (const unsigned char *)value,
+                .value_length = value_length,
+                .matches = matches,
+            };
+            const struct regexp_match_span_position position = {
+                .token_index = 0U,
+                .value_index = 0U,
+            };
+
+            out_match->matched = match_span_from(&span_context, position, &out_match->end);
+            out_match->start = 0U;
+        }
     } else {
-        for (size_t start = 0U; start <= value_length && !*out_matches; ++start) {
-            *out_matches = match_table_get(matches, value_length, 0U, start);
+        const struct regexp_match_span_context span_context = {
+            .program = program,
+            .value = (const unsigned char *)value,
+            .value_length = value_length,
+            .matches = matches,
+        };
+
+        if (start_offset <= value_length) {
+            for (size_t start = start_offset; start <= value_length; ++start) {
+                if (match_table_get(matches, value_length, 0U, start)) {
+                    const struct regexp_match_span_position position = {
+                        .token_index = 0U,
+                        .value_index = start,
+                    };
+
+                    out_match->matched = match_span_from(&span_context, position, &out_match->end);
+                    out_match->start = start;
+                    if (out_match->matched) {
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -366,11 +727,42 @@ static enum mylite_regexp_match_status regexp_program_match_ascii(
 }
 
 static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const struct regexp_sqlite_function_config *config =
+        (const struct regexp_sqlite_function_config *)sqlite3_user_data(context);
+
+    if (context == NULL || config == NULL) {
+        sqlite3_result_error(context, "invalid MyLite regexp callback", -1);
+        return;
+    }
+
+    switch (config->kind) {
+    case REGEXP_SQLITE_FUNCTION_MATCH:
+        regexp_sqlite_match_callback(context, config, argc, argv);
+        return;
+    case REGEXP_SQLITE_FUNCTION_INSTR:
+        regexp_sqlite_instr_callback(context, config, argc, argv);
+        return;
+    case REGEXP_SQLITE_FUNCTION_SUBSTR:
+        regexp_sqlite_substr_callback(context, config, argc, argv);
+        return;
+    case REGEXP_SQLITE_FUNCTION_REPLACE:
+        regexp_sqlite_replace_callback(context, config, argc, argv);
+        return;
+    }
+
+    sqlite3_result_error(context, "invalid MyLite regexp function", -1);
+}
+
+static void regexp_sqlite_match_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+) {
     struct mylite_regexp_program *program = NULL;
     struct mylite_regexp_program *compiled_program = NULL;
     const unsigned char *value = NULL;
     int value_length = 0;
-    bool case_sensitive = false;
     bool matches = false;
     enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
 
@@ -383,8 +775,13 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
         return;
     }
 
-    case_sensitive = sqlite3_user_data(context) != NULL;
-    if (!regexp_sqlite_get_program(context, argv[0], case_sensitive, &program, &compiled_program)) {
+    if (!regexp_sqlite_get_program(
+            context,
+            argv[0],
+            config->case_sensitive,
+            &program,
+            &compiled_program
+        )) {
         return;
     }
 
@@ -402,7 +799,7 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
         return;
     }
 
-    if (case_sensitive) {
+    if (config->case_sensitive) {
         match_status = mylite_regexp_program_match_ascii_cs(
             program,
             (const char *)value,
@@ -429,6 +826,473 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
     } else {
         sqlite3_result_int(context, 0);
     }
+}
+
+static void regexp_sqlite_instr_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+) {
+    struct mylite_regexp_match match = {
+        .matched = false,
+        .start = 0U,
+        .end = 0U,
+    };
+    const unsigned char *value = NULL;
+    int value_length = 0;
+    bool pattern_is_empty = false;
+
+    if (context == NULL || config == NULL || argc != 2 || argv == NULL || argv[0] == NULL ||
+        argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite regexp_instr callback", -1);
+        return;
+    }
+    if (regexp_sqlite_any_argument_is_null(argc, argv)) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (!regexp_sqlite_pattern_is_empty(context, argv[0], &pattern_is_empty)) {
+        return;
+    }
+    if (pattern_is_empty) {
+        regexp_sqlite_result_illegal_argument(context);
+        return;
+    }
+    const struct regexp_sqlite_match_arguments match_arguments = {
+        .pattern_value = argv[0],
+        .value_value = argv[1],
+    };
+    if (!regexp_sqlite_find_match(
+            context,
+            config,
+            &match_arguments,
+            &match,
+            &value,
+            &value_length
+        )) {
+        return;
+    }
+    (void)value;
+    (void)value_length;
+    if (!match.matched) {
+        sqlite3_result_int(context, 0);
+        return;
+    }
+    sqlite3_result_int64(context, (sqlite3_int64)match.start + 1);
+}
+
+static void regexp_sqlite_substr_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+) {
+    struct mylite_regexp_match match = {
+        .matched = false,
+        .start = 0U,
+        .end = 0U,
+    };
+    const unsigned char *value = NULL;
+    int value_length = 0;
+    bool pattern_is_empty = false;
+
+    if (context == NULL || config == NULL || argc != 2 || argv == NULL || argv[0] == NULL ||
+        argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite regexp_substr callback", -1);
+        return;
+    }
+    if (regexp_sqlite_any_argument_is_null(argc, argv)) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (!regexp_sqlite_pattern_is_empty(context, argv[0], &pattern_is_empty)) {
+        return;
+    }
+    if (pattern_is_empty) {
+        regexp_sqlite_result_illegal_argument(context);
+        return;
+    }
+    const struct regexp_sqlite_match_arguments match_arguments = {
+        .pattern_value = argv[0],
+        .value_value = argv[1],
+    };
+    if (!regexp_sqlite_find_match(
+            context,
+            config,
+            &match_arguments,
+            &match,
+            &value,
+            &value_length
+        )) {
+        return;
+    }
+    (void)value_length;
+    if (!match.matched) {
+        sqlite3_result_null(context);
+        return;
+    }
+    sqlite3_result_text(
+        context,
+        (const char *)&value[match.start],
+        (int)(match.end - match.start),
+        SQLITE_TRANSIENT
+    );
+}
+
+static void regexp_sqlite_replace_callback(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    int argc,
+    sqlite3_value **argv
+) {
+    struct regexp_sqlite_compiled_program programs = {
+        .program = NULL,
+        .compiled_program = NULL,
+    };
+    struct regexp_sqlite_replace_arguments arguments = {
+        .value = NULL,
+        .replacement = NULL,
+        .value_length = 0U,
+        .replacement_length = 0U,
+    };
+    struct regexp_string_buffer buffer = {0};
+    bool pattern_is_empty = false;
+
+    if (context == NULL || config == NULL || argc != 3 || argv == NULL || argv[0] == NULL ||
+        argv[1] == NULL || argv[2] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite regexp_replace callback", -1);
+        return;
+    }
+    if (regexp_sqlite_any_argument_is_null(argc, argv)) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (!regexp_sqlite_pattern_is_empty(context, argv[0], &pattern_is_empty)) {
+        return;
+    }
+    if (pattern_is_empty) {
+        regexp_sqlite_result_illegal_argument(context);
+        return;
+    }
+    if (!regexp_sqlite_get_program(
+            context,
+            argv[0],
+            config->case_sensitive,
+            &programs.program,
+            &programs.compiled_program
+        )) {
+        return;
+    }
+
+    if (!regexp_sqlite_replace_prepare_arguments(context, argv, &arguments) ||
+        !regexp_sqlite_replace_all(context, config, &programs, &arguments, &buffer)) {
+        regexp_string_buffer_deinit(&buffer);
+        regexp_sqlite_free_compiled_program(programs.compiled_program);
+        return;
+    }
+
+    regexp_sqlite_cache_program(context, programs.compiled_program);
+    if (buffer.data == NULL) {
+        sqlite3_result_text(context, "", 0, SQLITE_STATIC);
+        return;
+    }
+    sqlite3_result_text(context, buffer.data, (int)buffer.length, sqlite3_free);
+}
+
+static bool regexp_sqlite_replace_prepare_arguments(
+    sqlite3_context *context,
+    sqlite3_value **argv,
+    struct regexp_sqlite_replace_arguments *out_arguments
+) {
+    int value_length = 0;
+    int replacement_length = 0;
+
+    out_arguments->replacement = sqlite3_value_text(argv[2]);
+    replacement_length = sqlite3_value_bytes(argv[2]);
+    if (out_arguments->replacement == NULL || replacement_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+    if (!regexp_value_is_supported_ascii(
+            (const char *)out_arguments->replacement,
+            (size_t)replacement_length
+        )) {
+        regexp_sqlite_result_match_error(context, MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE);
+        return false;
+    }
+
+    out_arguments->value = sqlite3_value_text(argv[1]);
+    value_length = sqlite3_value_bytes(argv[1]);
+    if (out_arguments->value == NULL || value_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+    if (!regexp_value_is_supported_ascii(
+            (const char *)out_arguments->value,
+            (size_t)value_length
+        )) {
+        regexp_sqlite_result_match_error(context, MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE);
+        return false;
+    }
+
+    out_arguments->value_length = (size_t)value_length;
+    out_arguments->replacement_length = (size_t)replacement_length;
+    return true;
+}
+
+static bool regexp_sqlite_replace_all(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_compiled_program *programs,
+    const struct regexp_sqlite_replace_arguments *arguments,
+    struct regexp_string_buffer *buffer
+) {
+    size_t append_offset = 0U;
+    size_t search_offset = 0U;
+
+    if (arguments->value_length == 0U) {
+        return true;
+    }
+
+    while (search_offset <= arguments->value_length) {
+        struct mylite_regexp_match match = {
+            .matched = false,
+            .start = 0U,
+            .end = 0U,
+        };
+
+        if (!regexp_sqlite_replace_find_match(
+                context,
+                config,
+                programs,
+                arguments,
+                search_offset,
+                &match
+            )) {
+            return false;
+        }
+        if (!match.matched) {
+            break;
+        }
+        if (!regexp_string_buffer_append(
+                buffer,
+                (const char *)&arguments->value[append_offset],
+                match.start - append_offset
+            ) ||
+            !regexp_string_buffer_append(
+                buffer,
+                (const char *)arguments->replacement,
+                arguments->replacement_length
+            )) {
+            sqlite3_result_error_nomem(context);
+            return false;
+        }
+
+        append_offset = match.end;
+        search_offset = match.end;
+        if (match.start == match.end) {
+            if (search_offset >= arguments->value_length) {
+                break;
+            }
+            if (!regexp_string_buffer_append(
+                    buffer,
+                    (const char *)&arguments->value[search_offset],
+                    1U
+                )) {
+                sqlite3_result_error_nomem(context);
+                return false;
+            }
+            ++search_offset;
+            append_offset = search_offset;
+        }
+    }
+    if (!regexp_string_buffer_append(
+            buffer,
+            (const char *)&arguments->value[append_offset],
+            arguments->value_length - append_offset
+        )) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+    return true;
+}
+
+static bool regexp_sqlite_replace_find_match(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_compiled_program *programs,
+    const struct regexp_sqlite_replace_arguments *arguments,
+    size_t search_offset,
+    struct mylite_regexp_match *out_match
+) {
+    enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
+
+    if (config->case_sensitive) {
+        match_status = mylite_regexp_program_find_ascii_cs(
+            programs->program,
+            (const char *)arguments->value,
+            arguments->value_length,
+            search_offset,
+            out_match
+        );
+    } else {
+        match_status = mylite_regexp_program_find_ascii_ci(
+            programs->program,
+            (const char *)arguments->value,
+            arguments->value_length,
+            search_offset,
+            out_match
+        );
+    }
+    if (match_status != MYLITE_REGEXP_MATCH_OK) {
+        regexp_sqlite_result_match_error(context, match_status);
+        return false;
+    }
+    return true;
+}
+
+static bool regexp_sqlite_find_match(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_match_arguments *arguments,
+    struct mylite_regexp_match *out_match,
+    const unsigned char **out_value,
+    int *out_value_length
+) {
+    struct regexp_sqlite_compiled_program programs = {
+        .program = NULL,
+        .compiled_program = NULL,
+    };
+
+    if (!regexp_sqlite_get_program(
+            context,
+            arguments->pattern_value,
+            config->case_sensitive,
+            &programs.program,
+            &programs.compiled_program
+        )) {
+        return false;
+    }
+    return regexp_sqlite_match_value_span(
+        context,
+        config,
+        &programs,
+        arguments->value_value,
+        0U,
+        out_match,
+        out_value,
+        out_value_length
+    );
+}
+
+static bool regexp_sqlite_match_value_span(
+    sqlite3_context *context,
+    const struct regexp_sqlite_function_config *config,
+    const struct regexp_sqlite_compiled_program *programs,
+    sqlite3_value *value_value,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match,
+    const unsigned char **out_value,
+    int *out_value_length
+) {
+    enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
+
+    if (out_match == NULL || out_value == NULL || out_value_length == NULL) {
+        regexp_sqlite_free_compiled_program(programs->compiled_program);
+        sqlite3_result_error(context, "invalid MyLite regexp match", -1);
+        return false;
+    }
+    *out_match = (struct mylite_regexp_match){
+        .matched = false,
+        .start = 0U,
+        .end = 0U,
+    };
+    *out_value = sqlite3_value_text(value_value);
+    *out_value_length = sqlite3_value_bytes(value_value);
+    if (*out_value == NULL || *out_value_length < 0) {
+        regexp_sqlite_free_compiled_program(programs->compiled_program);
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+
+    if (config->case_sensitive) {
+        match_status = mylite_regexp_program_find_ascii_cs(
+            programs->program,
+            (const char *)*out_value,
+            (size_t)*out_value_length,
+            start_offset,
+            out_match
+        );
+    } else {
+        match_status = mylite_regexp_program_find_ascii_ci(
+            programs->program,
+            (const char *)*out_value,
+            (size_t)*out_value_length,
+            start_offset,
+            out_match
+        );
+    }
+    if (match_status != MYLITE_REGEXP_MATCH_OK) {
+        regexp_sqlite_free_compiled_program(programs->compiled_program);
+        regexp_sqlite_result_match_error(context, match_status);
+        return false;
+    }
+
+    regexp_sqlite_cache_program(context, programs->compiled_program);
+    return true;
+}
+
+static void regexp_string_buffer_deinit(struct regexp_string_buffer *buffer) {
+    if (buffer == NULL) {
+        return;
+    }
+    sqlite3_free(buffer->data);
+    *buffer = (struct regexp_string_buffer){0};
+}
+
+static bool regexp_string_buffer_append(
+    struct regexp_string_buffer *buffer,
+    const char *text,
+    size_t length
+) {
+    char *data = NULL;
+    size_t needed = 0U;
+    size_t capacity = 0U;
+
+    if (buffer == NULL || (text == NULL && length != 0U)) {
+        return false;
+    }
+    if (length == 0U) {
+        return true;
+    }
+    if (buffer->length > SIZE_MAX - length) {
+        return false;
+    }
+    needed = buffer->length + length;
+    if (needed <= buffer->capacity) {
+        memcpy(buffer->data + buffer->length, text, length);
+        buffer->length = needed;
+        return true;
+    }
+
+    capacity = buffer->capacity == 0U ? regexp_string_buffer_initial_capacity : buffer->capacity;
+    while (capacity < needed) {
+        if (capacity > SIZE_MAX / 2U) {
+            capacity = needed;
+            break;
+        }
+        capacity *= 2U;
+    }
+    data = (char *)sqlite3_realloc64(buffer->data, (sqlite3_uint64)capacity);
+    if (data == NULL) {
+        return false;
+    }
+    buffer->data = data;
+    buffer->capacity = capacity;
+    memcpy(buffer->data + buffer->length, text, length);
+    buffer->length = needed;
+    return true;
 }
 
 static bool regexp_sqlite_get_program(
@@ -475,6 +1339,46 @@ static bool regexp_sqlite_get_program(
 
     *out_program = *out_compiled_program;
     return true;
+}
+
+static bool regexp_sqlite_pattern_is_empty(
+    sqlite3_context *context,
+    sqlite3_value *pattern_value,
+    bool *out_is_empty
+) {
+    const unsigned char *pattern = NULL;
+    int pattern_length = 0;
+
+    if (out_is_empty == NULL) {
+        sqlite3_result_error(context, "invalid MyLite regexp pattern", -1);
+        return false;
+    }
+    *out_is_empty = false;
+    pattern = sqlite3_value_text(pattern_value);
+    pattern_length = sqlite3_value_bytes(pattern_value);
+    if (pattern == NULL || pattern_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+    (void)pattern;
+    *out_is_empty = pattern_length == 0;
+    return true;
+}
+
+static bool regexp_sqlite_any_argument_is_null(int argc, sqlite3_value **argv) {
+    for (int index = 0; index < argc; ++index) {
+        if (sqlite3_value_type(argv[index]) == SQLITE_NULL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void regexp_sqlite_result_illegal_argument(sqlite3_context *context) {
+    const char *message = "Illegal argument to a regular expression.";
+
+    regexp_sqlite_set_diagnostic(context, mysql_error_regexp_illegal_argument, "HY000", message);
+    sqlite3_result_error(context, message, -1);
 }
 
 static void regexp_sqlite_result_compile_error(
@@ -980,6 +1884,167 @@ static void fill_match_table(
             match_table_set(matches, value_length, current_index, current_value_index, matched);
         }
     }
+}
+
+static bool match_span_from(
+    const struct regexp_match_span_context *context,
+    struct regexp_match_span_position position,
+    size_t *out_end
+) {
+    while (position.token_index < context->program->token_count) {
+        if (!match_span_advance(context, &position)) {
+            return false;
+        }
+    }
+
+    *out_end = position.value_index;
+    return true;
+}
+
+static bool match_span_advance(
+    const struct regexp_match_span_context *context,
+    struct regexp_match_span_position *position
+) {
+    const struct regexp_token *token = &context->program->tokens[position->token_index];
+    bool current_byte_matches = false;
+
+    if (token->kind == REGEXP_TOKEN_END_ANCHOR) {
+        if (position->value_index != context->value_length || !match_table_get(
+                                                                  context->matches,
+                                                                  context->value_length,
+                                                                  position->token_index + 1U,
+                                                                  position->value_index
+                                                              )) {
+            return false;
+        }
+        ++position->token_index;
+        return true;
+    }
+
+    if (position->value_index < context->value_length) {
+        current_byte_matches =
+            token_matches_byte(context->program, token, context->value[position->value_index]);
+    }
+
+    switch (token->quantifier) {
+    case REGEXP_QUANTIFIER_ONE:
+        return match_span_advance_one(context, current_byte_matches, position);
+    case REGEXP_QUANTIFIER_ZERO_OR_ONE:
+        return match_span_advance_zero_or_one(context, current_byte_matches, position);
+    case REGEXP_QUANTIFIER_ZERO_OR_MORE:
+        return match_span_advance_repeated(context, token, false, position);
+    case REGEXP_QUANTIFIER_ONE_OR_MORE:
+        return match_span_advance_repeated(context, token, true, position);
+    }
+    return false;
+}
+
+static bool match_span_advance_one(
+    const struct regexp_match_span_context *context,
+    bool current_byte_matches,
+    struct regexp_match_span_position *position
+) {
+    if (!current_byte_matches || !match_table_get(
+                                     context->matches,
+                                     context->value_length,
+                                     position->token_index + 1U,
+                                     position->value_index + 1U
+                                 )) {
+        return false;
+    }
+
+    ++position->token_index;
+    ++position->value_index;
+    return true;
+}
+
+static bool match_span_advance_zero_or_one(
+    const struct regexp_match_span_context *context,
+    bool current_byte_matches,
+    struct regexp_match_span_position *position
+) {
+    if (current_byte_matches && match_table_get(
+                                    context->matches,
+                                    context->value_length,
+                                    position->token_index + 1U,
+                                    position->value_index + 1U
+                                )) {
+        ++position->token_index;
+        ++position->value_index;
+        return true;
+    }
+    if (!match_table_get(
+            context->matches,
+            context->value_length,
+            position->token_index + 1U,
+            position->value_index
+        )) {
+        return false;
+    }
+
+    ++position->token_index;
+    return true;
+}
+
+static bool match_span_advance_repeated(
+    const struct regexp_match_span_context *context,
+    const struct regexp_token *token,
+    bool require_one,
+    struct regexp_match_span_position *position
+) {
+    const size_t run_length = token_match_run_length(
+        context->program,
+        token,
+        context->value,
+        context->value_length,
+        position->value_index
+    );
+    size_t count = run_length + 1U;
+
+    if (require_one) {
+        if (run_length == 0U) {
+            return false;
+        }
+        count = run_length;
+    }
+    while (count > 0U) {
+        size_t consumed = count - 1U;
+        size_t next_value_index = 0U;
+
+        if (require_one) {
+            consumed = count;
+        }
+        next_value_index = position->value_index + consumed;
+
+        if (match_table_get(
+                context->matches,
+                context->value_length,
+                position->token_index + 1U,
+                next_value_index
+            )) {
+            ++position->token_index;
+            position->value_index = next_value_index;
+            return true;
+        }
+        --count;
+    }
+    return false;
+}
+
+static size_t token_match_run_length(
+    const struct mylite_regexp_program *program,
+    const struct regexp_token *token,
+    const unsigned char *value,
+    size_t value_length,
+    size_t value_index
+) {
+    size_t run_length = 0U;
+
+    while (value_index + run_length < value_length &&
+           token_matches_byte(program, token, value[value_index + run_length])) {
+        ++run_length;
+    }
+    return run_length;
 }
 
 static bool match_table_get(

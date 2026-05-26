@@ -5159,6 +5159,18 @@ expression(A) ::= STRCMP(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). 
 expression(A) ::= regexp_like_expression(B). {
     A = B;
 }
+expression(A) ::= REGEXP_INSTR(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_REGEXP_INSTR_FUNCTION, B, R);
+}
+expression(A) ::= REGEXP_SUBSTR(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION, B, R);
+}
+expression(A) ::= REGEXP_REPLACE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION, B, R);
+}
 regexp_like_expression(A) ::= REGEXP_LIKE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION, B, C, R);
@@ -5607,6 +5619,18 @@ expression(A) ::=
 expression(A) ::= REGEXP_LIKE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= REGEXP_INSTR(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_REGEXP_INSTR_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= REGEXP_SUBSTR(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_REGEXP_SUBSTR_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= REGEXP_REPLACE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_REGEXP_REPLACE_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= REGEXP_LIKE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(

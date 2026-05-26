@@ -25,6 +25,12 @@ enum mylite_regexp_match_status {
 
 struct mylite_regexp_program;
 
+struct mylite_regexp_match {
+    bool matched;
+    size_t start;
+    size_t end;
+};
+
 int mylite_sqlite_register_regexp_functions(sqlite3 *sqlite);
 enum mylite_regexp_compile_status mylite_regexp_compile_ascii_ci(
     const char *pattern,
@@ -48,6 +54,20 @@ enum mylite_regexp_match_status mylite_regexp_program_match_ascii_cs(
     const char *value,
     size_t value_length,
     bool *out_matches
+);
+enum mylite_regexp_match_status mylite_regexp_program_find_ascii_ci(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+);
+enum mylite_regexp_match_status mylite_regexp_program_find_ascii_cs(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
 );
 
 #endif

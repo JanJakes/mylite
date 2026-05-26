@@ -4471,6 +4471,22 @@ expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
 }
+get_format_class(A) ::= DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+get_format_class(A) ::= TIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+get_format_class(A) ::= DATETIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+get_format_class(A) ::= TIMESTAMP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+expression(A) ::= GET_FORMAT(T) LPAREN get_format_class(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_GET_FORMAT_FUNCTION, B, C, R);
+}
 expression(A) ::= TIME_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_TIME_FORMAT_FUNCTION, B, C, R);
@@ -7115,6 +7131,9 @@ identifier(A) ::= JSON_UNQUOTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATE_FORMAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= GET_FORMAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TIME_FORMAT(T). {

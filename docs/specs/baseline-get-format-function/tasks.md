@@ -5,12 +5,12 @@
 - [x] Write the independently authored feature specification.
 - [x] Add a MySQL-runtime expectation script for the supported and deferred
       surface.
-- [ ] Add lexer/parser/AST support for `GET_FORMAT()`.
-- [ ] Integrate constant scalar evaluation with existing no-source, `DUAL`,
+- [x] Add lexer/parser/AST support for `GET_FORMAT()`.
+- [x] Integrate constant scalar evaluation with existing no-source, `DUAL`,
       `DO`, row-scalar projection, `DATE_FORMAT()`, `TIME_FORMAT()`, and
       `STR_TO_DATE()` paths.
-- [ ] Add fast C runtime and parser tests.
-- [ ] Update compatibility documentation with exact limited support.
-- [ ] Run focused MySQL expectation, build, focused CTest entries, and full
+- [x] Add fast C runtime and parser tests.
+- [x] Update compatibility documentation with exact limited support.
+- [x] Run focused MySQL expectation, build, focused CTest entries, and full
       `cmake --workflow --preset check`.
-- [ ] Review the final diff, fix findings, commit, and push.
+- [x] Review the final diff, fix findings, commit, and push.

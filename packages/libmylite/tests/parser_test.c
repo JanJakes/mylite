@@ -75,6 +75,7 @@ static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_addtime_subtime_functions(void);
 static int test_date_format_function(void);
+static int test_get_format_function(void);
 static int test_time_format_function(void);
 static int test_str_to_date_function(void);
 static int test_datediff_function(void);
@@ -410,6 +411,7 @@ int main(void) {
     failures += test_date_add_second_function();
     failures += test_addtime_subtime_functions();
     failures += test_date_format_function();
+    failures += test_get_format_function();
     failures += test_time_format_function();
     failures += test_str_to_date_function();
     failures += test_datediff_function();
@@ -4123,6 +4125,97 @@ static int test_date_format_function(void) {
 
     failures += parse_sql(
         "CREATE TABLE date_format (date_format INT); SELECT date_format FROM date_format;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_get_format_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT GET_FORMAT(DATE, 'USA'), get_format(time, 'iso') AS fmt, "
+        "GET_FORMAT(DATETIME, NULL), GET_FORMAT(TIMESTAMP, 123) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_GET_FORMAT_FUNCTION, "get_format function");
+    failures += expect_span_text(first_expression, "GET_FORMAT(DATE, 'USA')", "get_format span");
+    failures += expect_child_count(first_expression, 2U, "get_format child count");
+    failures += expect_span_text(child_at(first_expression, 0U), "DATE", "get_format class");
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "get_format format argument"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_GET_FORMAT_FUNCTION,
+        "lower get_format function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "get_format alias"
+    );
+    failures += expect_span_text(child_at(third_expression, 0U), "DATETIME", "get_format datetime");
+    failures += expect_literal(
+        child_at(third_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "get_format null argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO GET_FORMAT(DATE, 'USA');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "get_format do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_GET_FORMAT_FUNCTION,
+        "do get_format"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GET_FORMAT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT GET_FORMAT(DATE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT GET_FORMAT(DATE, 'USA', 'extra');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT GET_FORMAT(YEAR, 'USA');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT GET_FORMAT('DATE', 'USA');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE get_format (get_format INT); SELECT get_format FROM get_format;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "CREATE TABLE get_format (get_format INT); SELECT GET_FORMAT (DATE, 'USA');",
         MYLITE_SQL_PARSE_OK,
         &result
     );

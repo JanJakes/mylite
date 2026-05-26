@@ -876,6 +876,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "date_format_argument_count_error";
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
+        return "get_format_function";
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
         return "time_format_function";
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:

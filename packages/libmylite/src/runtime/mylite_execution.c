@@ -16475,6 +16475,11 @@ static int date_format_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int get_format_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int time_format_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -16522,6 +16527,45 @@ static int date_format_string_or_null_argument(
     char **out_text,
     size_t *out_text_length,
     bool *out_is_null
+);
+static int get_format_string_or_null_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *literal_nul_message,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int get_format_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int get_format_copy_mapped_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *class_node,
+    const char *format_text,
+    size_t format_text_length,
+    struct session_scalar_cell *out_cell
+);
+static const char *get_format_lookup(
+    const struct mylite_sql_source_span *class_span,
+    const char *format_text,
+    size_t format_text_length
+);
+static size_t get_format_class_index(const struct mylite_sql_source_span *class_span);
+static size_t get_format_name_index(const char *format_text, size_t format_text_length);
+static bool span_text_equals_ascii_case_insensitive(
+    const struct mylite_sql_source_span *span,
+    const char *text
+);
+static bool bytes_text_equals_ascii_case_insensitive(
+    const char *left,
+    size_t left_length,
+    const char *right
 );
 static int str_to_date_string_or_null_argument(
     struct mylite_db *database,
@@ -25160,6 +25204,11 @@ static int plan_row_scalar_date_format_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_get_format_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_time_format_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -25246,6 +25295,13 @@ static int plan_row_scalar_time_format_column(
 static int plan_row_scalar_date_format_format_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_get_format_format_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *literal_nul_message,
+    int (*validate_format)(struct mylite_db *, const char *, size_t),
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_time_format_format_argument(
@@ -29671,6 +29727,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -41498,6 +41555,7 @@ static bool compound_expression_uses_string_collation(
     case MYLITE_SQL_AST_CONCAT_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_LOWER_FUNCTION:
@@ -52589,6 +52647,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -90590,6 +90649,7 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
     case MYLITE_SQL_AST_DAYNAME_FUNCTION:
@@ -92179,6 +92239,8 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
         return date_format_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
+        return get_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
         return time_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
@@ -111165,6 +111227,50 @@ static int date_format_function_value(
     return rc;
 }
 
+static int get_format_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *class_node = NULL;
+    char *format_text = NULL;
+    size_t format_text_length = 0U;
+    bool format_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GET_FORMAT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "GET_FORMAT() supports only literal format names");
+        return MYLITE_ERROR;
+    }
+
+    class_node = child_at(expression, 0U);
+    rc = get_format_literal_argument(
+        database,
+        child_at(expression, 1U),
+        &format_text,
+        &format_text_length,
+        &format_is_null
+    );
+    if (rc == MYLITE_OK && !format_is_null) {
+        rc = get_format_copy_mapped_value(
+            database,
+            class_node,
+            format_text,
+            format_text_length,
+            out_cell
+        );
+    }
+    free(format_text);
+    return rc;
+}
+
 static int time_format_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -111305,10 +111411,11 @@ static int date_format_function_arguments(
         out_value_is_null
     );
     if (rc == MYLITE_OK) {
-        rc = date_format_string_or_null_argument(
+        rc = get_format_string_or_null_argument(
             database,
             child_at(expression, 1U),
             "DATE_FORMAT() supports only string format literals and NULL",
+            "DATE_FORMAT() literals do not support NUL bytes",
             out_format,
             out_format_length,
             out_format_is_null
@@ -111359,10 +111466,11 @@ static int time_format_function_arguments(
         out_value_is_null
     );
     if (rc == MYLITE_OK) {
-        rc = time_format_string_or_null_argument(
+        rc = get_format_string_or_null_argument(
             database,
             child_at(expression, 1U),
             "TIME_FORMAT() supports only string format literals and NULL",
+            "TIME_FORMAT() literals do not support NUL bytes",
             out_format,
             out_format_length,
             out_format_is_null
@@ -111435,7 +111543,7 @@ static int str_to_date_function_arguments(
         out_value_is_null
     );
     if (rc == MYLITE_OK) {
-        rc = str_to_date_string_or_null_argument(
+        rc = get_format_string_or_null_argument(
             database,
             format_expression,
             "STR_TO_DATE() supports only string format literals and NULL",
@@ -111554,6 +111662,253 @@ static int date_format_string_or_null_argument(
         rc = MYLITE_ERROR;
     }
     return rc;
+}
+
+static int get_format_string_or_null_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *literal_nul_message,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind != MYLITE_SQL_AST_GET_FORMAT_FUNCTION) {
+        return str_to_date_string_or_null_argument(
+            database,
+            expression,
+            unsupported_message,
+            literal_nul_message,
+            out_text,
+            out_text_length,
+            out_is_null
+        );
+    }
+
+    rc = get_format_function_value(database, expression, &cell);
+    if (rc == MYLITE_OK && cell.value == NULL) {
+        *out_is_null = true;
+    } else if (rc == MYLITE_OK) {
+        *out_text_length = strlen(cell.value);
+        if (memchr(cell.value, '\0', *out_text_length) != NULL) {
+            set_unsupported_error(database, literal_nul_message);
+            rc = MYLITE_ERROR;
+        } else {
+            *out_text = cell.owned_text;
+            cell.owned_text = NULL;
+        }
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int get_format_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    literal = unwrap_parenthesized_expression(expression);
+    if (literal == NULL) {
+        set_unsupported_error(database, "GET_FORMAT() supports only literal format names");
+        return MYLITE_ERROR;
+    }
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            set_unsupported_error(database, "GET_FORMAT() supports only literal format names");
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(database, "GET_FORMAT() supports only literal format names");
+            return MYLITE_ERROR;
+        }
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, "GET_FORMAT() supports only literal format names");
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "GET_FORMAT() supports only literal format names");
+        return MYLITE_ERROR;
+    }
+
+    if (decode_sql_string_literal(
+            database,
+            literal,
+            "GET_FORMAT() supports only literal format names",
+            "GET_FORMAT() format names do not support NUL bytes",
+            out_text,
+            out_text_length
+        ) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    if (memchr(*out_text, '\0', *out_text_length) != NULL) {
+        set_unsupported_error(database, "GET_FORMAT() format names do not support NUL bytes");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int get_format_copy_mapped_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *class_node,
+    const char *format_text,
+    size_t format_text_length,
+    struct session_scalar_cell *out_cell
+) {
+    const char *mapped = NULL;
+    size_t mapped_length = 0U;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    class_node = unwrap_parenthesized_expression(class_node);
+    if (class_node == NULL || class_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "GET_FORMAT() supports only DATE, TIME, DATETIME, and TIMESTAMP classes"
+        );
+        return MYLITE_ERROR;
+    }
+
+    mapped = get_format_lookup(&class_node->span, format_text, format_text_length);
+    if (mapped == NULL) {
+        return MYLITE_OK;
+    }
+
+    mapped_length = strlen(mapped);
+    out_cell->owned_text = (char *)malloc(mapped_length + 1U);
+    if (out_cell->owned_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(out_cell->owned_text, mapped, mapped_length + 1U);
+    out_cell->value = out_cell->owned_text;
+    return MYLITE_OK;
+}
+
+static const char *get_format_lookup(
+    const struct mylite_sql_source_span *class_span,
+    const char *format_text,
+    size_t format_text_length
+) {
+    static const char *const values[3U][5U] = {
+        {"%m.%d.%Y", "%Y-%m-%d", "%Y-%m-%d", "%d.%m.%Y", "%Y%m%d"},
+        {"%h:%i:%s %p", "%H:%i:%s", "%H:%i:%s", "%H.%i.%s", "%H%i%s"},
+        {
+            "%Y-%m-%d %H.%i.%s",
+            "%Y-%m-%d %H:%i:%s",
+            "%Y-%m-%d %H:%i:%s",
+            "%Y-%m-%d %H.%i.%s",
+            "%Y%m%d%H%i%s",
+        },
+    };
+    size_t class_index = get_format_class_index(class_span);
+    size_t name_index = get_format_name_index(format_text, format_text_length);
+
+    if (class_index == SIZE_MAX || name_index == SIZE_MAX) {
+        return NULL;
+    }
+    return values[class_index][name_index];
+}
+
+static size_t get_format_class_index(const struct mylite_sql_source_span *class_span) {
+    if (span_text_equals_ascii_case_insensitive(class_span, "DATE")) {
+        return 0U;
+    }
+    if (span_text_equals_ascii_case_insensitive(class_span, "TIME")) {
+        return 1U;
+    }
+    if (span_text_equals_ascii_case_insensitive(class_span, "DATETIME") ||
+        span_text_equals_ascii_case_insensitive(class_span, "TIMESTAMP")) {
+        return 2U;
+    }
+    return SIZE_MAX;
+}
+
+static size_t get_format_name_index(const char *format_text, size_t format_text_length) {
+    static const char *const names[] = {"USA", "JIS", "ISO", "EUR", "INTERNAL"};
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (bytes_text_equals_ascii_case_insensitive(
+                format_text,
+                format_text_length,
+                names[index]
+            )) {
+            return index;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static bool span_text_equals_ascii_case_insensitive(
+    const struct mylite_sql_source_span *span,
+    const char *text
+) {
+    if (span == NULL) {
+        return false;
+    }
+    return bytes_text_equals_ascii_case_insensitive(span->text, span->length, text);
+}
+
+static bool bytes_text_equals_ascii_case_insensitive(
+    const char *left,
+    size_t left_length,
+    const char *right
+) {
+    size_t right_length = right == NULL ? 0U : strlen(right);
+
+    if (left == NULL || right == NULL || left_length != right_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < left_length; ++index) {
+        if (toupper((unsigned char)left[index]) != toupper((unsigned char)right[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int time_format_string_or_null_argument(
@@ -119803,6 +120158,7 @@ static bool is_date_format_projection_expression(const struct mylite_sql_ast_nod
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || (expression->kind != MYLITE_SQL_AST_DATE_FORMAT_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_GET_FORMAT_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_TIME_FORMAT_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_STR_TO_DATE_FUNCTION)) {
         return false;
@@ -120544,6 +120900,7 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
     case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
@@ -138085,6 +138442,9 @@ static int plan_row_scalar_date_function_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_GET_FORMAT_FUNCTION) {
+        return plan_row_scalar_get_format_expression(database, expression, out_expression);
+    }
     if (expression->kind == MYLITE_SQL_AST_TIME_FORMAT_FUNCTION) {
         return plan_row_scalar_time_format_expression(
             database,
@@ -147837,6 +148197,26 @@ static int plan_row_scalar_date_format_expression(
     return rc;
 }
 
+static int plan_row_scalar_get_format_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = get_format_function_value(database, expression, &cell);
+
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        if (cell.value == NULL) {
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        } else {
+            rc = copy_text_value(database, cell.value, &out_expression->value);
+        }
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
 static int plan_row_scalar_date_format_value_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -147967,6 +148347,15 @@ static int plan_row_scalar_date_format_format_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_GET_FORMAT_FUNCTION) {
+        return plan_row_scalar_get_format_format_argument(
+            database,
+            expression,
+            "DATE_FORMAT() literals do not support NUL bytes",
+            mylite_date_format_validate_format,
+            out_expression
+        );
+    }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
@@ -148008,6 +148397,43 @@ static int plan_row_scalar_date_format_format_argument(
         text = NULL;
     }
     free(text);
+    return rc;
+}
+
+static int plan_row_scalar_get_format_format_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *literal_nul_message,
+    int (*validate_format)(struct mylite_db *, const char *, size_t),
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL || validate_format == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = get_format_function_value(database, expression, &cell);
+    if (rc == MYLITE_OK && cell.value == NULL) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+    } else if (rc == MYLITE_OK) {
+        size_t text_length = strlen(cell.value);
+
+        if (memchr(cell.value, '\0', text_length) != NULL) {
+            set_unsupported_error(database, literal_nul_message);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_format(database, cell.value, text_length);
+        }
+        if (rc == MYLITE_OK) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            rc = copy_text_value(database, cell.value, &out_expression->value);
+        }
+    }
+    session_scalar_cell_deinit(&cell);
     return rc;
 }
 
@@ -148194,6 +148620,15 @@ static int plan_row_scalar_time_format_format_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_GET_FORMAT_FUNCTION) {
+        return plan_row_scalar_get_format_format_argument(
+            database,
+            expression,
+            "TIME_FORMAT() literals do not support NUL bytes",
+            mylite_time_format_validate_format,
+            out_expression
+        );
+    }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
@@ -148549,6 +148984,15 @@ static int plan_row_scalar_str_to_date_format_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_GET_FORMAT_FUNCTION) {
+        return plan_row_scalar_get_format_format_argument(
+            database,
+            expression,
+            "STR_TO_DATE() literals do not support NUL bytes",
+            mylite_str_to_date_validate_format,
+            out_expression
+        );
+    }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
@@ -151980,6 +152424,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_INTERVAL_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_GET_FORMAT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_TIME_FORMAT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_STR_TO_DATE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATEDIFF_FUNCTION ||

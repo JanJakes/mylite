@@ -1,3 +1,7 @@
+#if defined(__linux__) && !defined(_XOPEN_SOURCE)
+#  define _XOPEN_SOURCE 700
+#endif
+
 #include <mylite/mylite.h>
 
 #include "storage/mylite_file_format.h"

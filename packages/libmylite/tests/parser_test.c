@@ -173,6 +173,7 @@ static int test_time_type_statements(void);
 static int test_timestamp_type_statements(void);
 static int test_current_date_time_function_statements(void);
 static int test_utc_date_time_function_statements(void);
+static int test_sysdate_function_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_foreign_key_statements(void);
 static int test_create_index_statements(void);
@@ -510,6 +511,7 @@ int main(void) {
     failures += test_timestamp_type_statements();
     failures += test_current_date_time_function_statements();
     failures += test_utc_date_time_function_statements();
+    failures += test_sysdate_function_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_foreign_key_statements();
     failures += test_create_index_statements();
@@ -17417,6 +17419,89 @@ static int test_utc_date_time_function_statements(void) {
     failures += parse_sql("SELECT UTC_TIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT UTC_TIMESTAMP(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_sysdate_function_statements(void) {
+    enum {
+        sysdate_item_index = 0U,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT SYSDATE();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, sysdate_item_index), 0U),
+        MYLITE_SQL_AST_SYSDATE_FUNCTION,
+        "SYSDATE select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SYSDATE(1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, sysdate_item_index), 0U),
+        MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR,
+        "SYSDATE argument-count select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SYSDATE ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SYSDATE (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql_with_ignore_space("SELECT SYSDATE ();", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, sysdate_item_index), 0U),
+        MYLITE_SQL_AST_SYSDATE_FUNCTION,
+        "ignore_space SYSDATE select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql_with_ignore_space("SELECT SYSDATE (1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, sysdate_item_index), 0U),
+        MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR,
+        "ignore_space SYSDATE argument-count select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SYSDATE;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, sysdate_item_index), 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "bare SYSDATE identifier select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES (SYSDATE());", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("INSERT INTO t SET dt = SYSDATE();", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("REPLACE INTO t VALUES (SYSDATE());", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("REPLACE INTO t SET dt = SYSDATE();", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET dt = SYSDATE();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_SYSDATE_FUNCTION,
+        "SYSDATE update assignment"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

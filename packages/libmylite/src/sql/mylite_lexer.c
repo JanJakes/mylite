@@ -1014,6 +1014,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"SUSPEND", 0U},
         {"SWAPS", 0U},
         {"SWITCHES", 0U},
+        {"SYSDATE", 0U},
         {"SYSTEM", MYLITE_SQL_KEYWORD_RESERVED},
         {"SYSTEM_USER", 0U},
         {"TABLE", MYLITE_SQL_KEYWORD_RESERVED},

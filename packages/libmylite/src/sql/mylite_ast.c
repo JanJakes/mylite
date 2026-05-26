@@ -1035,6 +1035,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "utc_time_value";
     case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
         return "utc_timestamp_value";
+    case MYLITE_SQL_AST_SYSDATE_FUNCTION:
+        return "sysdate_function";
+    case MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR:
+        return "sysdate_argument_count_error";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:

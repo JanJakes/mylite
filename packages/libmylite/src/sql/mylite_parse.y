@@ -2778,6 +2778,9 @@ insert_value(A) ::= utc_time_value(T). {
 insert_value(A) ::= utc_timestamp_value(T). {
     A = T;
 }
+insert_value(A) ::= sysdate_value(T). {
+    A = T;
+}
 insert_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
@@ -2898,6 +2901,9 @@ update_value(A) ::= utc_time_value(T). {
     A = T;
 }
 update_value(A) ::= utc_timestamp_value(T). {
+    A = T;
+}
+update_value(A) ::= sysdate_value(T). {
     A = T;
 }
 update_value(A) ::= insert_unix_timestamp_value(B). {
@@ -4810,6 +4816,9 @@ expression(A) ::= utc_time_value(T). {
 expression(A) ::= utc_timestamp_value(T). {
     A = T;
 }
+expression(A) ::= sysdate_value(T). {
+    A = T;
+}
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }
@@ -4926,6 +4935,14 @@ utc_timestamp_value(A) ::= UTC_TIMESTAMP(T). {
 utc_timestamp_value(A) ::= UTC_TIMESTAMP(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE, R);
+}
+sysdate_value(A) ::= SYSDATE(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SYSDATE_FUNCTION, R);
+}
+sysdate_value(A) ::= SYSDATE(T) LPAREN(L) function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_function_argument_count_error(
+        state, T, L, MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR, B, R);
 }
 expression(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -7378,6 +7395,9 @@ identifier(A) ::= CURDATE(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= CURTIME(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= SYSDATE(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= ABS(T). {

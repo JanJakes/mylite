@@ -5946,6 +5946,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error
     return error;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_function_argument_count_error(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind error_kind,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+) {
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    return mylite_sql_parser_make_function_argument_count_error(
+        state,
+        function_token,
+        error_kind,
+        arguments,
+        right_paren
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_two_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -7923,6 +7946,7 @@ static bool map_keyword_token(
         {"UTC_DATE", MYLITE_SQL_PARSE_UTC_DATE},
         {"UTC_TIME", MYLITE_SQL_PARSE_UTC_TIME},
         {"UTC_TIMESTAMP", MYLITE_SQL_PARSE_UTC_TIMESTAMP},
+        {"SYSDATE", MYLITE_SQL_PARSE_SYSDATE},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},
@@ -8641,6 +8665,7 @@ static bool span_text_matches_ignore_space_function_name(
         "MIN",
         "SESSION_USER",
         "SUM",
+        "SYSDATE",
         "SYSTEM_USER",
     };
 

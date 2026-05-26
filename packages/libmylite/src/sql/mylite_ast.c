@@ -1489,6 +1489,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "elt_function";
     case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
         return "elt_argument_count_error";
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+        return "export_set_function";
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+        return "export_set_argument_count_error";
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         return "json_replace_function";
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
@@ -1509,6 +1513,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "least_function";
     case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
         return "least_argument_count_error";
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+        return "make_set_function";
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
+        return "make_set_argument_count_error";
     case MYLITE_SQL_AST_INTERVAL_FUNCTION:
         return "interval_function";
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:

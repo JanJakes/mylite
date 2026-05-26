@@ -4998,9 +4998,17 @@ expression(A) ::= ELT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_ELT_FUNCTION, B, R);
 }
+expression(A) ::= EXPORT_SET(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_EXPORT_SET_FUNCTION, B, R);
+}
 expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
+}
+expression(A) ::= MAKE_SET(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_MAKE_SET_FUNCTION, B, R);
 }
 expression(A) ::= GREATEST(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
@@ -5766,9 +5774,17 @@ expression(A) ::= ELT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR, NULL, R);
 }
+expression(A) ::= EXPORT_SET(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR, NULL, R);
+}
 expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= MAKE_SET(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= GREATEST(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -7139,7 +7155,13 @@ identifier(A) ::= SPACE(T). {
 identifier(A) ::= ELT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= EXPORT_SET(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= FIELD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MAKE_SET(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= GREATEST(T). {

@@ -11,6 +11,7 @@
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_base64.h"
+#include "mylite_string_bitmask.h"
 #include "mylite_string_case.h"
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
@@ -285,6 +286,9 @@ static int initialize_string_function_registration_surface(sqlite3 *sqlite) {
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_padding_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_bitmask_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_quote_function(sqlite);

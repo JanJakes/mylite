@@ -42,6 +42,7 @@ enum {
     storage_stats_auto_recalc_option_index = 5,
     storage_stats_sample_pages_option_index = 6,
     interval_parser_threshold_count = 6,
+    export_set_parser_argument_count = 5,
 };
 
 struct parse_sql_modes {
@@ -64,6 +65,7 @@ static int test_replace_function(void);
 static int test_reverse_function(void);
 static int test_quote_function(void);
 static int test_elt_function(void);
+static int test_string_bitmask_functions(void);
 static int test_field_function(void);
 static int test_interval_function(void);
 static int test_json_valid_function(void);
@@ -402,6 +404,7 @@ int main(void) {
     failures += test_reverse_function();
     failures += test_quote_function();
     failures += test_elt_function();
+    failures += test_string_bitmask_functions();
     failures += test_field_function();
     failures += test_interval_function();
     failures += test_json_valid_function();
@@ -2658,6 +2661,121 @@ static int test_elt_function(void) {
 
     failures +=
         parse_sql("CREATE TABLE elt (elt INT); SELECT elt FROM elt;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_bitmask_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT EXPORT_SET(bits, 'Y', 'N', ':', 4), make_set(bits, 'a', 'b') AS made "
+        "FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_EXPORT_SET_FUNCTION, "export_set function");
+    failures +=
+        expect_span_text(first_expression, "EXPORT_SET(bits, 'Y', 'N', ':', 4)", "export_set span");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "export_set args");
+    failures += expect_child_count(
+        arguments,
+        export_set_parser_argument_count,
+        "export_set five arguments"
+    );
+    failures += expect_node(child_at(arguments, 0U), MYLITE_SQL_AST_IDENTIFIER, "export_set bits");
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_STRING, "export_set on");
+    failures +=
+        expect_literal(child_at(arguments, 2U), MYLITE_SQL_AST_LITERAL_STRING, "export_set off");
+    failures += expect_literal(
+        child_at(arguments, 3U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "export_set separator"
+    );
+    failures +=
+        expect_literal(child_at(arguments, 4U), MYLITE_SQL_AST_LITERAL_INTEGER, "export_set count");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_MAKE_SET_FUNCTION, "lower make_set");
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 3U, "make_set argument count");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "make_set alias"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "bitmask table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT EXPORT_SET (5,'Y','N',',',4), MAKE_SET (3,'a','b') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_EXPORT_SET_FUNCTION, "spaced export_set");
+    failures += expect_span_text(
+        first_expression,
+        "EXPORT_SET (5,'Y','N',',',4)",
+        "spaced export_set span"
+    );
+    failures += expect_node(second_expression, MYLITE_SQL_AST_MAKE_SET_FUNCTION, "spaced make_set");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT EXPORT_SET();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR,
+        "export_set zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MAKE_SET();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR,
+        "make_set zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO EXPORT_SET(5,'Y','N',',',4), MAKE_SET(3,'a','b');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "bitmask do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_EXPORT_SET_FUNCTION,
+        "do export_set"
+    );
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_MAKE_SET_FUNCTION, "do make_set");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE export_set (make_set INT); SELECT make_set FROM export_set;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

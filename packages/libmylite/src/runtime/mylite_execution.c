@@ -16,6 +16,7 @@
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
 #include "mylite_string_base64.h"
+#include "mylite_string_bitmask.h"
 #include "mylite_string_case.h"
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
@@ -3047,6 +3048,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL = 67,
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE = 68,
     PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP = 69,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK = 70,
 };
 
 enum {
@@ -3107,6 +3109,18 @@ enum planned_string_padding_function_kind {
     PLANNED_STRING_PADDING_FUNCTION_SPACE = 4,
 };
 
+enum planned_string_bitmask_function_kind {
+    PLANNED_STRING_BITMASK_FUNCTION_NONE = 0,
+    PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET = 1,
+    PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET = 2,
+};
+
+enum {
+    string_bitmask_export_set_min_argument_count = 3,
+    string_bitmask_export_set_max_argument_count = 5,
+    string_bitmask_make_set_min_argument_count = 2,
+};
+
 enum planned_json_mutation_kind {
     PLANNED_JSON_MUTATION_SET = 0,
     PLANNED_JSON_MUTATION_REPLACE = 1,
@@ -3145,6 +3159,7 @@ struct planned_row_scalar_expression {
     enum planned_string_slice_function_kind string_slice_kind;
     enum planned_string_search_function_kind string_search_kind;
     enum planned_string_padding_function_kind string_padding_kind;
+    enum planned_string_bitmask_function_kind string_bitmask_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     enum mylite_sql_ast_operator arithmetic_operator;
     struct planned_value value;
@@ -7421,6 +7436,12 @@ struct session_scalar_cell {
     char literal_text[literal_projection_text_capacity];
     char staged_truncated_decimal_text[literal_projection_text_capacity];
     char staged_unhex_incorrect_string_text[literal_projection_text_capacity];
+};
+
+struct string_bitmask_scalar_text_argument {
+    struct mylite_string_bitmask_slice slice;
+    struct session_scalar_cell cell;
+    char *owned_text;
 };
 
 struct rounding_signed_value {
@@ -15419,6 +15440,53 @@ static enum mylite_string_padding_side string_padding_function_to_side(
     enum planned_string_padding_function_kind function_kind
 );
 static bool is_string_padding_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int string_bitmask_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_export_set_string_bitmask_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+);
+static int evaluate_make_set_string_bitmask_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+);
+static int evaluate_string_bitmask_integer_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *range_message,
+    int64_t *out_value,
+    bool *out_is_null
+);
+static int evaluate_string_bitmask_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct string_bitmask_scalar_text_argument *out_argument
+);
+static int string_bitmask_set_owned_result(
+    struct mylite_db *database,
+    int rc,
+    char *value,
+    size_t value_length,
+    bool is_null,
+    struct session_scalar_cell *out_cell
+);
+static void string_bitmask_scalar_text_argument_deinit(
+    struct string_bitmask_scalar_text_argument *argument
+);
+static enum planned_string_bitmask_function_kind string_bitmask_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool is_string_bitmask_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static int string_search_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -17948,6 +18016,7 @@ static bool is_string_trim_projection_expression(const struct mylite_sql_ast_nod
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_search_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_string_bitmask_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_concat_ws_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_replace_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_insert_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -24100,6 +24169,71 @@ static bool string_padding_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_string_bitmask_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_export_set_bitmask_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    size_t argument_count,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_make_set_bitmask_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    size_t argument_count,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_bitmask_bit_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_bitmask_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_bitmask_count_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_bitmask_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_bitmask_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_string_search_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -27184,6 +27318,14 @@ static int append_row_scalar_string_padding_expression_sql(
 static const char *row_scalar_string_padding_sql_function(
     enum planned_string_padding_function_kind function_kind
 );
+static int append_row_scalar_string_bitmask_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static const char *row_scalar_string_bitmask_sql_function(
+    enum planned_string_bitmask_function_kind function_kind
+);
 static int append_row_scalar_string_search_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -28594,6 +28736,11 @@ static int bind_row_scalar_string_padding_expression_parameters(
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
+static int bind_row_scalar_string_bitmask_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
 static int bind_row_scalar_string_search_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -29697,6 +29844,10 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_GROUP_BY_ITEM_LIST:
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SYSDATE_FUNCTION:
@@ -30232,6 +30383,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
     case MYLITE_SQL_AST_ELT_FUNCTION:
     case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
@@ -53911,6 +54066,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
     case MYLITE_SQL_AST_ELT_FUNCTION:
     case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
@@ -88679,6 +88838,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
@@ -92902,8 +93062,12 @@ static const char *argument_count_error_node_function_name(
         return "CONCAT_WS";
     case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
         return "ELT";
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+        return "EXPORT_SET";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         return "FIELD";
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
+        return "MAKE_SET";
     case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
         return "GREATEST";
     case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
@@ -93222,6 +93386,15 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_REPEAT_FUNCTION:
     case MYLITE_SQL_AST_SPACE_FUNCTION:
         return string_padding_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+        return string_bitmask_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "EXPORT_SET");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "MAKE_SET");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_LOCATE_FUNCTION:
     case MYLITE_SQL_AST_INSTR_FUNCTION:
     case MYLITE_SQL_AST_POSITION_FUNCTION:
@@ -101085,6 +101258,411 @@ static enum mylite_string_padding_side string_padding_function_to_side(
 
 static bool is_string_padding_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     return string_padding_function_kind(ast_kind) != PLANNED_STRING_PADDING_FUNCTION_NONE;
+}
+
+static int string_bitmask_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_bitmask_function_kind function_kind = PLANNED_STRING_BITMASK_FUNCTION_NONE;
+    char *result = NULL;
+    size_t result_length = 0U;
+    bool result_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_BITMASK_FUNCTION_NONE
+                                       : string_bitmask_function_kind(expression->kind);
+    switch (function_kind) {
+    case PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET:
+        rc = evaluate_export_set_string_bitmask_function(
+            database,
+            expression,
+            &result,
+            &result_length,
+            &result_is_null
+        );
+        break;
+    case PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET:
+        rc = evaluate_make_set_string_bitmask_function(
+            database,
+            expression,
+            &result,
+            &result_length,
+            &result_is_null
+        );
+        break;
+    case PLANNED_STRING_BITMASK_FUNCTION_NONE:
+        set_unsupported_error(database, "string bitmask functions support EXPORT_SET and MAKE_SET");
+        return MYLITE_ERROR;
+    }
+
+    rc = string_bitmask_set_owned_result(
+        database,
+        rc,
+        result,
+        result_length,
+        result_is_null,
+        out_cell
+    );
+    return rc;
+}
+
+static int evaluate_export_set_string_bitmask_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+) {
+    static const struct mylite_string_bitmask_slice default_separator = {
+        .text = ",",
+        .length = 1U,
+        .is_null = false,
+    };
+    const struct mylite_sql_ast_node *arguments = NULL;
+    struct string_bitmask_scalar_text_argument on = {0};
+    struct string_bitmask_scalar_text_argument off = {0};
+    struct string_bitmask_scalar_text_argument separator = {0};
+    struct mylite_string_bitmask_slice separator_slice = default_separator;
+    int64_t bits_value = 0;
+    int64_t count_value = 0;
+    bool bits_is_null = false;
+    bool count_is_null = false;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL || out_result_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    *out_result_length = 0U;
+    *out_is_null = false;
+
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "EXPORT_SET");
+        return MYLITE_ERROR;
+    }
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, "EXPORT_SET");
+        return MYLITE_ERROR;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count < string_bitmask_export_set_min_argument_count ||
+        argument_count > string_bitmask_export_set_max_argument_count) {
+        set_native_function_parameter_count_error(database, "EXPORT_SET");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_bitmask_integer_argument(
+        database,
+        child_at(arguments, 0U),
+        "EXPORT_SET() bitmask supports only signed integer, boolean, and NULL literals",
+        "EXPORT_SET() bitmask literals must fit the signed 64-bit range",
+        &bits_value,
+        &bits_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_bitmask_text_argument(database, child_at(arguments, 1U), &on);
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_bitmask_text_argument(database, child_at(arguments, 2U), &off);
+    }
+    if (rc == MYLITE_OK && argument_count >= 4U) {
+        rc = evaluate_string_bitmask_text_argument(database, child_at(arguments, 3U), &separator);
+        separator_slice = separator.slice;
+    }
+    if (rc == MYLITE_OK && argument_count == string_bitmask_export_set_max_argument_count) {
+        rc = evaluate_string_bitmask_integer_argument(
+            database,
+            child_at(arguments, 4U),
+            "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals",
+            "EXPORT_SET() number_of_bits literals must fit the signed 64-bit range",
+            &count_value,
+            &count_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_string_export_set_value(
+            (uint64_t)bits_value,
+            bits_is_null,
+            on.slice,
+            off.slice,
+            separator_slice,
+            count_value,
+            count_is_null,
+            argument_count == string_bitmask_export_set_max_argument_count,
+            out_result,
+            out_result_length,
+            out_is_null
+        );
+    }
+
+    string_bitmask_scalar_text_argument_deinit(&separator);
+    string_bitmask_scalar_text_argument_deinit(&off);
+    string_bitmask_scalar_text_argument_deinit(&on);
+    return rc;
+}
+
+static int evaluate_make_set_string_bitmask_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    struct string_bitmask_scalar_text_argument *values = NULL;
+    struct mylite_string_bitmask_slice *slices = NULL;
+    int64_t bits_value = 0;
+    bool bits_is_null = false;
+    size_t argument_count = 0U;
+    size_t value_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL || out_result_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    *out_result_length = 0U;
+    *out_is_null = false;
+
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "MAKE_SET");
+        return MYLITE_ERROR;
+    }
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, "MAKE_SET");
+        return MYLITE_ERROR;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count < 2U) {
+        set_native_function_parameter_count_error(database, "MAKE_SET");
+        return MYLITE_ERROR;
+    }
+    value_count = argument_count - 1U;
+    if (value_count > SIZE_MAX / sizeof(*values) || value_count > SIZE_MAX / sizeof(*slices)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = (struct string_bitmask_scalar_text_argument *)calloc(value_count, sizeof(*values));
+    slices = (struct mylite_string_bitmask_slice *)calloc(value_count, sizeof(*slices));
+    if (values == NULL || slices == NULL) {
+        free(values);
+        free(slices);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = evaluate_string_bitmask_integer_argument(
+        database,
+        child_at(arguments, 0U),
+        "MAKE_SET() bitmask supports only signed integer, boolean, and NULL literals",
+        "MAKE_SET() bitmask literals must fit the signed 64-bit range",
+        &bits_value,
+        &bits_is_null
+    );
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        rc = evaluate_string_bitmask_text_argument(
+            database,
+            child_at(arguments, value_index + 1U),
+            &values[value_index]
+        );
+        if (rc == MYLITE_OK) {
+            slices[value_index] = values[value_index].slice;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_string_make_set_value(
+            (uint64_t)bits_value,
+            bits_is_null,
+            slices,
+            value_count,
+            out_result,
+            out_result_length,
+            out_is_null
+        );
+    }
+
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        string_bitmask_scalar_text_argument_deinit(&values[value_index]);
+    }
+    free(values);
+    free(slices);
+    return rc;
+}
+
+static int evaluate_string_bitmask_integer_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *range_message,
+    int64_t *out_value,
+    bool *out_is_null
+) {
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0;
+    *out_is_null = false;
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        unsupported_message,
+        range_message,
+        &value,
+        out_is_null
+    );
+    if (rc == MYLITE_OK) {
+        *out_value = value;
+    }
+    return rc;
+}
+
+static int evaluate_string_bitmask_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct string_bitmask_scalar_text_argument *out_argument
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_argument = (struct string_bitmask_scalar_text_argument){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string bitmask functions support only string, integer, boolean, NULL, session "
+            "scalar, and system variable string arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "string bitmask functions support only string literals",
+                "string bitmask function literals do not support NUL bytes",
+                &out_argument->owned_text,
+                &out_argument->slice.length
+            );
+            if (rc == MYLITE_OK) {
+                out_argument->slice.text = out_argument->owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, &out_argument->cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, &out_argument->cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_argument->cell.value == NULL) {
+        out_argument->slice.is_null = true;
+        return MYLITE_OK;
+    }
+    out_argument->slice.text = out_argument->cell.value;
+    out_argument->slice.length = strlen(out_argument->cell.value);
+    return MYLITE_OK;
+}
+
+static int string_bitmask_set_owned_result(
+    struct mylite_db *database,
+    int rc,
+    char *value,
+    size_t value_length,
+    bool is_null,
+    struct session_scalar_cell *out_cell
+) {
+    if (out_cell == NULL) {
+        free(value);
+        return MYLITE_MISUSE;
+    }
+    if (rc == MYLITE_NOMEM) {
+        free(value);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (rc != MYLITE_OK) {
+        free(value);
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+            set_runtime_error(database, "failed to evaluate string bitmask function");
+        }
+        return rc;
+    }
+    if (is_null) {
+        free(value);
+        return MYLITE_OK;
+    }
+    if (value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strlen(value) != value_length) {
+        free(value);
+        set_runtime_error(database, "invalid NUL byte in string bitmask function result");
+        return MYLITE_ERROR;
+    }
+    out_cell->owned_text = value;
+    out_cell->value = value;
+    out_cell->value_size = value_length;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
+}
+
+static void string_bitmask_scalar_text_argument_deinit(
+    struct string_bitmask_scalar_text_argument *argument
+) {
+    if (argument == NULL) {
+        return;
+    }
+    free(argument->owned_text);
+    session_scalar_cell_deinit(&argument->cell);
+    *argument = (struct string_bitmask_scalar_text_argument){0};
+}
+
+static enum planned_string_bitmask_function_kind string_bitmask_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+        return PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET;
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+        return PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET;
+    default:
+        return PLANNED_STRING_BITMASK_FUNCTION_NONE;
+    }
+}
+
+static bool is_string_bitmask_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_bitmask_function_kind(ast_kind) != PLANNED_STRING_BITMASK_FUNCTION_NONE;
 }
 
 static int string_search_function_value(
@@ -120636,6 +121214,9 @@ static bool is_string_scalar_function_projection_expression(
     if (is_string_metadata_projection_expression(expression)) {
         return true;
     }
+    if (is_string_bitmask_projection_expression(expression)) {
+        return true;
+    }
     if (is_elt_projection_expression(expression)) {
         return true;
     }
@@ -121861,6 +122442,38 @@ static bool is_elt_projection_expression(const struct mylite_sql_ast_node *expre
         return false;
     }
     return mylite_sql_ast_node_child_count(arguments) >= 1U;
+}
+
+static bool is_string_bitmask_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    size_t argument_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_EXPORT_SET_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_MAKE_SET_FUNCTION) ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        return false;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (expression->kind == MYLITE_SQL_AST_EXPORT_SET_FUNCTION) {
+        if (argument_count < string_bitmask_export_set_min_argument_count) {
+            return false;
+        }
+        if (argument_count > string_bitmask_export_set_max_argument_count) {
+            return false;
+        }
+        return true;
+    }
+    if (argument_count < string_bitmask_make_set_min_argument_count) {
+        return false;
+    }
+    return true;
 }
 
 static bool is_greatest_least_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -140212,7 +140825,7 @@ static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_ki
     if (is_string_length_function_kind(kind) || is_string_codepoint_function_kind(kind) ||
         is_string_case_function_kind(kind) || is_string_trim_function_kind(kind) ||
         is_string_slice_function_kind(kind) || is_string_padding_function_kind(kind) ||
-        is_string_search_function_kind(kind)) {
+        is_string_bitmask_function_kind(kind) || is_string_search_function_kind(kind)) {
         return true;
     }
 
@@ -140299,6 +140912,17 @@ static int plan_row_scalar_string_expression(
     }
     if (is_string_padding_function_kind(expression->kind)) {
         return plan_row_scalar_string_padding_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_bitmask_function_kind(expression->kind)) {
+        return plan_row_scalar_string_bitmask_expression(
             database,
             expression,
             has_source,
@@ -142092,6 +142716,369 @@ static bool string_padding_column_descriptor_is_supported(
         database,
         "string padding functions support only integer, DECIMAL, nonbinary string, YEAR, and "
         "temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_string_bitmask_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    enum planned_string_bitmask_function_kind function_kind = PLANNED_STRING_BITMASK_FUNCTION_NONE;
+    const char *function_name = NULL;
+    size_t argument_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_BITMASK_FUNCTION_NONE
+                                       : string_bitmask_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_BITMASK_FUNCTION_NONE || expression == NULL ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "string bitmask functions support EXPORT_SET and MAKE_SET");
+        return MYLITE_ERROR;
+    }
+    function_name =
+        function_kind == PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET ? "EXPORT_SET" : "MAKE_SET";
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if ((function_kind == PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET &&
+         (argument_count < string_bitmask_export_set_min_argument_count ||
+          argument_count > string_bitmask_export_set_max_argument_count)) ||
+        (function_kind == PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET &&
+         argument_count < string_bitmask_make_set_min_argument_count)) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK;
+    out_expression->string_bitmask_kind = function_kind;
+    out_expression->argument_count = argument_count;
+
+    if (function_kind == PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET) {
+        return plan_row_scalar_export_set_bitmask_arguments(
+            database,
+            arguments,
+            argument_count,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    return plan_row_scalar_make_set_bitmask_arguments(
+        database,
+        arguments,
+        argument_count,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_export_set_bitmask_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    size_t argument_count,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = plan_row_scalar_string_bitmask_bit_argument(
+        database,
+        child_at(arguments, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_bitmask_value_argument(
+            database,
+            child_at(arguments, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "EXPORT_SET() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column on/off/separator arguments",
+            &out_expression->arguments[1]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_bitmask_value_argument(
+            database,
+            child_at(arguments, 2U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "EXPORT_SET() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column on/off/separator arguments",
+            &out_expression->arguments[2]
+        );
+    }
+    if (rc == MYLITE_OK && argument_count >= 4U) {
+        rc = plan_row_scalar_string_bitmask_value_argument(
+            database,
+            child_at(arguments, 3U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "EXPORT_SET() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column on/off/separator arguments",
+            &out_expression->arguments[3]
+        );
+    }
+    if (rc == MYLITE_OK && argument_count == string_bitmask_export_set_max_argument_count) {
+        rc = plan_row_scalar_string_bitmask_count_argument(
+            database,
+            child_at(arguments, 4U),
+            &out_expression->arguments[4]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_make_set_bitmask_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    size_t argument_count,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = plan_row_scalar_string_bitmask_bit_argument(
+        database,
+        child_at(arguments, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+
+    for (size_t argument_index = 1U; rc == MYLITE_OK && argument_index < argument_count;
+         ++argument_index) {
+        rc = plan_row_scalar_string_bitmask_value_argument(
+            database,
+            child_at(arguments, argument_index),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "MAKE_SET() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column value arguments",
+            &out_expression->arguments[argument_index]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_string_bitmask_bit_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "string bitmask functions support only signed integer, boolean, NULL, and integer "
+            "descriptor bitmask arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+
+            rc = collect_column_reference_parts(database, expression, parts, &part_count);
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_bitmask_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string bitmask functions support only signed integer, boolean, NULL, and integer "
+            "descriptor bitmask arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "string bitmask functions support only signed integer, boolean, NULL, and integer "
+        "descriptor bitmask arguments",
+        "string bitmask function bitmask literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_bitmask_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_string_padding_value_argument(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        unsupported_message,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_string_bitmask_count_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals",
+        "EXPORT_SET() number_of_bits literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_bitmask_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT string bitmask functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_bitmask_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_bitmask_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+
+    set_unsupported_error(
+        database,
+        "string bitmask functions support only integer descriptor bitmask columns"
     );
     return false;
 }
@@ -149030,6 +150017,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -154537,7 +155525,10 @@ static bool row_scalar_expression_contains_row_function(
             is_string_trim_function_kind(current->kind) ||
             is_string_slice_function_kind(current->kind) ||
             is_string_padding_function_kind(current->kind) ||
+            is_string_bitmask_function_kind(current->kind) ||
             is_string_search_function_kind(current->kind) ||
+            current->kind == MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_REPLACE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_INSERT_STRING_FUNCTION ||
             current->kind == MYLITE_SQL_AST_REVERSE_FUNCTION ||
@@ -170844,6 +171835,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -171793,6 +172785,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
         return append_row_scalar_string_padding_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
+        return append_row_scalar_string_bitmask_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
         return append_row_scalar_string_search_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
@@ -171963,6 +172957,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -172117,6 +173112,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -172708,6 +173704,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -172835,6 +173832,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -172920,6 +173918,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -173677,6 +174676,66 @@ static const char *row_scalar_string_padding_sql_function(
     return NULL;
 }
 
+static int append_row_scalar_string_bitmask_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    if ((expression->string_bitmask_kind == PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET &&
+         (expression->argument_count < string_bitmask_export_set_min_argument_count ||
+          expression->argument_count > string_bitmask_export_set_max_argument_count)) ||
+        (expression->string_bitmask_kind == PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET &&
+         expression->argument_count < string_bitmask_make_set_min_argument_count)) {
+        return MYLITE_ERROR;
+    }
+
+    function_name = row_scalar_string_bitmask_sql_function(expression->string_bitmask_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static const char *row_scalar_string_bitmask_sql_function(
+    enum planned_string_bitmask_function_kind function_kind
+) {
+    switch (function_kind) {
+    case PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET:
+        return "_mylite_export_set";
+    case PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET:
+        return "_mylite_make_set";
+    case PLANNED_STRING_BITMASK_FUNCTION_NONE:
+        break;
+    }
+    return NULL;
+}
+
 static int append_row_scalar_string_search_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -174208,6 +175267,7 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -174299,6 +175359,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -174594,6 +175655,7 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -174806,6 +175868,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -174895,6 +175958,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -175317,6 +176381,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -175410,6 +176475,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -181853,6 +182919,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
+        return bind_row_scalar_string_bitmask_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
         return bind_row_scalar_string_search_expression_parameters(
             statement,
@@ -182072,6 +183144,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -182204,6 +183277,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -182698,6 +183772,27 @@ static int bind_row_scalar_string_padding_expression_parameters(
     return rc;
 }
 
+static int bind_row_scalar_string_bitmask_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_string_search_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -183042,6 +184137,7 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -183145,6 +184241,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -183347,6 +184444,7 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -183536,6 +184634,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -183620,6 +184719,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -183894,6 +184994,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
@@ -184007,6 +185108,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:

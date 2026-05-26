@@ -431,6 +431,18 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
         "0",
         "-1",
     };
+    static const char *const temp_warning_columns[] = {
+        "@@default_tmp_storage_engine",
+        "@@warning_count",
+        "@@error_count",
+        "ROW_COUNT()",
+    };
+    static const char *const temp_warning_values[] = {
+        "InnoDB",
+        "1",
+        "0",
+        "-1",
+    };
     static const char *const error_values[] = {
         "InnoDB",
         "1",
@@ -447,6 +459,50 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
         "utf8mb4",
         "MyLite",
     };
+    static const char *const temp_variable_columns[] = {
+        "@@default_tmp_storage_engine",
+        "@@global.default_tmp_storage_engine",
+        "@@session.default_tmp_storage_engine",
+        "@@local.default_tmp_storage_engine",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const temp_variable_values[] = {
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+        "0",
+        "-1",
+    };
+    static const char *const temp_scoped_columns[] = {
+        "@@DEFAULT_TMP_STORAGE_ENGINE",
+        "@@Global.Default_Tmp_Storage_Engine",
+        "@@session.`default_tmp_storage_engine`",
+        "@@`default_tmp_storage_engine`",
+    };
+    static const char *const temp_scoped_values[] = {
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+    };
+    static const char *const temp_selected_columns[] = {
+        "@@default_tmp_storage_engine",
+        "DATABASE()",
+    };
+    static const char *const temp_mixed_columns[] = {
+        "@@default_storage_engine",
+        "@@default_tmp_storage_engine",
+    };
+    static const char *const temp_mixed_values[] = {
+        "InnoDB",
+        "InnoDB",
+    };
+    static const char implicit_temp_create_sql[] =
+        "CREATE TEMPORARY TABLE `implicit_tmp_engine` (\n"
+        "  `id` int DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -482,6 +538,18 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
     );
     failures += expect_single_row_result(
         database,
+        "SELECT @@default_tmp_storage_engine, @@global.default_tmp_storage_engine, "
+        "@@session.default_tmp_storage_engine, @@local.default_tmp_storage_engine, "
+        "@@warning_count, ROW_COUNT() FROM DUAL",
+        (struct expected_single_row_result){
+            .columns = temp_variable_columns,
+            .values = temp_variable_values,
+            .column_count = default_storage_engine_variable_column_count,
+        },
+        "default temporary storage engine variable values"
+    );
+    failures += expect_single_row_result(
+        database,
         "SELECT @@DEFAULT_STORAGE_ENGINE, @@Global.Default_Storage_Engine, "
         "@@session.`default_storage_engine`, @@`default_storage_engine`",
         (struct expected_single_row_result){
@@ -493,6 +561,17 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
     );
     failures += expect_single_row_result(
         database,
+        "SELECT @@DEFAULT_TMP_STORAGE_ENGINE, @@Global.Default_Tmp_Storage_Engine, "
+        "@@session.`default_tmp_storage_engine`, @@`default_tmp_storage_engine`",
+        (struct expected_single_row_result){
+            .columns = temp_scoped_columns,
+            .values = temp_scoped_values,
+            .column_count = scoped_default_storage_engine_variable_column_count,
+        },
+        "scoped default temporary storage engine labels"
+    );
+    failures += expect_single_row_result(
+        database,
         "SELECT @@default_storage_engine, @@character_set_server, @@version_comment",
         (struct expected_single_row_result){
             .columns = mixed_columns,
@@ -500,6 +579,16 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
             .column_count = sizeof(mixed_columns) / sizeof(mixed_columns[0]),
         },
         "mixed default storage engine variable values"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@default_tmp_storage_engine",
+        (struct expected_single_row_result){
+            .columns = temp_mixed_columns,
+            .values = temp_mixed_values,
+            .column_count = sizeof(temp_mixed_columns) / sizeof(temp_mixed_columns[0]),
+        },
+        "mixed default and temporary storage engine variable values"
     );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
@@ -519,6 +608,26 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
             .sql = "SHOW COUNT(*) WARNINGS",
             .expected = "0",
             .context = "scalar clears warnings",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SHOW PROCESSLIST");
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_tmp_storage_engine, @@warning_count, @@error_count, ROW_COUNT()",
+        (struct expected_single_row_result){
+            .columns = temp_warning_columns,
+            .values = temp_warning_values,
+            .column_count = diagnostics_default_storage_engine_variable_column_count,
+        },
+        "default temporary storage engine warning diagnostics"
+    );
+    failures += expect_count_statement(
+        database,
+        (struct expected_count_result){
+            .sql = "SHOW COUNT(*) WARNINGS",
+            .expected = "0",
+            .context = "temporary scalar clears warnings",
         }
     );
 
@@ -590,6 +699,27 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
         },
         "default storage engine with selected database"
     );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_tmp_storage_engine, DATABASE()",
+        (struct expected_single_row_result){
+            .columns = temp_selected_columns,
+            .values = selected_values,
+            .column_count = selected_default_storage_engine_variable_column_count,
+        },
+        "default temporary storage engine with selected database"
+    );
+    failures +=
+        execute_statement_ok(database, "CREATE TEMPORARY TABLE implicit_tmp_engine (id INT)");
+    failures += expect_show_create_exact(
+        database,
+        (struct expected_show_create_exact){
+            .sql = "SHOW CREATE TABLE implicit_tmp_engine",
+            .table_name = "implicit_tmp_engine",
+            .create_sql = implicit_temp_create_sql,
+            .context = "implicit temporary default engine show create",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -605,6 +735,16 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
             .column_count = 1U,
         },
         "reopened default storage engine variable"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_tmp_storage_engine",
+        (struct expected_single_row_result){
+            .columns = temp_variable_columns,
+            .values = temp_variable_values,
+            .column_count = 1U,
+        },
+        "reopened default temporary storage engine variable"
     );
 
     mylite_close(database);
@@ -825,7 +965,25 @@ static int test_innodb_engine_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT @@`session`.default_tmp_storage_engine",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "quoted system variable scope",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT @@default_storage_engine + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@default_tmp_storage_engine + 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1126,29 +1284,35 @@ static int test_independent_innodb_engine_handles(void) {
     );
     failures += expect_single_row_result(
         first,
-        "SELECT @@default_storage_engine, @@global.default_storage_engine",
+        "SELECT @@default_storage_engine, @@global.default_storage_engine, "
+        "@@default_tmp_storage_engine, @@global.default_tmp_storage_engine",
         (struct expected_single_row_result){
             .columns =
                 (const char *const[]){
                     "@@default_storage_engine",
-                    "@@global.default_storage_engine"
+                    "@@global.default_storage_engine",
+                    "@@default_tmp_storage_engine",
+                    "@@global.default_tmp_storage_engine"
                 },
-            .values = (const char *const[]){"InnoDB", "InnoDB"},
-            .column_count = independent_default_storage_engine_variable_column_count,
+            .values = (const char *const[]){"InnoDB", "InnoDB", "InnoDB", "InnoDB"},
+            .column_count = scoped_default_storage_engine_variable_column_count,
         },
         "first default storage engine variables"
     );
     failures += expect_single_row_result(
         second,
-        "SELECT @@default_storage_engine, @@global.default_storage_engine",
+        "SELECT @@default_storage_engine, @@global.default_storage_engine, "
+        "@@default_tmp_storage_engine, @@global.default_tmp_storage_engine",
         (struct expected_single_row_result){
             .columns =
                 (const char *const[]){
                     "@@default_storage_engine",
-                    "@@global.default_storage_engine"
+                    "@@global.default_storage_engine",
+                    "@@default_tmp_storage_engine",
+                    "@@global.default_tmp_storage_engine"
                 },
-            .values = (const char *const[]){"InnoDB", "InnoDB"},
-            .column_count = independent_default_storage_engine_variable_column_count,
+            .values = (const char *const[]){"InnoDB", "InnoDB", "InnoDB", "InnoDB"},
+            .column_count = scoped_default_storage_engine_variable_column_count,
         },
         "second default storage engine variables"
     );

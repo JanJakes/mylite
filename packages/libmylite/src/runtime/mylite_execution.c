@@ -7798,6 +7798,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE = 74,
     SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS = 75,
     SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 76,
+    SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE = 77,
 };
 
 struct system_variable_component {
@@ -7889,6 +7890,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER, true, true},
     {"datadir", SESSION_SYSTEM_VARIABLE_DATADIR, true, true},
     {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE, true, true},
+    {"default_tmp_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE, true, true},
     {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT, true, false},
     {"explicit_defaults_for_timestamp",
      SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP,
@@ -117668,6 +117670,7 @@ static int system_variable_value(
             &out_cell->value
         );
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
         out_cell->value = "InnoDB";
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
@@ -118301,6 +118304,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
     case SESSION_SYSTEM_VARIABLE_DATADIR:
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
@@ -118460,6 +118464,7 @@ static int show_system_variable_value(
             out_value
         );
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
         *out_value = "InnoDB";
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:

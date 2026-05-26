@@ -170,9 +170,9 @@ Performance Schema variable tables remain unsupported.
 | `debug_sync` | ❌ | Value, scope, SET, diagnostics |
 | `default_collation_for_utf8mb4` | ❌ | Value, scope, SET, diagnostics |
 | `default_password_lifetime` | ❌ | Value, scope, SET, diagnostics |
-| `default_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_storage_engine` with no scope, `session`, `local`, or `global`; returns MyLite's fixed embedded permanent-table default `InnoDB`; current unavailable-engine substitution is controlled only by `@@sql_mode` during explicit `CREATE TABLE` / `CREATE TEMPORARY TABLE` `ENGINE` validation. No `SET`, mutable global/session state, temporary-table defaults, alternate engines, plugins |
+| `default_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_storage_engine` with no scope, `session`, `local`, or `global`, plus `SHOW VARIABLES` rows; returns MyLite's fixed embedded permanent-table default `InnoDB`; current unavailable-engine substitution is controlled only by `@@sql_mode` during explicit `CREATE TABLE` / `CREATE TEMPORARY TABLE` `ENGINE` validation. No `SET`, mutable global/session state, alternate engines, plugins |
 | `default_table_encryption` | ❌ | Value, scope, SET, diagnostics |
-| `default_tmp_storage_engine` | ❌ | Value, scope, SET, diagnostics |
+| `default_tmp_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_tmp_storage_engine` with no scope, `session`, `local`, or `global`, plus `SHOW VARIABLES` rows; returns MyLite's fixed embedded temporary-table default `InnoDB`, and implicit temporary table creation continues to render `ENGINE=InnoDB`. No `SET`, mutable global/session state, MEMORY/MyISAM temporary engines, default-engine routing, startup/persisted values, or plugins |
 | `default_week_format` | ❌ | Value, scope, SET, diagnostics; the limited one-argument `WEEK()` function currently uses MySQL mode 0 rather than a mutable session value |
 | `delay_key_write` | ❌ | Value, scope, SET, diagnostics |
 | `delayed_insert_limit` | ❌ | Value, scope, SET, diagnostics |

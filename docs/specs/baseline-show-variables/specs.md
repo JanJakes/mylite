@@ -142,6 +142,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_storage_engine` | yes | yes | `InnoDB` |
+| `default_tmp_storage_engine` | yes | yes | `InnoDB` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
 | `interactive_timeout` | yes | yes | current session value or fixed global `28800` |

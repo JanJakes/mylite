@@ -240,9 +240,4 @@ expect_upstream_accepts \
     "SELECT MICROSECOND(1), MICROSECOND(TRUE), MICROSECOND(123456.789);" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "EXTRACT MICROSECOND deferred by MyLite" \
-    "SELECT EXTRACT(MICROSECOND FROM '2003-01-02 10:30:00.000123');" \
-    "$DATABASE"
-
 printf '%s\n' "mysql_baseline_microsecond_function_expectations: ok"

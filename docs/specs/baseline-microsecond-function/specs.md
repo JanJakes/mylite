@@ -136,9 +136,6 @@ This slice intentionally does not support:
 - numeric temporal literals, decimal or float values, boolean values, bit/hex
   literals, parameters, variables as arguments, subqueries, or arbitrary
   expression arguments;
-- `EXTRACT(MICROSECOND FROM value)`, because MySQL's `EXTRACT()` time-unit
-  sign rules are distinct from `MICROSECOND()` and belong with the broader
-  `EXTRACT()` compatibility surface;
 - relaxed date/time strings outside the explicitly listed forms, compact
   numeric temporal text, two-digit year coercion, locale or time-zone coercion,
   and broader SQL-mode-sensitive temporal parsing;
@@ -235,4 +232,7 @@ Required cases:
 - reopen persistence of data observed through `MICROSECOND()`;
 - unsupported scalar argument shapes;
 - unsupported descriptor column types;
-- continued deferral of `EXTRACT(MICROSECOND FROM value)`.
+
+`EXTRACT(MICROSECOND FROM value)` is covered separately by
+`docs/specs/baseline-extract-microsecond-unit/specs.md`, because MySQL's
+`EXTRACT()` time-unit sign rules differ from `MICROSECOND()`.

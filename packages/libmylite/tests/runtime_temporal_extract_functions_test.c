@@ -838,6 +838,13 @@ static int test_extract_function(void) {
         "EXTRACT(HOUR_MINUTE FROM '2019-07-02 01:02:03')",
         "EXTRACT(HOUR_SECOND FROM '2019-07-02 01:02:03')",
         "EXTRACT(MINUTE_SECOND FROM '2019-07-02 01:02:03')",
+        "EXTRACT(MICROSECOND FROM '12:00:00.123456')",
+        "EXTRACT(MICROSECOND FROM '12:00:00.1')",
+        "EXTRACT(MICROSECOND FROM '12:00:00.1234567')",
+        "EXTRACT(MICROSECOND FROM '12:00:00.9999995')",
+        "EXTRACT(MICROSECOND FROM '2019-12-31 23:59:59.000010')",
+        "EXTRACT(MICROSECOND FROM '-13:29:17.000006')",
+        "EXTRACT(MICROSECOND FROM '12:00:00')",
         "EXTRACT(YEAR FROM NULL)",
         "EXTRACT(HOUR FROM '-13:29:17')",
         "EXTRACT(MINUTE FROM '-13:29:17')",
@@ -847,8 +854,9 @@ static int test_extract_function(void) {
         "EXTRACT(MINUTE_SECOND FROM '-13:29:17')",
     };
     static const char *const values_core[] = {
-        "2019", "7",     "2",   "1",  "2",   "3",   "3",   "201907", "201",     "20102", "2010203",
-        "102",  "10203", "203", NULL, "-13", "-29", "-17", "-1329",  "-132917", "-2917",
+        "2019",    "7",   "2",     "1",   "2",      "3",      "3",       "201907", "201", "20102",
+        "2010203", "102", "10203", "203", "123456", "100000", "123457",  "0",      "10",  "-6",
+        "0",       NULL,  "-13",   "-29", "-17",    "-1329",  "-132917", "-2917",
     };
     static const char *const columns_dual[] = {
         "EXTRACT(YEAR FROM '2019-07-02')",
@@ -862,20 +870,25 @@ static int test_extract_function(void) {
     static const char *const columns_table[] = {
         "id",
         "EXTRACT(YEAR FROM d)",
+        "EXTRACT(MICROSECOND FROM d)",
         "EXTRACT(QUARTER FROM dt)",
         "EXTRACT(YEAR_MONTH FROM dt)",
         "EXTRACT(DAY_SECOND FROM dt)",
+        "EXTRACT(MICROSECOND FROM dt)",
         "EXTRACT(YEAR FROM ts)",
         "EXTRACT(DAY_SECOND FROM ts)",
         "EXTRACT(HOUR FROM tm)",
         "EXTRACT(HOUR FROM s)",
         "EXTRACT(DAY_SECOND FROM tm)",
         "EXTRACT(DAY_SECOND FROM s)",
+        "EXTRACT(MICROSECOND FROM sf)",
     };
     static const char *const values_table[] = {
-        "1", "2019", "3",  "201907", "2132917", "2019", "2132917", "-13", "13", "-132917", "132917",
-        "2", NULL,   NULL, NULL,     NULL,      NULL,   NULL,      NULL,  NULL, NULL,      NULL,
-        "3", "0",    NULL, NULL,     NULL,      NULL,   NULL,      "13",  NULL, "132917",  NULL,
+        "1",   "2019", "0",       "3",      "201907", "2132917", "0",  "2019", "2132917",
+        "-13", "13",   "-132917", "132917", "-12",    "2",       NULL, NULL,   NULL,
+        NULL,  NULL,   NULL,      NULL,     NULL,     NULL,      NULL, NULL,   NULL,
+        NULL,  "3",    "0",       "0",      NULL,     NULL,      NULL, NULL,   NULL,
+        NULL,  "13",   NULL,      "132917", NULL,     NULL,
     };
     static const char *const columns_warnings[] = {"Level", "Code", "Message"};
     static const char *const values_table_warnings[] = {
@@ -885,9 +898,12 @@ static int test_extract_function(void) {
         "Warning",
         "1292",
         "Truncated incorrect time value: 'not-a-date'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'not-a-date'",
     };
     static const char *const columns_warning_count[] = {"@@warning_count"};
-    static const char *const values_warning_count[] = {"2"};
+    static const char *const values_warning_count[] = {"3"};
     static const char *const columns_filtered[] = {"id", "EXTRACT(DAY_SECOND FROM tm)"};
     static const char *const values_filtered[] = {"3", "132917", "2", NULL};
     static const char *const columns_reopen[] = {
@@ -900,21 +916,19 @@ static int test_extract_function(void) {
         "EXTRACT(HOUR FROM 'not-a-date')",
         "EXTRACT(DAY_SECOND FROM 'not-a-date')",
         "EXTRACT(QUARTER FROM 'not-a-date')",
+        "EXTRACT(MICROSECOND FROM 'not-a-date')",
+        "EXTRACT(MICROSECOND FROM '2019-01-02 24:00:00.123456')",
+        "EXTRACT(MICROSECOND FROM '2024-01-02')",
     };
-    static const char *const values_invalid[] = {NULL, NULL, NULL, NULL};
+    static const char *const values_invalid[] = {NULL, NULL, NULL, NULL, NULL, NULL, "0"};
     static const char *const values_invalid_warnings[] = {
-        "Warning",
-        "1292",
-        "Incorrect datetime value: 'not-a-date'",
-        "Warning",
-        "1292",
-        "Truncated incorrect time value: 'not-a-date'",
-        "Warning",
-        "1292",
-        "Truncated incorrect time value: 'not-a-date'",
-        "Warning",
-        "1292",
-        "Incorrect datetime value: 'not-a-date'",
+        "Warning", "1292", "Incorrect datetime value: 'not-a-date'",
+        "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
+        "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
+        "Warning", "1292", "Incorrect datetime value: 'not-a-date'",
+        "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
+        "Warning", "1292", "Truncated incorrect time value: '2019-01-02 24:00:00.123456'",
+        "Warning", "1292", "Truncated incorrect time value: '2024-01-02'",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -939,6 +953,13 @@ static int test_extract_function(void) {
                    "EXTRACT(HOUR_MINUTE FROM '2019-07-02 01:02:03'), "
                    "EXTRACT(HOUR_SECOND FROM '2019-07-02 01:02:03'), "
                    "EXTRACT(MINUTE_SECOND FROM '2019-07-02 01:02:03'), "
+                   "EXTRACT(MICROSECOND FROM '12:00:00.123456'), "
+                   "EXTRACT(MICROSECOND FROM '12:00:00.1'), "
+                   "EXTRACT(MICROSECOND FROM '12:00:00.1234567'), "
+                   "EXTRACT(MICROSECOND FROM '12:00:00.9999995'), "
+                   "EXTRACT(MICROSECOND FROM '2019-12-31 23:59:59.000010'), "
+                   "EXTRACT(MICROSECOND FROM '-13:29:17.000006'), "
+                   "EXTRACT(MICROSECOND FROM '12:00:00'), "
                    "EXTRACT(YEAR FROM NULL), EXTRACT(HOUR FROM '-13:29:17'), "
                    "EXTRACT(MINUTE FROM '-13:29:17'), EXTRACT(SECOND FROM '-13:29:17'), "
                    "EXTRACT(HOUR_MINUTE FROM '-13:29:17'), "
@@ -978,7 +999,7 @@ static int test_extract_function(void) {
     failures += execute_ok(
         database,
         "DO EXTRACT(YEAR FROM '2019-07-02'), EXTRACT(HOUR FROM '-13:29:17'), "
-        "EXTRACT(YEAR FROM NULL)",
+        "EXTRACT(MICROSECOND FROM '12:00:00.000123'), EXTRACT(YEAR FROM NULL)",
         &result
     );
     if (failures == 0) {
@@ -1006,26 +1027,28 @@ static int test_extract_function(void) {
     failures += execute_ok(
         database,
         "CREATE TABLE t(id INT, d DATE NULL, dt DATETIME NULL, ts TIMESTAMP NULL, "
-        "tm TIME NULL, s VARCHAR(32))",
+        "tm TIME NULL, s VARCHAR(32), sf VARCHAR(32))",
         NULL
     );
     failures += execute_ok(
         database,
         "INSERT INTO t VALUES "
         "(1,'2019-07-02','2019-07-02 13:29:17','2019-07-02 13:29:17','-13:29:17',"
-        "'13:29:17'),"
-        "(2,NULL,NULL,NULL,NULL,NULL),"
-        "(3,'0000-00-00',NULL,NULL,'13:29:17','not-a-date')",
+        "'13:29:17','-13:29:17.000012'),"
+        "(2,NULL,NULL,NULL,NULL,NULL,NULL),"
+        "(3,'0000-00-00',NULL,NULL,'13:29:17','not-a-date','not-a-date')",
         NULL
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, EXTRACT(YEAR FROM d), EXTRACT(QUARTER FROM dt), "
+            .sql = "SELECT id, EXTRACT(YEAR FROM d), EXTRACT(MICROSECOND FROM d), "
+                   "EXTRACT(QUARTER FROM dt), "
                    "EXTRACT(YEAR_MONTH FROM dt), EXTRACT(DAY_SECOND FROM dt), "
-                   "EXTRACT(YEAR FROM ts), EXTRACT(DAY_SECOND FROM ts), "
-                   "EXTRACT(HOUR FROM tm), EXTRACT(HOUR FROM s), "
-                   "EXTRACT(DAY_SECOND FROM tm), EXTRACT(DAY_SECOND FROM s) "
+                   "EXTRACT(MICROSECOND FROM dt), EXTRACT(YEAR FROM ts), "
+                   "EXTRACT(DAY_SECOND FROM ts), EXTRACT(HOUR FROM tm), "
+                   "EXTRACT(HOUR FROM s), EXTRACT(DAY_SECOND FROM tm), "
+                   "EXTRACT(DAY_SECOND FROM s), EXTRACT(MICROSECOND FROM sf) "
                    "FROM t ORDER BY id",
             .columns = columns_table,
             .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
@@ -1041,7 +1064,7 @@ static int test_extract_function(void) {
             .columns = columns_warnings,
             .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
             .values = values_table_warnings,
-            .row_count = 2U,
+            .row_count = 3U,
             .context = "table-backed extract warnings",
         }
     );
@@ -1091,7 +1114,10 @@ static int test_extract_function(void) {
             .sql = "SELECT EXTRACT(YEAR FROM 'not-a-date'), "
                    "EXTRACT(HOUR FROM 'not-a-date'), "
                    "EXTRACT(DAY_SECOND FROM 'not-a-date'), "
-                   "EXTRACT(QUARTER FROM 'not-a-date')",
+                   "EXTRACT(QUARTER FROM 'not-a-date'), "
+                   "EXTRACT(MICROSECOND FROM 'not-a-date'), "
+                   "EXTRACT(MICROSECOND FROM '2019-01-02 24:00:00.123456'), "
+                   "EXTRACT(MICROSECOND FROM '2024-01-02')",
             .columns = columns_invalid,
             .column_count = sizeof(columns_invalid) / sizeof(columns_invalid[0]),
             .values = values_invalid,
@@ -1106,17 +1132,9 @@ static int test_extract_function(void) {
             .columns = columns_warnings,
             .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
             .values = values_invalid_warnings,
-            .row_count = 4U,
+            .row_count = (sizeof(values_invalid_warnings) / sizeof(values_invalid_warnings[0])) /
+                         (sizeof(columns_warnings) / sizeof(columns_warnings[0])),
             .context = "invalid extract warnings",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT EXTRACT(MICROSECOND FROM '2003-01-02 10:30:00.000123')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "EXTRACT() unit MICROSECOND is not yet supported",
         }
     );
     failures += execute_error(

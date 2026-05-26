@@ -196,6 +196,12 @@ static int format_time_result(
 );
 static int format_integer_result(struct mylite_db *database, int value, char **out_text);
 static int format_integer64_result(struct mylite_db *database, int64_t value, char **out_text);
+static int format_microsecond_result(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request,
+    int microsecond,
+    bool negative_time
+);
 static int signed_time_component(const struct temporal_time_parts *time, int component);
 static int signed_time_composite(const struct temporal_time_parts *time, int value);
 static int append_sec_to_time_truncation_warning(struct mylite_db *database, int64_t seconds);
@@ -224,7 +230,8 @@ static bool parse_microsecond_datetime_text(
 static bool parse_microsecond_time_text(
     const char *value,
     size_t value_length,
-    int *out_microsecond
+    int *out_microsecond,
+    bool *out_negative
 );
 static bool parse_microsecond_fraction_suffix(
     const char *value,
@@ -346,6 +353,8 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "signed_second";
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
         return "microsecond";
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
+        return "signed_microsecond";
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
         return "day_hour";
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
@@ -394,6 +403,7 @@ bool mylite_temporal_extract_kind_from_name(
         {"second", MYLITE_TEMPORAL_EXTRACT_SECOND},
         {"signed_second", MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND},
         {"microsecond", MYLITE_TEMPORAL_EXTRACT_MICROSECOND},
+        {"signed_microsecond", MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND},
         {"day_hour", MYLITE_TEMPORAL_EXTRACT_DAY_HOUR},
         {"day_minute", MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE},
         {"day_second", MYLITE_TEMPORAL_EXTRACT_DAY_SECOND},
@@ -447,6 +457,7 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -488,6 +499,7 @@ bool mylite_temporal_extract_kind_is_calendar_name(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -528,6 +540,7 @@ bool mylite_temporal_extract_kind_is_week_temporal(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -567,6 +580,7 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -588,6 +602,7 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -1068,6 +1083,7 @@ static int extract_date_part_value(
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -1161,6 +1177,7 @@ static int extract_calendar_date_value(
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -1383,7 +1400,8 @@ static int extract_time_part_value(
     if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC) {
         return extract_time_to_sec_value(database, request);
     }
-    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_MICROSECOND) {
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_MICROSECOND ||
+        request->extract_kind == MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND) {
         return extract_microsecond_value(database, request);
     }
 
@@ -1522,6 +1540,7 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
     case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
     case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+    case MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND:
         break;
     }
     return MYLITE_ERROR;
@@ -1533,6 +1552,7 @@ static int extract_microsecond_value(
 ) {
     struct temporal_date_parts date = {0};
     int microsecond = 0;
+    bool negative_time = false;
     int rc = MYLITE_OK;
 
     if (request == NULL) {
@@ -1557,13 +1577,23 @@ static int extract_microsecond_value(
             return format_integer_result(database, microsecond, request->out_text);
         }
     } else if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIME) {
-        if (parse_microsecond_time_text(request->value, request->value_length, &microsecond)) {
-            return format_integer_result(database, microsecond, request->out_text);
+        if (parse_microsecond_time_text(
+                request->value,
+                request->value_length,
+                &microsecond,
+                &negative_time
+            )) {
+            return format_microsecond_result(database, request, microsecond, negative_time);
         }
     } else {
         if (parse_microsecond_datetime_text(request->value, request->value_length, &microsecond) ||
-            parse_microsecond_time_text(request->value, request->value_length, &microsecond)) {
-            return format_integer_result(database, microsecond, request->out_text);
+            parse_microsecond_time_text(
+                request->value,
+                request->value_length,
+                &microsecond,
+                &negative_time
+            )) {
+            return format_microsecond_result(database, request, microsecond, negative_time);
         }
         if (parse_date_text(request->value, request->value_length, &date)) {
             rc = append_incorrect_temporal_warning(
@@ -1587,6 +1617,18 @@ static int extract_microsecond_value(
     );
     *request->out_is_null = true;
     return rc;
+}
+
+static int format_microsecond_result(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request,
+    int microsecond,
+    bool negative_time
+) {
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND && negative_time) {
+        microsecond = -microsecond;
+    }
+    return format_integer_result(database, microsecond, request->out_text);
 }
 
 static int extract_time_to_sec_value(
@@ -1965,20 +2007,23 @@ static bool parse_microsecond_datetime_text(
 static bool parse_microsecond_time_text(
     const char *value,
     size_t value_length,
-    int *out_microsecond
+    int *out_microsecond,
+    bool *out_negative
 ) {
     struct temporal_time_parts time = {.negative = false};
     const char *separator = NULL;
     size_t base_length = 0U;
 
-    if (value == NULL || out_microsecond == NULL) {
+    if (value == NULL || out_microsecond == NULL || out_negative == NULL) {
         return false;
     }
+    *out_negative = false;
     separator = (const char *)memchr(value, '.', value_length);
     if (separator == NULL) {
         if (!parse_time_text(value, value_length, &time)) {
             return false;
         }
+        *out_negative = time.negative;
         *out_microsecond = 0;
         return true;
     }
@@ -1987,6 +2032,7 @@ static bool parse_microsecond_time_text(
     if (!parse_time_text(value, base_length, &time)) {
         return false;
     }
+    *out_negative = time.negative;
     return parse_microsecond_fraction_suffix(value, value_length, base_length, out_microsecond);
 }
 

@@ -98341,6 +98341,10 @@ static int extract_function_kind_from_unit(
         *out_kind = MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND;
         return MYLITE_OK;
     }
+    if (text_equals_ascii_case_insensitive(unit_name, "MICROSECOND")) {
+        *out_kind = MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND;
+        return MYLITE_OK;
+    }
     if (text_equals_ascii_case_insensitive(unit_name, "YEAR_MONTH")) {
         *out_kind = MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH;
         return MYLITE_OK;
@@ -150488,7 +150492,8 @@ static int plan_row_scalar_temporal_extract_column(
     }
     if (column_descriptor_is_date(&column)) {
         if (mylite_temporal_extract_kind_is_time_part(extract_kind) &&
-            extract_kind != MYLITE_TEMPORAL_EXTRACT_MICROSECOND) {
+            extract_kind != MYLITE_TEMPORAL_EXTRACT_MICROSECOND &&
+            extract_kind != MYLITE_TEMPORAL_EXTRACT_SIGNED_MICROSECOND) {
             return reject_date_column_temporal_extract_time_part(database, extract_kind);
         }
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_DATE;

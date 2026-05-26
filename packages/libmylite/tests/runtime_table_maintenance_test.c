@@ -16,9 +16,16 @@ enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16,
     mysql_error_no_database_selected = 1046,
+    mysql_error_unknown_database = 1049,
     mysql_error_duplicate_alias = 1066,
+    mysql_error_table_does_not_exist = 1146,
     mysql_error_savepoint_does_not_exist = 1305,
+    mysql_error_not_base_table = 1347,
     maintenance_column_count = 4,
+    checksum_column_count = 2,
+    checksum_table_display_length = 384,
+    checksum_value_display_length = 22,
+    checksum_table_decimals = 31,
 };
 
 struct expected_query {
@@ -36,6 +43,7 @@ struct expected_sql_error {
 };
 
 static int test_table_maintenance_result_rows(void);
+static int test_checksum_table_result_rows_and_diagnostics(void);
 static int test_table_maintenance_resolution_and_diagnostics(void);
 static int test_table_maintenance_transactions_persistence_and_preamble(void);
 static int test_independent_table_maintenance_handles(void);
@@ -47,6 +55,15 @@ static int expect_maintenance_rows(
     size_t row_count,
     const char *context
 );
+static int expect_checksum_rows(
+    mylite_db *database,
+    const char *sql,
+    const char *const *values,
+    size_t row_count,
+    size_t warning_count,
+    const char *context
+);
+static int expect_checksum_metadata(const mylite_result *result, const char *context);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -65,6 +82,9 @@ static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
+static int expect_uint16(uint16_t actual, uint16_t expected, const char *context);
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
@@ -79,6 +99,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_table_maintenance_result_rows();
+    failures += test_checksum_table_result_rows_and_diagnostics();
     failures += test_table_maintenance_resolution_and_diagnostics();
     failures += test_table_maintenance_transactions_persistence_and_preamble();
     failures += test_independent_table_maintenance_handles();
@@ -184,6 +205,211 @@ static int test_table_maintenance_result_rows(void) {
         temp_rows,
         1U,
         "temporary table target"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_checksum_table_result_rows_and_diagnostics(void) {
+    static const char *const checksum_rows[] = {"app.a", NULL};
+    static const char *const multi_rows[] = {"app.b", NULL, "app.a", NULL};
+    static const char *const temp_rows[] = {"app.temp_only", NULL};
+    static const char *const status_rows[] = {"-1", "0", "0"};
+    static const char *const diagnostic_status_rows[] = {"-1", "1", "1"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "checksum") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open checksum file");
+    failures += create_schema_with_table(database);
+    failures += expect_statement_ok(database, "CREATE TABLE b (id INT)");
+    failures += expect_statement_ok(database, "CREATE VIEW v AS SELECT id FROM a");
+
+    failures +=
+        expect_checksum_rows(database, "CHECKSUM TABLE a", checksum_rows, 1U, 0U, "checksum");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count, @@error_count",
+            .values = status_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "checksum status variables",
+        }
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE a QUICK",
+        checksum_rows,
+        1U,
+        0U,
+        "checksum quick"
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE a EXTENDED",
+        checksum_rows,
+        1U,
+        0U,
+        "checksum extended"
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE b, a",
+        multi_rows,
+        2U,
+        0U,
+        "checksum multi target"
+    );
+
+    failures += expect_statement_ok(database, "CREATE TEMPORARY TABLE temp_only (id INT)");
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE temp_only",
+        temp_rows,
+        1U,
+        0U,
+        "checksum temporary table target"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen checksum file");
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE app.a",
+        checksum_rows,
+        1U,
+        0U,
+        "checksum qualified target without default schema"
+    );
+    failures += expect_error(
+        database,
+        "CHECKSUM TABLE a",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE app.missing",
+        (const char *const[]){"app.missing", NULL},
+        1U,
+        1U,
+        "checksum unknown table"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = (const char *const[]){"Error", "1146", "Table 'app.missing' doesn't exist"},
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "checksum unknown table warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count, @@error_count",
+            .values = diagnostic_status_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "checksum unknown table status variables",
+        }
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE missing_schema.t",
+        (const char *const[]){"missing_schema.t", NULL},
+        1U,
+        1U,
+        "checksum unknown schema"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = (const char *const[]){"Error", "1049", "Unknown database 'missing_schema'"},
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "checksum unknown schema warnings",
+        }
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE app._mylite_shadow",
+        (const char *const[]){"app._mylite_shadow", NULL},
+        1U,
+        1U,
+        "checksum reserved table"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values =
+                (const char *const[]){"Error", "1146", "Table 'app._mylite_shadow' doesn't exist"},
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "checksum reserved table warnings",
+        }
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE app.v",
+        (const char *const[]){"app.v", NULL},
+        1U,
+        1U,
+        "checksum view target"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = (const char *const[]){"Error", "1347", "'app.v' is not BASE TABLE"},
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "checksum view warnings",
+        }
+    );
+    failures += expect_error(
+        database,
+        "CHECKSUM TABLE app.a, app.a",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_alias,
+            .sqlstate = "42000",
+            .message_part = "Not unique table/alias",
+        }
+    );
+
+    failures += expect_statement_ok(database, "RENAME TABLE app.b TO app.renamed");
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE app.renamed",
+        (const char *const[]){"app.renamed", NULL},
+        1U,
+        0U,
+        "checksum renamed target"
+    );
+    failures += expect_statement_ok(database, "DROP TABLE app.renamed");
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE app.renamed",
+        (const char *const[]){"app.renamed", NULL},
+        1U,
+        1U,
+        "checksum dropped target"
     );
 
     mylite_close(database);
@@ -519,6 +745,82 @@ static int expect_maintenance_rows(
     return failures;
 }
 
+static int expect_checksum_rows(
+    mylite_db *database,
+    const char *sql,
+    const char *const *values,
+    size_t row_count,
+    size_t warning_count,
+    const char *context
+) {
+    static const char *const column_names[checksum_column_count] = {
+        "Table",
+        "Checksum",
+    };
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += execute_ok(database, sql, &result);
+    if (result == NULL) {
+        return failures + 1;
+    }
+    failures += expect_size(mylite_result_column_count(result), checksum_column_count, context);
+    failures += expect_checksum_metadata(result, context);
+    failures += expect_size(mylite_result_row_count(result), row_count, context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += expect_size(mylite_result_warning_count(result), warning_count, context);
+    for (size_t column = 0U; column < checksum_column_count; ++column) {
+        failures +=
+            expect_text(mylite_result_column_name(result, column), column_names[column], context);
+    }
+    for (size_t row = 0U; row < row_count; ++row) {
+        for (size_t column = 0U; column < checksum_column_count; ++column) {
+            const size_t value_index = (row * checksum_column_count) + column;
+
+            failures += expect_result_value(result, row, column, values[value_index], context);
+        }
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_checksum_metadata(const mylite_result *result, const char *context) {
+    int failures = 0;
+
+    failures += expect_int(
+        (int)mylite_result_column_type(result, 0U),
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+        context
+    );
+    failures += expect_int(
+        (int)mylite_result_column_type(result, 1U),
+        MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+        context
+    );
+    failures += expect_uint32(mylite_result_column_flags(result, 0U), 0U, context);
+    failures += expect_uint32(
+        mylite_result_column_flags(result, 1U),
+        MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        context
+    );
+    failures += expect_uint64(
+        mylite_result_column_display_length(result, 0U),
+        checksum_table_display_length,
+        context
+    );
+    failures += expect_uint64(
+        mylite_result_column_display_length(result, 1U),
+        checksum_value_display_length,
+        context
+    );
+    failures +=
+        expect_uint16(mylite_result_column_decimals(result, 0U), checksum_table_decimals, context);
+    failures += expect_uint16(mylite_result_column_decimals(result, 1U), 0U, context);
+    failures += expect_int(mylite_result_column_nullable(result, 0U), 1, context);
+    failures += expect_int(mylite_result_column_nullable(result, 1U), 1, context);
+    return failures;
+}
+
 static int expect_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
@@ -702,6 +1004,36 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context) {
             context,
             (long long)expected,
             (long long)actual
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint16(uint16_t actual, uint16_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %u, got %u\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %u, got %u\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %llu, got %llu\n",
+            context,
+            (unsigned long long)expected,
+            (unsigned long long)actual
         );
         return 1;
     }

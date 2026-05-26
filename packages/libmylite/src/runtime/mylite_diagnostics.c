@@ -137,6 +137,15 @@ int mylite_diagnostics_append_warning(
     return append_warning_with_level(diagnostics, "Warning", code, sqlstate, message);
 }
 
+int mylite_diagnostics_append_error(
+    struct mylite_diagnostics *diagnostics,
+    int code,
+    const char *sqlstate,
+    const char *message
+) {
+    return append_warning_with_level(diagnostics, "Error", code, sqlstate, message);
+}
+
 int mylite_diagnostics_reserve_warning_capacity(
     struct mylite_diagnostics *diagnostics,
     size_t required_capacity

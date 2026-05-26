@@ -15262,6 +15262,31 @@ static int test_table_maintenance_statements(void) {
     failures += expect_span_text(child_at(table_names, 0U), "t", "check target");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("CHECKSUM TABLE t;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT, "checksum statement");
+    failures += expect_child_count(statement, 1U, "checksum child count");
+    failures += expect_child_count(table_names, 1U, "checksum target count");
+    failures += expect_span_text(child_at(table_names, 0U), "t", "checksum target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE app.t, other EXTENDED;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT, "checksum extended");
+    failures += expect_child_count(table_names, 2U, "checksum extended target count");
+    failures += expect_span_text(child_at(table_names, 0U), "app.t", "checksum qualified target");
+    failures += expect_span_text(child_at(table_names, 1U), "other", "checksum second target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t QUICK;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT, "checksum quick");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("OPTIMIZE LOCAL TABLE t;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     table_names = child_at(statement, 0U);
@@ -15288,7 +15313,23 @@ static int test_table_maintenance_statements(void) {
         parse_sql("ANALYZE TABLE t UPDATE HISTOGRAM ON c;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CHECKSUM TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CHECKSUM LOCAL TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE QUICK t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t FAST;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CHECKSUM TABLE t QUICK EXTENDED;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t QUICK, other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPAIR TABLE t FOR UPGRADE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

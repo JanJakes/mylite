@@ -397,6 +397,9 @@ enum {
     show_errors_result_column_count = 3,
     show_count_errors_result_column_count = 1,
     table_maintenance_result_column_count = 4,
+    checksum_table_result_column_count = 2,
+    checksum_table_name_display_length = 384,
+    checksum_table_checksum_display_length = 22,
     information_schema_schemata_column_count = 6,
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
@@ -10825,6 +10828,27 @@ static int execute_table_maintenance_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_checksum_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int append_checksum_table_result_columns(struct mylite_db *database, mylite_result *result);
+static int append_checksum_table_target_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct table_maintenance_target *target
+);
+static int append_checksum_table_target_warning(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target
+);
+static int append_checksum_table_warning(
+    struct mylite_db *database,
+    int code,
+    const char *sqlstate,
+    const char *message
+);
 static enum table_maintenance_operation table_maintenance_operation_for_statement(
     const struct mylite_sql_ast_node *statement
 );
@@ -17830,6 +17854,11 @@ static const char *default_sql_mode_value(void);
 static const struct mylite_diagnostics *system_variable_count_diagnostics(
     const struct mylite_db *database
 );
+static int diagnostics_count_system_variable_value(
+    const struct mylite_diagnostics *diagnostics,
+    enum session_system_variable_kind variable,
+    uint64_t *out_count
+);
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -18368,7 +18397,12 @@ static int previous_diagnostics_condition_count(
     const struct mylite_diagnostics *diagnostics,
     uint64_t *out_count
 );
+static int previous_diagnostics_error_count(
+    const struct mylite_diagnostics *diagnostics,
+    uint64_t *out_count
+);
 static bool diagnostics_has_error_condition(const struct mylite_diagnostics *diagnostics);
+static bool diagnostic_record_level_is_error(const struct mylite_diagnostic_record *record);
 static int format_uint64(
     struct mylite_db *database,
     uint64_t value,
@@ -30361,6 +30395,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
         return execute_table_maintenance_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
+        return execute_checksum_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST:
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET:
     case MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK:
@@ -32441,6 +32477,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
     case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
         return true;
     default:
         return false;
@@ -48416,6 +48453,197 @@ static const char *information_schema_numeric_scale_for_descriptor(
     return "0";
 }
 
+static int execute_checksum_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *table_names = child_at(statement, 0U);
+    const size_t table_count =
+        table_names == NULL ? 0U : mylite_sql_ast_node_child_count(table_names);
+    struct table_maintenance_target *targets = NULL;
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (table_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    targets = (struct table_maintenance_target *)calloc(table_count, sizeof(targets[0]));
+    if (targets == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < table_count; ++target_index) {
+        rc = resolve_table_maintenance_target(
+            database,
+            child_at(table_names, target_index),
+            &targets[target_index]
+        );
+        if (rc == MYLITE_OK) {
+            rc = check_table_maintenance_duplicate_target(
+                database,
+                targets,
+                target_index,
+                &targets[target_index]
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_checksum_table_result_columns(database, result);
+    }
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < table_count; ++target_index) {
+        rc = append_checksum_table_target_row(database, result, &targets[target_index]);
+    }
+
+    free(targets);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_checksum_table_result_columns(struct mylite_db *database, mylite_result *result) {
+    const uint32_t table_collation_id = result_metadata_collation_id("latin1_swedish_ci");
+    const struct mylite_result_column_descriptor descriptors[checksum_table_result_column_count] = {
+        {
+            .label = "Table",
+            .schema_name = "",
+            .table_name = "",
+            .origin_schema_name = "",
+            .origin_table_name = "",
+            .origin_column_name = "",
+            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+            .flags = 0U,
+            .charset_id = table_collation_id,
+            .collation_id = table_collation_id,
+            .display_length = checksum_table_name_display_length,
+            .decimals = mysql_approximate_decimals,
+            .nullable = true,
+        },
+        {
+            .label = "Checksum",
+            .schema_name = "",
+            .table_name = "",
+            .origin_schema_name = "",
+            .origin_table_name = "",
+            .origin_column_name = "",
+            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = checksum_table_checksum_display_length,
+            .decimals = 0U,
+            .nullable = true,
+        },
+    };
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < checksum_table_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column_descriptor(result, &descriptors[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int append_checksum_table_target_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct table_maintenance_target *target
+) {
+    const char *const values[checksum_table_result_column_count] = {
+        target == NULL ? NULL : target->display_name,
+        NULL,
+    };
+    int rc = mylite_result_append_text_row(result, values);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    return append_checksum_table_target_warning(database, target);
+}
+
+static int append_checksum_table_target_warning(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid checksum table target");
+        return MYLITE_ERROR;
+    }
+    if (target->missing_schema) {
+        written = snprintf(message, sizeof(message), "Unknown database '%s'", target->schema_name);
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            set_runtime_error(database, "failed to format checksum schema diagnostic");
+            return MYLITE_ERROR;
+        }
+        return append_checksum_table_warning(
+            database,
+            mysql_error_unknown_database,
+            "42000",
+            message
+        );
+    }
+    if (target->missing_table) {
+        written =
+            snprintf(message, sizeof(message), "Table '%s' doesn't exist", target->display_name);
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            set_runtime_error(database, "failed to format checksum table diagnostic");
+            return MYLITE_ERROR;
+        }
+        return append_checksum_table_warning(
+            database,
+            mysql_error_table_does_not_exist,
+            "42S02",
+            message
+        );
+    }
+    if (target->unsupported_kind) {
+        written =
+            snprintf(message, sizeof(message), "'%s' is not BASE TABLE", target->display_name);
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            set_runtime_error(database, "failed to format checksum object-kind diagnostic");
+            return MYLITE_ERROR;
+        }
+        return append_checksum_table_warning(database, mysql_error_not_view, "HY000", message);
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_checksum_table_warning(
+    struct mylite_db *database,
+    int code,
+    const char *sqlstate,
+    const char *message
+) {
+    struct mylite_diagnostics *diagnostics = mylite_connection_diagnostics(database);
+    const int rc = mylite_diagnostics_append_error(diagnostics, code, sqlstate, message);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
 static int execute_table_maintenance_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -51224,10 +51452,9 @@ static int append_show_errors_rows(
     const struct mylite_diagnostics *diagnostics = &database->previous_diagnostics;
     uint64_t start_index = 0U;
     uint64_t row_count = UINT64_MAX;
-
-    if (!diagnostics_has_error_condition(diagnostics)) {
-        return MYLITE_OK;
-    }
+    uint64_t error_index = 0U;
+    uint64_t emitted_count = 0U;
+    int rc = MYLITE_OK;
 
     if (limit->has_offset) {
         start_index = limit->offset;
@@ -51235,11 +51462,30 @@ static int append_show_errors_rows(
     if (limit->has_limit) {
         row_count = limit->row_count;
     }
-    if (start_index != 0U || row_count == 0U) {
+    if (row_count == 0U) {
         return MYLITE_OK;
     }
 
-    return append_show_diagnostics_row(database, result, "Error", &diagnostics->condition);
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_diagnostics_warning_count(diagnostics);
+         ++index) {
+        const struct mylite_diagnostic_record *record =
+            mylite_diagnostics_warning_at(diagnostics, index);
+
+        if (!diagnostic_record_level_is_error(record)) {
+            continue;
+        }
+        if (error_index >= start_index && emitted_count < row_count) {
+            rc = append_show_diagnostics_row(database, result, "Error", record);
+            ++emitted_count;
+        }
+        ++error_index;
+    }
+    if (rc == MYLITE_OK && diagnostics_has_error_condition(diagnostics) &&
+        error_index >= start_index && emitted_count < row_count) {
+        rc = append_show_diagnostics_row(database, result, "Error", &diagnostics->condition);
+    }
+    return rc;
 }
 
 static int append_show_count_errors_row(struct mylite_db *database, mylite_result *result) {
@@ -51247,13 +51493,11 @@ static int append_show_count_errors_row(struct mylite_db *database, mylite_resul
     char count_text[integer_text_capacity];
     const char *values[show_count_errors_result_column_count] = {count_text};
     uint64_t count = 0U;
-    int rc = MYLITE_OK;
+    int rc = previous_diagnostics_error_count(diagnostics, &count);
 
-    if (diagnostics_has_error_condition(diagnostics)) {
-        count = 1U;
+    if (rc == MYLITE_OK) {
+        rc = format_uint64(database, count, count_text, sizeof(count_text));
     }
-
-    rc = format_uint64(database, count, count_text, sizeof(count_text));
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_text_row(result, values);
         if (rc != MYLITE_OK) {
@@ -51291,6 +51535,45 @@ static bool diagnostics_has_error_condition(const struct mylite_diagnostics *dia
         return false;
     }
     if (mylite_diagnostics_errcode(diagnostics) == MYLITE_OK) {
+        return false;
+    }
+    return true;
+}
+
+static int previous_diagnostics_error_count(
+    const struct mylite_diagnostics *diagnostics,
+    uint64_t *out_count
+) {
+    uint64_t count = 0U;
+
+    if (diagnostics == NULL || out_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t index = 0U; index < mylite_diagnostics_warning_count(diagnostics); ++index) {
+        if (diagnostic_record_level_is_error(mylite_diagnostics_warning_at(diagnostics, index))) {
+            if (count == UINT64_MAX) {
+                return MYLITE_NOMEM;
+            }
+            ++count;
+        }
+    }
+    if (diagnostics_has_error_condition(diagnostics)) {
+        if (count == UINT64_MAX) {
+            return MYLITE_NOMEM;
+        }
+        ++count;
+    }
+
+    *out_count = count;
+    return MYLITE_OK;
+}
+
+static bool diagnostic_record_level_is_error(const struct mylite_diagnostic_record *record) {
+    if (record == NULL) {
+        return false;
+    }
+    if (strcmp(record->level, "Error") != 0) {
         return false;
     }
     return true;
@@ -54058,6 +54341,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
     case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
         return -1;
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST:
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET:
@@ -111358,9 +111642,7 @@ static int hex_numeric_system_variable_value(
     bool *out_handled
 ) {
     enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
-    const struct mylite_diagnostics *count_diagnostics = NULL;
     int64_t timestamp = 0;
-    uint64_t error_count = 0U;
     int rc = MYLITE_OK;
 
     if (out_value == NULL || out_handled == NULL) {
@@ -111463,18 +111745,11 @@ static int hex_numeric_system_variable_value(
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_WARNING_COUNT:
     case SESSION_SYSTEM_VARIABLE_ERROR_COUNT:
-        count_diagnostics = system_variable_count_diagnostics(database);
-        rc = previous_diagnostics_condition_count(count_diagnostics, &error_count);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (variable == SESSION_SYSTEM_VARIABLE_ERROR_COUNT) {
-            out_value->integer = error_count;
-        } else {
-            out_value->integer =
-                error_count + (uint64_t)mylite_diagnostics_warning_count(count_diagnostics);
-        }
-        return MYLITE_OK;
+        return diagnostics_count_system_variable_value(
+            system_variable_count_diagnostics(database),
+            variable,
+            &out_value->integer
+        );
     default:
         break;
     }
@@ -120145,9 +120420,7 @@ static int system_variable_value(
     struct session_scalar_cell *out_cell
 ) {
     enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
-    const struct mylite_diagnostics *count_diagnostics = NULL;
     uint64_t count = 0U;
-    uint64_t error_count = 0U;
     int rc = resolve_session_system_variable(database, expression, &variable);
 
     if (rc != MYLITE_OK) {
@@ -120440,15 +120713,13 @@ static int system_variable_value(
         break;
     }
 
-    count_diagnostics = system_variable_count_diagnostics(database);
-    rc = previous_diagnostics_condition_count(count_diagnostics, &error_count);
+    rc = diagnostics_count_system_variable_value(
+        system_variable_count_diagnostics(database),
+        variable,
+        &count
+    );
     if (rc != MYLITE_OK) {
         return rc;
-    }
-    if (variable == SESSION_SYSTEM_VARIABLE_ERROR_COUNT) {
-        count = error_count;
-    } else {
-        count = error_count + (uint64_t)mylite_diagnostics_warning_count(count_diagnostics);
     }
 
     rc = format_uint64(database, count, out_cell->integer_text, sizeof(out_cell->integer_text));
@@ -120456,6 +120727,35 @@ static int system_variable_value(
         out_cell->value = out_cell->integer_text;
     }
     return rc;
+}
+
+static int diagnostics_count_system_variable_value(
+    const struct mylite_diagnostics *diagnostics,
+    enum session_system_variable_kind variable,
+    uint64_t *out_count
+) {
+    uint64_t warning_count = 0U;
+    uint64_t condition_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (diagnostics == NULL || out_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (variable == SESSION_SYSTEM_VARIABLE_ERROR_COUNT) {
+        return previous_diagnostics_error_count(diagnostics, out_count);
+    }
+
+    rc = previous_diagnostics_condition_count(diagnostics, &condition_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    warning_count = (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    if (condition_count > UINT64_MAX - warning_count) {
+        return MYLITE_NOMEM;
+    }
+
+    *out_count = condition_count + warning_count;
+    return MYLITE_OK;
 }
 
 static uint64_t information_schema_stats_expiry_system_variable_value(

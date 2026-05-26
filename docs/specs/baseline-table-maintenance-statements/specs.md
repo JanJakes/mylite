@@ -15,6 +15,8 @@ from failing when they issue table maintenance statements. MyLite returns the
 same four-column result shape MySQL uses for these statements, but it does not
 claim real physical table optimization, repair, checksum validation, histogram
 management, partition maintenance, or storage-engine statistics updates.
+`CHECKSUM TABLE` has a different two-column result shape and is specified in
+`docs/specs/baseline-checksum-table/specs.md`.
 
 Authoritative references:
 
@@ -53,7 +55,6 @@ Included:
 
 Deferred:
 
-- `CHECKSUM TABLE`.
 - `ANALYZE TABLE ... UPDATE HISTOGRAM` and `DROP HISTOGRAM`.
 - `ALTER TABLE ... ANALYZE|CHECK|OPTIMIZE|REPAIR PARTITION`.
 - Real statistics collection, optimizer-statistics persistence, histogram
@@ -110,8 +111,9 @@ other table statements.
 
 Unsupported forms must fail deterministically at parse time when the grammar can
 reject them, or with a MyLite-specific unsupported diagnostic after parsing if
-needed. In this slice, histogram clauses, `CHECKSUM TABLE`, partition
-maintenance, and unsupported options are parser rejections.
+needed. In this slice, histogram clauses, partition maintenance, and unsupported
+options are parser rejections. `CHECKSUM TABLE` is handled by the separate
+baseline checksum slice.
 
 ## Name Resolution
 
@@ -243,8 +245,8 @@ test, whichever keeps CTest names clear. Tests must cover:
 - Parser acceptance for all four statements, optional `LOCAL` and
   `NO_WRITE_TO_BINLOG`, `CHECK TABLE` options, `REPAIR TABLE` options,
   schema-qualified and comma-separated table lists.
-- Parser rejection for `CHECKSUM TABLE`, histogram clauses, partition forms,
-  unsupported options, and missing table list.
+- Parser rejection for histogram clauses, partition forms, unsupported options,
+  and missing table list.
 - Successful result metadata and rows for `ANALYZE`, `CHECK`, `OPTIMIZE`, and
   `REPAIR`.
 - Multiple table rows preserve input order.
@@ -259,4 +261,3 @@ test, whichever keeps CTest names clear. Tests must cover:
 - Warning count remains zero and no result rows are added to `SHOW WARNINGS`.
 - Existing parser, transaction, file-format, catalog, DDL/DML, and result tests
   still pass.
-

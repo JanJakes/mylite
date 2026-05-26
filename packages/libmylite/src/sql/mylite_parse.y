@@ -600,6 +600,11 @@ table_maintenance_statement(A) ::=
         state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N);
 }
 table_maintenance_statement(A) ::=
+    CHECKSUM(T) TABLE table_name_list(N) checksum_table_option_opt. {
+    A = mylite_sql_parser_make_table_maintenance_statement(
+        state, MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT, T, N);
+}
+table_maintenance_statement(A) ::=
     OPTIMIZE(T) maintenance_binlog_opt TABLE table_name_list(N). {
     A = mylite_sql_parser_make_table_maintenance_statement(
         state, MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT, T, N);
@@ -626,6 +631,10 @@ check_table_option ::= FAST.
 check_table_option ::= MEDIUM.
 check_table_option ::= EXTENDED.
 check_table_option ::= CHANGED.
+
+checksum_table_option_opt ::= .
+checksum_table_option_opt ::= QUICK.
+checksum_table_option_opt ::= EXTENDED.
 
 repair_table_option_list_opt ::= .
 repair_table_option_list_opt ::= repair_table_option_list.

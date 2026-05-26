@@ -635,7 +635,7 @@ tests.
 | `NTILE()` | ❌ | Bucket number. | [window functions](docs/compatibility/functions-window.md) |
 | `PERCENT_RANK()` | ❌ | Percentage rank. | [window functions](docs/compatibility/functions-window.md) |
 | `RANK()` | ❌ | Rank with gaps. | [window functions](docs/compatibility/functions-window.md) |
-| `ROW_NUMBER()` | ❌ | Row number in partition. | [window functions](docs/compatibility/functions-window.md) |
+| `ROW_NUMBER()` | 🟡 | Limited projection-only `ROW_NUMBER() OVER (...)` for no-source, `DUAL`, and one descriptor-backed table source, with optional one descriptor-column `PARTITION BY`, optional one descriptor-column `ORDER BY` plus `ASC` / `DESC`, and existing row-scalar `WHERE` / outer `ORDER BY` / `LIMIT`; no named windows, frame clauses, expressions, multiple keys, joins, grouped selects, predicates, DML contexts, or other window functions. | [window functions](docs/compatibility/functions-window.md), [baseline ROW_NUMBER window function](docs/specs/baseline-row-number-window-function/specs.md) |
 
 ### Information Schema
 

@@ -1773,6 +1773,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "order_by_clause";
     case MYLITE_SQL_AST_ORDER_DIRECTION:
         return "order_direction";
+    case MYLITE_SQL_AST_ROW_NUMBER_FUNCTION:
+        return "row_number_function";
+    case MYLITE_SQL_AST_WINDOW_SPEC:
+        return "window_spec";
+    case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:
+        return "window_partition_clause";
+    case MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE:
+        return "window_order_clause";
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
         return "limit_clause";
     case MYLITE_SQL_AST_DELETE_STATEMENT:

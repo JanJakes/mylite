@@ -5826,6 +5826,91 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_row_number_window_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *window_spec,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = make_node(
+        state,
+        MYLITE_SQL_AST_ROW_NUMBER_FUNCTION,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+
+    if (function == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(function, window_spec);
+    return function;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_spec(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *partition_clause,
+    struct mylite_sql_ast_node *order_clause
+) {
+    struct mylite_sql_source_span span = {0};
+    struct mylite_sql_ast_node *spec = NULL;
+
+    if (partition_clause != NULL) {
+        span = partition_clause->span;
+    }
+    if (order_clause != NULL) {
+        span = partition_clause == NULL ? order_clause->span : span_join(span, order_clause->span);
+    }
+
+    spec = make_node(state, MYLITE_SQL_AST_WINDOW_SPEC, span);
+    if (spec == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(spec, partition_clause);
+    mylite_sql_ast_node_append_child(spec, order_clause);
+    return spec;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_partition_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token partition_token,
+    struct mylite_sql_ast_node *column
+) {
+    struct mylite_sql_source_span span = span_from_token(&partition_token);
+    struct mylite_sql_ast_node *clause = NULL;
+
+    if (column != NULL) {
+        span = span_join(span, column->span);
+    }
+    clause = make_node(state, MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE, span);
+    if (clause == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(clause, column);
+    return clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_order_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token order_token,
+    struct mylite_sql_ast_node *column,
+    struct mylite_sql_ast_node *direction
+) {
+    struct mylite_sql_source_span span = span_from_token(&order_token);
+    struct mylite_sql_ast_node *clause = NULL;
+
+    if (direction != NULL) {
+        span = span_join(span, direction->span);
+    } else if (column != NULL) {
+        span = span_join(span, column->span);
+    }
+    clause = make_node(state, MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE, span);
+    if (clause == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(clause, column);
+    mylite_sql_ast_node_append_child(clause, direction);
+    return clause;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -8218,6 +8303,7 @@ static bool map_keyword_token(
         {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},
         {"SYSTEM", MYLITE_SQL_PARSE_SYSTEM},
         {"ON", MYLITE_SQL_PARSE_ON},
+        {"OVER", MYLITE_SQL_PARSE_OVER},
         {"NO", MYLITE_SQL_PARSE_NO},
         {"OFF", MYLITE_SQL_PARSE_OFF},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
@@ -8234,6 +8320,7 @@ static bool map_keyword_token(
         {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"FIXED", MYLITE_SQL_PARSE_FIXED},
         {"ROW_FORMAT", MYLITE_SQL_PARSE_ROW_FORMAT},
+        {"PARTITION", MYLITE_SQL_PARSE_PARTITION},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},
         {"PACK_KEYS", MYLITE_SQL_PARSE_PACK_KEYS},
         {"DISABLE", MYLITE_SQL_PARSE_DISABLE},
@@ -8316,6 +8403,7 @@ static bool map_keyword_token(
         {"UTC", MYLITE_SQL_PARSE_UTC},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"ROW_NUMBER", MYLITE_SQL_PARSE_ROW_NUMBER},
         {"SEPARATOR", MYLITE_SQL_PARSE_SEPARATOR},
         {"SERIAL", MYLITE_SQL_PARSE_SERIAL},
         {"SHARE", MYLITE_SQL_PARSE_SHARE},

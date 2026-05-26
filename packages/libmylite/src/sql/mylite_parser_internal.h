@@ -1678,6 +1678,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
     struct mylite_sql_ast_node *separator,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_row_number_window_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *window_spec,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_spec(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *partition_clause,
+    struct mylite_sql_ast_node *order_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_partition_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token partition_token,
+    struct mylite_sql_ast_node *column
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_order_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token order_token,
+    struct mylite_sql_ast_node *column,
+    struct mylite_sql_ast_node *direction
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

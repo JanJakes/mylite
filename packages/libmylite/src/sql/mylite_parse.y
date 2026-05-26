@@ -4448,6 +4448,30 @@ expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAREN(R). {
 expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_charset_expression(state, T, V, C, R);
 }
+expression(A) ::= ROW_NUMBER(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_row_number_window_function(state, T, W, R);
+}
+
+window_spec_opt(A) ::= . {
+    A = NULL;
+}
+window_spec_opt(A) ::= window_partition_clause(P). {
+    A = mylite_sql_parser_make_window_spec(state, P, NULL);
+}
+window_spec_opt(A) ::= window_order_clause(O). {
+    A = mylite_sql_parser_make_window_spec(state, NULL, O);
+}
+window_spec_opt(A) ::= window_partition_clause(P) window_order_clause(O). {
+    A = mylite_sql_parser_make_window_spec(state, P, O);
+}
+
+window_partition_clause(A) ::= PARTITION(T) BY qualified_identifier(C). {
+    A = mylite_sql_parser_make_window_partition_clause(state, T, C);
+}
+
+window_order_clause(A) ::= ORDER(T) BY qualified_identifier(C) order_direction_opt(D). {
+    A = mylite_sql_parser_make_window_order_clause(state, T, C, D);
+}
 
 cast_basic_target(A) ::= CHAR. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;

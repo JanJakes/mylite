@@ -238,6 +238,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_union_term(
     enum mylite_sql_ast_union_modifier modifier,
     struct mylite_sql_ast_node *select_statement
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_operation_term(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_set_operator operator_kind,
+    enum mylite_sql_ast_union_modifier modifier,
+    struct mylite_sql_ast_node *select_statement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,

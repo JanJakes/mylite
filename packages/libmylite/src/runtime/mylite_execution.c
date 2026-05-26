@@ -9556,24 +9556,50 @@ static int execute_compound_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+
+struct compound_row_comparison_columns {
+    bool *string_collation_columns;
+    bool *bytewise_collation_columns;
+    size_t column_count;
+};
+
+struct compound_branch_results {
+    mylite_result **items;
+    size_t count;
+};
+
 static int reject_compound_select_branch_shape(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *branch
+    const struct mylite_sql_ast_node *branch,
+    enum mylite_sql_ast_set_operator operator_kind
 );
-static int init_compound_string_collation_columns(
+static int validate_compound_select_operator_chain(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const mylite_result *branch_result,
-    bool **out_columns,
-    size_t *out_column_count
+    const struct mylite_sql_ast_node *terms,
+    enum mylite_sql_ast_set_operator *out_operator_kind
 );
-static int append_compound_term(
+static int execute_compound_select_branch_results(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_sql_ast_set_operator operator_kind,
+    struct compound_branch_results *out_results
+);
+static void deinit_compound_branch_results(struct compound_branch_results *results);
+static size_t compound_select_branch_count(const struct mylite_sql_ast_node *statement);
+static int init_compound_row_comparison_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct compound_branch_results *branch_results,
+    struct compound_row_comparison_columns *out_columns
+);
+static void deinit_compound_row_comparison_columns(struct compound_row_comparison_columns *columns);
+static int apply_compound_term_result(
+    struct mylite_db *database,
     const struct mylite_sql_ast_node *term,
+    const mylite_result *branch_result,
     mylite_result **in_out_result,
-    bool *string_collation_columns,
-    size_t column_count
+    struct compound_row_comparison_columns *comparison_columns
 );
 static int append_compound_result_columns(
     struct mylite_db *database,
@@ -9586,6 +9612,37 @@ static int append_compound_branch_rows(
     const mylite_result *branch_result,
     bool distinct,
     const bool *string_collation_columns
+);
+static int apply_intersect_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    bool distinct,
+    const bool *string_collation_columns
+);
+static int apply_intersect_all_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    const bool *string_collation_columns
+);
+static int apply_except_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    bool distinct,
+    const bool *string_collation_columns
+);
+static int apply_except_all_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    const bool *string_collation_columns
+);
+static int create_empty_compound_result_like(
+    struct mylite_db *database,
+    const mylite_result *source,
+    mylite_result **out_result
 );
 static int deduplicate_compound_result(
     struct mylite_db *database,
@@ -9612,14 +9669,22 @@ static int append_compound_row(
 static int merge_compound_string_collation_columns(
     struct mylite_db *database,
     const mylite_result *branch_result,
-    bool *string_collation_columns,
-    size_t column_count
+    struct compound_row_comparison_columns *columns
 );
 static bool compound_result_column_uses_string_collation(
     const mylite_result *result,
     size_t column_index
 );
 static bool result_column_uses_string_collation(const struct mylite_result_column *column);
+static bool compound_result_column_uses_bytewise_collation(
+    const mylite_result *result,
+    size_t column_index
+);
+static bool result_column_uses_bytewise_collation(const struct mylite_result_column *column);
+static bool compound_statement_column_uses_string_collation(
+    const struct mylite_sql_ast_node *statement,
+    size_t column_index
+);
 static bool compound_select_item_uses_string_collation(
     const struct mylite_sql_ast_node *branch,
     size_t column_index
@@ -9639,6 +9704,26 @@ static bool compound_result_contains_row(
     const mylite_result *source,
     size_t source_row_index,
     const bool *string_collation_columns
+);
+static bool compound_result_find_unmatched_row(
+    const mylite_result *target,
+    const mylite_result *source,
+    size_t source_row_index,
+    const bool *matched_rows,
+    size_t *out_row_index,
+    const bool *string_collation_columns
+);
+static const char *compound_select_non_select_branch_error(
+    enum mylite_sql_ast_set_operator operator_kind
+);
+static const char *compound_select_calc_found_rows_error(
+    enum mylite_sql_ast_set_operator operator_kind
+);
+static const char *compound_select_options_error(enum mylite_sql_ast_set_operator operator_kind);
+static const char *compound_select_order_by_error(enum mylite_sql_ast_set_operator operator_kind);
+static const char *compound_select_limit_error(enum mylite_sql_ast_set_operator operator_kind);
+static const char *compound_select_locking_clause_error(
+    enum mylite_sql_ast_set_operator operator_kind
 );
 static bool compound_result_rows_equal(
     const mylite_result *left,
@@ -41063,17 +41148,23 @@ static int execute_compound_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    const struct mylite_sql_ast_node *first_branch = child_at(statement, 0U);
     const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
     const struct mylite_sql_ast_node *term = NULL;
     mylite_result *result = NULL;
-    mylite_result *branch_result = NULL;
-    bool *string_collation_columns = NULL;
-    size_t column_count = 0U;
-    int rc = reject_compound_select_branch_shape(database, first_branch);
+    struct compound_branch_results branch_results = {0};
+    struct compound_row_comparison_columns comparison_columns = {0};
+    size_t branch_index = 1U;
+    enum mylite_sql_ast_set_operator operator_kind = MYLITE_SQL_AST_SET_OPERATOR_UNION;
+    int rc = validate_compound_select_operator_chain(database, terms, &operator_kind);
 
     if (rc == MYLITE_OK) {
-        rc = execute_select_statement(database, context, first_branch, false, &branch_result);
+        rc = execute_compound_select_branch_results(
+            database,
+            context,
+            statement,
+            operator_kind,
+            &branch_results
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -41082,131 +41173,254 @@ static int execute_compound_select_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = append_compound_result_columns(database, result, branch_result);
+        rc = append_compound_result_columns(database, result, branch_results.items[0]);
     }
     if (rc == MYLITE_OK) {
-        rc = init_compound_string_collation_columns(
+        rc = init_compound_row_comparison_columns(
             database,
             statement,
-            branch_result,
-            &string_collation_columns,
-            &column_count
+            &branch_results,
+            &comparison_columns
         );
     }
     if (rc == MYLITE_OK) {
-        rc = append_all_compound_rows(database, result, branch_result);
+        rc = append_all_compound_rows(database, result, branch_results.items[0]);
     }
-    mylite_result_free(branch_result);
-    branch_result = NULL;
 
     term = child_at(terms, 0U);
     while (rc == MYLITE_OK && term != NULL) {
-        rc = append_compound_term(
+        rc = apply_compound_term_result(
             database,
-            context,
             term,
+            branch_results.items[branch_index],
             &result,
-            string_collation_columns,
-            column_count
+            &comparison_columns
         );
+        ++branch_index;
         term = term->next_sibling;
     }
 
     if (rc != MYLITE_OK) {
-        mylite_result_free(branch_result);
         mylite_result_free(result);
-        free(string_collation_columns);
+        deinit_compound_branch_results(&branch_results);
+        deinit_compound_row_comparison_columns(&comparison_columns);
         return rc;
     }
 
     mylite_result_set_affected_rows(result, 0);
     apply_sql_select_limit_to_result(database, result);
-    free(string_collation_columns);
+    deinit_compound_branch_results(&branch_results);
+    deinit_compound_row_comparison_columns(&comparison_columns);
     return finish_successful_result(database, result, out_result);
 }
 
-static int init_compound_string_collation_columns(
+static int execute_compound_select_branch_results(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
-    const mylite_result *branch_result,
-    bool **out_columns,
-    size_t *out_column_count
+    enum mylite_sql_ast_set_operator operator_kind,
+    struct compound_branch_results *out_results
 ) {
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *term = NULL;
     const struct mylite_sql_ast_node *branch = child_at(statement, 0U);
-    bool *columns = NULL;
-    size_t column_count = mylite_result_column_count(branch_result);
+    struct compound_branch_results results = {0};
+    size_t branch_index = 0U;
+    size_t column_count = 0U;
     int rc = MYLITE_OK;
 
-    if (column_count > SIZE_MAX / sizeof(*columns)) {
+    results.count = compound_select_branch_count(statement);
+    if (results.count > SIZE_MAX / sizeof(*results.items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    results.items = (mylite_result **)calloc(results.count, sizeof(*results.items));
+    if (results.items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = reject_compound_select_branch_shape(database, branch, operator_kind);
+    if (rc == MYLITE_OK) {
+        rc = execute_select_statement(
+            database,
+            context,
+            branch,
+            false,
+            &results.items[branch_index]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        column_count = mylite_result_column_count(results.items[branch_index]);
+    }
+
+    term = child_at(terms, 0U);
+    while (rc == MYLITE_OK && term != NULL) {
+        mylite_result *branch_result = NULL;
+
+        ++branch_index;
+        branch = child_at(term, 0U);
+        rc = reject_compound_select_branch_shape(database, branch, operator_kind);
+        if (rc == MYLITE_OK) {
+            rc = execute_select_statement(database, context, branch, false, &branch_result);
+        }
+        if (rc == MYLITE_OK && mylite_result_column_count(branch_result) != column_count) {
+            set_union_column_count_mismatch_error(database);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            results.items[branch_index] = branch_result;
+            branch_result = NULL;
+        }
+        mylite_result_free(branch_result);
+        term = term->next_sibling;
+    }
+
+    if (rc != MYLITE_OK) {
+        deinit_compound_branch_results(&results);
+        return rc;
+    }
+
+    *out_results = results;
+    return MYLITE_OK;
+}
+
+static void deinit_compound_branch_results(struct compound_branch_results *results) {
+    if (results == NULL) {
+        return;
+    }
+
+    if (results->items != NULL) {
+        for (size_t index = 0U; index < results->count; ++index) {
+            mylite_result_free(results->items[index]);
+        }
+    }
+    free((void *)results->items);
+    *results = (struct compound_branch_results){0};
+}
+
+static size_t compound_select_branch_count(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    size_t count = 1U;
+
+    for (const struct mylite_sql_ast_node *term = child_at(terms, 0U); term != NULL;
+         term = term->next_sibling) {
+        ++count;
+    }
+    return count;
+}
+
+static int init_compound_row_comparison_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct compound_branch_results *branch_results,
+    struct compound_row_comparison_columns *out_columns
+) {
+    struct compound_row_comparison_columns columns = {0};
+    size_t column_count = mylite_result_column_count(branch_results->items[0]);
+    int rc = MYLITE_OK;
+
+    if (column_count > SIZE_MAX / sizeof(*columns.string_collation_columns)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     if (column_count != 0U) {
-        columns = calloc(column_count, sizeof(*columns));
-        if (columns == NULL) {
+        columns.string_collation_columns =
+            calloc(column_count, sizeof(*columns.string_collation_columns));
+        columns.bytewise_collation_columns =
+            calloc(column_count, sizeof(*columns.bytewise_collation_columns));
+        if (columns.string_collation_columns == NULL ||
+            columns.bytewise_collation_columns == NULL) {
+            deinit_compound_row_comparison_columns(&columns);
             set_nomem_error(database);
             return MYLITE_NOMEM;
         }
     }
+    columns.column_count = column_count;
 
-    rc = merge_compound_string_collation_columns(database, branch_result, columns, column_count);
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        columns.bytewise_collation_columns[column_index] =
+            compound_statement_column_has_binary_expression(statement, column_index);
+    }
+
+    for (size_t branch_index = 0U; rc == MYLITE_OK && branch_index < branch_results->count;
+         ++branch_index) {
+        rc = merge_compound_string_collation_columns(
+            database,
+            branch_results->items[branch_index],
+            &columns
+        );
+    }
     if (rc != MYLITE_OK) {
-        free(columns);
+        deinit_compound_row_comparison_columns(&columns);
         return rc;
     }
+
     for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-        if (!compound_statement_column_has_binary_expression(statement, column_index) &&
-            compound_select_item_uses_string_collation(branch, column_index)) {
-            columns[column_index] = true;
+        if (!columns.bytewise_collation_columns[column_index] &&
+            compound_statement_column_uses_string_collation(statement, column_index)) {
+            columns.string_collation_columns[column_index] = true;
         }
     }
 
     *out_columns = columns;
-    *out_column_count = column_count;
     return MYLITE_OK;
 }
 
-static int append_compound_term(
-    struct mylite_db *database,
-    const struct mylite_statement_context *context,
-    const struct mylite_sql_ast_node *term,
-    mylite_result **in_out_result,
-    bool *string_collation_columns,
-    size_t column_count
+static void deinit_compound_row_comparison_columns(
+    struct compound_row_comparison_columns *columns
 ) {
-    const struct mylite_sql_ast_node *branch = child_at(term, 0U);
+    if (columns == NULL) {
+        return;
+    }
+
+    free(columns->string_collation_columns);
+    free(columns->bytewise_collation_columns);
+    *columns = (struct compound_row_comparison_columns){0};
+}
+
+static int apply_compound_term_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *term,
+    const mylite_result *branch_result,
+    mylite_result **in_out_result,
+    struct compound_row_comparison_columns *comparison_columns
+) {
     bool distinct =
         mylite_sql_ast_node_union_modifier(term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT;
-    mylite_result *branch_result = NULL;
-    int rc = reject_compound_select_branch_shape(database, branch);
+    enum mylite_sql_ast_set_operator operator_kind = mylite_sql_ast_node_set_operator_kind(term);
+    int rc = MYLITE_OK;
 
-    if (rc == MYLITE_OK) {
-        rc = execute_select_statement(database, context, branch, false, &branch_result);
-    }
-    if (rc == MYLITE_OK &&
-        mylite_result_column_count(branch_result) != mylite_result_column_count(*in_out_result)) {
-        set_union_column_count_mismatch_error(database);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = merge_compound_string_collation_columns(
-            database,
-            branch_result,
-            string_collation_columns,
-            column_count
-        );
-    }
-    if (rc == MYLITE_OK) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
         rc = append_compound_branch_rows(
             database,
             in_out_result,
             branch_result,
             distinct,
-            string_collation_columns
+            comparison_columns->string_collation_columns
         );
+        break;
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        rc = apply_intersect_compound_branch_rows(
+            database,
+            in_out_result,
+            branch_result,
+            distinct,
+            comparison_columns->string_collation_columns
+        );
+        break;
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        rc = apply_except_compound_branch_rows(
+            database,
+            in_out_result,
+            branch_result,
+            distinct,
+            comparison_columns->string_collation_columns
+        );
+        break;
     }
 
-    mylite_result_free(branch_result);
     return rc;
 }
 
@@ -41250,34 +41464,61 @@ static void apply_sql_select_limit_to_result(
 
 static int reject_compound_select_branch_shape(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *branch
+    const struct mylite_sql_ast_node *branch,
+    enum mylite_sql_ast_set_operator operator_kind
 ) {
     if (branch == NULL || branch->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
-        set_unsupported_error(database, "UNION supports only SELECT query blocks");
+        set_unsupported_error(database, compound_select_non_select_branch_error(operator_kind));
         return MYLITE_ERROR;
     }
     if (mylite_sql_ast_node_select_calc_found_rows(branch)) {
-        set_unsupported_error(database, "UNION does not support SQL_CALC_FOUND_ROWS");
+        set_unsupported_error(database, compound_select_calc_found_rows_error(operator_kind));
         return MYLITE_ERROR;
     }
     if (mylite_sql_ast_node_select_options(branch) != 0U) {
-        set_unsupported_error(database, "UNION does not support SELECT options in query blocks");
+        set_unsupported_error(database, compound_select_options_error(operator_kind));
         return MYLITE_ERROR;
     }
     if (child_with_kind(branch, MYLITE_SQL_AST_ORDER_BY_CLAUSE) != NULL) {
-        set_unsupported_error(database, "UNION branch ORDER BY is not supported");
+        set_unsupported_error(database, compound_select_order_by_error(operator_kind));
         return MYLITE_ERROR;
     }
     if (child_with_kind(branch, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
-        set_unsupported_error(database, "UNION branch LIMIT is not supported");
+        set_unsupported_error(database, compound_select_limit_error(operator_kind));
         return MYLITE_ERROR;
     }
     if (mylite_sql_ast_node_select_locking_clause(branch) !=
         MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
-        set_unsupported_error(database, "UNION does not support locking clauses");
+        set_unsupported_error(database, compound_select_locking_clause_error(operator_kind));
         return MYLITE_ERROR;
     }
 
+    return MYLITE_OK;
+}
+
+static int validate_compound_select_operator_chain(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *terms,
+    enum mylite_sql_ast_set_operator *out_operator_kind
+) {
+    const struct mylite_sql_ast_node *term = child_at(terms, 0U);
+    enum mylite_sql_ast_set_operator first_operator = MYLITE_SQL_AST_SET_OPERATOR_UNION;
+
+    if (term == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    first_operator = mylite_sql_ast_node_set_operator_kind(term);
+    for (const struct mylite_sql_ast_node *current = term; current != NULL;
+         current = current->next_sibling) {
+        if (mylite_sql_ast_node_set_operator_kind(current) != first_operator) {
+            set_unsupported_error(database, "mixed set operations are not supported");
+            return MYLITE_ERROR;
+        }
+    }
+
+    *out_operator_kind = first_operator;
     return MYLITE_OK;
 }
 
@@ -41347,6 +41588,234 @@ static int append_compound_branch_rows(
         branch_result,
         string_collation_columns
     );
+}
+
+static int apply_intersect_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    bool distinct,
+    const bool *string_collation_columns
+) {
+    mylite_result *old_result = NULL;
+    mylite_result *intersected = NULL;
+    size_t row_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (!distinct) {
+        return apply_intersect_all_compound_branch_rows(
+            database,
+            in_out_result,
+            branch_result,
+            string_collation_columns
+        );
+    }
+
+    rc = deduplicate_compound_result(database, in_out_result, string_collation_columns);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    old_result = *in_out_result;
+    row_count = mylite_result_row_count(old_result);
+    rc = create_empty_compound_result_like(database, old_result, &intersected);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        if (compound_result_contains_row(
+                branch_result,
+                old_result,
+                row_index,
+                string_collation_columns
+            )) {
+            rc = append_compound_row(database, intersected, old_result, row_index);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(intersected);
+        return rc;
+    }
+
+    mylite_result_free(old_result);
+    *in_out_result = intersected;
+    return MYLITE_OK;
+}
+
+static int apply_intersect_all_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    const bool *string_collation_columns
+) {
+    mylite_result *old_result = *in_out_result;
+    mylite_result *intersected = NULL;
+    bool *matched_rows = NULL;
+    size_t branch_row_count = mylite_result_row_count(branch_result);
+    size_t row_count = mylite_result_row_count(old_result);
+    int rc = MYLITE_OK;
+
+    if (branch_row_count == 0U) {
+        rc = create_empty_compound_result_like(database, old_result, &intersected);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        mylite_result_free(old_result);
+        *in_out_result = intersected;
+        return MYLITE_OK;
+    }
+
+    matched_rows = calloc(branch_row_count, sizeof(*matched_rows));
+    if (matched_rows == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = create_empty_compound_result_like(database, old_result, &intersected);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        size_t branch_row_index = 0U;
+
+        if (compound_result_find_unmatched_row(
+                branch_result,
+                old_result,
+                row_index,
+                matched_rows,
+                &branch_row_index,
+                string_collation_columns
+            )) {
+            matched_rows[branch_row_index] = true;
+            rc = append_compound_row(database, intersected, old_result, row_index);
+        }
+    }
+    free(matched_rows);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(intersected);
+        return rc;
+    }
+
+    mylite_result_free(old_result);
+    *in_out_result = intersected;
+    return MYLITE_OK;
+}
+
+static int apply_except_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    bool distinct,
+    const bool *string_collation_columns
+) {
+    mylite_result *old_result = NULL;
+    mylite_result *difference = NULL;
+    size_t row_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (!distinct) {
+        return apply_except_all_compound_branch_rows(
+            database,
+            in_out_result,
+            branch_result,
+            string_collation_columns
+        );
+    }
+
+    rc = deduplicate_compound_result(database, in_out_result, string_collation_columns);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    old_result = *in_out_result;
+    row_count = mylite_result_row_count(old_result);
+    rc = create_empty_compound_result_like(database, old_result, &difference);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        if (!compound_result_contains_row(
+                branch_result,
+                old_result,
+                row_index,
+                string_collation_columns
+            )) {
+            rc = append_compound_row(database, difference, old_result, row_index);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(difference);
+        return rc;
+    }
+
+    mylite_result_free(old_result);
+    *in_out_result = difference;
+    return MYLITE_OK;
+}
+
+static int apply_except_all_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    const bool *string_collation_columns
+) {
+    mylite_result *old_result = *in_out_result;
+    mylite_result *difference = NULL;
+    bool *matched_rows = NULL;
+    size_t branch_row_count = mylite_result_row_count(branch_result);
+    size_t row_count = mylite_result_row_count(old_result);
+    int rc = MYLITE_OK;
+
+    if (branch_row_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    matched_rows = calloc(branch_row_count, sizeof(*matched_rows));
+    if (matched_rows == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = create_empty_compound_result_like(database, old_result, &difference);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        size_t branch_row_index = 0U;
+
+        if (compound_result_find_unmatched_row(
+                branch_result,
+                old_result,
+                row_index,
+                matched_rows,
+                &branch_row_index,
+                string_collation_columns
+            )) {
+            matched_rows[branch_row_index] = true;
+        } else {
+            rc = append_compound_row(database, difference, old_result, row_index);
+        }
+    }
+    free(matched_rows);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(difference);
+        return rc;
+    }
+
+    mylite_result_free(old_result);
+    *in_out_result = difference;
+    return MYLITE_OK;
+}
+
+static int create_empty_compound_result_like(
+    struct mylite_db *database,
+    const mylite_result *source,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = append_compound_result_columns(database, result, source);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    *out_result = result;
+    return MYLITE_OK;
 }
 
 static int deduplicate_compound_result(
@@ -41457,21 +41926,30 @@ static int append_compound_row(
 static int merge_compound_string_collation_columns(
     struct mylite_db *database,
     const mylite_result *branch_result,
-    bool *string_collation_columns,
-    size_t column_count
+    struct compound_row_comparison_columns *columns
 ) {
     (void)database;
-    if (column_count == 0U) {
+    if (columns == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (columns->column_count == 0U) {
         return MYLITE_OK;
     }
-    if (branch_result == NULL || string_collation_columns == NULL ||
-        mylite_result_column_count(branch_result) != column_count) {
+    if (branch_result == NULL || columns->string_collation_columns == NULL ||
+        columns->bytewise_collation_columns == NULL ||
+        mylite_result_column_count(branch_result) != columns->column_count) {
         return MYLITE_ERROR;
     }
 
-    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-        if (compound_result_column_uses_string_collation(branch_result, column_index)) {
-            string_collation_columns[column_index] = true;
+    for (size_t column_index = 0U; column_index < columns->column_count; ++column_index) {
+        if (compound_result_column_uses_bytewise_collation(branch_result, column_index)) {
+            columns->bytewise_collation_columns[column_index] = true;
+            columns->string_collation_columns[column_index] = false;
+        } else if (
+            !columns->bytewise_collation_columns[column_index] &&
+            compound_result_column_uses_string_collation(branch_result, column_index)
+        ) {
+            columns->string_collation_columns[column_index] = true;
         }
     }
 
@@ -41491,8 +41969,7 @@ static bool result_column_uses_string_collation(const struct mylite_result_colum
     if (column == NULL) {
         return false;
     }
-    if ((column->flags & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U ||
-        column->collation_id == mysql_collation_binary_id || column->collation_id == 0U) {
+    if (result_column_uses_bytewise_collation(column) || column->collation_id == 0U) {
         return false;
     }
 
@@ -41503,6 +41980,47 @@ static bool result_column_uses_string_collation(const struct mylite_result_colum
         return true;
     default:
         break;
+    }
+    return false;
+}
+
+static bool compound_result_column_uses_bytewise_collation(
+    const mylite_result *result,
+    size_t column_index
+) {
+    return result_column_uses_bytewise_collation(
+        mylite_result_column_metadata_at(result, column_index)
+    );
+}
+
+static bool result_column_uses_bytewise_collation(const struct mylite_result_column *column) {
+    if (column == NULL) {
+        return false;
+    }
+
+    if ((column->flags & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U) {
+        return true;
+    }
+    return column->collation_id == mysql_collation_binary_id;
+}
+
+static bool compound_statement_column_uses_string_collation(
+    const struct mylite_sql_ast_node *statement,
+    size_t column_index
+) {
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *term = NULL;
+
+    if (compound_select_item_uses_string_collation(child_at(statement, 0U), column_index)) {
+        return true;
+    }
+
+    term = child_at(terms, 0U);
+    while (term != NULL) {
+        if (compound_select_item_uses_string_collation(child_at(term, 0U), column_index)) {
+            return true;
+        }
+        term = term->next_sibling;
     }
     return false;
 }
@@ -41680,6 +42198,113 @@ static bool compound_result_contains_row(
     }
 
     return false;
+}
+
+static bool compound_result_find_unmatched_row(
+    const mylite_result *target,
+    const mylite_result *source,
+    size_t source_row_index,
+    const bool *matched_rows,
+    size_t *out_row_index,
+    const bool *string_collation_columns
+) {
+    size_t row_count = mylite_result_row_count(target);
+
+    for (size_t row_index = 0U; row_index < row_count; ++row_index) {
+        if (matched_rows != NULL && matched_rows[row_index]) {
+            continue;
+        }
+        if (compound_result_rows_equal(
+                target,
+                row_index,
+                source,
+                source_row_index,
+                string_collation_columns
+            )) {
+            *out_row_index = row_index;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static const char *compound_select_non_select_branch_error(
+    enum mylite_sql_ast_set_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        return "INTERSECT supports only SELECT query blocks";
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        return "EXCEPT supports only SELECT query blocks";
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
+        break;
+    }
+    return "UNION supports only SELECT query blocks";
+}
+
+static const char *compound_select_calc_found_rows_error(
+    enum mylite_sql_ast_set_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        return "INTERSECT does not support SQL_CALC_FOUND_ROWS";
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        return "EXCEPT does not support SQL_CALC_FOUND_ROWS";
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
+        break;
+    }
+    return "UNION does not support SQL_CALC_FOUND_ROWS";
+}
+
+static const char *compound_select_options_error(enum mylite_sql_ast_set_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        return "INTERSECT does not support SELECT options in query blocks";
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        return "EXCEPT does not support SELECT options in query blocks";
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
+        break;
+    }
+    return "UNION does not support SELECT options in query blocks";
+}
+
+static const char *compound_select_order_by_error(enum mylite_sql_ast_set_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        return "INTERSECT branch ORDER BY is not supported";
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        return "EXCEPT branch ORDER BY is not supported";
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
+        break;
+    }
+    return "UNION branch ORDER BY is not supported";
+}
+
+static const char *compound_select_limit_error(enum mylite_sql_ast_set_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        return "INTERSECT branch LIMIT is not supported";
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        return "EXCEPT branch LIMIT is not supported";
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
+        break;
+    }
+    return "UNION branch LIMIT is not supported";
+}
+
+static const char *compound_select_locking_clause_error(
+    enum mylite_sql_ast_set_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_SET_OPERATOR_INTERSECT:
+        return "INTERSECT does not support locking clauses";
+    case MYLITE_SQL_AST_SET_OPERATOR_EXCEPT:
+        return "EXCEPT does not support locking clauses";
+    case MYLITE_SQL_AST_SET_OPERATOR_UNION:
+        break;
+    }
+    return "UNION does not support locking clauses";
 }
 
 static bool compound_result_rows_equal(
@@ -44572,11 +45197,20 @@ static int information_schema_append_result_rows(
         &index_count
     );
 
-    if (rc == MYLITE_OK) {
-        rc = information_schema_sort_row_indexes(query, rows, indexes, index_count);
-    }
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
+    }
+    if (rc == MYLITE_OK && index_count == 0U) {
+        free(indexes);
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK && rows->rows == NULL) {
+        free(indexes);
+        set_runtime_error(database, "information_schema row set is inconsistent");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_sort_row_indexes(query, rows, indexes, index_count);
     }
     if (rc == MYLITE_OK && query->projection_count != 0U) {
         values = (const char **)calloc(query->projection_count, sizeof(*values));
@@ -75883,6 +76517,14 @@ static int plan_insert_select_compound_source(
     for (size_t branch_index = 1U; rc == MYLITE_OK && branch_index < branch_count; ++branch_index) {
         size_t branch_column_count = 0U;
 
+        if (mylite_sql_ast_node_set_operator_kind(term) != MYLITE_SQL_AST_SET_OPERATOR_UNION) {
+            set_unsupported_error(
+                database,
+                "INSERT ... SELECT compound sources support only UNION"
+            );
+            rc = MYLITE_ERROR;
+            break;
+        }
         rc = plan_insert_select_compound_branch(
             database,
             child_at(term, 0U),
@@ -75918,7 +76560,11 @@ static int plan_insert_select_compound_branch(
     struct planned_insert_select_compound_branch *out_branch,
     size_t *out_column_count
 ) {
-    int rc = reject_compound_select_branch_shape(database, branch_statement);
+    int rc = reject_compound_select_branch_shape(
+        database,
+        branch_statement,
+        MYLITE_SQL_AST_SET_OPERATOR_UNION
+    );
 
     *out_branch = (struct planned_insert_select_compound_branch){.modifier = modifier};
     *out_column_count = 0U;

@@ -779,6 +779,12 @@ enum mylite_sql_ast_union_modifier {
     MYLITE_SQL_AST_UNION_MODIFIER_ALL = 1,
 };
 
+enum mylite_sql_ast_set_operator {
+    MYLITE_SQL_AST_SET_OPERATOR_UNION = 0,
+    MYLITE_SQL_AST_SET_OPERATOR_INTERSECT = 1,
+    MYLITE_SQL_AST_SET_OPERATOR_EXCEPT = 2,
+};
+
 enum mylite_sql_ast_select_option {
     MYLITE_SQL_AST_SELECT_OPTION_HIGH_PRIORITY = 1U << 0U,
     MYLITE_SQL_AST_SELECT_OPTION_STRAIGHT_JOIN = 1U << 1U,
@@ -810,6 +816,7 @@ struct mylite_sql_ast_select_payload {
 };
 
 struct mylite_sql_ast_union_payload {
+    enum mylite_sql_ast_set_operator operator_kind;
     enum mylite_sql_ast_union_modifier modifier;
 };
 
@@ -981,6 +988,10 @@ void mylite_sql_ast_node_set_union_modifier(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_union_modifier modifier
 );
+void mylite_sql_ast_node_set_set_operator_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_operator operator_kind
+);
 void mylite_sql_ast_node_set_join_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_join_kind join_kind
@@ -1062,6 +1073,9 @@ enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_cla
 );
 int mylite_sql_ast_node_show_tables_is_full(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_union_modifier mylite_sql_ast_node_union_modifier(
+    const struct mylite_sql_ast_node *node
+);
+enum mylite_sql_ast_set_operator mylite_sql_ast_node_set_operator_kind(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(const struct mylite_sql_ast_node *node);

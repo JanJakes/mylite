@@ -23767,6 +23767,10 @@ static int test_select_union_clause(void) {
     failures += expect_child_count(terms, 1U, "union term count");
     failures += expect_node(first_term, MYLITE_SQL_AST_UNION_TERM, "union term");
     failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(first_term) == MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        "union set operator"
+    );
+    failures += expect_true(
         mylite_sql_ast_node_union_modifier(first_term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
         "default union modifier"
     );
@@ -23794,6 +23798,14 @@ static int test_select_union_clause(void) {
         mylite_sql_ast_node_union_modifier(second_term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
         "union distinct modifier"
     );
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(first_term) == MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        "union all set operator"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(second_term) == MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        "union distinct set operator"
+    );
     failures += expect_span_text(
         child_at(child_at(child_at(child_at(first_term, 0U), 0U), 0U), 0U),
         "id",
@@ -23807,6 +23819,88 @@ static int test_select_union_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT id FROM a INTERSECT ALL SELECT id FROM b INTERSECT DISTINCT SELECT id FROM c;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    terms = child_at(statement, 1U);
+    first_term = child_at(terms, 0U);
+    second_term = child_at(terms, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT,
+        "intersect chain statement"
+    );
+    failures += expect_child_count(terms, 2U, "intersect chain term count");
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(first_term) == MYLITE_SQL_AST_SET_OPERATOR_INTERSECT,
+        "intersect all set operator"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(first_term) == MYLITE_SQL_AST_UNION_MODIFIER_ALL,
+        "intersect all modifier"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(second_term) == MYLITE_SQL_AST_SET_OPERATOR_INTERSECT,
+        "intersect distinct set operator"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(second_term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
+        "intersect distinct modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM a EXCEPT SELECT id FROM b EXCEPT ALL SELECT id FROM c;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    terms = child_at(statement, 1U);
+    first_term = child_at(terms, 0U);
+    second_term = child_at(terms, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT, "except chain statement");
+    failures += expect_child_count(terms, 2U, "except chain term count");
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(first_term) == MYLITE_SQL_AST_SET_OPERATOR_EXCEPT,
+        "except default set operator"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(first_term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
+        "except default modifier"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(second_term) == MYLITE_SQL_AST_SET_OPERATOR_EXCEPT,
+        "except all set operator"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(second_term) == MYLITE_SQL_AST_UNION_MODIFIER_ALL,
+        "except all modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM a UNION SELECT id FROM b INTERSECT SELECT id FROM c;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    terms = child_at(statement, 1U);
+    first_term = child_at(terms, 0U);
+    second_term = child_at(terms, 1U);
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(first_term) == MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        "mixed union term operator"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_set_operator_kind(second_term) == MYLITE_SQL_AST_SET_OPERATOR_INTERSECT,
+        "mixed intersect term operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM a ORDER BY id UNION SELECT id FROM b;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -23816,6 +23910,19 @@ static int test_select_union_clause(void) {
         first_child_kind(child_at(statement, 0U), MYLITE_SQL_AST_ORDER_BY_CLAUSE),
         MYLITE_SQL_AST_ORDER_BY_CLAUSE,
         "union branch order parsed for runtime rejection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM a ORDER BY id INTERSECT SELECT id FROM b;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        first_child_kind(child_at(statement, 0U), MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "intersect branch order parsed for runtime rejection"
     );
     mylite_sql_parse_result_deinit(&result);
 

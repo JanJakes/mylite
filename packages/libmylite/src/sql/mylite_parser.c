@@ -600,7 +600,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_union_term(
     enum mylite_sql_ast_union_modifier modifier,
     struct mylite_sql_ast_node *select_statement
 ) {
-    struct mylite_sql_source_span span = span_from_token(&union_token);
+    return mylite_sql_parser_make_set_operation_term(
+        state,
+        union_token,
+        MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        modifier,
+        select_statement
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_operation_term(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_set_operator operator_kind,
+    enum mylite_sql_ast_union_modifier modifier,
+    struct mylite_sql_ast_node *select_statement
+) {
+    struct mylite_sql_source_span span = span_from_token(&operator_token);
     struct mylite_sql_ast_node *term = NULL;
 
     if (select_statement != NULL) {
@@ -612,6 +628,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_union_term(
         return NULL;
     }
 
+    mylite_sql_ast_node_set_set_operator_kind(term, operator_kind);
     mylite_sql_ast_node_set_union_modifier(term, modifier);
     mylite_sql_ast_node_append_child(term, select_statement);
     return term;
@@ -7823,7 +7840,9 @@ static bool map_keyword_token(
         {"AS", MYLITE_SQL_PARSE_AS},
         {"CAST", MYLITE_SQL_PARSE_CAST},
         {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
+        {"EXCEPT", MYLITE_SQL_PARSE_EXCEPT},
         {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"INTERSECT", MYLITE_SQL_PARSE_INTERSECT},
         {"UNION", MYLITE_SQL_PARSE_UNION},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"AND", MYLITE_SQL_PARSE_AND},

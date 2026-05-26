@@ -3096,6 +3096,14 @@ union_term_list(A) ::= union_term_list(L) union_term(T). {
 union_term(A) ::= UNION(U) union_modifier_opt(M) select_statement(S). {
     A = mylite_sql_parser_make_union_term(state, U, M, S);
 }
+union_term(A) ::= INTERSECT(I) union_modifier_opt(M) select_statement(S). {
+    A = mylite_sql_parser_make_set_operation_term(
+        state, I, MYLITE_SQL_AST_SET_OPERATOR_INTERSECT, M, S);
+}
+union_term(A) ::= EXCEPT(E) union_modifier_opt(M) select_statement(S). {
+    A = mylite_sql_parser_make_set_operation_term(
+        state, E, MYLITE_SQL_AST_SET_OPERATOR_EXCEPT, M, S);
+}
 
 union_modifier_opt(A) ::= . {
     A = MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT;

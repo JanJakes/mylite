@@ -27,6 +27,9 @@ enum {
     time_text_min_length = 8,
     time_text_max_length = 9,
     datetime_text_length = 19,
+    microsecond_scale = 1000000,
+    fractional_second_digit_count = 6,
+    fractional_second_round_up_digit = 5,
     integer_result_buffer_capacity = 32,
     two_digit_scale = 100,
     four_digit_scale = 10000,
@@ -169,6 +172,10 @@ static int extract_time_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 );
+static int extract_microsecond_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
 static int extract_time_to_sec_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
@@ -208,6 +215,27 @@ static bool parse_string_time_value(
     const char *value,
     size_t value_length,
     struct temporal_time_parts *out_time
+);
+static bool parse_microsecond_datetime_text(
+    const char *value,
+    size_t value_length,
+    int *out_microsecond
+);
+static bool parse_microsecond_time_text(
+    const char *value,
+    size_t value_length,
+    int *out_microsecond
+);
+static bool parse_microsecond_fraction_suffix(
+    const char *value,
+    size_t value_length,
+    size_t base_length,
+    int *out_microsecond
+);
+static bool parse_microsecond_fraction(
+    const char *value,
+    size_t value_length,
+    int *out_microsecond
 );
 static bool parse_calendar_datetime_text(
     const char *value,
@@ -316,6 +344,8 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "second";
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
         return "signed_second";
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
+        return "microsecond";
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
         return "day_hour";
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
@@ -363,6 +393,7 @@ bool mylite_temporal_extract_kind_from_name(
         {"signed_minute", MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE},
         {"second", MYLITE_TEMPORAL_EXTRACT_SECOND},
         {"signed_second", MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND},
+        {"microsecond", MYLITE_TEMPORAL_EXTRACT_MICROSECOND},
         {"day_hour", MYLITE_TEMPORAL_EXTRACT_DAY_HOUR},
         {"day_minute", MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE},
         {"day_second", MYLITE_TEMPORAL_EXTRACT_DAY_SECOND},
@@ -415,6 +446,7 @@ bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -455,6 +487,7 @@ bool mylite_temporal_extract_kind_is_calendar_name(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -494,6 +527,7 @@ bool mylite_temporal_extract_kind_is_week_temporal(enum mylite_temporal_extract_
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -532,6 +566,7 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -552,6 +587,7 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -1031,6 +1067,7 @@ static int extract_date_part_value(
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -1123,6 +1160,7 @@ static int extract_calendar_date_value(
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
     case MYLITE_TEMPORAL_EXTRACT_SIGNED_SECOND:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
     case MYLITE_TEMPORAL_EXTRACT_DAY_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_DAY_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_DAY_SECOND:
@@ -1345,6 +1383,9 @@ static int extract_time_part_value(
     if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC) {
         return extract_time_to_sec_value(database, request);
     }
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_MICROSECOND) {
+        return extract_microsecond_value(database, request);
+    }
 
     if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
         request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
@@ -1480,9 +1521,72 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC:
     case MYLITE_TEMPORAL_EXTRACT_TO_DAYS:
     case MYLITE_TEMPORAL_EXTRACT_TO_SECONDS:
+    case MYLITE_TEMPORAL_EXTRACT_MICROSECOND:
         break;
     }
     return MYLITE_ERROR;
+}
+
+static int extract_microsecond_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    struct temporal_date_parts date = {0};
+    int microsecond = 0;
+    int rc = MYLITE_OK;
+
+    if (request == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATE) {
+        if (!parse_date_text(request->value, request->value_length, &date)) {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+        return format_integer_result(database, 0, request->out_text);
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
+        request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
+        if (parse_microsecond_datetime_text(request->value, request->value_length, &microsecond)) {
+            return format_integer_result(database, microsecond, request->out_text);
+        }
+    } else if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIME) {
+        if (parse_microsecond_time_text(request->value, request->value_length, &microsecond)) {
+            return format_integer_result(database, microsecond, request->out_text);
+        }
+    } else {
+        if (parse_microsecond_datetime_text(request->value, request->value_length, &microsecond) ||
+            parse_microsecond_time_text(request->value, request->value_length, &microsecond)) {
+            return format_integer_result(database, microsecond, request->out_text);
+        }
+        if (parse_date_text(request->value, request->value_length, &date)) {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            return format_integer_result(database, 0, request->out_text);
+        }
+    }
+
+    rc = append_incorrect_temporal_warning(
+        database,
+        "Truncated incorrect time value",
+        request->value,
+        request->value_length
+    );
+    *request->out_is_null = true;
+    return rc;
 }
 
 static int extract_time_to_sec_value(
@@ -1832,6 +1936,114 @@ static bool parse_string_time_value(
         return true;
     }
     return false;
+}
+
+static bool parse_microsecond_datetime_text(
+    const char *value,
+    size_t value_length,
+    int *out_microsecond
+) {
+    struct temporal_datetime_parts datetime = {0};
+
+    if (value == NULL || out_microsecond == NULL || value_length < datetime_text_length ||
+        !parse_datetime_text(value, datetime_text_length, &datetime) ||
+        !datetime_time_parts_are_valid(&datetime.time)) {
+        return false;
+    }
+    if (value_length == datetime_text_length) {
+        *out_microsecond = 0;
+        return true;
+    }
+    return parse_microsecond_fraction_suffix(
+        value,
+        value_length,
+        datetime_text_length,
+        out_microsecond
+    );
+}
+
+static bool parse_microsecond_time_text(
+    const char *value,
+    size_t value_length,
+    int *out_microsecond
+) {
+    struct temporal_time_parts time = {.negative = false};
+    const char *separator = NULL;
+    size_t base_length = 0U;
+
+    if (value == NULL || out_microsecond == NULL) {
+        return false;
+    }
+    separator = (const char *)memchr(value, '.', value_length);
+    if (separator == NULL) {
+        if (!parse_time_text(value, value_length, &time)) {
+            return false;
+        }
+        *out_microsecond = 0;
+        return true;
+    }
+
+    base_length = (size_t)(separator - value);
+    if (!parse_time_text(value, base_length, &time)) {
+        return false;
+    }
+    return parse_microsecond_fraction_suffix(value, value_length, base_length, out_microsecond);
+}
+
+static bool parse_microsecond_fraction_suffix(
+    const char *value,
+    size_t value_length,
+    size_t base_length,
+    int *out_microsecond
+) {
+    if (value == NULL || out_microsecond == NULL || value_length <= base_length ||
+        value[base_length] != '.') {
+        return false;
+    }
+    return parse_microsecond_fraction(
+        value + base_length + 1U,
+        value_length - base_length - 1U,
+        out_microsecond
+    );
+}
+
+static bool parse_microsecond_fraction(
+    const char *value,
+    size_t value_length,
+    int *out_microsecond
+) {
+    int microsecond = 0;
+    bool round_up = false;
+
+    if (value == NULL || out_microsecond == NULL || value_length == 0U) {
+        return false;
+    }
+    for (size_t index = 0U; index < value_length; ++index) {
+        int digit = 0;
+
+        if (value[index] < '0' || value[index] > '9') {
+            return false;
+        }
+        digit = value[index] - '0';
+        if (index < fractional_second_digit_count) {
+            microsecond = (microsecond * digit_radix) + digit;
+        } else if (
+            index == fractional_second_digit_count && digit >= fractional_second_round_up_digit
+        ) {
+            round_up = true;
+        }
+    }
+    for (size_t index = value_length; index < fractional_second_digit_count; ++index) {
+        microsecond *= digit_radix;
+    }
+    if (round_up) {
+        ++microsecond;
+        if (microsecond >= microsecond_scale) {
+            microsecond = 0;
+        }
+    }
+    *out_microsecond = microsecond;
+    return true;
 }
 
 static bool parse_calendar_datetime_text(

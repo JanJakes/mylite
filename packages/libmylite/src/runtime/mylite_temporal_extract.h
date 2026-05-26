@@ -41,6 +41,7 @@ enum mylite_temporal_extract_kind {
     MYLITE_TEMPORAL_EXTRACT_MONTHNAME = 28,
     MYLITE_TEMPORAL_EXTRACT_TO_DAYS = 29,
     MYLITE_TEMPORAL_EXTRACT_TO_SECONDS = 30,
+    MYLITE_TEMPORAL_EXTRACT_MICROSECOND = 31,
 };
 
 enum mylite_temporal_extract_input_kind {

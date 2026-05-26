@@ -29881,6 +29881,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_HOUR_FUNCTION:
     case MYLITE_SQL_AST_MINUTE_FUNCTION:
     case MYLITE_SQL_AST_SECOND_FUNCTION:
+    case MYLITE_SQL_AST_MICROSECOND_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
@@ -53350,6 +53351,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_HOUR_FUNCTION:
     case MYLITE_SQL_AST_MINUTE_FUNCTION:
     case MYLITE_SQL_AST_SECOND_FUNCTION:
+    case MYLITE_SQL_AST_MICROSECOND_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
@@ -92922,6 +92924,7 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_HOUR_FUNCTION:
     case MYLITE_SQL_AST_MINUTE_FUNCTION:
     case MYLITE_SQL_AST_SECOND_FUNCTION:
+    case MYLITE_SQL_AST_MICROSECOND_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
     case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
     case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
@@ -99155,6 +99158,8 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
         return MYLITE_TEMPORAL_EXTRACT_MINUTE;
     case MYLITE_SQL_AST_SECOND_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_SECOND;
+    case MYLITE_SQL_AST_MICROSECOND_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_MICROSECOND;
     default:
         return MYLITE_TEMPORAL_EXTRACT_DATE;
     }
@@ -99184,6 +99189,7 @@ static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_
     case MYLITE_SQL_AST_HOUR_FUNCTION:
     case MYLITE_SQL_AST_MINUTE_FUNCTION:
     case MYLITE_SQL_AST_SECOND_FUNCTION:
+    case MYLITE_SQL_AST_MICROSECOND_FUNCTION:
         return true;
     default:
         return false;
@@ -150481,7 +150487,8 @@ static int plan_row_scalar_temporal_extract_column(
         return rc;
     }
     if (column_descriptor_is_date(&column)) {
-        if (mylite_temporal_extract_kind_is_time_part(extract_kind)) {
+        if (mylite_temporal_extract_kind_is_time_part(extract_kind) &&
+            extract_kind != MYLITE_TEMPORAL_EXTRACT_MICROSECOND) {
             return reject_date_column_temporal_extract_time_part(database, extract_kind);
         }
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_DATE;

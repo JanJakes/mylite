@@ -5382,8 +5382,9 @@ static int test_temporal_extract_functions(void) {
         temporal_extract_hour_projection_index = 14,
         temporal_extract_minute_projection_index = 15,
         temporal_extract_second_projection_index = 16,
-        temporal_extract_dayname_projection_index = 17,
-        temporal_extract_monthname_projection_index = 18,
+        temporal_extract_microsecond_projection_index = 17,
+        temporal_extract_dayname_projection_index = 18,
+        temporal_extract_monthname_projection_index = 19,
         temporal_extract_do_week_index = 4,
         temporal_extract_do_weekday_index = 5,
         temporal_extract_do_weekofyear_index = 6,
@@ -5391,8 +5392,9 @@ static int test_temporal_extract_functions(void) {
         temporal_extract_do_quarter_index = 8,
         temporal_extract_do_time_index = 9,
         temporal_extract_do_hour_index = 11,
-        temporal_extract_do_dayname_index = 12,
-        temporal_extract_do_monthname_index = 13
+        temporal_extract_do_microsecond_index = 12,
+        temporal_extract_do_dayname_index = 13,
+        temporal_extract_do_monthname_index = 14
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -5405,7 +5407,7 @@ static int test_temporal_extract_functions(void) {
         "SELECT DATE('2008-01-02 13:29:17'), YEAR(d), MONTH(d), QUARTER(d), "
         "DAY(d), DAYOFMONTH(d), DAYOFWEEK(d), DAYOFYEAR(d), LAST_DAY(d), TIME(dt), "
         "WEEK(d), WEEKDAY(d), WEEKOFYEAR(d), YEARWEEK(d, 3), HOUR(tm), MINUTE(tm), "
-        "SECOND(tm), DAYNAME(d), MONTHNAME(d) FROM t;",
+        "SECOND(tm), MICROSECOND(tm), DAYNAME(d), MONTHNAME(d) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -5491,6 +5493,10 @@ static int test_temporal_extract_functions(void) {
     expression = child_at(child_at(select_list, temporal_extract_second_projection_index), 0U);
     failures += expect_node(expression, MYLITE_SQL_AST_SECOND_FUNCTION, "second extract function");
     failures += expect_child_count(expression, 1U, "second extract child count");
+    expression = child_at(child_at(select_list, temporal_extract_microsecond_projection_index), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_MICROSECOND_FUNCTION, "microsecond function");
+    failures += expect_child_count(expression, 1U, "microsecond child count");
     failures += expect_node(
         child_at(child_at(select_list, temporal_extract_dayname_projection_index), 0U),
         MYLITE_SQL_AST_DAYNAME_FUNCTION,
@@ -5509,7 +5515,8 @@ static int test_temporal_extract_functions(void) {
         "DAYNAME ('2008-01-02') AS day_name, MONTHNAME ('2008-01-02') AS month_name, "
         "WEEK ('2008-02-20') AS wk, WEEKDAY ('2008-02-20') AS wd, "
         "WEEKOFYEAR ('2008-02-20') AS woy, YEARWEEK ('2008-02-20', 3) AS yw, "
-        "QUARTER ('2008-04-01') AS q, TIME ('13:29:17') AS tm, HOUR ('13:29:17') AS h "
+        "QUARTER ('2008-04-01') AS q, TIME ('13:29:17') AS tm, "
+        "HOUR ('13:29:17') AS h, MICROSECOND ('13:29:17.000006') AS us "
         "FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -5551,7 +5558,8 @@ static int test_temporal_extract_functions(void) {
         "LAST_DAY('2008-01-02'), WEEK('2008-02-20'), WEEKDAY('2008-02-20'), "
         "WEEKOFYEAR('2008-02-20'), YEARWEEK('2008-02-20', 3), QUARTER('2008-04-01'), "
         "TIME('13:29:17'), YEAR('2008-01-02'), HOUR('13:29:17'), "
-        "DAYNAME('2008-01-02'), MONTHNAME('2008-01-02');",
+        "MICROSECOND('13:29:17.000006'), DAYNAME('2008-01-02'), "
+        "MONTHNAME('2008-01-02');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -5609,6 +5617,11 @@ static int test_temporal_extract_functions(void) {
         child_at(expression_list, temporal_extract_do_hour_index),
         MYLITE_SQL_AST_HOUR_FUNCTION,
         "do hour extract"
+    );
+    failures += expect_node(
+        child_at(expression_list, temporal_extract_do_microsecond_index),
+        MYLITE_SQL_AST_MICROSECOND_FUNCTION,
+        "do microsecond function"
     );
     failures += expect_node(
         child_at(expression_list, temporal_extract_do_dayname_index),
@@ -5788,6 +5801,8 @@ static int test_temporal_extract_functions(void) {
     failures += parse_sql("SELECT TIME();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT HOUR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MICROSECOND();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT QUARTER();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

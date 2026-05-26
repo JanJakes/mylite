@@ -100,6 +100,12 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
         "SECOND('13:29:17')",
         "HOUR('-13:29:17')",
         "HOUR('272:59:59')",
+        "MICROSECOND('12:00:00.123456')",
+        "MICROSECOND('12:00:00.1')",
+        "MICROSECOND('12:00:00.1234567')",
+        "MICROSECOND('12:00:00.9999995')",
+        "MICROSECOND('2019-12-31 23:59:59.000010')",
+        "MICROSECOND(NULL)",
         "DATE('0000-00-00')",
         "DATE('0000-01-02')",
         "YEAR('0000-01-02')",
@@ -115,12 +121,13 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
         "HOUR('0000-00-00 01:02:03')",
     };
     static const char *const values_core[] = {
-        "2008-01-02", "2008-01-02", NULL, "01:02:03", "13:29:17", "-13:29:17",  "-13:29:17",
-        "-272:59:59", "272:59:59",  NULL, "2008",     "1",        "1",          "2",
-        "3",          "4",          "2",  "2",        "13",       "29",         "17",
-        "13",         "29",         "17", "13",       "272",      "0000-00-00", "0000-01-02",
-        "0",          "0",          "1",  "0",        "4",        "1",          "2",
-        "0",          "0",          "0",  "1",
+        "2008-01-02", "2008-01-02", NULL, "01:02:03", "13:29:17",   "-13:29:17",  "-13:29:17",
+        "-272:59:59", "272:59:59",  NULL, "2008",     "1",          "1",          "2",
+        "3",          "4",          "2",  "2",        "13",         "29",         "17",
+        "13",         "29",         "17", "13",       "272",        "123456",     "100000",
+        "123457",     "0",          "10", NULL,       "0000-00-00", "0000-01-02", "0",
+        "0",          "1",          "0",  "4",        "1",          "2",          "0",
+        "0",          "0",          "1",
     };
     static const char *const columns_dual[] = {
         "DATE ('2008-01-02 13:29:17')",
@@ -153,7 +160,11 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
                    "HOUR('2008-01-02 13:29:17'), MINUTE('2008-01-02 13:29:17'), "
                    "SECOND('2008-01-02 13:29:17'), HOUR('13:29:17'), "
                    "MINUTE('13:29:17'), SECOND('13:29:17'), HOUR('-13:29:17'), "
-                   "HOUR('272:59:59'), DATE('0000-00-00'), DATE('0000-01-02'), "
+                   "HOUR('272:59:59'), MICROSECOND('12:00:00.123456'), "
+                   "MICROSECOND('12:00:00.1'), MICROSECOND('12:00:00.1234567'), "
+                   "MICROSECOND('12:00:00.9999995'), "
+                   "MICROSECOND('2019-12-31 23:59:59.000010'), MICROSECOND(NULL), "
+                   "DATE('0000-00-00'), DATE('0000-01-02'), "
                    "YEAR('0000-01-02'), QUARTER('0000-00-00'), "
                    "QUARTER('0000-01-02'), QUARTER('2008-00-00'), "
                    "QUARTER('2001-11-00'), MONTH('0000-01-02'), DAY('0000-01-02'), "
@@ -194,7 +205,7 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
     failures += execute_ok(
         database,
         "DO DATE('2008-01-02'), TIME('13:29:17'), YEAR(NULL), "
-        "QUARTER('2008-04-01'), HOUR('13:29:17')",
+        "QUARTER('2008-04-01'), HOUR('13:29:17'), MICROSECOND('13:29:17.000006')",
         &result
     );
     if (failures == 0) {
@@ -277,6 +288,29 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     };
     static const char *const columns_warning_count[] = {"@@warning_count"};
     static const char *const values_warning_count[] = {"4"};
+    static const char *const columns_microsecond_table[] = {
+        "id",
+        "MICROSECOND(d)",
+        "MICROSECOND(tm)",
+        "MICROSECOND(dt)",
+        "MICROSECOND(ts)",
+        "MICROSECOND(s)",
+        "MICROSECOND(c)",
+        "MICROSECOND(x)",
+    };
+    static const char *const values_microsecond_table[] = {
+        "1",  "0",  "0",  "0",  "0", "6", "7", "8",  "2",  NULL, NULL,     NULL,
+        NULL, NULL, NULL, NULL, "3", "0", "0", NULL, NULL, NULL, "123457", "0",
+    };
+    static const char *const values_microsecond_warnings[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'bad'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '0000-00-00'",
+    };
+    static const char *const values_microsecond_warning_count[] = {"2"};
     static const char *const columns_order_limit[] = {
         "id",
         "TIME(tm)",
@@ -296,8 +330,14 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
         NULL,
         NULL,
     };
-    static const char *const columns_reopen[] = {"YEAR(d)", "QUARTER(d)", "TIME(tm)", "HOUR(tm)"};
-    static const char *const values_reopen[] = {"2008", "1", "13:29:17", "13"};
+    static const char *const columns_reopen[] = {
+        "YEAR(d)",
+        "QUARTER(d)",
+        "TIME(tm)",
+        "HOUR(tm)",
+        "MICROSECOND(tm)",
+    };
+    static const char *const values_reopen[] = {"2008", "1", "13:29:17", "13", "0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -366,6 +406,59 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
             .context = "table-backed temporal extract warning count",
         }
     );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE microsecond_values(id INT, d DATE, tm TIME, dt DATETIME, "
+        "ts TIMESTAMP NULL, s VARCHAR(64), c CHAR(32), x TEXT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO microsecond_values VALUES "
+        "(1,'2024-01-02','13:29:17','2024-01-02 13:29:17','2024-01-02 13:29:17',"
+        "'12:00:00.000006','2019-12-31 23:59:59.000007',"
+        "'2001-11-00 01:02:03.000008'),"
+        "(2,NULL,NULL,NULL,NULL,NULL,NULL,NULL),"
+        "(3,'0000-00-00','13:29:17',NULL,NULL,"
+        "'bad','12:00:00.1234567','0000-00-00')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, MICROSECOND(d), MICROSECOND(tm), MICROSECOND(dt), "
+                   "MICROSECOND(ts), MICROSECOND(s), MICROSECOND(c), MICROSECOND(x) "
+                   "FROM microsecond_values ORDER BY id",
+            .columns = columns_microsecond_table,
+            .column_count =
+                sizeof(columns_microsecond_table) / sizeof(columns_microsecond_table[0]),
+            .values = values_microsecond_table,
+            .row_count = 3U,
+            .context = "table-backed microsecond function",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_microsecond_warnings,
+            .row_count = 2U,
+            .context = "table-backed microsecond warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@warning_count",
+            .columns = columns_warning_count,
+            .column_count = sizeof(columns_warning_count) / sizeof(columns_warning_count[0]),
+            .values = values_microsecond_warning_count,
+            .row_count = 1U,
+            .context = "table-backed microsecond warning count",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -386,7 +479,8 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT YEAR(d), QUARTER(d), TIME(tm), HOUR(tm) FROM t WHERE id = 1",
+            .sql = "SELECT YEAR(d), QUARTER(d), TIME(tm), HOUR(tm), MICROSECOND(tm) "
+                   "FROM t WHERE id = 1",
             .columns = columns_reopen,
             .column_count = sizeof(columns_reopen) / sizeof(columns_reopen[0]),
             .values = values_reopen,
@@ -450,6 +544,54 @@ static int test_temporal_extract_diagnostics(void) {
         "1292",
         "Truncated incorrect time value: '2008-01-02 13:29:17.999999'",
     };
+    static const char *const columns_microsecond_date_invalid[] = {
+        "MICROSECOND('2024-01-02')",
+        "MICROSECOND('not-a-date')",
+    };
+    static const char *const values_microsecond_date_invalid[] = {"0", NULL};
+    static const char *const values_microsecond_date_invalid_warnings[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2024-01-02'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: 'not-a-date'",
+    };
+    static const char *const columns_microsecond_invalid_datetime[] = {
+        "MICROSECOND('2019-01-02 24:00:00')",
+        "MICROSECOND('2019-01-02 99:00:00')",
+        "MICROSECOND('2019-01-02 24:00:00.123456')",
+    };
+    static const char *const values_microsecond_invalid_datetime[] = {NULL, NULL, NULL};
+    static const char *const values_microsecond_invalid_datetime_warnings[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2019-01-02 24:00:00'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2019-01-02 99:00:00'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2019-01-02 24:00:00.123456'",
+    };
+    static const char *const columns_microsecond_invalid_string_column[] = {
+        "id",
+        "MICROSECOND(s)",
+    };
+    static const char *const values_microsecond_invalid_string_column[] = {
+        "1",
+        NULL,
+        "2",
+        NULL,
+    };
+    static const char *const values_microsecond_invalid_string_column_warnings[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2019-01-02 24:00:00.123456'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2019-01-02 99:00:00'",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -477,6 +619,90 @@ static int test_temporal_extract_diagnostics(void) {
             .values = values_deferred_warnings,
             .row_count = 2U,
             .context = "deferred time string coercion warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT MICROSECOND('2024-01-02'), MICROSECOND('not-a-date')",
+            .columns = columns_microsecond_date_invalid,
+            .column_count = sizeof(columns_microsecond_date_invalid) /
+                            sizeof(columns_microsecond_date_invalid[0]),
+            .values = values_microsecond_date_invalid,
+            .row_count = 1U,
+            .context = "microsecond date-only and invalid values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_microsecond_date_invalid_warnings,
+            .row_count = 2U,
+            .context = "microsecond date-only and invalid warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT MICROSECOND('2019-01-02 24:00:00'), "
+                   "MICROSECOND('2019-01-02 99:00:00'), "
+                   "MICROSECOND('2019-01-02 24:00:00.123456')",
+            .columns = columns_microsecond_invalid_datetime,
+            .column_count = sizeof(columns_microsecond_invalid_datetime) /
+                            sizeof(columns_microsecond_invalid_datetime[0]),
+            .values = values_microsecond_invalid_datetime,
+            .row_count = 1U,
+            .context = "microsecond invalid datetime time parts",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_microsecond_invalid_datetime_warnings,
+            .row_count = 3U,
+            .context = "microsecond invalid datetime time-part warnings",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE microsecond_invalid_string_values(id INT, s VARCHAR(64))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO microsecond_invalid_string_values VALUES "
+        "(1,'2019-01-02 24:00:00.123456'),"
+        "(2,'2019-01-02 99:00:00')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, MICROSECOND(s) FROM microsecond_invalid_string_values "
+                   "ORDER BY id",
+            .columns = columns_microsecond_invalid_string_column,
+            .column_count = sizeof(columns_microsecond_invalid_string_column) /
+                            sizeof(columns_microsecond_invalid_string_column[0]),
+            .values = values_microsecond_invalid_string_column,
+            .row_count = 2U,
+            .context = "row-backed microsecond invalid datetime time parts",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_microsecond_invalid_string_column_warnings,
+            .row_count = 2U,
+            .context = "row-backed microsecond invalid datetime warnings",
         }
     );
     failures += expect_query(
@@ -539,10 +765,29 @@ static int test_temporal_extract_diagnostics(void) {
             .message_part = "temporal extract functions support only string temporal literals",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT MICROSECOND(20080102132917)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "temporal extract functions support only string temporal literals",
+        }
+    );
     failures += execute_ok(database, "CREATE TABLE unsupported_types(id INT)", NULL);
     failures += execute_error(
         database,
         "SELECT HOUR(id) FROM unsupported_types",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "temporal extract functions support only DATE, TIME, DATETIME, "
+                            "TIMESTAMP, string, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT MICROSECOND(id) FROM unsupported_types",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

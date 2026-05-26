@@ -4650,6 +4650,10 @@ expression(A) ::= SECOND(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_SECOND_FUNCTION, B, R);
 }
+expression(A) ::= MICROSECOND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MICROSECOND_FUNCTION, B, R);
+}
 
 extract_unit(A) ::= YEAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);

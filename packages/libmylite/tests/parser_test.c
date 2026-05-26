@@ -111,6 +111,7 @@ static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
 static int test_string_padding_functions(void);
 static int test_string_search_functions(void);
+static int test_soundex_function(void);
 static int test_find_in_set_function(void);
 static int test_strcmp_function(void);
 static int test_regexp_like_function(void);
@@ -451,6 +452,7 @@ int main(void) {
     failures += test_string_slice_functions();
     failures += test_string_padding_functions();
     failures += test_string_search_functions();
+    failures += test_soundex_function();
     failures += test_find_in_set_function();
     failures += test_strcmp_function();
     failures += test_regexp_like_function();
@@ -8423,6 +8425,90 @@ static int test_string_search_functions(void) {
     );
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "search identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_soundex_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT SOUNDEX('abc'), soundex(v) AS code FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SOUNDEX_FUNCTION, "soundex function");
+    failures += expect_child_count(expression, 1U, "soundex arity");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "soundex literal");
+    failures += expect_span_text(expression, "SOUNDEX('abc')", "soundex span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SOUNDEX_FUNCTION, "lower soundex");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "soundex column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SOUNDEX ('abc') AS a, SOUNDEX(('abc')) AS b FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SOUNDEX_FUNCTION, "spaced soundex");
+    failures += expect_span_text(expression, "SOUNDEX ('abc')", "spaced soundex span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "soundex parenthesized argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SOUNDEX();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR,
+        "soundex zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SOUNDEX('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR,
+        "soundex many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO SOUNDEX('abc'), SOUNDEX(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "soundex do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_SOUNDEX_FUNCTION, "do soundex");
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_SOUNDEX_FUNCTION,
+        "do soundex null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE soundex_words (soundex INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "soundex identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -5014,6 +5014,10 @@ expression(A) ::= REVERSE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_REVERSE_FUNCTION, B, R);
 }
+expression(A) ::= SOUNDEX(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SOUNDEX_FUNCTION, B, R);
+}
 expression(A) ::= QUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_QUOTE_FUNCTION, B, R);
@@ -5778,6 +5782,15 @@ expression(A) ::= QUOTE(T) LPAREN expression(B) COMMA function_argument_list(C) 
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= SOUNDEX(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SOUNDEX(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= FORMAT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -7189,6 +7202,9 @@ identifier(A) ::= REVERSE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= QUOTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SOUNDEX(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LPAD(T). {

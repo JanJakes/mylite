@@ -933,6 +933,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"SOCKET", 0U},
         {"SOME", 0U},
         {"SONAME", 0U},
+        {"SOUNDEX", 0U},
         {"SOUNDS", 0U},
         {"SOURCE", 0U},
         {"SOURCE_AUTO_POSITION", 0U},

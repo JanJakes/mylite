@@ -68,6 +68,7 @@ add_library(mylite STATIC
   src/runtime/mylite_string_replace.c
   src/runtime/mylite_string_reverse.c
   src/runtime/mylite_string_search.c
+  src/runtime/mylite_string_soundex.c
   src/runtime/mylite_string_substring_index.c
   src/runtime/mylite_string_trim.c
   src/runtime/mylite_string_unhex.c
@@ -778,6 +779,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_reverse_function_test)
+
+  add_executable(mylite_runtime_soundex_function_test
+    tests/runtime_soundex_function_test.c
+  )
+  target_link_libraries(mylite_runtime_soundex_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_soundex_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_soundex_function_test)
 
   add_executable(mylite_runtime_quote_function_test
     tests/runtime_quote_function_test.c
@@ -4240,6 +4252,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.reverse_function
     COMMAND mylite_runtime_reverse_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.soundex_function
+    COMMAND mylite_runtime_soundex_function_test
   )
   add_test(
     NAME libmylite.runtime.quote_function

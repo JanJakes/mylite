@@ -20,6 +20,7 @@ enum {
     show_engines_column_count = 6,
     show_engine_status_column_count = 3,
     show_create_column_count = 2,
+    show_warnings_column_count = 3,
     default_storage_engine_variable_column_count = 6,
     scoped_default_storage_engine_variable_column_count = 4,
     selected_default_storage_engine_variable_column_count = 2,
@@ -27,9 +28,11 @@ enum {
     independent_default_storage_engine_variable_column_count = 2,
     decimal_base = 10,
     mysql_error_parse = 1064,
+    mysql_error_table_exists = 1050,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_unknown_storage_engine = 1286,
+    mysql_warning_using_storage_engine = 1266,
 };
 
 struct expected_sql_error {
@@ -50,10 +53,23 @@ struct expected_show_create_single_int {
     const char *context;
 };
 
+struct expected_show_create_exact {
+    const char *sql;
+    const char *table_name;
+    const char *create_sql;
+    const char *context;
+};
+
 struct expected_count_result {
     const char *sql;
     const char *expected;
     const char *context;
+};
+
+struct expected_warning_row {
+    const char *level;
+    const char *code;
+    const char *message;
 };
 
 static const char *const show_engines_columns[show_engines_column_count] = {
@@ -94,6 +110,7 @@ static const char *const show_create_columns[show_create_column_count] = {
 static int test_innodb_create_forms_persistence_and_preamble(void);
 static int test_default_storage_engine_system_variable_values_and_diagnostics(void);
 static int test_innodb_engine_diagnostics(void);
+static int test_storage_engine_substitution(void);
 static int test_independent_innodb_engine_handles(void);
 static int expect_show_engines_result(mylite_db *database, const char *sql, const char *context);
 static int expect_show_engine_status_result(
@@ -105,6 +122,16 @@ static int expect_show_create_single_int(
     mylite_db *database,
     struct expected_show_create_single_int expected
 );
+static int expect_show_create_exact(
+    mylite_db *database,
+    struct expected_show_create_exact expected
+);
+static int expect_show_warnings(
+    mylite_db *database,
+    const struct expected_warning_row *rows,
+    size_t row_count,
+    const char *context
+);
 static int expect_single_row_result(
     mylite_db *database,
     const char *sql,
@@ -113,7 +140,17 @@ static int expect_single_row_result(
 );
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
 static int expect_count_statement(mylite_db *database, struct expected_count_result expected);
+static int expect_show_warning_count(
+    mylite_db *database,
+    const char *expected,
+    const char *context
+);
 static int execute_statement_ok(mylite_db *database, const char *sql);
+static int execute_statement_ok_with_warnings(
+    mylite_db *database,
+    const char *sql,
+    size_t expected_warning_count
+);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int execute_error_with_length(
@@ -146,6 +183,7 @@ int main(void) {
     failures += test_innodb_create_forms_persistence_and_preamble();
     failures += test_default_storage_engine_system_variable_values_and_diagnostics();
     failures += test_innodb_engine_diagnostics();
+    failures += test_storage_engine_substitution();
     failures += test_independent_innodb_engine_handles();
 
     return failures == 0 ? 0 : 1;
@@ -799,6 +837,240 @@ static int test_innodb_engine_diagnostics(void) {
     return failures;
 }
 
+static int test_storage_engine_substitution(void) {
+    static const char *const warning_count_columns[] = {"@@warning_count"};
+    static const char *const warning_count_values[] = {"2"};
+    static const char *const select_columns[] = {"id"};
+    static const char *const select_values[] = {"7"};
+    static const char temp_create_sql[] =
+        "CREATE TEMPORARY TABLE `temp_unknown` (\n"
+        "  `id` int DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const struct expected_warning_row unknown_engine_warnings[] = {
+        {"Warning", "1286", "Unknown storage engine 'NoSuchEngine'"},
+        {"Warning", "1266", "Using storage engine InnoDB for table 'unknown_loose'"},
+    };
+    static const struct expected_warning_row empty_engine_warnings[] = {
+        {"Warning", "1286", "Unknown storage engine ''"},
+        {"Warning", "1266", "Using storage engine InnoDB for table 'empty_loose'"},
+    };
+    static const struct expected_warning_row myisam_engine_warnings[] = {
+        {"Warning", "1286", "Unknown storage engine 'MyISAM'"},
+        {"Warning", "1266", "Using storage engine InnoDB for table 'myisam_loose'"},
+    };
+    static const struct expected_warning_row memory_engine_warnings[] = {
+        {"Warning", "1286", "Unknown storage engine 'MEMORY'"},
+        {"Warning", "1266", "Using storage engine InnoDB for table 'memory_loose'"},
+    };
+    static const struct expected_warning_row if_not_exists_warnings[] = {
+        {"Warning", "1286", "Unknown storage engine 'NoSuchEngine'"},
+        {"Warning", "1266", "Using storage engine InnoDB for table 'unknown_loose'"},
+        {"Note", "1050", "Table 'unknown_loose' already exists"},
+    };
+    static const struct expected_warning_row temp_unknown_warnings[] = {
+        {"Warning", "1286", "Unknown storage engine 'NoSuchEngine'"},
+        {"Warning", "1266", "Using storage engine InnoDB for table 'temp_unknown'"},
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "substitution") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open substitution database");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = ''");
+    failures += execute_statement_ok_with_warnings(
+        database,
+        "CREATE TABLE unknown_loose (id INT) ENGINE=NoSuchEngine",
+        2U
+    );
+    failures += expect_show_warnings(
+        database,
+        unknown_engine_warnings,
+        sizeof(unknown_engine_warnings) / sizeof(unknown_engine_warnings[0]),
+        "loose unknown engine warnings"
+    );
+    failures += expect_show_warning_count(database, "2", "loose unknown engine warning count");
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@warning_count",
+        (struct expected_single_row_result){
+            .columns = warning_count_columns,
+            .values = warning_count_values,
+            .column_count = sizeof(warning_count_columns) / sizeof(warning_count_columns[0]),
+        },
+        "loose unknown engine scalar warning count"
+    );
+    failures += expect_show_create_single_int(
+        database,
+        (struct expected_show_create_single_int){
+            .sql = "SHOW CREATE TABLE unknown_loose",
+            .table_name = "unknown_loose",
+            .context = "loose unknown engine show create",
+        }
+    );
+    failures += execute_statement_ok(database, "INSERT INTO unknown_loose VALUES (7)");
+    failures += expect_single_row_result(
+        database,
+        "SELECT id FROM unknown_loose",
+        (struct expected_single_row_result){
+            .columns = select_columns,
+            .values = select_values,
+            .column_count = sizeof(select_columns) / sizeof(select_columns[0]),
+        },
+        "row from substituted unknown engine table"
+    );
+
+    failures += execute_statement_ok_with_warnings(
+        database,
+        "CREATE TABLE empty_loose (id INT) ENGINE=''",
+        2U
+    );
+    failures += expect_show_warnings(
+        database,
+        empty_engine_warnings,
+        sizeof(empty_engine_warnings) / sizeof(empty_engine_warnings[0]),
+        "loose empty engine warnings"
+    );
+
+    failures += execute_statement_ok_with_warnings(
+        database,
+        "CREATE TABLE myisam_loose (id INT) ENGINE=MyISAM",
+        2U
+    );
+    failures += expect_show_warnings(
+        database,
+        myisam_engine_warnings,
+        sizeof(myisam_engine_warnings) / sizeof(myisam_engine_warnings[0]),
+        "loose MyISAM engine warnings"
+    );
+    failures += expect_show_create_single_int(
+        database,
+        (struct expected_show_create_single_int){
+            .sql = "SHOW CREATE TABLE myisam_loose",
+            .table_name = "myisam_loose",
+            .context = "loose MyISAM engine renders InnoDB",
+        }
+    );
+    failures += execute_statement_ok_with_warnings(
+        database,
+        "CREATE TABLE memory_loose (id INT) ENGINE=MEMORY",
+        2U
+    );
+    failures += expect_show_warnings(
+        database,
+        memory_engine_warnings,
+        sizeof(memory_engine_warnings) / sizeof(memory_engine_warnings[0]),
+        "loose MEMORY engine warnings"
+    );
+    failures += expect_show_create_single_int(
+        database,
+        (struct expected_show_create_single_int){
+            .sql = "SHOW CREATE TABLE memory_loose",
+            .table_name = "memory_loose",
+            .context = "loose MEMORY engine renders InnoDB",
+        }
+    );
+
+    failures += execute_statement_ok_with_warnings(
+        database,
+        "CREATE TABLE IF NOT EXISTS unknown_loose (id INT) ENGINE=NoSuchEngine",
+        3U
+    );
+    failures += expect_show_warnings(
+        database,
+        if_not_exists_warnings,
+        sizeof(if_not_exists_warnings) / sizeof(if_not_exists_warnings[0]),
+        "if not exists substitution warning order"
+    );
+
+    failures += execute_statement_ok_with_warnings(
+        database,
+        "CREATE TEMPORARY TABLE temp_unknown (id INT) ENGINE=NoSuchEngine",
+        2U
+    );
+    failures += expect_show_warnings(
+        database,
+        temp_unknown_warnings,
+        sizeof(temp_unknown_warnings) / sizeof(temp_unknown_warnings[0]),
+        "temporary substitution warnings"
+    );
+    failures += expect_show_create_exact(
+        database,
+        (struct expected_show_create_exact){
+            .sql = "SHOW CREATE TABLE temp_unknown",
+            .table_name = "temp_unknown",
+            .create_sql = temp_create_sql,
+            .context = "temporary substituted engine show create",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'");
+    failures += execute_error(
+        database,
+        "CREATE TABLE strict_unknown (id INT) ENGINE=NoSuchEngine",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_storage_engine,
+            .sqlstate = "42000",
+            .message_part = "Unknown storage engine 'NoSuchEngine'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TEMPORARY TABLE strict_temp (id INT) ENGINE=NoSuchEngine",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_storage_engine,
+            .sqlstate = "42000",
+            .message_part = "Unknown storage engine 'NoSuchEngine'",
+        }
+    );
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after substituted engine creates"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen substitution database");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_show_create_single_int(
+        database,
+        (struct expected_show_create_single_int){
+            .sql = "SHOW CREATE TABLE unknown_loose",
+            .table_name = "unknown_loose",
+            .context = "reopened substituted engine show create",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT id FROM unknown_loose",
+        (struct expected_single_row_result){
+            .columns = select_columns,
+            .values = select_values,
+            .column_count = sizeof(select_columns) / sizeof(select_columns[0]),
+        },
+        "reopened substituted engine row"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_independent_innodb_engine_handles(void) {
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
@@ -931,12 +1203,28 @@ static int expect_show_create_single_int(
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
         expected.table_name
     );
-    const char *const values[show_create_column_count] = {expected.table_name, create_sql};
 
     if (written < 0 || (size_t)written >= sizeof(create_sql)) {
         fprintf(stderr, "%s: failed to build expected SHOW CREATE TABLE text\n", expected.context);
         return 1;
     }
+
+    return expect_show_create_exact(
+        database,
+        (struct expected_show_create_exact){
+            .sql = expected.sql,
+            .table_name = expected.table_name,
+            .create_sql = create_sql,
+            .context = expected.context,
+        }
+    );
+}
+
+static int expect_show_create_exact(
+    mylite_db *database,
+    struct expected_show_create_exact expected
+) {
+    const char *const values[show_create_column_count] = {expected.table_name, expected.create_sql};
 
     return expect_single_row_result(
         database,
@@ -948,6 +1236,58 @@ static int expect_show_create_single_int(
         },
         expected.context
     );
+}
+
+static int expect_show_warnings(
+    mylite_db *database,
+    const struct expected_warning_row *rows,
+    size_t row_count,
+    const char *context
+) {
+    static const char *const warning_columns[show_warnings_column_count] = {
+        "Level",
+        "Code",
+        "Message",
+    };
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures +=
+        expect_size(mylite_result_column_count(result), show_warnings_column_count, context);
+    failures += expect_size(mylite_result_row_count(result), row_count, context);
+    for (size_t column_index = 0U; column_index < show_warnings_column_count; ++column_index) {
+        failures += expect_text_or_null(
+            mylite_result_column_name(result, column_index),
+            warning_columns[column_index],
+            context
+        );
+    }
+    for (size_t row_index = 0U; row_index < row_count; ++row_index) {
+        const struct expected_warning_row *row = &rows[row_index];
+
+        failures += expect_text_or_null(
+            mylite_result_value_text(result, row_index, 0U),
+            row->level,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_value_text(result, row_index, 1U),
+            row->code,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_value_text(result, row_index, 2U),
+            row->message,
+            context
+        );
+    }
+
+    mylite_result_free(result);
+    return failures;
 }
 
 static int expect_single_row_result(
@@ -1031,9 +1371,49 @@ static int expect_count_statement(mylite_db *database, struct expected_count_res
     return failures;
 }
 
+static int expect_show_warning_count(
+    mylite_db *database,
+    const char *expected,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW COUNT(*) WARNINGS", &result);
+
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), expected, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
 static int execute_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int execute_statement_ok_with_warnings(
+    mylite_db *database,
+    const char *sql,
+    size_t expected_warning_count
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, sql);
+    failures += expect_size(mylite_result_warning_count(result), expected_warning_count, sql);
 
     mylite_result_free(result);
     return failures;

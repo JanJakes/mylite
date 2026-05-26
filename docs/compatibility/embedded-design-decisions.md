@@ -9,17 +9,17 @@ Some MySQL server features do not naturally map to an in-process single-file dat
 | Resource groups | ❌ | Resource group diagnostics |
 | Components and plugins | ❌ | Component/plugin metadata policy |
 | Server lifecycle commands | ❌ | Lifecycle command diagnostics |
-| Storage engines | 🟡 | Explicit InnoDB-only embedded surface for `CREATE TABLE ... ENGINE [=] InnoDB`, fixed `SHOW CREATE TABLE` suffixes, one-row `SHOW [STORAGE] ENGINES`, limited one-row `INFORMATION_SCHEMA.ENGINES`, and scalar `@@default_storage_engine`; no plugin architecture, mutable engine state, or alternate engines |
+| Storage engines | 🟡 | Explicit InnoDB-only embedded surface for `CREATE TABLE ... ENGINE [=] InnoDB`, SQL-mode-aware unavailable-engine diagnostics or substitution to InnoDB for current `CREATE TABLE` / `CREATE TEMPORARY TABLE` forms, fixed `SHOW CREATE TABLE` suffixes, one-row `SHOW [STORAGE] ENGINES`, limited one-row `INFORMATION_SCHEMA.ENGINES`, and scalar `@@default_storage_engine`; no plugin architecture, mutable engine state, or real alternate engines |
 | `InnoDB` engine surface | 🟡 | MyLite maps its current persistent base-table storage to a limited InnoDB-compatible default-engine surface for application detection, including fixed `@@default_storage_engine = InnoDB` |
-| `MyISAM` engine surface | ❌ | MyISAM surface mapping |
-| `MEMORY` engine surface | ❌ | MEMORY surface mapping |
-| `CSV` engine surface | ❌ | Decide log-table and ENGINE=CSV compatibility behavior |
-| `ARCHIVE` engine surface | ❌ | Decide archive-engine syntax, diagnostics |
-| `BLACKHOLE` engine surface | ❌ | Decide blackhole-engine syntax and embedded behavior |
-| `MERGE` engine surface | ❌ | Decide MERGE/MyISAM union table syntax, diagnostics |
-| `FEDERATED` engine surface | ❌ | FEDERATED surface mapping |
-| `NDB` engine surface | ❌ | NDB surface mapping |
-| `PERFORMANCE_SCHEMA` engine surface | ❌ | Performance Schema engine mapping |
+| `MyISAM` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no MyISAM storage, metadata, or behavior |
+| `MEMORY` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no MEMORY storage, metadata, or behavior |
+| `CSV` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no CSV storage, log-table metadata, or behavior |
+| `ARCHIVE` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no ARCHIVE storage, metadata, or behavior |
+| `BLACKHOLE` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no BLACKHOLE storage, metadata, or behavior |
+| `MERGE` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no MERGE/MyISAM union-table storage, metadata, or behavior |
+| `FEDERATED` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no FEDERATED storage, metadata, or behavior |
+| `NDB` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no NDB storage, metadata, or behavior |
+| `PERFORMANCE_SCHEMA` engine surface | 🟡 | Treated as an unavailable engine for current `CREATE TABLE` / `CREATE TEMPORARY TABLE`: strict mode rejects, loose mode substitutes InnoDB with warnings; no Performance Schema engine storage, metadata, or behavior |
 | Tablespaces and logfile groups | ❌ | Single-file storage diagnostics |
 | Performance Schema | ❌ | Embedded metrics policy |
 | sys schema | ❌ | Useful views vs placeholders |

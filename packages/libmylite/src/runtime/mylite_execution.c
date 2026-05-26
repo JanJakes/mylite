@@ -183,6 +183,7 @@ enum {
     mysql_error_json_quote_incorrect_type = 3064,
     mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
+    mysql_warning_using_storage_engine = 1266,
     mysql_error_foreign_key_cascade_duplicate = 1761,
     mysql_error_duplicate_foreign_key = 1826,
     mysql_error_drop_column_fk_child = 1828,
@@ -10961,11 +10962,13 @@ static int clone_create_table_like_check_constraints(
 static void planned_create_table_like_deinit(struct planned_create_table_like *plan);
 static int validate_create_table_options(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *table_options
+    const struct mylite_sql_ast_node *table_options,
+    const char *table_name
 );
 static int validate_create_table_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *table_option
+    const struct mylite_sql_ast_node *table_option,
+    const char *table_name
 );
 static int apply_create_table_charset_collation_options(
     struct mylite_db *database,
@@ -11069,8 +11072,14 @@ static int decode_table_comment_option(
 );
 static int validate_create_table_engine_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *engine_option
+    const struct mylite_sql_ast_node *engine_option,
+    const char *table_name
 );
+static int append_unknown_storage_engine_warning(
+    struct mylite_db *database,
+    const char *engine_name
+);
+static int append_using_storage_engine_warning(struct mylite_db *database, const char *table_name);
 static int validate_create_table_charset_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *charset_option,
@@ -53831,7 +53840,11 @@ static int plan_create_table(
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         return MYLITE_ERROR;
     }
-    rc = validate_create_table_options(database, create_table_options_node(statement));
+    rc = validate_create_table_options(
+        database,
+        create_table_options_node(statement),
+        out_plan->target.table_name
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -59310,7 +59323,8 @@ static int validate_create_table_select_row(
 
 static int validate_create_table_options(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *table_options
+    const struct mylite_sql_ast_node *table_options,
+    const char *table_name
 ) {
     const struct mylite_sql_ast_node *table_option = NULL;
     char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
@@ -59346,7 +59360,7 @@ static int validate_create_table_options(
             );
             has_collation = true;
         } else {
-            rc = validate_create_table_option(database, table_option);
+            rc = validate_create_table_option(database, table_option, table_name);
         }
         table_option = table_option->next_sibling;
     }
@@ -59550,7 +59564,8 @@ static int track_schema_default_collation_option(
 
 static int validate_create_table_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *table_option
+    const struct mylite_sql_ast_node *table_option,
+    const char *table_name
 ) {
     if (table_option == NULL) {
         set_parse_error(database, NULL);
@@ -59558,7 +59573,7 @@ static int validate_create_table_option(
     }
 
     if (table_option->kind == MYLITE_SQL_AST_TABLE_ENGINE_OPTION) {
-        return validate_create_table_engine_option(database, table_option);
+        return validate_create_table_engine_option(database, table_option, table_name);
     }
     if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
         return validate_create_table_charset_option(database, table_option, true);
@@ -60300,7 +60315,8 @@ static int decode_table_comment_option(
 
 static int validate_create_table_engine_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *engine_option
+    const struct mylite_sql_ast_node *engine_option,
+    const char *table_name
 ) {
     char engine_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
@@ -60327,11 +60343,60 @@ static int validate_create_table_engine_option(
         return rc;
     }
     if (!text_equals_ascii_case_insensitive(engine_name, "InnoDB")) {
-        set_unknown_storage_engine_error(database, engine_name);
-        return MYLITE_ERROR;
+        if (session_sql_mode_has(
+                &database->session,
+                MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION
+            )) {
+            set_unknown_storage_engine_error(database, engine_name);
+            return MYLITE_ERROR;
+        }
+
+        rc = append_unknown_storage_engine_warning(database, engine_name);
+        if (rc == MYLITE_OK) {
+            rc = append_using_storage_engine_warning(database, table_name);
+        }
+        return rc;
     }
 
     return MYLITE_OK;
+}
+
+static int append_unknown_storage_engine_warning(
+    struct mylite_db *database,
+    const char *engine_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Unknown storage engine '%s'", engine_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_storage_engine,
+        "42000",
+        message
+    );
+}
+
+static int append_using_storage_engine_warning(struct mylite_db *database, const char *table_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Using storage engine InnoDB for table '%s'",
+        table_name == NULL ? "" : table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_using_storage_engine,
+        "HY000",
+        message
+    );
 }
 
 static int validate_create_table_charset_option(

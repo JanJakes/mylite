@@ -25702,6 +25702,50 @@ static int test_insert_on_duplicate_key_update_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) VALUES (1, 2) "
+        "ON DUPLICATE KEY UPDATE amount = amount + 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    clause = child_at(statement, 3U);
+    assignments = child_at(clause, 0U);
+    assignment = child_at(assignments, 0U);
+    failures += expect_operator(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "duplicate arithmetic add assignment"
+    );
+    failures += expect_span_text(
+        child_at(child_at(assignment, 1U), 0U),
+        "amount",
+        "duplicate arithmetic source"
+    );
+    failures += expect_literal(
+        child_at(child_at(assignment, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "duplicate arithmetic literal"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) VALUES (1, 2) "
+        "ON DUPLICATE KEY UPDATE amount = amount - 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    clause = child_at(statement, 3U);
+    assignments = child_at(clause, 0U);
+    assignment = child_at(assignments, 0U);
+    failures += expect_operator(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        "duplicate arithmetic subtract assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO simple_lifecycle VALUES (1) "
         "ON DUPLICATE KEY UPDATE simple_lifecycle.id = VALUES(simple_lifecycle.id), id = 2;",
         MYLITE_SQL_PARSE_OK,

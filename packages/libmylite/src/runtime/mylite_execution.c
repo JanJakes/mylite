@@ -2660,6 +2660,7 @@ struct insert_execution_counters {
 enum planned_insert_duplicate_update_value_kind {
     PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL = 0,
     PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE = 1,
+    PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC = 2,
 };
 
 struct planned_insert_duplicate_update_assignment {
@@ -2667,6 +2668,8 @@ struct planned_insert_duplicate_update_assignment {
     const struct mylite_sql_ast_node *assignment_value_node;
     enum planned_insert_duplicate_update_value_kind value_kind;
     size_t values_column_index;
+    enum mylite_sql_ast_operator arithmetic_operator;
+    const struct mylite_sql_ast_node *arithmetic_delta_node;
     bool generated_default_noop;
 };
 
@@ -2681,6 +2684,20 @@ struct planned_insert_duplicate_update {
 struct insert_duplicate_projected_row_inputs {
     const struct planned_value *current_values;
     const struct planned_value *assignment_values;
+};
+
+struct insert_duplicate_arithmetic_result_request {
+    const struct mylite_catalog_column_descriptor *column;
+    size_t row_number;
+    enum mylite_sql_ast_operator operator_kind;
+    int64_t current_value;
+    uint64_t delta;
+};
+
+struct insert_duplicate_arithmetic_range_error {
+    const struct mylite_catalog_column_descriptor *column;
+    size_t row_number;
+    enum update_arithmetic_range_error_kind error_kind;
 };
 
 struct planned_insert {
@@ -20785,11 +20802,29 @@ static int plan_insert_duplicate_assignment(
     struct planned_insert *plan,
     size_t assignment_index
 );
+static int plan_insert_duplicate_assignment_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct planned_insert *plan,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment
+);
 static int plan_insert_duplicate_values_reference(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     struct planned_insert *plan,
     struct planned_insert_duplicate_update_assignment *duplicate_assignment
+);
+static int plan_insert_duplicate_same_column_arithmetic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_insert *plan,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment,
+    bool *out_planned
+);
+static int validate_insert_duplicate_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t column_index
 );
 static int plan_insert_duplicate_update_key(
     struct mylite_db *database,
@@ -20805,10 +20840,15 @@ static bool insert_duplicate_assignment_targets_column_id(
     const struct planned_insert *plan,
     int64_t column_id
 );
+static bool insert_duplicate_column_index_is_keyed(
+    const struct planned_insert *plan,
+    size_t column_index
+);
 static bool insert_duplicate_assignment_is_noop(
     const struct planned_insert_duplicate_update_assignment *assignment
 );
 static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan);
+static void set_insert_duplicate_arithmetic_unsupported_error(struct mylite_db *database);
 static int validate_update_string_key_value(
     struct mylite_db *database,
     const struct planned_update *plan
@@ -27999,9 +28039,34 @@ static int convert_insert_duplicate_update_value(
     struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
+    const struct planned_value *current_values,
     const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
     struct planned_value *out_value
 );
+static int convert_insert_duplicate_arithmetic_value(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct planned_value *current_values,
+    const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
+    struct planned_value *out_value
+);
+static int parse_insert_duplicate_arithmetic_delta(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_delta
+);
+static int assign_insert_duplicate_arithmetic_result(
+    struct mylite_db *database,
+    const struct insert_duplicate_arithmetic_result_request *request,
+    struct planned_value *out_value
+);
+static void set_insert_duplicate_arithmetic_delta_out_of_range_error(struct mylite_db *database);
+static void set_insert_duplicate_arithmetic_range_error(
+    struct mylite_db *database,
+    const struct insert_duplicate_arithmetic_range_error *error
+);
+static bool insert_duplicate_update_has_same_column_arithmetic(const struct planned_insert *plan);
 static bool insert_duplicate_update_allows_null_adjustment(
     const struct mylite_db *database,
     const struct planned_insert *plan,
@@ -28011,6 +28076,7 @@ static int convert_insert_duplicate_update_values(
     struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
+    const struct loaded_index_info *conflicting_index,
     struct planned_value **out_values
 );
 static void insert_duplicate_update_values_deinit(
@@ -73879,6 +73945,14 @@ static int plan_insert_duplicate_update(
             index
         );
     }
+    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT &&
+        insert_duplicate_update_has_same_column_arithmetic(plan)) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT ... ON DUPLICATE KEY UPDATE arithmetic assignment is not supported"
+        );
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = plan_insert_duplicate_update_key(database, plan);
     }
@@ -73965,15 +74039,41 @@ static int plan_insert_duplicate_assignment(
         );
         return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && value->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE) {
-        rc = plan_insert_duplicate_values_reference(database, value, plan, duplicate_assignment);
-    } else if (rc == MYLITE_OK) {
-        duplicate_assignment->assignment_value_node = value;
-        duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
-    }
-    const struct mylite_sql_ast_node *default_value =
-        unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
 
+    return plan_insert_duplicate_assignment_value(database, value, plan, duplicate_assignment);
+}
+
+static int plan_insert_duplicate_assignment_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct planned_insert *plan,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment
+) {
+    const struct mylite_sql_ast_node *default_value = NULL;
+    bool planned_arithmetic = false;
+    int rc = MYLITE_OK;
+
+    if (value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE) {
+        rc = plan_insert_duplicate_values_reference(database, value, plan, duplicate_assignment);
+    } else {
+        rc = plan_insert_duplicate_same_column_arithmetic(
+            database,
+            value,
+            plan,
+            duplicate_assignment,
+            &planned_arithmetic
+        );
+        if (rc == MYLITE_OK && !planned_arithmetic) {
+            duplicate_assignment->assignment_value_node = value;
+            duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
+        }
+    }
+
+    default_value = unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
     if (rc == MYLITE_OK && default_value != NULL &&
         default_value->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
         struct select_source_context source_context = {.source = &plan->target};
@@ -74042,6 +74142,107 @@ static int plan_insert_duplicate_values_reference(
     duplicate_assignment->assignment_value_node = value_node;
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE;
     return rc;
+}
+
+static int plan_insert_duplicate_same_column_arithmetic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_insert *plan,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment,
+    bool *out_planned
+) {
+    const struct mylite_sql_ast_node *source = NULL;
+    const struct mylite_sql_ast_node *delta = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    char source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_planned = false;
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        insert_value_is_unix_timestamp_arithmetic(value_node)) {
+        return MYLITE_OK;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        set_insert_duplicate_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    source = child_at(value_node, 0U);
+    delta = child_at(value_node, 1U);
+    if (source == NULL || source->kind != MYLITE_SQL_AST_IDENTIFIER || delta == NULL ||
+        delta->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(delta) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_insert_duplicate_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(source, source_name, sizeof(source_name), database);
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(plan->columns, plan->column_count, source_name, &source_index);
+        if (rc != MYLITE_OK) {
+            set_unknown_column_error(database, source_name);
+            return MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && source_index != duplicate_assignment->assignment_column_index) {
+        set_insert_duplicate_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_insert_duplicate_arithmetic_assignment_target(
+            database,
+            plan,
+            duplicate_assignment->assignment_column_index
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    duplicate_assignment->assignment_value_node = value_node;
+    duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC;
+    duplicate_assignment->arithmetic_operator = operator_kind;
+    duplicate_assignment->arithmetic_delta_node = delta;
+    *out_planned = true;
+    return MYLITE_OK;
+}
+
+static int validate_insert_duplicate_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t column_index
+) {
+    struct integer_column_range range = {0};
+    const struct mylite_catalog_column_descriptor *column = NULL;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || column_index >= plan->column_count) {
+        set_runtime_error(database, "invalid insert duplicate arithmetic assignment plan");
+        return MYLITE_ERROR;
+    }
+    column = &plan->columns[column_index];
+    rc = integer_range_for_column(
+        database,
+        column,
+        "INSERT ... ON DUPLICATE KEY UPDATE arithmetic assignment supports only integer columns",
+        &range
+    );
+    (void)range;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column_descriptor_is_auto_increment(column) ||
+        insert_duplicate_column_index_is_keyed(plan, column_index)) {
+        set_insert_duplicate_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int plan_insert_duplicate_update_key(
@@ -74188,6 +74389,25 @@ static bool insert_duplicate_assignment_targets_column_id(
     return false;
 }
 
+static bool insert_duplicate_column_index_is_keyed(
+    const struct planned_insert *plan,
+    size_t column_index
+) {
+    if (plan == NULL || column_index >= plan->column_count) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if ((key->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY || key->index.is_unique) &&
+            loaded_index_contains_column_id(key, plan->columns[column_index].column_id)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static bool insert_duplicate_assignment_is_noop(
     const struct planned_insert_duplicate_update_assignment *assignment
 ) {
@@ -74206,6 +74426,14 @@ static size_t count_executable_insert_duplicate_assignments(const struct planned
         }
     }
     return count;
+}
+
+static void set_insert_duplicate_arithmetic_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "INSERT ... ON DUPLICATE KEY UPDATE arithmetic assignment supports only same-column "
+        "integer + or - unsigned integer literals on non-key columns"
+    );
 }
 
 static int count_insert_auto_increment_modes(
@@ -177444,7 +177672,13 @@ static int apply_insert_duplicate_key_update(
     struct planned_value *assignment_values = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = convert_insert_duplicate_update_values(database, plan, row_index, &assignment_values);
+    int rc = convert_insert_duplicate_update_values(
+        database,
+        plan,
+        row_index,
+        conflicting_index,
+        &assignment_values
+    );
 
     if (rc == MYLITE_OK) {
         rc = validate_insert_duplicate_key_assignment_conflicts(
@@ -177959,6 +178193,7 @@ static int convert_insert_duplicate_update_value(
     struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
+    const struct planned_value *current_values,
     const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
     struct planned_value *out_value
 ) {
@@ -177974,6 +178209,17 @@ static int convert_insert_duplicate_update_value(
         return copy_planned_value(
             database,
             &plan->rows[row_index].values[duplicate_assignment->values_column_index],
+            out_value
+        );
+    }
+    if (duplicate_assignment->value_kind ==
+        PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC) {
+        return convert_insert_duplicate_arithmetic_value(
+            database,
+            plan,
+            row_index,
+            current_values,
+            duplicate_assignment,
             out_value
         );
     }
@@ -178013,6 +178259,189 @@ static int convert_insert_duplicate_update_value(
     );
 }
 
+static int convert_insert_duplicate_arithmetic_value(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct planned_value *current_values,
+    const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
+    struct planned_value *out_value
+) {
+    const size_t column_index = duplicate_assignment->assignment_column_index;
+    const struct planned_value *current_value = NULL;
+    uint64_t delta = 0U;
+    int rc = MYLITE_OK;
+
+    if (current_values == NULL || column_index >= plan->column_count) {
+        set_runtime_error(database, "invalid insert duplicate arithmetic assignment plan");
+        return MYLITE_ERROR;
+    }
+    current_value = &current_values[column_index];
+    planned_value_deinit(out_value);
+    if (current_value->is_null) {
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
+    if (current_value->is_text || current_value->is_blob || current_value->is_real) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_insert_duplicate_arithmetic_delta(
+        database,
+        duplicate_assignment->arithmetic_delta_node,
+        &delta
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    struct insert_duplicate_arithmetic_result_request request = {
+        .column = &plan->columns[column_index],
+        .row_number = row_index + 1U,
+        .operator_kind = duplicate_assignment->arithmetic_operator,
+        .current_value = current_value->integer,
+        .delta = delta,
+    };
+
+    return assign_insert_duplicate_arithmetic_result(database, &request, out_value);
+}
+
+static int parse_insert_duplicate_arithmetic_delta(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_delta
+) {
+    const uint64_t int64_positive_max = 9223372036854775807ULL;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal->span, out_delta) != MYLITE_OK ||
+        *out_delta > int64_positive_max) {
+        set_insert_duplicate_arithmetic_delta_out_of_range_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int assign_insert_duplicate_arithmetic_result(
+    struct mylite_db *database,
+    const struct insert_duplicate_arithmetic_result_request *request,
+    struct planned_value *out_value
+) {
+    struct integer_column_range range = {0};
+    enum update_arithmetic_range_error_kind error_kind = UPDATE_ARITHMETIC_RANGE_ERROR_COLUMN;
+    int rc = MYLITE_OK;
+    int64_t result = 0;
+
+    if (request == NULL || request->column == NULL) {
+        set_runtime_error(database, "invalid insert duplicate arithmetic assignment request");
+        return MYLITE_ERROR;
+    }
+    rc = integer_range_for_column(
+        database,
+        request->column,
+        "INSERT ... ON DUPLICATE KEY UPDATE arithmetic assignment supports only integer columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (request->operator_kind == MYLITE_SQL_AST_OPERATOR_SUBTRACT &&
+        update_arithmetic_column_is_unsigned(request->column)) {
+        error_kind = UPDATE_ARITHMETIC_RANGE_ERROR_UNSIGNED_BIGINT;
+    } else if (update_arithmetic_column_is_signed_bigint(request->column)) {
+        error_kind = UPDATE_ARITHMETIC_RANGE_ERROR_SIGNED_BIGINT;
+    }
+
+    if (request->delta > update_arithmetic_domain_width(&range)) {
+        set_insert_duplicate_arithmetic_range_error(
+            database,
+            &(struct insert_duplicate_arithmetic_range_error){
+                .column = request->column,
+                .row_number = request->row_number,
+                .error_kind = error_kind,
+            }
+        );
+        return MYLITE_ERROR;
+    }
+    if (request->operator_kind == MYLITE_SQL_AST_OPERATOR_ADD) {
+        if (request->current_value > update_arithmetic_addition_threshold(&range, request->delta)) {
+            set_insert_duplicate_arithmetic_range_error(
+                database,
+                &(struct insert_duplicate_arithmetic_range_error){
+                    .column = request->column,
+                    .row_number = request->row_number,
+                    .error_kind = error_kind,
+                }
+            );
+            return MYLITE_ERROR;
+        }
+        result = request->current_value + (int64_t)request->delta;
+    } else if (request->operator_kind == MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        if (request->current_value <
+            update_arithmetic_subtraction_threshold(&range, request->delta)) {
+            set_insert_duplicate_arithmetic_range_error(
+                database,
+                &(struct insert_duplicate_arithmetic_range_error){
+                    .column = request->column,
+                    .row_number = request->row_number,
+                    .error_kind = error_kind,
+                }
+            );
+            return MYLITE_ERROR;
+        }
+        result = request->current_value - (int64_t)request->delta;
+    } else {
+        set_insert_duplicate_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = result};
+    return MYLITE_OK;
+}
+
+static void set_insert_duplicate_arithmetic_delta_out_of_range_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "INSERT ... ON DUPLICATE KEY UPDATE arithmetic assignment supports only unsigned integer "
+        "deltas in signed 64-bit range"
+    );
+}
+
+static void set_insert_duplicate_arithmetic_range_error(
+    struct mylite_db *database,
+    const struct insert_duplicate_arithmetic_range_error *error
+) {
+    if (error == NULL || error->column == NULL) {
+        set_runtime_error(database, "invalid insert duplicate arithmetic range error");
+        return;
+    }
+    if (error->error_kind == UPDATE_ARITHMETIC_RANGE_ERROR_SIGNED_BIGINT) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_bigint_out_of_range,
+            "22003",
+            "BIGINT value is out of range in INSERT ... ON DUPLICATE KEY UPDATE arithmetic "
+            "assignment"
+        );
+        return;
+    }
+    if (error->error_kind == UPDATE_ARITHMETIC_RANGE_ERROR_UNSIGNED_BIGINT) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_bigint_out_of_range,
+            "22003",
+            "BIGINT UNSIGNED value is out of range in INSERT ... ON DUPLICATE KEY UPDATE "
+            "arithmetic assignment"
+        );
+        return;
+    }
+
+    set_out_of_range_error(database, error->column->name, error->row_number);
+}
+
 static bool insert_duplicate_update_allows_null_adjustment(
     const struct mylite_db *database,
     const struct planned_insert *plan,
@@ -178031,8 +178460,10 @@ static int convert_insert_duplicate_update_values(
     struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
+    const struct loaded_index_info *conflicting_index,
     struct planned_value **out_values
 ) {
+    struct planned_value *current_values = NULL;
     struct planned_value *values = NULL;
     int rc = MYLITE_OK;
 
@@ -178053,23 +178484,49 @@ static int convert_insert_duplicate_update_values(
         return MYLITE_NOMEM;
     }
 
+    if (insert_duplicate_update_has_same_column_arithmetic(plan)) {
+        rc = fetch_insert_duplicate_current_row_values(
+            database,
+            plan,
+            row_index,
+            conflicting_index,
+            &current_values
+        );
+    }
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
         rc = convert_insert_duplicate_update_value(
             database,
             plan,
             row_index,
+            current_values,
             &plan->duplicate_update.assignments[index],
             &values[index]
         );
     }
     if (rc != MYLITE_OK) {
+        insert_duplicate_update_values_deinit(&current_values, plan->column_count);
         insert_duplicate_update_values_deinit(&values, plan->duplicate_update.assignment_count);
         return rc;
     }
 
+    insert_duplicate_update_values_deinit(&current_values, plan->column_count);
     *out_values = values;
     return MYLITE_OK;
+}
+
+static bool insert_duplicate_update_has_same_column_arithmetic(const struct planned_insert *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        if (plan->duplicate_update.assignments[index].value_kind ==
+            PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void insert_duplicate_update_values_deinit(

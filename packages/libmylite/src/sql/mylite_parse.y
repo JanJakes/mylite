@@ -2613,6 +2613,23 @@ duplicate_update_value(A) ::= insert_value(V). {
 duplicate_update_value(A) ::= VALUES(V) LPAREN qualified_identifier(I) RPAREN(R). {
     A = mylite_sql_parser_make_insert_values_reference(state, V, I, R);
 }
+duplicate_update_value(A) ::= arithmetic_duplicate_source_column(B) PLUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= arithmetic_duplicate_source_column(B) MINUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+
+arithmetic_duplicate_source_column(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+arithmetic_duplicate_source_column(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 
 insert_column_list_opt(A) ::= . {
     A = mylite_sql_parser_make_identifier_list(state, NULL);

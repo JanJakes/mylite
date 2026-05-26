@@ -243,6 +243,140 @@ expect_output \
     "$DATABASE"
 run_mysql "DROP TABLE auto_t;" "$DATABASE" >/dev/null
 
+expect_output \
+    "same-column arithmetic duplicate update" \
+    "2	0	0
+1	15	18	33	44	45	66	N" \
+    "CREATE TABLE arith(id INT PRIMARY KEY, i INT, ii INTEGER, bi BIGINT, "\
+"ui INT UNSIGNED, uii INTEGER UNSIGNED, ubi BIGINT UNSIGNED, n INT NULL); "\
+"INSERT INTO arith VALUES(1, 10, 20, 30, 40, 50, 60, NULL); "\
+"INSERT INTO arith VALUES(1, 0, 0, 0, 0, 0, 0, 1) ON DUPLICATE KEY UPDATE "\
+"i=i+5, ii=ii-2, bi=bi+3, ui=ui+4, uii=uii-5, ubi=ubi+6, n=n+7; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,i,ii,bi,ui,uii,ubi,IFNULL(n,'N') FROM arith;" \
+    "$DATABASE"
+run_mysql "DROP TABLE arith;" "$DATABASE" >/dev/null
+
+expect_output \
+    "same-column arithmetic insert set duplicate update" \
+    "2	0	0
+1	14" \
+    "CREATE TABLE arith_set(id INT PRIMARY KEY, n INT); "\
+"INSERT INTO arith_set SET id=1, n=10; "\
+"INSERT INTO arith_set SET id=1, n=0 ON DUPLICATE KEY UPDATE n=n+4; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,n FROM arith_set;" \
+    "$DATABASE"
+run_mysql "DROP TABLE arith_set;" "$DATABASE" >/dev/null
+
+expect_error \
+    "same-column arithmetic insert select ambiguity" \
+    1052 \
+    23000 \
+    "Column 'n' in field list is ambiguous" \
+    "CREATE TABLE select_dst(id INT PRIMARY KEY, n INT); "\
+"CREATE TABLE select_src(id INT, n INT); "\
+"INSERT INTO select_dst VALUES(1, 10); "\
+"INSERT INTO select_src VALUES(1, 20); "\
+"INSERT INTO select_dst SELECT id,n FROM select_src ON DUPLICATE KEY UPDATE n=n+3;" \
+    "$DATABASE"
+run_mysql "DROP TABLE select_src;" "$DATABASE" >/dev/null
+run_mysql "DROP TABLE select_dst;" "$DATABASE" >/dev/null
+
+expect_output \
+    "same-column arithmetic no-op and null" \
+    "0	0	0	8	N
+0	0	0	8	N" \
+    "CREATE TABLE noop(id INT PRIMARY KEY, n INT NULL, m INT NULL); "\
+"INSERT INTO noop VALUES(1, 8, NULL); "\
+"INSERT INTO noop VALUES(1, 0, 0) ON DUPLICATE KEY UPDATE n=n+0; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, n, IFNULL(m,'N') FROM noop; "\
+"INSERT INTO noop VALUES(1, 0, 0) ON DUPLICATE KEY UPDATE m=m+1; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, n, IFNULL(m,'N') FROM noop;" \
+    "$DATABASE"
+run_mysql "DROP TABLE noop;" "$DATABASE" >/dev/null
+
+expect_output \
+    "same-column arithmetic multi-row accumulation" \
+    "5	0	0
+1	12
+2	20" \
+    "CREATE TABLE multi(id INT PRIMARY KEY, n INT); "\
+"INSERT INTO multi VALUES(1, 10); "\
+"INSERT INTO multi VALUES(2,20),(1,0),(1,0) ON DUPLICATE KEY UPDATE n=n+1; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,n FROM multi ORDER BY id;" \
+    "$DATABASE"
+run_mysql "DROP TABLE multi;" "$DATABASE" >/dev/null
+
+expect_output \
+    "same-column arithmetic mixed with values and literal" \
+    "2	1	0
+1	12	88	5" \
+    "CREATE TABLE mixed(id INT PRIMARY KEY, a INT, b INT, c INT); "\
+"INSERT INTO mixed VALUES(1, 10, 20, 30); "\
+"INSERT INTO mixed VALUES(1, 99, 88, 77) "\
+"ON DUPLICATE KEY UPDATE a=a+2, b=VALUES(b), c=5; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,a,b,c FROM mixed;" \
+    "$DATABASE"
+run_mysql "DROP TABLE mixed;" "$DATABASE" >/dev/null
+
+expect_output \
+    "same-column arithmetic null huge delta no-op" \
+    "0	0	0	N" \
+    "CREATE TABLE null_big(id INT PRIMARY KEY, b BIGINT NULL); "\
+"INSERT INTO null_big VALUES(1, NULL); "\
+"INSERT INTO null_big VALUES(1, 0) "\
+"ON DUPLICATE KEY UPDATE b = b + 9223372036854775808; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, IFNULL(b,'N') FROM null_big;" \
+    "$DATABASE"
+run_mysql "DROP TABLE null_big;" "$DATABASE" >/dev/null
+
+expect_error \
+    "same-column arithmetic int overflow" \
+    1264 \
+    22003 \
+    "Out of range value for column 'n' at row 1" \
+    "CREATE TABLE signed_i(id INT PRIMARY KEY, n INT); "\
+"INSERT INTO signed_i VALUES(1, 2147483647); "\
+"INSERT INTO signed_i VALUES(1, 0) ON DUPLICATE KEY UPDATE n = n + 1;" \
+    "$DATABASE"
+run_mysql "DROP TABLE signed_i;" "$DATABASE" >/dev/null
+
+expect_error \
+    "same-column arithmetic unsigned int underflow" \
+    1690 \
+    22003 \
+    "BIGINT UNSIGNED value is out of range" \
+    "CREATE TABLE unsigned_i(id INT PRIMARY KEY, u INT UNSIGNED); "\
+"INSERT INTO unsigned_i VALUES(1, 0); "\
+"INSERT INTO unsigned_i VALUES(1, 0) ON DUPLICATE KEY UPDATE u = u - 1;" \
+    "$DATABASE"
+run_mysql "DROP TABLE unsigned_i;" "$DATABASE" >/dev/null
+
+expect_error \
+    "same-column arithmetic signed bigint overflow" \
+    1690 \
+    22003 \
+    "BIGINT value is out of range" \
+    "CREATE TABLE signed_b(id INT PRIMARY KEY, b BIGINT); "\
+"INSERT INTO signed_b VALUES(1, 9223372036854775807); "\
+"INSERT INTO signed_b VALUES(1, 0) ON DUPLICATE KEY UPDATE b = b + 1;" \
+    "$DATABASE"
+run_mysql "DROP TABLE signed_b;" "$DATABASE" >/dev/null
+
+expect_error \
+    "same-column arithmetic unsigned bigint underflow" \
+    1690 \
+    22003 \
+    "BIGINT UNSIGNED value is out of range" \
+    "CREATE TABLE unsigned_b(id INT PRIMARY KEY, bu BIGINT UNSIGNED); "\
+"INSERT INTO unsigned_b VALUES(1, 0); "\
+"INSERT INTO unsigned_b VALUES(1, 0) ON DUPLICATE KEY UPDATE bu = bu - 1;" \
+    "$DATABASE"
+run_mysql "DROP TABLE unsigned_b;" "$DATABASE" >/dev/null
+
 run_mysql \
     "CREATE TABLE rollback_t(id INT PRIMARY KEY, ti TINYINT, v INT); "\
 "INSERT INTO rollback_t VALUES (1,1,10);" \

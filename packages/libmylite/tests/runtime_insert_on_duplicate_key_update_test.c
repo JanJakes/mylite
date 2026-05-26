@@ -16,6 +16,8 @@
 enum {
     test_path_capacity = 1024,
     typed_column_count = 6,
+    arithmetic_column_count = 8,
+    arithmetic_multi_duplicate_affected_rows = 5,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
     mysql_error_duplicate_key = 1062,
@@ -23,6 +25,7 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_too_long = 1406,
+    mysql_error_bigint_out_of_range = 1690,
 };
 
 struct expected_sql_error {
@@ -227,6 +230,20 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         "2024-05-06 07:08:09",
         "2024-05-06 07:08:09",
     };
+    static const char *const arithmetic_rows[] = {
+        "1",
+        "15",
+        "18",
+        "33",
+        "44",
+        "45",
+        "66",
+        NULL,
+    };
+    static const char *const arithmetic_set_rows[] = {"1", "14"};
+    static const char *const arithmetic_noop_rows[] = {"8", NULL};
+    static const char *const arithmetic_multi_rows[] = {"1", "12", "2", "20"};
+    static const char *const arithmetic_mixed_rows[] = {"1", "12", "88", "5"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -1210,6 +1227,130 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         }
     );
 
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_t(id INT PRIMARY KEY, i INT, ii INTEGER, bi BIGINT, "
+        "ui INT UNSIGNED, uii INTEGER UNSIGNED, ubi BIGINT UNSIGNED, n INT NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO arithmetic_t VALUES (1, 10, 20, 30, 40, 50, 60, NULL)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_t VALUES (1, 0, 0, 0, 0, 0, 0, 1) "
+        "ON DUPLICATE KEY UPDATE i = i + 5, ii = ii - 2, bi = bi + 3, "
+        "ui = ui + 4, uii = uii - 5, ubi = ubi + 6, n = n + 7",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, ii, bi, ui, uii, ubi, n FROM arithmetic_t",
+            .values = arithmetic_rows,
+            .column_count = arithmetic_column_count,
+            .row_count = 1U,
+            .context = "same-column arithmetic duplicate update",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE arithmetic_set(id INT PRIMARY KEY, n INT)");
+    failures += expect_statement_ok(database, "INSERT INTO arithmetic_set SET id = 1, n = 10");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_set SET id = 1, n = 0 ON DUPLICATE KEY UPDATE n = n + 4",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n FROM arithmetic_set",
+            .values = arithmetic_set_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "same-column arithmetic duplicate update in INSERT SET",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_noop(id INT PRIMARY KEY, n INT NULL, m INT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO arithmetic_noop VALUES (1, 8, NULL)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_noop VALUES (1, 0, 0) ON DUPLICATE KEY UPDATE n = n + 0",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_noop VALUES (1, 0, 0) ON DUPLICATE KEY UPDATE m = m + 1",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_noop VALUES (1, 0, 0) "
+        "ON DUPLICATE KEY UPDATE m = m + 9223372036854775808",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT n, m FROM arithmetic_noop",
+            .values = arithmetic_noop_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "same-column arithmetic no-op and null",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE arithmetic_multi(id INT PRIMARY KEY, n INT)");
+    failures += expect_statement_ok(database, "INSERT INTO arithmetic_multi VALUES (1, 10)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_multi VALUES (2, 20), (1, 0), (1, 0) "
+        "ON DUPLICATE KEY UPDATE n = n + 1",
+        (struct expected_dml){
+            .affected_rows = arithmetic_multi_duplicate_affected_rows,
+            .warning_count = 0U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n FROM arithmetic_multi ORDER BY id",
+            .values = arithmetic_multi_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "same-column arithmetic multi-row accumulation",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_mixed(id INT PRIMARY KEY, a INT, b INT, c INT)"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO arithmetic_mixed VALUES (1, 10, 20, 30)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_mixed VALUES (1, 99, 88, 77) "
+        "ON DUPLICATE KEY UPDATE a = a + 2, b = VALUES(b), c = 5",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b, c FROM arithmetic_mixed",
+            .values = arithmetic_mixed_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "same-column arithmetic mixed duplicate assignments",
+        }
+    );
+
     failures += execute_ok(
         database,
         "INSERT DELAYED INTO pk_t VALUES (3, 50, NULL) ON DUPLICATE KEY UPDATE v = 50",
@@ -1254,6 +1395,16 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .context = "persisted key assignment rows",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, ii, bi, ui, uii, ubi, n FROM arithmetic_t",
+            .values = arithmetic_rows,
+            .column_count = arithmetic_column_count,
+            .row_count = 1U,
+            .context = "persisted arithmetic duplicate update rows",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -1275,6 +1426,8 @@ static int test_duplicate_update_diagnostics(void) {
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE t(id INT PRIMARY KEY, v INT NOT NULL)");
     failures += expect_statement_ok(database, "INSERT INTO t VALUES (1, 10)");
+    failures += expect_statement_ok(database, "CREATE TABLE select_source(id INT, v INT)");
+    failures += expect_statement_ok(database, "INSERT INTO select_source VALUES (1, 20)");
 
     failures += execute_error(
         database,
@@ -1400,6 +1553,199 @@ static int test_duplicate_update_diagnostics(void) {
             .message_part = "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns",
         }
     );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = missing + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = id + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "arithmetic assignment supports only same-column integer",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE id = id + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "arithmetic assignment supports only same-column integer",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + +1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = t.v + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + 1.5",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + '1'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + 0x1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + b'1'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + ABS(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + ?",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = v + (SELECT 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t SELECT id, v FROM select_source ON DUPLICATE KEY UPDATE v = v + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "INSERT ... SELECT ... ON DUPLICATE KEY UPDATE arithmetic assignment is not "
+                "supported",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_string(id INT PRIMARY KEY, s VARCHAR(10))"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO arithmetic_string VALUES (1, 'a')");
+    failures += execute_error(
+        database,
+        "INSERT INTO arithmetic_string VALUES (1, 'b') ON DUPLICATE KEY UPDATE s = s + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "arithmetic assignment supports only integer columns",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_range(id INT PRIMARY KEY, i INT, u INT UNSIGNED, "
+        "b BIGINT, bu BIGINT UNSIGNED, n BIGINT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO arithmetic_range VALUES "
+        "(1, 2147483647, 0, 9223372036854775807, 0, 1)"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO arithmetic_range VALUES (1, 0, 0, 0, 0, 0) "
+        "ON DUPLICATE KEY UPDATE i = i + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO arithmetic_range VALUES (1, 0, 0, 0, 0, 0) "
+        "ON DUPLICATE KEY UPDATE u = u - 1",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT UNSIGNED value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO arithmetic_range VALUES (1, 0, 0, 0, 0, 0) "
+        "ON DUPLICATE KEY UPDATE b = b + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO arithmetic_range VALUES (1, 0, 0, 0, 0, 0) "
+        "ON DUPLICATE KEY UPDATE bu = bu - 1",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT UNSIGNED value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO arithmetic_range VALUES (1, 0, 0, 0, 0, 0) "
+        "ON DUPLICATE KEY UPDATE n = n + 9223372036854775808",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "arithmetic assignment supports only unsigned integer deltas",
+        }
+    );
     failures += expect_statement_ok(
         database,
         "CREATE TABLE auto_key(id INT AUTO_INCREMENT PRIMARY KEY, v INT UNIQUE)"
@@ -1412,6 +1758,15 @@ static int test_duplicate_update_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "does not support auto-increment assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO auto_key(v) VALUES (10) ON DUPLICATE KEY UPDATE id = id + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "arithmetic assignment supports only same-column integer",
         }
     );
     failures +=
@@ -1565,8 +1920,8 @@ static int test_duplicate_update_diagnostics(void) {
 }
 
 static int test_duplicate_update_independent_handles(void) {
-    static const char *const first_rows[] = {"1", "20", "21"};
-    static const char *const second_rows[] = {"1", "30", "31"};
+    static const char *const first_rows[] = {"1", "20", "22"};
+    static const char *const second_rows[] = {"1", "30", "33"};
     static const char *const first_key_rows[] = {"2", "200", "3", "100"};
     static const char *const second_key_rows[] = {"2", "200", "4", "100"};
     char first_path[test_path_capacity];
@@ -1607,6 +1962,16 @@ static int test_duplicate_update_independent_handles(void) {
         "INSERT INTO t VALUES (1, 30, 31) "
         "ON DUPLICATE KEY UPDATE v = VALUES(v), n = VALUES(n)",
         (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_dml_ok(
+        first,
+        "INSERT INTO t VALUES (1, 20, 0) ON DUPLICATE KEY UPDATE n = n + 1",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        second,
+        "INSERT INTO t VALUES (1, 30, 0) ON DUPLICATE KEY UPDATE n = n + 2",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
     );
     failures += expect_dml_ok(
         first,

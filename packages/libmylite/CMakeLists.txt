@@ -74,6 +74,7 @@ add_library(mylite STATIC
   src/runtime/mylite_temporal_extract.c
   src/runtime/mylite_temporary_catalog.c
   src/runtime/mylite_timediff.c
+  src/runtime/mylite_timestamp_function.c
   src/runtime/mylite_timestampdiff.c
   src/runtime/mylite_unix_timestamp.c
   src/runtime/mylite_uuid.c
@@ -941,6 +942,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_timestampdiff_function_test)
+
+  add_executable(mylite_runtime_timestamp_function_test
+    tests/runtime_timestamp_function_test.c
+  )
+  target_link_libraries(mylite_runtime_timestamp_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_timestamp_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_timestamp_function_test)
 
   add_executable(mylite_runtime_timediff_function_test
     tests/runtime_timediff_function_test.c
@@ -4254,6 +4266,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.timestampdiff_function
     COMMAND mylite_runtime_timestampdiff_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.timestamp_function
+    COMMAND mylite_runtime_timestamp_function_test
   )
   add_test(
     NAME libmylite.runtime.timediff_function

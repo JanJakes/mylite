@@ -27,6 +27,7 @@
 #include "mylite_temporal_constructor.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_timediff.h"
+#include "mylite_timestamp_function.h"
 #include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
 #include "mylite_uuid.h"
@@ -320,6 +321,9 @@ static int initialize_temporal_core_function_registration_surface(sqlite3 *sqlit
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_datediff_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_timestamp_function(sqlite);
     }
     return rc;
 }

@@ -112,6 +112,7 @@ static int date_interval_second_result(
     int64_t interval_seconds,
     bool interval_is_null,
     bool subtract,
+    const char *overflow_message,
     char **out_text,
     bool *out_is_null
 );
@@ -172,7 +173,10 @@ static int append_date_interval_second_incorrect_datetime_warning(
     const char *value,
     size_t value_length
 );
-static int append_date_interval_second_overflow_warning(struct mylite_db *database);
+static int append_date_interval_second_overflow_warning(
+    struct mylite_db *database,
+    const char *message
+);
 
 const char *mylite_date_interval_second_input_kind_name(
     enum mylite_date_interval_second_input_kind kind
@@ -231,6 +235,34 @@ int mylite_date_interval_second_value(
     char **out_text,
     bool *out_is_null
 ) {
+    return mylite_date_interval_second_value_with_overflow_message(
+        database,
+        value,
+        value_length,
+        input_kind,
+        value_is_null,
+        interval_seconds,
+        interval_is_null,
+        subtract,
+        "Datetime function: datetime field overflow",
+        out_text,
+        out_is_null
+    );
+}
+
+int mylite_date_interval_second_value_with_overflow_message(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length,
+    enum mylite_date_interval_second_input_kind input_kind,
+    bool value_is_null,
+    int64_t interval_seconds,
+    bool interval_is_null,
+    bool subtract,
+    const char *overflow_message,
+    char **out_text,
+    bool *out_is_null
+) {
     const struct date_interval_second_source source = {
         .value = value,
         .value_length = value_length,
@@ -249,6 +281,7 @@ int mylite_date_interval_second_value(
         interval_seconds,
         interval_is_null,
         subtract,
+        overflow_message,
         out_text,
         out_is_null
     );
@@ -433,6 +466,7 @@ static int date_interval_second_result(
     int64_t interval_seconds,
     bool interval_is_null,
     bool subtract,
+    const char *overflow_message,
     char **out_text,
     bool *out_is_null
 ) {
@@ -462,7 +496,7 @@ static int date_interval_second_result(
     }
     if (subtract) {
         if (interval_seconds == INT64_MIN) {
-            rc = append_date_interval_second_overflow_warning(database);
+            rc = append_date_interval_second_overflow_warning(database, overflow_message);
             if (rc == MYLITE_OK) {
                 *out_is_null = true;
             }
@@ -471,7 +505,7 @@ static int date_interval_second_result(
         interval_seconds = -interval_seconds;
     }
     if (!date_interval_second_add(&input, interval_seconds, &output)) {
-        rc = append_date_interval_second_overflow_warning(database);
+        rc = append_date_interval_second_overflow_warning(database, overflow_message);
         if (rc == MYLITE_OK) {
             *out_is_null = true;
         }
@@ -863,7 +897,10 @@ static int format_date_interval_second_result(
     );
     if (written != date_interval_second_datetime_text_length) {
         free(text);
-        return append_date_interval_second_overflow_warning(database);
+        return append_date_interval_second_overflow_warning(
+            database,
+            "Datetime function: datetime field overflow"
+        );
     }
     *out_text = text;
     return MYLITE_OK;
@@ -904,12 +941,15 @@ static int append_date_interval_second_incorrect_datetime_warning(
     return rc;
 }
 
-static int append_date_interval_second_overflow_warning(struct mylite_db *database) {
+static int append_date_interval_second_overflow_warning(
+    struct mylite_db *database,
+    const char *message
+) {
     int rc = mylite_diagnostics_append_warning(
         mylite_connection_diagnostics(database),
         mysql_warning_datetime_interval_overflow,
         "HY000",
-        "Datetime function: datetime field overflow"
+        message == NULL ? "Datetime function: datetime field overflow" : message
     );
 
     if (rc == MYLITE_NOMEM) {

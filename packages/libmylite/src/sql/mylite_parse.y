@@ -4534,6 +4534,14 @@ expression(A) ::=
     A = mylite_sql_parser_make_three_argument_function(
         state, T, MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION, U, B, C, R);
 }
+expression(A) ::= TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMP_FUNCTION, B, R);
+}
+expression(A) ::= TIMESTAMP(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMP_FUNCTION, B, C, R);
+}
 expression(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
@@ -6027,6 +6035,18 @@ expression(A) ::=
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= TIMESTAMP(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TIMESTAMP_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    TIMESTAMP(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D)
+    RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TIMESTAMP_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= FROM_UNIXTIME(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(

@@ -3,8 +3,11 @@
 Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB Cluster, and debug/development objects documented or shipped with MySQL 8.4.9. Each implementation should match the target build availability.
 
 The `sys` schema name is exposed in the limited built-in schema catalog and can
-be selected with `USE sys`, but its tables and views remain unsupported unless
-listed otherwise below.
+be selected with `USE sys`. The MySQL 8.4.9 target runtime's `sys` table and
+view names are exposed as metadata-only rows through
+`INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
+`SHOW TABLE STATUS`, but the tables and views remain non-queryable and
+unsupported unless listed otherwise below.
 
 | Table | Status | Notes |
 | --- | --- | --- |

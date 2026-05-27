@@ -1716,6 +1716,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_information_schema_static_catalogs_test)
 
+  add_executable(mylite_runtime_builtin_schema_table_directory_test
+    tests/runtime_builtin_schema_table_directory_test.c
+  )
+  target_link_libraries(mylite_runtime_builtin_schema_table_directory_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_builtin_schema_table_directory_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_builtin_schema_table_directory_test)
+
   add_executable(mylite_runtime_show_plugins_metadata_test
     tests/runtime_show_plugins_metadata_test.c
   )
@@ -4623,6 +4634,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.information_schema_static_catalogs
     COMMAND mylite_runtime_information_schema_static_catalogs_test
+  )
+  add_test(
+    NAME libmylite.runtime.builtin_schema_table_directory
+    COMMAND mylite_runtime_builtin_schema_table_directory_test
   )
   add_test(
     NAME libmylite.runtime.show_plugins_metadata

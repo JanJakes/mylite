@@ -4180,6 +4180,11 @@ struct show_tables_filter_nodes {
     const struct mylite_sql_ast_node *where;
 };
 
+struct show_schema_resolution {
+    struct mylite_catalog_schema_descriptor schema;
+    const struct builtin_schema_table_directory *builtin_directory;
+};
+
 struct table_status_values {
     char row_count_text[integer_text_capacity];
     char average_row_length_text[integer_text_capacity];
@@ -4313,6 +4318,12 @@ struct builtin_schema_descriptor {
     const char *name;
     const char *default_charset;
     const char *default_collation;
+};
+
+struct builtin_schema_table_directory {
+    const char *schema_name;
+    const char *const *table_names;
+    size_t table_count;
 };
 
 struct information_schema_row_set {
@@ -7856,6 +7867,366 @@ static const struct builtin_schema_descriptor builtin_schema_descriptors[] = {
     {"sys", "utf8mb4", "utf8mb4_0900_ai_ci"},
 };
 
+static const char *const builtin_information_schema_table_names[] = {
+    "ADMINISTRABLE_ROLE_AUTHORIZATIONS",
+    "APPLICABLE_ROLES",
+    "CHARACTER_SETS",
+    "CHECK_CONSTRAINTS",
+    "COLLATIONS",
+    "COLLATION_CHARACTER_SET_APPLICABILITY",
+    "COLUMNS",
+    "COLUMNS_EXTENSIONS",
+    "COLUMN_PRIVILEGES",
+    "COLUMN_STATISTICS",
+    "ENABLED_ROLES",
+    "ENGINES",
+    "EVENTS",
+    "FILES",
+    "INNODB_BUFFER_PAGE",
+    "INNODB_BUFFER_PAGE_LRU",
+    "INNODB_BUFFER_POOL_STATS",
+    "INNODB_CACHED_INDEXES",
+    "INNODB_CMP",
+    "INNODB_CMPMEM",
+    "INNODB_CMPMEM_RESET",
+    "INNODB_CMP_PER_INDEX",
+    "INNODB_CMP_PER_INDEX_RESET",
+    "INNODB_CMP_RESET",
+    "INNODB_COLUMNS",
+    "INNODB_DATAFILES",
+    "INNODB_FIELDS",
+    "INNODB_FOREIGN",
+    "INNODB_FOREIGN_COLS",
+    "INNODB_FT_BEING_DELETED",
+    "INNODB_FT_CONFIG",
+    "INNODB_FT_DEFAULT_STOPWORD",
+    "INNODB_FT_DELETED",
+    "INNODB_FT_INDEX_CACHE",
+    "INNODB_FT_INDEX_TABLE",
+    "INNODB_INDEXES",
+    "INNODB_METRICS",
+    "INNODB_SESSION_TEMP_TABLESPACES",
+    "INNODB_TABLES",
+    "INNODB_TABLESPACES",
+    "INNODB_TABLESPACES_BRIEF",
+    "INNODB_TABLESTATS",
+    "INNODB_TEMP_TABLE_INFO",
+    "INNODB_TRX",
+    "INNODB_VIRTUAL",
+    "KEYWORDS",
+    "KEY_COLUMN_USAGE",
+    "OPTIMIZER_TRACE",
+    "PARAMETERS",
+    "PARTITIONS",
+    "PLUGINS",
+    "PROCESSLIST",
+    "PROFILING",
+    "REFERENTIAL_CONSTRAINTS",
+    "RESOURCE_GROUPS",
+    "ROLE_COLUMN_GRANTS",
+    "ROLE_ROUTINE_GRANTS",
+    "ROLE_TABLE_GRANTS",
+    "ROUTINES",
+    "SCHEMATA",
+    "SCHEMATA_EXTENSIONS",
+    "SCHEMA_PRIVILEGES",
+    "STATISTICS",
+    "ST_GEOMETRY_COLUMNS",
+    "ST_SPATIAL_REFERENCE_SYSTEMS",
+    "ST_UNITS_OF_MEASURE",
+    "TABLES",
+    "TABLESPACES_EXTENSIONS",
+    "TABLES_EXTENSIONS",
+    "TABLE_CONSTRAINTS",
+    "TABLE_CONSTRAINTS_EXTENSIONS",
+    "TABLE_PRIVILEGES",
+    "TRIGGERS",
+    "USER_ATTRIBUTES",
+    "USER_PRIVILEGES",
+    "VIEWS",
+    "VIEW_ROUTINE_USAGE",
+    "VIEW_TABLE_USAGE",
+};
+
+static const char *const builtin_mysql_table_names[] = {
+    "columns_priv",
+    "component",
+    "db",
+    "default_roles",
+    "engine_cost",
+    "func",
+    "general_log",
+    "global_grants",
+    "gtid_executed",
+    "help_category",
+    "help_keyword",
+    "help_relation",
+    "help_topic",
+    "innodb_index_stats",
+    "innodb_table_stats",
+    "ndb_binlog_index",
+    "password_history",
+    "plugin",
+    "procs_priv",
+    "proxies_priv",
+    "replication_asynchronous_connection_failover",
+    "replication_asynchronous_connection_failover_managed",
+    "replication_group_configuration_version",
+    "replication_group_member_actions",
+    "role_edges",
+    "server_cost",
+    "servers",
+    "slave_master_info",
+    "slave_relay_log_info",
+    "slave_worker_info",
+    "slow_log",
+    "tables_priv",
+    "time_zone",
+    "time_zone_leap_second",
+    "time_zone_name",
+    "time_zone_transition",
+    "time_zone_transition_type",
+    "user",
+};
+
+static const char *const builtin_performance_schema_table_names[] = {
+    "accounts",
+    "binary_log_transaction_compression_stats",
+    "cond_instances",
+    "data_lock_waits",
+    "data_locks",
+    "error_log",
+    "events_errors_summary_by_account_by_error",
+    "events_errors_summary_by_host_by_error",
+    "events_errors_summary_by_thread_by_error",
+    "events_errors_summary_by_user_by_error",
+    "events_errors_summary_global_by_error",
+    "events_stages_current",
+    "events_stages_history",
+    "events_stages_history_long",
+    "events_stages_summary_by_account_by_event_name",
+    "events_stages_summary_by_host_by_event_name",
+    "events_stages_summary_by_thread_by_event_name",
+    "events_stages_summary_by_user_by_event_name",
+    "events_stages_summary_global_by_event_name",
+    "events_statements_current",
+    "events_statements_histogram_by_digest",
+    "events_statements_histogram_global",
+    "events_statements_history",
+    "events_statements_history_long",
+    "events_statements_summary_by_account_by_event_name",
+    "events_statements_summary_by_digest",
+    "events_statements_summary_by_host_by_event_name",
+    "events_statements_summary_by_program",
+    "events_statements_summary_by_thread_by_event_name",
+    "events_statements_summary_by_user_by_event_name",
+    "events_statements_summary_global_by_event_name",
+    "events_transactions_current",
+    "events_transactions_history",
+    "events_transactions_history_long",
+    "events_transactions_summary_by_account_by_event_name",
+    "events_transactions_summary_by_host_by_event_name",
+    "events_transactions_summary_by_thread_by_event_name",
+    "events_transactions_summary_by_user_by_event_name",
+    "events_transactions_summary_global_by_event_name",
+    "events_waits_current",
+    "events_waits_history",
+    "events_waits_history_long",
+    "events_waits_summary_by_account_by_event_name",
+    "events_waits_summary_by_host_by_event_name",
+    "events_waits_summary_by_instance",
+    "events_waits_summary_by_thread_by_event_name",
+    "events_waits_summary_by_user_by_event_name",
+    "events_waits_summary_global_by_event_name",
+    "file_instances",
+    "file_summary_by_event_name",
+    "file_summary_by_instance",
+    "global_status",
+    "global_variables",
+    "host_cache",
+    "hosts",
+    "innodb_redo_log_files",
+    "keyring_component_status",
+    "keyring_keys",
+    "log_status",
+    "memory_summary_by_account_by_event_name",
+    "memory_summary_by_host_by_event_name",
+    "memory_summary_by_thread_by_event_name",
+    "memory_summary_by_user_by_event_name",
+    "memory_summary_global_by_event_name",
+    "metadata_locks",
+    "mutex_instances",
+    "objects_summary_global_by_type",
+    "performance_timers",
+    "persisted_variables",
+    "prepared_statements_instances",
+    "processlist",
+    "replication_applier_configuration",
+    "replication_applier_filters",
+    "replication_applier_global_filters",
+    "replication_applier_status",
+    "replication_applier_status_by_coordinator",
+    "replication_applier_status_by_worker",
+    "replication_asynchronous_connection_failover",
+    "replication_asynchronous_connection_failover_managed",
+    "replication_connection_configuration",
+    "replication_connection_status",
+    "replication_group_member_stats",
+    "replication_group_members",
+    "rwlock_instances",
+    "session_account_connect_attrs",
+    "session_connect_attrs",
+    "session_status",
+    "session_variables",
+    "setup_actors",
+    "setup_consumers",
+    "setup_instruments",
+    "setup_loggers",
+    "setup_meters",
+    "setup_metrics",
+    "setup_objects",
+    "setup_threads",
+    "socket_instances",
+    "socket_summary_by_event_name",
+    "socket_summary_by_instance",
+    "status_by_account",
+    "status_by_host",
+    "status_by_thread",
+    "status_by_user",
+    "table_handles",
+    "table_io_waits_summary_by_index_usage",
+    "table_io_waits_summary_by_table",
+    "table_lock_waits_summary_by_table",
+    "threads",
+    "tls_channel_status",
+    "user_defined_functions",
+    "user_variables_by_thread",
+    "users",
+    "variables_by_thread",
+    "variables_info",
+};
+
+static const char *const builtin_sys_table_names[] = {
+    "host_summary",
+    "host_summary_by_file_io",
+    "host_summary_by_file_io_type",
+    "host_summary_by_stages",
+    "host_summary_by_statement_latency",
+    "host_summary_by_statement_type",
+    "innodb_buffer_stats_by_schema",
+    "innodb_buffer_stats_by_table",
+    "innodb_lock_waits",
+    "io_by_thread_by_latency",
+    "io_global_by_file_by_bytes",
+    "io_global_by_file_by_latency",
+    "io_global_by_wait_by_bytes",
+    "io_global_by_wait_by_latency",
+    "latest_file_io",
+    "memory_by_host_by_current_bytes",
+    "memory_by_thread_by_current_bytes",
+    "memory_by_user_by_current_bytes",
+    "memory_global_by_current_bytes",
+    "memory_global_total",
+    "metrics",
+    "processlist",
+    "ps_check_lost_instrumentation",
+    "schema_auto_increment_columns",
+    "schema_index_statistics",
+    "schema_object_overview",
+    "schema_redundant_indexes",
+    "schema_table_lock_waits",
+    "schema_table_statistics",
+    "schema_table_statistics_with_buffer",
+    "schema_tables_with_full_table_scans",
+    "schema_unused_indexes",
+    "session",
+    "session_ssl_status",
+    "statement_analysis",
+    "statements_with_errors_or_warnings",
+    "statements_with_full_table_scans",
+    "statements_with_runtimes_in_95th_percentile",
+    "statements_with_sorting",
+    "statements_with_temp_tables",
+    "sys_config",
+    "user_summary",
+    "user_summary_by_file_io",
+    "user_summary_by_file_io_type",
+    "user_summary_by_stages",
+    "user_summary_by_statement_latency",
+    "user_summary_by_statement_type",
+    "version",
+    "wait_classes_global_by_avg_latency",
+    "wait_classes_global_by_latency",
+    "waits_by_host_by_latency",
+    "waits_by_user_by_latency",
+    "waits_global_by_latency",
+    "x$host_summary",
+    "x$host_summary_by_file_io",
+    "x$host_summary_by_file_io_type",
+    "x$host_summary_by_stages",
+    "x$host_summary_by_statement_latency",
+    "x$host_summary_by_statement_type",
+    "x$innodb_buffer_stats_by_schema",
+    "x$innodb_buffer_stats_by_table",
+    "x$innodb_lock_waits",
+    "x$io_by_thread_by_latency",
+    "x$io_global_by_file_by_bytes",
+    "x$io_global_by_file_by_latency",
+    "x$io_global_by_wait_by_bytes",
+    "x$io_global_by_wait_by_latency",
+    "x$latest_file_io",
+    "x$memory_by_host_by_current_bytes",
+    "x$memory_by_thread_by_current_bytes",
+    "x$memory_by_user_by_current_bytes",
+    "x$memory_global_by_current_bytes",
+    "x$memory_global_total",
+    "x$processlist",
+    "x$ps_digest_95th_percentile_by_avg_us",
+    "x$ps_digest_avg_latency_distribution",
+    "x$ps_schema_table_statistics_io",
+    "x$schema_flattened_keys",
+    "x$schema_index_statistics",
+    "x$schema_table_lock_waits",
+    "x$schema_table_statistics",
+    "x$schema_table_statistics_with_buffer",
+    "x$schema_tables_with_full_table_scans",
+    "x$session",
+    "x$statement_analysis",
+    "x$statements_with_errors_or_warnings",
+    "x$statements_with_full_table_scans",
+    "x$statements_with_runtimes_in_95th_percentile",
+    "x$statements_with_sorting",
+    "x$statements_with_temp_tables",
+    "x$user_summary",
+    "x$user_summary_by_file_io",
+    "x$user_summary_by_file_io_type",
+    "x$user_summary_by_stages",
+    "x$user_summary_by_statement_latency",
+    "x$user_summary_by_statement_type",
+    "x$wait_classes_global_by_avg_latency",
+    "x$wait_classes_global_by_latency",
+    "x$waits_by_host_by_latency",
+    "x$waits_by_user_by_latency",
+    "x$waits_global_by_latency",
+};
+
+static const struct builtin_schema_table_directory builtin_schema_table_directories[] = {
+    {"information_schema",
+     builtin_information_schema_table_names,
+     sizeof(builtin_information_schema_table_names) /
+         sizeof(builtin_information_schema_table_names[0])},
+    {"mysql",
+     builtin_mysql_table_names,
+     sizeof(builtin_mysql_table_names) / sizeof(builtin_mysql_table_names[0])},
+    {"performance_schema",
+     builtin_performance_schema_table_names,
+     sizeof(builtin_performance_schema_table_names) /
+         sizeof(builtin_performance_schema_table_names[0])},
+    {"sys",
+     builtin_sys_table_names,
+     sizeof(builtin_sys_table_names) / sizeof(builtin_sys_table_names[0])},
+};
+
 struct show_database_name {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
@@ -10406,6 +10777,51 @@ static int append_information_schema_partitions_system_rows(
 static int append_information_schema_tables_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
+);
+static int append_information_schema_builtin_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const struct builtin_schema_table_directory *find_builtin_schema_table_directory(
+    const char *schema_name
+);
+static const char *builtin_schema_table_type(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_engine(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_version(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_row_format(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_rows(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_data_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_collation(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_create_options(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_comment(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
 );
 static int append_information_schema_tables_base_row(
     struct mylite_db *database,
@@ -27324,6 +27740,21 @@ static int append_show_tables_result_columns(
     const char *column_name,
     bool is_full
 );
+static int resolve_show_statement_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *schema_node,
+    struct show_schema_resolution *out_resolution
+);
+static int resolve_show_statement_selected_schema(
+    struct mylite_db *database,
+    struct show_schema_resolution *out_resolution
+);
+static int resolve_show_statement_explicit_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *schema_node,
+    struct show_schema_resolution *out_resolution
+);
+static const char *show_schema_resolution_name(const struct show_schema_resolution *resolution);
 static int resolve_show_tables_filter_nodes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -27422,9 +27853,31 @@ static int decode_show_tables_where_string_literal(
     char **out_text
 );
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
+static int append_show_builtin_schema_tables(
+    const struct builtin_schema_table_directory *directory,
+    struct show_tables_context *context
+);
+static int append_show_builtin_table(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name,
+    struct show_tables_context *context
+);
 static int append_show_table_status(
     const struct mylite_catalog_table_descriptor *table,
     void *user_data
+);
+static int append_show_builtin_schema_table_status(
+    const struct builtin_schema_table_directory *directory,
+    struct show_table_status_context *context
+);
+static int append_show_builtin_table_status(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name,
+    struct show_table_status_context *context
+);
+static int format_builtin_table_status_timestamp(
+    struct mylite_db *database,
+    struct table_status_values *status
 );
 static int validate_show_table_status_where_clause(
     struct mylite_db *database,
@@ -45081,39 +45534,296 @@ static int append_information_schema_tables_system_rows(
     int rc = MYLITE_OK;
 
     for (size_t table_index = 0U;
-         rc == MYLITE_OK && table_index < sizeof(information_schema_table_definitions) /
-                                              sizeof(information_schema_table_definitions[0]);
+         rc == MYLITE_OK && table_index < sizeof(builtin_schema_table_directories) /
+                                              sizeof(builtin_schema_table_directories[0]);
          ++table_index) {
-        const struct information_schema_table_definition *definition =
-            &information_schema_table_definitions[table_index];
-        const char *values[information_schema_tables_column_count] = {
-            "def",
-            "information_schema",
-            definition->name,
-            "SYSTEM VIEW",
-            NULL,
-            "10",
-            NULL,
-            "0",
-            "0",
-            "0",
-            "0",
-            "0",
-            "0",
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            "",
-            "",
-        };
+        const struct builtin_schema_table_directory *directory =
+            &builtin_schema_table_directories[table_index];
 
-        rc = append_information_schema_row(database, rows, values);
+        for (size_t name_index = 0U; rc == MYLITE_OK && name_index < directory->table_count;
+             ++name_index) {
+            rc = append_information_schema_builtin_table_row(
+                database,
+                rows,
+                directory,
+                directory->table_names[name_index]
+            );
+        }
     }
 
     return rc;
+}
+
+static int append_information_schema_builtin_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    struct table_status_values status = {0};
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+    int rc = format_builtin_table_status_timestamp(database, &status);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    const char *values[information_schema_tables_column_count] = {
+        "def",
+        directory->schema_name,
+        table_name,
+        table_type,
+        builtin_schema_table_engine(directory, table_name),
+        builtin_schema_table_version(directory, table_name),
+        builtin_schema_table_row_format(directory, table_name),
+        builtin_schema_table_rows(directory, table_name),
+        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        builtin_schema_table_data_length(directory, table_name),
+        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        "0",
+        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        NULL,
+        status.create_time,
+        NULL,
+        NULL,
+        builtin_schema_table_collation(directory, table_name),
+        NULL,
+        builtin_schema_table_create_options(directory, table_name),
+        builtin_schema_table_comment(directory, table_name),
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static const struct builtin_schema_table_directory *find_builtin_schema_table_directory(
+    const char *schema_name
+) {
+    if (schema_name == NULL) {
+        return NULL;
+    }
+    if (schema_name_is_information_schema(schema_name)) {
+        return &builtin_schema_table_directories[0];
+    }
+
+    for (size_t index = 0U; index < sizeof(builtin_schema_table_directories) /
+                                        sizeof(builtin_schema_table_directories[0]);
+         ++index) {
+        if (strcmp(schema_name, builtin_schema_table_directories[index].schema_name) == 0) {
+            return &builtin_schema_table_directories[index];
+        }
+    }
+    return NULL;
+}
+
+static const char *builtin_schema_table_type(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    if (directory == NULL || table_name == NULL) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "information_schema") == 0) {
+        return "SYSTEM VIEW";
+    }
+    if (strcmp(directory->schema_name, "sys") == 0 && strcmp(table_name, "sys_config") != 0) {
+        return "VIEW";
+    }
+    return "BASE TABLE";
+}
+
+static const char *builtin_schema_table_engine(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    if (directory == NULL || table_name == NULL) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "information_schema") == 0) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "sys") == 0) {
+        return strcmp(table_name, "sys_config") == 0 ? "InnoDB" : NULL;
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0) {
+        return "PERFORMANCE_SCHEMA";
+    }
+    if (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0) {
+        return "CSV";
+    }
+    return "InnoDB";
+}
+
+static const char *builtin_schema_table_version(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0) {
+        return NULL;
+    }
+    return "10";
+}
+
+static const char *builtin_schema_table_row_format(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    if (directory == NULL || table_name == NULL) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "information_schema") == 0) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "sys") == 0) {
+        return strcmp(table_name, "sys_config") == 0 ? "Dynamic" : NULL;
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0) {
+        if (strcmp(table_name, "accounts") == 0 ||
+            strcmp(table_name, "events_statements_histogram_global") == 0 ||
+            strcmp(table_name, "hosts") == 0 || strcmp(table_name, "performance_timers") == 0 ||
+            strcmp(table_name, "replication_applier_status") == 0 ||
+            strcmp(table_name, "replication_asynchronous_connection_failover") == 0 ||
+            strcmp(table_name, "replication_group_members") == 0 ||
+            strcmp(table_name, "setup_actors") == 0 || strcmp(table_name, "users") == 0) {
+            return "Fixed";
+        }
+    }
+    return "Dynamic";
+}
+
+static const char *builtin_schema_table_rows(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "mysql") == 0) {
+        if (strcmp(table_name, "user") == 0) {
+            return "5";
+        }
+        if (strcmp(table_name, "db") == 0 || strcmp(table_name, "tables_priv") == 0) {
+            return "2";
+        }
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "setup_actors") == 0) {
+        return "128";
+    }
+    if (strcmp(directory->schema_name, "sys") == 0 && strcmp(table_name, "sys_config") == 0) {
+        return "6";
+    }
+    return "0";
+}
+
+static const char *builtin_schema_table_data_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "mysql") == 0 &&
+        (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0)) {
+        return "0";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 ||
+        strcmp(directory->schema_name, "information_schema") == 0) {
+        return "0";
+    }
+    return "16384";
+}
+
+static const char *builtin_schema_table_collation(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0 ||
+        strcmp(directory->schema_name, "information_schema") == 0) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "sys") == 0) {
+        return "utf8mb4_0900_ai_ci";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0) {
+        if (strcmp(table_name, "keyring_keys") == 0 ||
+            strcmp(table_name, "session_account_connect_attrs") == 0 ||
+            strcmp(table_name, "session_connect_attrs") == 0) {
+            return "utf8mb4_bin";
+        }
+        return "utf8mb4_0900_ai_ci";
+    }
+    if (strcmp(table_name, "ndb_binlog_index") == 0) {
+        return "latin1_swedish_ci";
+    }
+    if (strcmp(table_name, "gtid_executed") == 0 ||
+        strcmp(table_name, "replication_group_configuration_version") == 0 ||
+        strcmp(table_name, "replication_group_member_actions") == 0) {
+        return "utf8mb4_0900_ai_ci";
+    }
+    if (strcmp(table_name, "columns_priv") == 0 || strcmp(table_name, "db") == 0 ||
+        strcmp(table_name, "default_roles") == 0 || strcmp(table_name, "func") == 0 ||
+        strcmp(table_name, "global_grants") == 0 || strcmp(table_name, "innodb_index_stats") == 0 ||
+        strcmp(table_name, "innodb_table_stats") == 0 ||
+        strcmp(table_name, "password_history") == 0 || strcmp(table_name, "procs_priv") == 0 ||
+        strcmp(table_name, "proxies_priv") == 0 || strcmp(table_name, "role_edges") == 0 ||
+        strcmp(table_name, "tables_priv") == 0 || strcmp(table_name, "user") == 0) {
+        return "utf8mb3_bin";
+    }
+    return "utf8mb3_general_ci";
+}
+
+static const char *builtin_schema_table_create_options(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    if (directory == NULL || table_name == NULL) {
+        return NULL;
+    }
+    if (strcmp(directory->schema_name, "mysql") == 0) {
+        if (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0) {
+            return "";
+        }
+        if (strcmp(table_name, "component") == 0) {
+            return "row_format=DYNAMIC";
+        }
+        return "row_format=DYNAMIC stats_persistent=0";
+    }
+    return strcmp(builtin_schema_table_type(directory, table_name), "VIEW") == 0 ? NULL : "";
+}
+
+static const char *builtin_schema_table_comment(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    if (directory == NULL || table_name == NULL) {
+        return NULL;
+    }
+    if (strcmp(builtin_schema_table_type(directory, table_name), "VIEW") == 0) {
+        return "VIEW";
+    }
+    if (strcmp(directory->schema_name, "mysql") == 0) {
+        if (strcmp(table_name, "user") == 0) {
+            return "Users and global privileges";
+        }
+        if (strcmp(table_name, "db") == 0) {
+            return "Database privileges";
+        }
+        if (strcmp(table_name, "tables_priv") == 0) {
+            return "Table privileges";
+        }
+        if (strcmp(table_name, "columns_priv") == 0) {
+            return "Column privileges";
+        }
+    }
+    return "";
 }
 
 static int append_information_schema_tables_base_row(
@@ -49963,7 +50673,7 @@ static int execute_show_tables_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    struct mylite_catalog_schema_descriptor schema = {0};
+    struct show_schema_resolution schema_resolution = {0};
     struct show_tables_filter_nodes nodes = {0};
     struct show_like_filter filter = {
         .has_pattern = false,
@@ -49977,19 +50687,8 @@ static int execute_show_tables_statement(
     int rc = MYLITE_OK;
 
     rc = resolve_show_tables_filter_nodes(database, statement, &nodes);
-    if (rc == MYLITE_OK && nodes.schema == NULL) {
-        rc = resolve_selected_schema(database, &schema);
-    } else if (rc == MYLITE_OK) {
-        char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-
-        rc = copy_identifier_text(nodes.schema, schema_name, sizeof(schema_name), database);
-        if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
-            set_reserved_name_error(database, "database", schema_name);
-            rc = MYLITE_ERROR;
-        }
-        if (rc == MYLITE_OK) {
-            rc = resolve_schema_name(database, schema_name, &schema);
-        }
+    if (rc == MYLITE_OK) {
+        rc = resolve_show_statement_schema(database, nodes.schema, &schema_resolution);
     }
     if (rc == MYLITE_OK) {
         rc = make_show_like_filter(database, nodes.like, &filter);
@@ -50001,7 +50700,11 @@ static int execute_show_tables_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = build_show_tables_column_name(schema.name, &filter, &column_name);
+        rc = build_show_tables_column_name(
+            show_schema_resolution_name(&schema_resolution),
+            &filter,
+            &column_name
+        );
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
             rc = MYLITE_ERROR;
@@ -50020,12 +50723,16 @@ static int execute_show_tables_statement(
         context.where_clause = nodes.where;
         context.table_name_column = column_name;
         context.is_full = is_full;
-        rc = mylite_catalog_for_each_table_in_schema(
-            database,
-            schema.schema_id,
-            append_show_table,
-            &context
-        );
+        if (schema_resolution.builtin_directory != NULL) {
+            rc = append_show_builtin_schema_tables(schema_resolution.builtin_directory, &context);
+        } else {
+            rc = mylite_catalog_for_each_table_in_schema(
+                database,
+                schema_resolution.schema.schema_id,
+                append_show_table,
+                &context
+            );
+        }
         if (rc != MYLITE_OK &&
             mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW TABLES result");
@@ -50041,6 +50748,64 @@ static int execute_show_tables_statement(
     free(column_name);
     show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
+}
+
+static int resolve_show_statement_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *schema_node,
+    struct show_schema_resolution *out_resolution
+) {
+    *out_resolution = (struct show_schema_resolution){0};
+    if (schema_node == NULL) {
+        return resolve_show_statement_selected_schema(database, out_resolution);
+    }
+    return resolve_show_statement_explicit_schema(database, schema_node, out_resolution);
+}
+
+static int resolve_show_statement_selected_schema(
+    struct mylite_db *database,
+    struct show_schema_resolution *out_resolution
+) {
+    if (database == NULL || !database->session.has_selected_schema) {
+        set_no_database_error(database);
+        return MYLITE_ERROR;
+    }
+
+    out_resolution->builtin_directory =
+        find_builtin_schema_table_directory(database->session.selected_schema);
+    if (out_resolution->builtin_directory != NULL) {
+        return MYLITE_OK;
+    }
+    return resolve_selected_schema(database, &out_resolution->schema);
+}
+
+static int resolve_show_statement_explicit_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *schema_node,
+    struct show_schema_resolution *out_resolution
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = copy_identifier_text(schema_node, schema_name, sizeof(schema_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_catalog_name_is_reserved(schema_name)) {
+        set_reserved_name_error(database, "database", schema_name);
+        return MYLITE_ERROR;
+    }
+
+    out_resolution->builtin_directory = find_builtin_schema_table_directory(schema_name);
+    if (out_resolution->builtin_directory != NULL) {
+        return MYLITE_OK;
+    }
+    return resolve_schema_name(database, schema_name, &out_resolution->schema);
+}
+
+static const char *show_schema_resolution_name(const struct show_schema_resolution *resolution) {
+    if (resolution->builtin_directory != NULL) {
+        return resolution->builtin_directory->schema_name;
+    }
+    return resolution->schema.name;
 }
 
 static int append_show_tables_result_columns(
@@ -50102,7 +50867,7 @@ static int execute_show_table_status_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    struct mylite_catalog_schema_descriptor schema = {0};
+    struct show_schema_resolution schema_resolution = {0};
     struct show_table_status_filter_nodes nodes = {0};
     struct show_like_filter filter = {
         .has_pattern = false,
@@ -50114,19 +50879,8 @@ static int execute_show_table_status_statement(
     int rc = MYLITE_OK;
 
     rc = resolve_show_table_status_filter_nodes(database, statement, &nodes);
-    if (rc == MYLITE_OK && nodes.schema == NULL) {
-        rc = resolve_selected_schema(database, &schema);
-    } else if (rc == MYLITE_OK) {
-        char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-
-        rc = copy_identifier_text(nodes.schema, schema_name, sizeof(schema_name), database);
-        if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
-            set_reserved_name_error(database, "database", schema_name);
-            rc = MYLITE_ERROR;
-        }
-        if (rc == MYLITE_OK) {
-            rc = resolve_schema_name(database, schema_name, &schema);
-        }
+    if (rc == MYLITE_OK) {
+        rc = resolve_show_statement_schema(database, nodes.schema, &schema_resolution);
     }
     if (rc == MYLITE_OK) {
         rc = make_show_like_filter(database, nodes.like, &filter);
@@ -50153,12 +50907,19 @@ static int execute_show_table_status_statement(
         context.result = result;
         context.filter = &filter;
         context.where_clause = nodes.where;
-        rc = mylite_catalog_for_each_table_in_schema(
-            database,
-            schema.schema_id,
-            append_show_table_status,
-            &context
-        );
+        if (schema_resolution.builtin_directory != NULL) {
+            rc = append_show_builtin_schema_table_status(
+                schema_resolution.builtin_directory,
+                &context
+            );
+        } else {
+            rc = mylite_catalog_for_each_table_in_schema(
+                database,
+                schema_resolution.schema.schema_id,
+                append_show_table_status,
+                &context
+            );
+        }
         if (rc != MYLITE_OK &&
             mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW TABLE STATUS result");
@@ -171390,6 +172151,65 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
     return rc;
 }
 
+static int append_show_builtin_schema_tables(
+    const struct builtin_schema_table_directory *directory,
+    struct show_tables_context *context
+) {
+    int rc = MYLITE_OK;
+
+    if (directory == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < directory->table_count; ++index) {
+        rc = append_show_builtin_table(directory, directory->table_names[index], context);
+    }
+    return rc;
+}
+
+static int append_show_builtin_table(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name,
+    struct show_tables_context *context
+) {
+    const char *values[show_tables_result_column_count] = {NULL, NULL};
+    bool where_matches = true;
+    int rc = MYLITE_OK;
+
+    if (directory == NULL || table_name == NULL || context == NULL || context->database == NULL ||
+        context->result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!show_like_filter_matches(context->filter, table_name, true)) {
+        return MYLITE_OK;
+    }
+
+    values[0] = table_name;
+    if (context->is_full) {
+        values[1] = builtin_schema_table_type(directory, table_name);
+    }
+
+    if (context->where_clause != NULL) {
+        rc = show_tables_where_clause_matches(
+            context->database,
+            context->where_clause,
+            values,
+            context->table_name_column,
+            context->is_full,
+            &where_matches
+        );
+    }
+    if (rc == MYLITE_OK && !where_matches) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(context->result, values);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(context->database);
+    }
+    return rc;
+}
+
 static int validate_show_tables_where_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause,
@@ -172044,6 +172864,97 @@ static int append_show_table_status(
         set_nomem_error(context->database);
     }
     return rc;
+}
+
+static int append_show_builtin_schema_table_status(
+    const struct builtin_schema_table_directory *directory,
+    struct show_table_status_context *context
+) {
+    int rc = MYLITE_OK;
+
+    if (directory == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < directory->table_count; ++index) {
+        rc = append_show_builtin_table_status(directory, directory->table_names[index], context);
+    }
+    return rc;
+}
+
+static int append_show_builtin_table_status(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name,
+    struct show_table_status_context *context
+) {
+    struct table_status_values status = {0};
+    bool where_matches = true;
+    int rc = MYLITE_OK;
+
+    if (directory == NULL || table_name == NULL || context == NULL || context->database == NULL ||
+        context->result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!show_like_filter_matches(context->filter, table_name, true)) {
+        return MYLITE_OK;
+    }
+
+    rc = format_builtin_table_status_timestamp(context->database, &status);
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+    const char *values[show_table_status_result_column_count] = {
+        table_name,
+        builtin_schema_table_engine(directory, table_name),
+        builtin_schema_table_version(directory, table_name),
+        builtin_schema_table_row_format(directory, table_name),
+        builtin_schema_table_rows(directory, table_name),
+        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        builtin_schema_table_data_length(directory, table_name),
+        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        "0",
+        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        NULL,
+        status.create_time,
+        NULL,
+        NULL,
+        builtin_schema_table_collation(directory, table_name),
+        NULL,
+        builtin_schema_table_create_options(directory, table_name),
+        builtin_schema_table_comment(directory, table_name),
+    };
+
+    if (rc == MYLITE_OK && context->where_clause != NULL) {
+        rc = show_table_status_where_clause_matches(
+            context->database,
+            context->where_clause,
+            values,
+            &where_matches
+        );
+    }
+    if (rc == MYLITE_OK && !where_matches) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(context->result, values);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(context->database);
+    }
+    return rc;
+}
+
+static int format_builtin_table_status_timestamp(
+    struct mylite_db *database,
+    struct table_status_values *status
+) {
+    if (status == NULL) {
+        return MYLITE_MISUSE;
+    }
+    return format_table_status_timestamp(
+        database,
+        current_timestamp_epoch(database),
+        status->create_time_text,
+        sizeof(status->create_time_text),
+        &status->create_time
+    );
 }
 
 static int validate_show_table_status_where_clause(

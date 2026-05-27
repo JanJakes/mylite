@@ -25,7 +25,10 @@ This slice covers:
   through these built-in schema names in the supported DDL/DML subset.
 
 This slice does not implement the table catalogs inside `mysql`,
-`performance_schema`, or `sys`. It also does not expand `SHOW DATABASES WHERE`,
+`performance_schema`, or `sys`. The later
+`baseline-built-in-schema-table-directory` slice adds metadata-only table
+directory rows for built-in schemas, but unsupported system tables remain
+non-queryable. This slice also does not expand `SHOW DATABASES WHERE`,
 privilege filtering, full account semantics, complete charset/collation
 catalogs, table-status statistics, constraint metadata, or complex
 `INFORMATION_SCHEMA` joins.

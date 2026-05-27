@@ -101,6 +101,11 @@ static void date_interval_second_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void date_interval_update_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
 static int date_interval_second_sqlite_input_kind(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -118,6 +123,11 @@ static int date_interval_second_sqlite_result(
     enum mylite_date_interval_second_input_kind input_kind,
     const struct date_interval_second_sqlite_arguments *arguments
 );
+static int date_interval_update_sqlite_result(
+    sqlite3_context *context,
+    enum mylite_date_interval_second_input_kind input_kind,
+    const struct date_interval_second_sqlite_arguments *arguments
+);
 
 static int date_interval_second_result(
     struct mylite_db *database,
@@ -127,6 +137,16 @@ static int date_interval_second_result(
     enum mylite_date_interval_unit unit,
     bool subtract,
     const char *overflow_message,
+    char **out_text,
+    bool *out_is_null
+);
+static int date_interval_update_result(
+    struct mylite_db *database,
+    const struct date_interval_second_source *source,
+    int64_t interval_value,
+    bool interval_is_null,
+    enum mylite_date_interval_unit unit,
+    bool subtract,
     char **out_text,
     bool *out_is_null
 );
@@ -202,6 +222,15 @@ static int append_date_interval_second_incorrect_datetime_warning(
     size_t value_length
 );
 static int append_date_interval_second_overflow_warning(
+    struct mylite_db *database,
+    const char *message
+);
+static int set_date_interval_second_incorrect_datetime_error(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+);
+static void set_date_interval_second_overflow_error(
     struct mylite_db *database,
     const char *message
 );
@@ -496,6 +525,19 @@ int mylite_sqlite_register_date_interval_second_function(sqlite3 *sqlite) {
             .inverse_callback = NULL,
             .destroy_callback = NULL,
         },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_date_interval_update",
+            .argument_count = date_interval_second_sqlite_argument_count,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = date_interval_update_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
     };
 
     return mylite_sqlite_register_functions(
@@ -543,6 +585,48 @@ static void date_interval_second_sqlite_callback(
         return;
     }
     if (date_interval_second_sqlite_result(context, input_kind, &arguments) != MYLITE_OK) {
+        return;
+    }
+}
+
+static void date_interval_update_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    enum mylite_date_interval_second_input_kind input_kind =
+        MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING;
+    struct date_interval_second_sqlite_arguments arguments = {0};
+
+    if (context == NULL || argc != date_interval_second_sqlite_argument_count || argv == NULL ||
+        argv[date_interval_second_sqlite_temporal_argument] == NULL ||
+        argv[date_interval_second_sqlite_input_kind_argument] == NULL ||
+        argv[date_interval_second_sqlite_interval_argument] == NULL ||
+        argv[date_interval_second_sqlite_unit_argument] == NULL ||
+        argv[date_interval_second_sqlite_operation_argument] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite DATE interval update callback", -1);
+        return;
+    }
+    arguments = (struct date_interval_second_sqlite_arguments){
+        .temporal = argv[date_interval_second_sqlite_temporal_argument],
+        .interval = argv[date_interval_second_sqlite_interval_argument],
+        .unit = argv[date_interval_second_sqlite_unit_argument],
+        .operation = argv[date_interval_second_sqlite_operation_argument],
+    };
+    if (sqlite3_value_type(argv[date_interval_second_sqlite_input_kind_argument]) == SQLITE_NULL ||
+        sqlite3_value_type(arguments.unit) == SQLITE_NULL ||
+        sqlite3_value_type(arguments.operation) == SQLITE_NULL) {
+        sqlite3_result_error(context, "invalid MyLite DATE interval update discriminator", -1);
+        return;
+    }
+    if (date_interval_second_sqlite_input_kind(
+            context,
+            argv[date_interval_second_sqlite_input_kind_argument],
+            &input_kind
+        ) != MYLITE_OK) {
+        return;
+    }
+    if (date_interval_update_sqlite_result(context, input_kind, &arguments) != MYLITE_OK) {
         return;
     }
 }
@@ -660,6 +744,102 @@ static int date_interval_second_sqlite_result(
     return MYLITE_OK;
 }
 
+static int date_interval_update_sqlite_result(
+    sqlite3_context *context,
+    enum mylite_date_interval_second_input_kind input_kind,
+    const struct date_interval_second_sqlite_arguments *arguments
+) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+    enum mylite_date_interval_unit unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
+    const char *temporal_text = NULL;
+    size_t temporal_text_length = 0U;
+    bool temporal_is_null = false;
+    int64_t interval_seconds = 0;
+    bool interval_is_null = false;
+    bool result_is_null = false;
+    bool subtract = false;
+    char *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL) {
+        sqlite3_result_error(context, "invalid MyLite DATE interval update callback", -1);
+        return MYLITE_ERROR;
+    }
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite DATE interval update owner", -1);
+        return MYLITE_ERROR;
+    }
+    {
+        const unsigned char *unit_text = sqlite3_value_text(arguments->unit);
+        int unit_length = sqlite3_value_bytes(arguments->unit);
+
+        if (unit_text == NULL || unit_length < 0) {
+            sqlite3_result_error_nomem(context);
+            return MYLITE_NOMEM;
+        }
+        if (!mylite_date_interval_unit_from_name(
+                (const char *)unit_text,
+                (size_t)unit_length,
+                &unit
+            )) {
+            sqlite3_result_error(context, "invalid MyLite DATE interval update unit", -1);
+            return MYLITE_ERROR;
+        }
+    }
+    rc = date_interval_second_sqlite_value(
+        context,
+        arguments->temporal,
+        &temporal_text,
+        &temporal_text_length,
+        &temporal_is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (sqlite3_value_type(arguments->interval) == SQLITE_NULL) {
+        interval_is_null = true;
+    } else {
+        interval_seconds = (int64_t)sqlite3_value_int64(arguments->interval);
+    }
+    subtract = sqlite3_value_int64(arguments->operation) != 0;
+
+    rc = date_interval_update_result(
+        database,
+        &(struct date_interval_second_source){
+            .value = temporal_text,
+            .value_length = temporal_text_length,
+            .input_kind = input_kind,
+            .is_null = temporal_is_null,
+        },
+        interval_seconds,
+        interval_is_null,
+        unit,
+        subtract,
+        &result,
+        &result_is_null
+    );
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            sqlite3_result_error_nomem(context);
+        } else {
+            sqlite3_result_error(
+                context,
+                mylite_diagnostics_errmsg(mylite_connection_diagnostics(database)),
+                -1
+            );
+        }
+        free(result);
+        return rc;
+    }
+    if (result_is_null) {
+        sqlite3_result_null(context);
+    } else {
+        sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
+    }
+    free(result);
+    return MYLITE_OK;
+}
+
 static int date_interval_second_sqlite_value(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -744,6 +924,58 @@ static int date_interval_second_result(
             *out_is_null = true;
         }
         return rc;
+    }
+    result_has_time = (input_has_time || mylite_date_interval_unit_has_time_part(unit)) != 0;
+    return format_date_interval_second_result(database, &output, result_has_time, out_text);
+}
+
+static int date_interval_update_result(
+    struct mylite_db *database,
+    const struct date_interval_second_source *source,
+    int64_t interval_value,
+    bool interval_is_null,
+    enum mylite_date_interval_unit unit,
+    bool subtract,
+    char **out_text,
+    bool *out_is_null
+) {
+    struct date_interval_second_datetime input = {0};
+    struct date_interval_second_datetime output = {0};
+    bool input_has_time = false;
+    bool result_has_time = false;
+
+    if (out_text == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_null = false;
+    if (source == NULL || source->is_null || interval_is_null) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (!parse_date_interval_second_value(source, &input, &input_has_time)) {
+        return set_date_interval_second_incorrect_datetime_error(
+            database,
+            source->value,
+            source->value_length
+        );
+    }
+    if (subtract) {
+        if (interval_value == INT64_MIN) {
+            set_date_interval_second_overflow_error(
+                database,
+                "Datetime function: datetime field overflow"
+            );
+            return MYLITE_ERROR;
+        }
+        interval_value = -interval_value;
+    }
+    if (!date_interval_unit_add(&input, interval_value, unit, &output)) {
+        set_date_interval_second_overflow_error(
+            database,
+            "Datetime function: datetime field overflow"
+        );
+        return MYLITE_ERROR;
     }
     result_has_time = (input_has_time || mylite_date_interval_unit_has_time_part(unit)) != 0;
     return format_date_interval_second_result(database, &output, result_has_time, out_text);
@@ -1342,4 +1574,42 @@ static int append_date_interval_second_overflow_warning(
         );
     }
     return rc;
+}
+
+static int set_date_interval_second_incorrect_datetime_error(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect datetime value: '%.*s'",
+        value_length > 200U ? 200 : (int)value_length,
+        value == NULL ? "" : value
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_warning_incorrect_datetime_value,
+        "22007",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static void set_date_interval_second_overflow_error(
+    struct mylite_db *database,
+    const char *message
+) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_warning_datetime_interval_overflow,
+        "22008",
+        message == NULL ? "Datetime function: datetime field overflow" : message
+    );
 }

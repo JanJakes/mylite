@@ -2919,6 +2919,30 @@ update_value(A) ::= sysdate_value(T). {
 update_value(A) ::= insert_unix_timestamp_value(B). {
     A = B;
 }
+update_value(A) ::=
+    DATE_ADD(T) LPAREN(L) arithmetic_update_source_column(C)
+    COMMA INTERVAL update_date_interval_interval(I) date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_DATE_ADD_FUNCTION, C, I, U, R);
+}
+update_value(A) ::=
+    DATE_SUB(T) LPAREN(L) arithmetic_update_source_column(C)
+    COMMA INTERVAL update_date_interval_interval(I) date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_DATE_SUB_FUNCTION, C, I, U, R);
+}
+update_value(A) ::=
+    ADDDATE(T) LPAREN(L) arithmetic_update_source_column(C)
+    COMMA INTERVAL update_date_interval_interval(I) date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_ADDDATE_FUNCTION, C, I, U, R);
+}
+update_value(A) ::=
+    SUBDATE(T) LPAREN(L) arithmetic_update_source_column(C)
+    COMMA INTERVAL update_date_interval_interval(I) date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_SUBDATE_FUNCTION, C, I, U, R);
+}
 update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
@@ -2948,6 +2972,26 @@ arithmetic_update_source_column(A) ::= IDENTIFIER(T). {
 }
 arithmetic_update_source_column(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+
+update_date_interval_interval(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+update_date_interval_interval(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_date_interval_interval(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_date_interval_interval(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+update_date_interval_interval(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 
 update_constant_arithmetic_value(A) ::= update_constant_arithmetic_expr(B). {

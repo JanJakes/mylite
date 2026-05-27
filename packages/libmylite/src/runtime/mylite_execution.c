@@ -2654,6 +2654,11 @@ struct generated_constraint_columns {
 enum planned_update_assignment_value_kind {
     PLANNED_UPDATE_ASSIGNMENT_VALUE = 0,
     PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC = 1,
+    PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL = 2,
+};
+
+enum {
+    update_date_interval_parameter_count = 4,
 };
 
 enum update_arithmetic_range_condition {
@@ -3606,6 +3611,11 @@ struct planned_update {
     const struct mylite_sql_ast_node *arithmetic_delta_node;
     uint64_t arithmetic_delta_magnitude;
     int64_t arithmetic_delta;
+    enum mylite_date_interval_second_input_kind date_interval_input_kind;
+    enum mylite_date_interval_unit date_interval_unit;
+    int64_t date_interval_value;
+    bool date_interval_is_null;
+    bool date_interval_subtract;
     bool assignment_value_is_scalar_subquery;
     struct planned_select assignment_subquery;
     struct planned_value assignment_value;
@@ -19172,6 +19182,17 @@ static int execute_update_from_plan(
     const struct planned_update *plan,
     mylite_result *result
 );
+static int read_limited_update_matched_row_state(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t *out_row_count,
+    bool *out_matches_any_row
+);
+static int validate_update_date_interval_matched_assignment(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    bool matches_any_row
+);
 static int read_update_matched_row_count(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -24092,12 +24113,45 @@ static int plan_update_scalar_subquery_assignment(
     struct mylite_db *database,
     struct planned_update *out_plan
 );
+static int plan_update_date_interval_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
 static int plan_update_arithmetic_assignment(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_update *out_plan
 );
+static int plan_update_date_interval_source_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor *assignment_column
+);
+static int plan_update_date_interval_target(
+    struct mylite_db *database,
+    struct planned_update *plan
+);
+static int update_date_interval_input_kind_for_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    enum mylite_date_interval_second_input_kind *out_kind
+);
+static bool update_date_interval_column_family_is_supported(
+    const struct mylite_catalog_column_descriptor *column
+);
+static int validate_update_date_interval_string_target(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static void set_update_date_interval_column_mismatch_error(struct mylite_db *database);
+static void set_update_date_interval_target_error(struct mylite_db *database);
+static void set_update_date_interval_date_time_unit_error(struct mylite_db *database);
+static void set_update_date_interval_keyed_target_error(struct mylite_db *database);
 static int update_value_is_constant_arithmetic_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -28649,6 +28703,10 @@ static int append_update_assignment_sql(
     struct dynamic_string *string,
     const struct planned_update *plan
 );
+static int append_update_date_interval_assignment_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+);
 static int append_update_multiple_assignments_sql(
     struct dynamic_string *string,
     const struct planned_update *plan
@@ -28722,6 +28780,16 @@ static int append_update_arithmetic_changed_condition_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
+);
+static int append_update_date_interval_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_date_interval_function_sql(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t first_parameter
 );
 static int validate_child_foreign_keys_after_write(
     struct mylite_db *database,
@@ -29631,6 +29699,11 @@ static int bind_update_assignment_parameter(
     int parameter_index,
     const struct planned_update *plan
 );
+static int bind_update_date_interval_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+);
 static int bind_update_auto_update_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
@@ -29656,6 +29729,7 @@ static int bind_planned_value_parameter(
     const struct planned_value *value
 );
 static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value);
+static int bind_text_parameter(sqlite3_stmt *statement, int parameter_index, const char *value);
 static int append_selected_sqlite_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -81210,18 +81284,18 @@ static int execute_update_from_plan(
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        rc = read_update_matched_row_count(database, plan, &matched_row_count);
-        if (rc == MYLITE_OK && plan->limit.has_limit && plan->limit.row_count >= 0) {
-            uint64_t limit_row_count = (uint64_t)plan->limit.row_count;
-
-            if (matched_row_count > limit_row_count) {
-                matched_row_count = limit_row_count;
-            }
-        }
-        matches_any_row = matched_row_count > 0U;
+        rc = read_limited_update_matched_row_state(
+            database,
+            plan,
+            &matched_row_count,
+            &matches_any_row
+        );
     }
     if (rc == MYLITE_OK) {
         rc = prepare_executable_update_plan(database, plan, matches_any_row, &executable_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_update_date_interval_matched_assignment(database, plan, matches_any_row);
     }
     if (rc == MYLITE_OK && matches_any_row) {
         rc = append_remaining_nonstrict_update_adjustment_warnings(
@@ -81270,6 +81344,57 @@ static int execute_update_from_plan(
 
     mylite_result_set_affected_rows(result, affected_rows);
 
+    return MYLITE_OK;
+}
+
+static int read_limited_update_matched_row_state(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t *out_row_count,
+    bool *out_matches_any_row
+) {
+    uint64_t matched_row_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_row_count == NULL || out_matches_any_row == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    *out_row_count = 0U;
+    *out_matches_any_row = false;
+
+    rc = read_update_matched_row_count(database, plan, &matched_row_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (plan->limit.has_limit && plan->limit.row_count >= 0) {
+        uint64_t limit_row_count = (uint64_t)plan->limit.row_count;
+
+        if (matched_row_count > limit_row_count) {
+            matched_row_count = limit_row_count;
+        }
+    }
+    *out_row_count = matched_row_count;
+    *out_matches_any_row = matched_row_count > 0U;
+    return MYLITE_OK;
+}
+
+static int validate_update_date_interval_matched_assignment(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    bool matches_any_row
+) {
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!matches_any_row ||
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        return MYLITE_OK;
+    }
+    if (plan->date_interval_is_null && !plan->assignment_column.is_nullable) {
+        set_bad_null_error(database, plan->assignment_column.name);
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 
@@ -81377,6 +81502,10 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
     int rc = MYLITE_OK;
 
     if (matched_row_count <= 1U) {
+        return MYLITE_OK;
+    }
+    if (!planned_update_has_multiple_assignments(plan) &&
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         return MYLITE_OK;
     }
     for (uint64_t row_index = 1U; rc == MYLITE_OK && row_index < matched_row_count; ++row_index) {
@@ -82418,6 +82547,8 @@ static int prepare_executable_update_plan(
         rc = prepare_update_multiple_assignments(database, plan, executable_plan);
     } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = prepare_update_arithmetic_assignment(database, plan, executable_plan);
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        rc = MYLITE_OK;
     } else {
         rc = convert_update_value(database, plan, &executable_plan->assignment_value);
     }
@@ -82425,6 +82556,7 @@ static int prepare_executable_update_plan(
         rc = make_current_timestamp_value(database, &executable_plan->auto_update_value);
     }
     if (rc == MYLITE_OK && !planned_update_has_multiple_assignments(plan) &&
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL &&
         plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = validate_update_string_key_value(database, executable_plan);
     }
@@ -168292,6 +168424,12 @@ static int plan_update_assignment(
         );
         return MYLITE_ERROR;
     }
+    rc =
+        plan_update_date_interval_assignment(database, table_columns, table_column_count, out_plan);
+    if (rc != MYLITE_OK ||
+        out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        return rc;
+    }
     rc = plan_update_arithmetic_assignment(database, table_columns, table_column_count, out_plan);
     if (rc != MYLITE_OK ||
         out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
@@ -168407,6 +168545,216 @@ static int plan_update_multiple_assignment(
     out_plan->assignments[assignment_index].value_node = value_node;
 
     return MYLITE_OK;
+}
+
+static int plan_update_date_interval_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
+    if (value_node == NULL || !is_date_interval_second_function_kind(value_node->kind) ||
+        value_node->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        return MYLITE_OK;
+    }
+
+    function_name = date_interval_second_function_name(value_node->kind);
+    rc = validate_date_interval_second_function_shape(database, value_node, function_name);
+    if (rc == MYLITE_OK) {
+        rc = plan_update_date_interval_source_column(
+            database,
+            date_interval_second_temporal_node(value_node),
+            table_columns,
+            table_column_count,
+            &out_plan->assignment_column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = date_interval_unit_from_ast(
+            database,
+            date_interval_unit_node(value_node),
+            function_name,
+            &out_plan->date_interval_unit
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = date_interval_second_interval_argument(
+            database,
+            function_name,
+            date_interval_second_interval_node(value_node),
+            out_plan->date_interval_unit,
+            &out_plan->date_interval_value,
+            &out_plan->date_interval_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_update_date_interval_target(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL;
+        out_plan->date_interval_subtract =
+            date_interval_second_function_subtracts(value_node->kind);
+    }
+    return rc;
+}
+
+static int plan_update_date_interval_source_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor *assignment_column
+) {
+    char source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    source_node = unwrap_parenthesized_expression(source_node);
+    if (source_node == NULL || source_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_update_date_interval_column_mismatch_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(source_node, source_name, sizeof(source_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, source_name, &source_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, source_name);
+        return MYLITE_ERROR;
+    }
+    if (assignment_column == NULL ||
+        table_columns[source_index].column_id != assignment_column->column_id) {
+        set_update_date_interval_column_mismatch_error(database);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_update_date_interval_target(
+    struct mylite_db *database,
+    struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (update_assignment_column_is_keyed(plan)) {
+        set_update_date_interval_keyed_target_error(database);
+        return MYLITE_ERROR;
+    }
+    if (!update_date_interval_column_family_is_supported(&plan->assignment_column)) {
+        set_update_date_interval_target_error(database);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_date(&plan->assignment_column) &&
+        mylite_date_interval_unit_has_time_part(plan->date_interval_unit)) {
+        set_update_date_interval_date_time_unit_error(database);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_char(&plan->assignment_column) ||
+        column_descriptor_is_varchar(&plan->assignment_column)) {
+        rc = validate_update_date_interval_string_target(database, &plan->assignment_column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = update_date_interval_input_kind_for_column(
+            database,
+            &plan->assignment_column,
+            &plan->date_interval_input_kind
+        );
+    }
+    return rc;
+}
+
+static int update_date_interval_input_kind_for_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    enum mylite_date_interval_second_input_kind *out_kind
+) {
+    if (out_kind == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_kind = MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING;
+    if (column_descriptor_is_date(column)) {
+        *out_kind = MYLITE_DATE_INTERVAL_SECOND_INPUT_DATE;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_datetime(column)) {
+        *out_kind = MYLITE_DATE_INTERVAL_SECOND_INPUT_DATETIME;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_string_family(column)) {
+        *out_kind = MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING;
+        return MYLITE_OK;
+    }
+    set_update_date_interval_target_error(database);
+    return MYLITE_ERROR;
+}
+
+static bool update_date_interval_column_family_is_supported(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return (column_descriptor_is_date(column) || column_descriptor_is_datetime(column) ||
+            column_descriptor_is_string_family(column)) != 0;
+}
+
+static int validate_update_date_interval_string_target(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    size_t declared_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column_descriptor_is_char(column)) {
+        rc = char_length_for_column(database, column, &declared_length);
+    } else if (column_descriptor_is_varchar(column)) {
+        rc = varchar_length_for_column(database, column, &declared_length);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (declared_length < datetime_text_length) {
+        set_update_date_interval_target_error(database);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static void set_update_date_interval_column_mismatch_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE DATE interval assignment supports only the assigned column as input"
+    );
+}
+
+static void set_update_date_interval_target_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE DATE interval assignment supports only DATE, DATETIME, and nonbinary string targets"
+    );
+}
+
+static void set_update_date_interval_date_time_unit_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE DATE interval assignment does not yet support time units for DATE targets"
+    );
+}
+
+static void set_update_date_interval_keyed_target_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE DATE interval assignment does not yet support key columns"
+    );
 }
 
 static int plan_update_arithmetic_assignment(
@@ -168723,6 +169071,13 @@ static int validate_update_ignore_assignment_support(
             }
         }
         return MYLITE_OK;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        set_unsupported_error(
+            database,
+            "UPDATE IGNORE does not yet support DATE interval assignments"
+        );
+        return MYLITE_ERROR;
     }
     if (column_descriptor_is_auto_increment(&plan->assignment_column) ||
         update_assignment_column_is_keyed(plan)) {
@@ -184251,6 +184606,9 @@ static size_t update_assignment_parameter_count(const struct planned_update *pla
     if (planned_update_has_multiple_assignments(plan)) {
         return planned_update_executable_assignment_count(plan);
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        return update_date_interval_parameter_count;
+    }
     return 1U;
 }
 
@@ -184271,6 +184629,9 @@ static int append_update_assignment_sql(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        return append_update_date_interval_assignment_sql(string, plan);
+    }
     if (plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return dynamic_string_append(string, "?1");
     }
@@ -184283,6 +184644,13 @@ static int append_update_assignment_sql(
     }
 
     return rc;
+}
+
+static int append_update_date_interval_assignment_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    return append_update_date_interval_function_sql(string, &plan->assignment_column, 1U);
 }
 
 static int append_update_multiple_assignments_sql(
@@ -184624,6 +184992,9 @@ static int append_update_changed_condition_sql(
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return append_update_arithmetic_changed_condition_sql(string, plan, next_parameter);
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        return append_update_date_interval_changed_condition_sql(string, plan, next_parameter);
+    }
     if (plan->assignment_value.is_null) {
         rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
         if (rc == MYLITE_OK) {
@@ -184731,6 +185102,56 @@ static int append_update_assignment_changed_condition_sql(
         rc = dynamic_string_append_char(string, ')');
     }
 
+    return rc;
+}
+
+static int append_update_date_interval_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NOT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_date_interval_function_sql(
+            string,
+            &plan->assignment_column,
+            *next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *next_parameter += update_date_interval_parameter_count;
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_update_date_interval_function_sql(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t first_parameter
+) {
+    int rc = dynamic_string_append(string, "_mylite_date_interval_update(");
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    for (size_t offset = 0U; rc == MYLITE_OK && offset < update_date_interval_parameter_count;
+         ++offset) {
+        rc = dynamic_string_append(string, ", ");
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, first_parameter + offset);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
     return rc;
 }
 
@@ -191122,6 +191543,8 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
 
     if (planned_update_has_multiple_assignments(plan)) {
         rc = bind_update_multiple_assignment_parameters(statement, &parameter_index, plan);
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+        rc = bind_update_date_interval_parameters(statement, &parameter_index, plan);
     } else {
         rc = bind_update_assignment_parameter(statement, parameter_index, plan);
         if (rc == MYLITE_OK) {
@@ -191142,6 +191565,10 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(plan)) {
         rc = bind_update_multiple_changed_condition_parameters(statement, &parameter_index, plan);
+    } else if (
+        rc == MYLITE_OK && plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL
+    ) {
+        rc = bind_update_date_interval_parameters(statement, &parameter_index, plan);
     } else if (
         rc == MYLITE_OK &&
         (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
@@ -191174,6 +191601,43 @@ static int bind_update_multiple_assignment_parameters(
         }
     }
 
+    return rc;
+}
+
+static int bind_update_date_interval_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+) {
+    const char *input_kind_name =
+        mylite_date_interval_second_input_kind_name(plan->date_interval_input_kind);
+    const char *unit_name = mylite_date_interval_unit_name(plan->date_interval_unit);
+    int64_t operation_value = 0;
+    int rc = bind_text_parameter(statement, *parameter_index, input_kind_name);
+
+    if (plan->date_interval_subtract) {
+        operation_value = 1;
+    }
+
+    if (rc == MYLITE_OK) {
+        ++(*parameter_index);
+        if (plan->date_interval_is_null) {
+            rc = mylite_sqlite_status_to_mylite(sqlite3_bind_null(statement, *parameter_index));
+        } else {
+            rc = bind_int64_parameter(statement, *parameter_index, plan->date_interval_value);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        ++(*parameter_index);
+        rc = bind_text_parameter(statement, *parameter_index, unit_name);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*parameter_index);
+        rc = bind_int64_parameter(statement, *parameter_index, operation_value);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*parameter_index);
+    }
     return rc;
 }
 
@@ -191326,6 +191790,21 @@ static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, in
     }
 
     sqlite_rc = sqlite3_bind_int64(statement, parameter_index, (sqlite3_int64)value);
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int bind_text_parameter(sqlite3_stmt *statement, int parameter_index, const char *value) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (parameter_index <= 0 || value == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    sqlite_rc = sqlite3_bind_text(statement, parameter_index, value, -1, SQLITE_TRANSIENT);
     if (sqlite_rc != SQLITE_OK) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }

@@ -344,6 +344,9 @@ enum {
     date_interval_temporal_diagnostic_capacity = 128,
     date_interval_nul_diagnostic_capacity = 96,
     date_interval_format_diagnostic_capacity = 96,
+    date_interval_days_per_week = 7,
+    date_interval_months_per_quarter = 3,
+    date_interval_planned_argument_count = 5,
     system_variable_body_offset = 2,
     show_tables_result_column_count = 2,
     show_tables_name_column = 0,
@@ -14504,6 +14507,9 @@ static void populate_scalar_temporal_string_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_scalar_date_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor
+);
 static void populate_scalar_datetime_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 );
@@ -16848,6 +16854,11 @@ static int date_interval_second_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int date_interval_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int addtime_subtime_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -16997,10 +17008,19 @@ static int timestampadd_second_unit_from_ast(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *unit
 );
+static int date_interval_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit_node,
+    const char *function_name,
+    enum mylite_date_interval_unit *out_unit
+);
 static const struct mylite_sql_ast_node *date_interval_second_temporal_node(
     const struct mylite_sql_ast_node *expression
 );
 static const struct mylite_sql_ast_node *date_interval_second_interval_node(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *date_interval_unit_node(
     const struct mylite_sql_ast_node *expression
 );
 static int set_date_interval_second_unsupported_error(
@@ -17078,14 +17098,47 @@ static int date_interval_second_temporal_argument(
     const char *function_name,
     const struct mylite_sql_ast_node *expression,
     struct date_add_datetime_parts *out_datetime,
+    bool *out_has_time,
     bool *out_is_null
 );
 static int date_interval_second_interval_argument(
     struct mylite_db *database,
     const char *function_name,
     const struct mylite_sql_ast_node *expression,
+    enum mylite_date_interval_unit unit,
     int64_t *out_interval,
     bool *out_is_null
+);
+static const char *date_interval_literal_support_text(const char *function_name);
+static int set_date_interval_argument_support_error(
+    struct mylite_db *database,
+    const char *function_name,
+    enum mylite_date_interval_unit unit
+);
+static int set_date_interval_argument_range_error(
+    struct mylite_db *database,
+    const char *function_name,
+    enum mylite_date_interval_unit unit
+);
+static bool date_add_parse_datetime_text(
+    const char *text,
+    size_t text_length,
+    struct date_add_datetime_parts *out_datetime
+);
+static int date_interval_apply(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct date_add_datetime_parts *input,
+    int64_t interval_value,
+    enum mylite_date_interval_unit unit,
+    struct date_add_datetime_parts *out_datetime
+);
+static int date_interval_apply_calendar_months(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct date_add_datetime_parts *input,
+    int64_t interval_months,
+    struct date_add_datetime_parts *out_datetime
 );
 static int date_interval_second_apply(
     struct mylite_db *database,
@@ -17094,20 +17147,37 @@ static int date_interval_second_apply(
     int64_t interval_seconds,
     struct date_add_datetime_parts *out_datetime
 );
+static int date_interval_format(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct date_add_datetime_parts *datetime,
+    bool result_has_time,
+    struct session_scalar_cell *out_cell
+);
 static int date_interval_second_format(
     struct mylite_db *database,
     const char *function_name,
     const struct date_add_datetime_parts *datetime,
     struct session_scalar_cell *out_cell
 );
-static bool date_add_parse_datetime_text(
-    const char *text,
-    size_t text_length,
-    struct date_add_datetime_parts *out_datetime
+static int date_add_signed_integer_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    int64_t *out_value,
+    bool *out_matched,
+    bool *out_out_of_range
 );
 static bool date_add_signed_integer_literal(
     const struct mylite_sql_ast_node *expression,
     int64_t *out_value,
+    bool *out_out_of_range
+);
+static int date_add_signed_integer_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_value,
+    bool *out_matched,
     bool *out_out_of_range
 );
 static int date_add_set_unknown_identifier_error(
@@ -17120,6 +17190,13 @@ static bool date_add_copy_identifier_span_text(
     size_t destination_size
 );
 static bool date_add_checked_add_int64(int64_t left, int64_t right, int64_t *out_value);
+static bool date_add_checked_multiply_int64(int64_t left, int64_t right, int64_t *out_value);
+static bool date_interval_add_calendar_months(
+    const struct date_add_datetime_parts *input,
+    int64_t interval_months,
+    struct date_add_datetime_parts *out_datetime
+);
+static uint32_t date_interval_days_in_month(int64_t year, uint32_t month);
 static int64_t date_add_seconds_per_day(void);
 static int64_t date_add_days_from_datetime(const struct date_add_datetime_parts *datetime);
 static void date_add_civil_from_days(int64_t days, struct date_add_datetime_parts *out_datetime);
@@ -25969,6 +26046,7 @@ static int plan_row_scalar_date_interval_second_interval_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     const char *function_name,
+    enum mylite_date_interval_unit unit,
     struct planned_row_scalar_expression *out_expression
 );
 static int set_row_scalar_date_interval_second_unsupported_error(
@@ -41757,7 +41835,7 @@ static int execute_do_statement(
             "LOG()/LOG10()/LOG2()/POW()/POWER(), CEIL()/CEILING()/FLOOR()/ROUND(), "
             "CRC32()/HEX()/UNHEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY/CHAR/"
             "SIGNED/UNSIGNED), limited CONVERT(value, BINARY/CHAR/SIGNED/UNSIGNED), limited "
-            "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited temporal "
+            "DATE_ADD(... INTERVAL ... unit), limited DATE_FORMAT(), limited temporal "
             "extract, limited ELT(), FIELD(), GREATEST(), LEAST(), limited CONCAT_WS(), limited "
             "JSON_VALID(), JSON_VALUE(), JSON_ARRAY(), JSON_OBJECT(), and limited string length, "
             "string case, string slice, CHARSET(), COLLATION(), and COERCIBILITY() functions, "
@@ -41898,7 +41976,7 @@ static int execute_select_statement(
             "LOG()/LOG10()/LOG2()/POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND()/"
             "CRC32()/FORMAT()/TRUNCATE(), and "
             "CAST(value AS BINARY/CHAR/SIGNED/UNSIGNED), CONVERT(value, BINARY/CHAR/SIGNED/"
-            "UNSIGNED), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
+            "UNSIGNED), DATE_ADD(... INTERVAL ... unit), DATE_FORMAT(), and "
             "limited ELT(), FIELD(), GREATEST(), LEAST(), JSON_VALID(), JSON_VALUE(), "
             "JSON_ARRAY(), JSON_OBJECT(), "
             "string length, string case, string trim, and string slice functions"
@@ -89448,23 +89526,33 @@ static int populate_row_scalar_date_interval_second_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     const struct planned_row_scalar_expression *input_kind_argument = NULL;
+    const struct planned_row_scalar_expression *unit_argument = NULL;
     enum mylite_date_interval_second_input_kind input_kind =
         MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING;
+    enum mylite_date_interval_unit unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
 
     if (expression == NULL || descriptor == NULL) {
         return MYLITE_MISUSE;
     }
-    if (expression->argument_count <= 1U || expression->arguments == NULL) {
+    if (expression->argument_count <= 3U || expression->arguments == NULL) {
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
     }
     input_kind_argument = &expression->arguments[1];
+    unit_argument = &expression->arguments[3];
     if (input_kind_argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
         input_kind_argument->value.is_null || !input_kind_argument->value.is_text ||
         !mylite_date_interval_second_input_kind_from_name(
             input_kind_argument->value.text,
             input_kind_argument->value.text_length,
             &input_kind
+        ) ||
+        unit_argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
+        unit_argument->value.is_null || !unit_argument->value.is_text ||
+        !mylite_date_interval_unit_from_name(
+            unit_argument->value.text,
+            unit_argument->value.text_length,
+            &unit
         )) {
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
@@ -89472,6 +89560,12 @@ static int populate_row_scalar_date_interval_second_result_column_descriptor(
 
     switch (input_kind) {
     case MYLITE_DATE_INTERVAL_SECOND_INPUT_DATE:
+        if (mylite_date_interval_unit_has_time_part(unit)) {
+            populate_scalar_datetime_result_column_descriptor(descriptor);
+        } else {
+            populate_scalar_date_result_column_descriptor(descriptor);
+        }
+        return MYLITE_OK;
     case MYLITE_DATE_INTERVAL_SECOND_INPUT_DATETIME:
     case MYLITE_DATE_INTERVAL_SECOND_INPUT_TIMESTAMP:
         populate_scalar_datetime_result_column_descriptor(descriptor);
@@ -92785,6 +92879,18 @@ static void populate_calendar_name_result_column_descriptor(
             .nullable = true,
         }
     );
+}
+
+static void populate_scalar_date_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DATE;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = date_text_length;
+    descriptor->decimals = 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    descriptor->nullable = true;
 }
 
 static void populate_scalar_datetime_result_column_descriptor(
@@ -115720,10 +115826,20 @@ static int date_interval_second_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    return date_interval_value(database, expression, out_cell);
+}
+
+static int date_interval_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum mylite_date_interval_unit unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
     struct date_add_datetime_parts input = {0};
     struct date_add_datetime_parts output = {0};
-    int64_t interval_seconds = 0;
     const char *function_name = "DATE_ADD";
+    int64_t interval_value = 0;
+    bool temporal_has_time = false;
     bool temporal_is_null = false;
     bool interval_is_null = false;
     int rc = MYLITE_OK;
@@ -115748,36 +115864,53 @@ static int date_interval_second_value(
         function_name,
         date_interval_second_temporal_node(expression),
         &input,
+        &temporal_has_time,
         &temporal_is_null
     );
     if (rc != MYLITE_OK || temporal_is_null) {
         return rc;
     }
+    if (expression->kind != MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        rc = date_interval_unit_from_ast(
+            database,
+            date_interval_unit_node(expression),
+            function_name,
+            &unit
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
     rc = date_interval_second_interval_argument(
         database,
         function_name,
         date_interval_second_interval_node(expression),
-        &interval_seconds,
+        unit,
+        &interval_value,
         &interval_is_null
     );
     if (rc != MYLITE_OK || interval_is_null) {
         return rc;
     }
-    if (date_interval_second_function_subtracts(expression->kind)) {
-        if (interval_seconds == INT64_MIN) {
-            return set_date_interval_second_unsupported_error(
-                database,
-                function_name,
-                "result is outside the supported datetime range"
-            );
-        }
-        interval_seconds = -interval_seconds;
+    if (date_interval_second_function_subtracts(expression->kind) &&
+        checked_int64_negate(interval_value, &interval_value)) {
+        return set_date_interval_second_unsupported_error(
+            database,
+            function_name,
+            "result is outside the supported datetime range"
+        );
     }
-    rc = date_interval_second_apply(database, function_name, &input, interval_seconds, &output);
+    rc = date_interval_apply(database, function_name, &input, interval_value, unit, &output);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    return date_interval_second_format(database, function_name, &output, out_cell);
+    return date_interval_format(
+        database,
+        function_name,
+        &output,
+        (temporal_has_time || mylite_date_interval_unit_has_time_part(unit)) != 0,
+        out_cell
+    );
 }
 
 static bool is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind kind) {
@@ -115831,7 +115964,7 @@ static int validate_date_interval_second_function_shape(
         }
         return timestampadd_second_unit_from_ast(database, child_at(expression, 0U));
     }
-    if (child_count != 2U) {
+    if (child_count != 3U) {
         return set_date_interval_second_unsupported_shape_error(database, function_name);
     }
     return MYLITE_OK;
@@ -115855,6 +115988,44 @@ static int timestampadd_second_unit_from_ast(
     return MYLITE_ERROR;
 }
 
+static int date_interval_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit_node,
+    const char *function_name,
+    enum mylite_date_interval_unit *out_unit
+) {
+    char unit_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char message[date_interval_diagnostic_capacity];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || out_unit == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
+    rc = copy_identifier_text(unit_node, unit_name, sizeof(unit_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_date_interval_unit_from_name(unit_name, strlen(unit_name), out_unit) &&
+        *out_unit != MYLITE_DATE_INTERVAL_UNIT_MICROSECOND) {
+        return MYLITE_OK;
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "%s() supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, and SECOND "
+        "interval units",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format temporal function diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
 static const struct mylite_sql_ast_node *date_interval_second_temporal_node(
     const struct mylite_sql_ast_node *expression
 ) {
@@ -115868,6 +116039,15 @@ static const struct mylite_sql_ast_node *date_interval_second_interval_node(
     const struct mylite_sql_ast_node *expression
 ) {
     return child_at(expression, 1U);
+}
+
+static const struct mylite_sql_ast_node *date_interval_unit_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        return child_at(expression, 0U);
+    }
+    return child_at(expression, 2U);
 }
 
 static int set_date_interval_second_unsupported_error(
@@ -115893,7 +116073,7 @@ static int set_date_interval_second_unsupported_shape_error(
     int written = snprintf(
         message,
         sizeof(message),
-        "%s() supports only %s(date, INTERVAL value SECOND)",
+        "%s() supports only %s(date, INTERVAL value unit)",
         function_name,
         function_name
     );
@@ -115926,6 +116106,7 @@ static int date_interval_second_temporal_argument(
     const char *function_name,
     const struct mylite_sql_ast_node *expression,
     struct date_add_datetime_parts *out_datetime,
+    bool *out_has_time,
     bool *out_is_null
 ) {
     char unsupported_message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
@@ -115934,10 +116115,11 @@ static int date_interval_second_temporal_argument(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (out_datetime == NULL || out_is_null == NULL) {
+    if (out_datetime == NULL || out_has_time == NULL || out_is_null == NULL) {
         return MYLITE_MISUSE;
     }
     *out_datetime = (struct date_add_datetime_parts){0};
+    *out_has_time = false;
     *out_is_null = false;
 
     expression = unwrap_parenthesized_expression(expression);
@@ -115991,6 +116173,9 @@ static int date_interval_second_temporal_argument(
             "supports only canonical YYYY-MM-DD or YYYY-MM-DD HH:MM:SS values"
         );
     }
+    if (rc == MYLITE_OK) {
+        *out_has_time = text_length == datetime_text_length;
+    }
     free(text);
     return rc;
 }
@@ -115999,10 +116184,13 @@ static int date_interval_second_interval_argument(
     struct mylite_db *database,
     const char *function_name,
     const struct mylite_sql_ast_node *expression,
+    enum mylite_date_interval_unit unit,
     int64_t *out_interval,
     bool *out_is_null
 ) {
+    bool interval_matched = false;
     bool out_of_range = false;
+    int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
     if (out_interval == NULL || out_is_null == NULL) {
@@ -116012,33 +116200,265 @@ static int date_interval_second_interval_argument(
     *out_is_null = false;
 
     if (expression == NULL) {
-        return set_date_interval_second_unsupported_error(
-            database,
-            function_name,
-            "INTERVAL SECOND supports only signed integer literals and NULL"
-        );
+        return set_date_interval_argument_support_error(database, function_name, unit);
     }
     if (expression->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
         *out_is_null = true;
         return MYLITE_OK;
     }
-    if (!date_add_signed_integer_literal(expression, out_interval, &out_of_range)) {
+    rc = date_add_signed_integer_expression(
+        database,
+        expression,
+        function_name,
+        out_interval,
+        &interval_matched,
+        &out_of_range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!interval_matched) {
         if (out_of_range) {
-            return set_date_interval_second_unsupported_error(
-                database,
-                function_name,
-                "INTERVAL SECOND literals must fit the signed 64-bit range"
-            );
+            return set_date_interval_argument_range_error(database, function_name, unit);
         }
-        return set_date_interval_second_unsupported_error(
-            database,
-            function_name,
-            "INTERVAL SECOND supports only signed integer literals and NULL"
-        );
+        return set_date_interval_argument_support_error(database, function_name, unit);
     }
 
     return MYLITE_OK;
+}
+
+static const char *date_interval_literal_support_text(const char *function_name) {
+    if (function_name != NULL && strcmp(function_name, "TIMESTAMPADD") == 0) {
+        return "signed integer literals and NULL";
+    }
+    return "signed integer literals, exact signed integer string literals, and NULL";
+}
+
+static int set_date_interval_argument_support_error(
+    struct mylite_db *database,
+    const char *function_name,
+    enum mylite_date_interval_unit unit
+) {
+    const char *literal_support = date_interval_literal_support_text(function_name);
+    const char *unit_name = mylite_date_interval_unit_name(unit);
+    char message[date_interval_diagnostic_capacity];
+    int written = 0;
+
+    if (unit_name == NULL) {
+        unit_name = "unit";
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "INTERVAL %s supports only %s",
+        unit_name,
+        literal_support
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format temporal function diagnostic");
+        return MYLITE_ERROR;
+    }
+    return set_date_interval_second_unsupported_error(database, function_name, message);
+}
+
+static int set_date_interval_argument_range_error(
+    struct mylite_db *database,
+    const char *function_name,
+    enum mylite_date_interval_unit unit
+) {
+    const char *unit_name = mylite_date_interval_unit_name(unit);
+    char message[date_interval_diagnostic_capacity];
+    int written = 0;
+
+    if (unit_name == NULL) {
+        unit_name = "unit";
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "INTERVAL %s literals must fit the signed 64-bit range",
+        unit_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format temporal function diagnostic");
+        return MYLITE_ERROR;
+    }
+    return set_date_interval_second_unsupported_error(database, function_name, message);
+}
+
+static int date_interval_apply(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct date_add_datetime_parts *input,
+    int64_t interval_value,
+    enum mylite_date_interval_unit unit,
+    struct date_add_datetime_parts *out_datetime
+) {
+    int64_t interval_seconds = 0;
+
+    if (input == NULL || out_datetime == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (unit) {
+    case MYLITE_DATE_INTERVAL_UNIT_YEAR:
+        if (!date_add_checked_multiply_int64(
+                interval_value,
+                date_months_per_year,
+                &interval_seconds
+            )) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        return date_interval_apply_calendar_months(
+            database,
+            function_name,
+            input,
+            interval_seconds,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_QUARTER:
+        if (!date_add_checked_multiply_int64(
+                interval_value,
+                date_interval_months_per_quarter,
+                &interval_seconds
+            )) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        return date_interval_apply_calendar_months(
+            database,
+            function_name,
+            input,
+            interval_seconds,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_MONTH:
+        return date_interval_apply_calendar_months(
+            database,
+            function_name,
+            input,
+            interval_value,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_WEEK:
+        if (!date_add_checked_multiply_int64(
+                interval_value,
+                date_add_seconds_per_day() * date_interval_days_per_week,
+                &interval_seconds
+            )) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        return date_interval_second_apply(
+            database,
+            function_name,
+            input,
+            interval_seconds,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_DAY:
+        if (!date_add_checked_multiply_int64(
+                interval_value,
+                date_add_seconds_per_day(),
+                &interval_seconds
+            )) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        return date_interval_second_apply(
+            database,
+            function_name,
+            input,
+            interval_seconds,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_HOUR:
+        if (!date_add_checked_multiply_int64(
+                interval_value,
+                time_second_per_hour,
+                &interval_seconds
+            )) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        return date_interval_second_apply(
+            database,
+            function_name,
+            input,
+            interval_seconds,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_MINUTE:
+        if (!date_add_checked_multiply_int64(
+                interval_value,
+                time_second_per_minute,
+                &interval_seconds
+            )) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        return date_interval_second_apply(
+            database,
+            function_name,
+            input,
+            interval_seconds,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_SECOND:
+        return date_interval_second_apply(
+            database,
+            function_name,
+            input,
+            interval_value,
+            out_datetime
+        );
+    case MYLITE_DATE_INTERVAL_UNIT_MICROSECOND:
+    default:
+        return set_date_interval_second_unsupported_error(
+            database,
+            function_name,
+            "supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, and SECOND interval "
+            "units"
+        );
+    }
+}
+
+static int date_interval_apply_calendar_months(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct date_add_datetime_parts *input,
+    int64_t interval_months,
+    struct date_add_datetime_parts *out_datetime
+) {
+    bool applied = date_interval_add_calendar_months(input, interval_months, out_datetime);
+
+    if (applied) {
+        return MYLITE_OK;
+    }
+    return set_date_interval_second_unsupported_error(
+        database,
+        function_name,
+        "result is outside the supported datetime range"
+    );
 }
 
 static int date_interval_second_apply(
@@ -116098,25 +116518,48 @@ static int date_interval_second_format(
     const struct date_add_datetime_parts *datetime,
     struct session_scalar_cell *out_cell
 ) {
+    return date_interval_format(database, function_name, datetime, true, out_cell);
+}
+
+static int date_interval_format(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct date_add_datetime_parts *datetime,
+    bool result_has_time,
+    struct session_scalar_cell *out_cell
+) {
     char message[date_interval_format_diagnostic_capacity];
+    int expected_length = date_text_length;
     int written = 0;
 
     if (datetime == NULL || out_cell == NULL) {
         return MYLITE_MISUSE;
     }
 
-    written = snprintf(
-        out_cell->datetime_text,
-        sizeof(out_cell->datetime_text),
-        "%04" PRId64 "-%02" PRIu32 "-%02" PRIu32 " %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32,
-        datetime->year,
-        datetime->month,
-        datetime->day,
-        datetime->hour,
-        datetime->minute,
-        datetime->second
-    );
-    if (written != datetime_text_length) {
+    if (result_has_time) {
+        expected_length = datetime_text_length;
+        written = snprintf(
+            out_cell->datetime_text,
+            sizeof(out_cell->datetime_text),
+            "%04" PRId64 "-%02" PRIu32 "-%02" PRIu32 " %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32,
+            datetime->year,
+            datetime->month,
+            datetime->day,
+            datetime->hour,
+            datetime->minute,
+            datetime->second
+        );
+    } else {
+        written = snprintf(
+            out_cell->datetime_text,
+            sizeof(out_cell->datetime_text),
+            "%04" PRId64 "-%02" PRIu32 "-%02" PRIu32,
+            datetime->year,
+            datetime->month,
+            datetime->day
+        );
+    }
+    if (written != expected_length) {
         written = snprintf(message, sizeof(message), "failed to format %s() result", function_name);
         if (written < 0 || (size_t)written >= sizeof(message)) {
             set_runtime_error(database, "failed to format temporal function result");
@@ -116611,6 +117054,37 @@ static bool date_add_parse_datetime_text(
     return true;
 }
 
+static int date_add_signed_integer_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    int64_t *out_value,
+    bool *out_matched,
+    bool *out_out_of_range
+) {
+    if (out_value == NULL || out_matched == NULL || out_out_of_range == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matched = false;
+    if (date_add_signed_integer_literal(expression, out_value, out_out_of_range)) {
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (*out_out_of_range) {
+        return MYLITE_OK;
+    }
+    if (function_name != NULL && strcmp(function_name, "TIMESTAMPADD") == 0) {
+        return MYLITE_OK;
+    }
+    return date_add_signed_integer_string_literal(
+        database,
+        expression,
+        out_value,
+        out_matched,
+        out_out_of_range
+    );
+}
+
 static bool date_add_signed_integer_literal(
     const struct mylite_sql_ast_node *expression,
     int64_t *out_value,
@@ -116669,6 +117143,90 @@ static bool date_add_signed_integer_literal(
     }
     *out_value = (int64_t)magnitude;
     return true;
+}
+
+static int date_add_signed_integer_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_value,
+    bool *out_matched,
+    bool *out_out_of_range
+) {
+    const uint64_t signed_negative_abs_max = 9223372036854775808ULL;
+    const char unsupported_message[] = "DATE interval string literal expected";
+    const char nul_message[] = "DATE interval string literal does not support NUL bytes";
+    char *text = NULL;
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    size_t text_length = 0U;
+    uint64_t magnitude = 0U;
+    uint64_t limit = (uint64_t)INT64_MAX;
+    bool is_negative = false;
+    bool is_positive = false;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_matched == NULL || out_out_of_range == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0;
+    *out_matched = false;
+    *out_out_of_range = false;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_STRING) {
+        return MYLITE_OK;
+    }
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        unsupported_message,
+        nul_message,
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        free(text);
+        return rc;
+    }
+    if (text_length == 0U) {
+        free(text);
+        return MYLITE_OK;
+    }
+    is_negative = text[0] == '-';
+    is_positive = text[0] == '+';
+    digits = text + (is_negative || is_positive ? 1U : 0U);
+    digit_count = text_length - (is_negative || is_positive ? 1U : 0U);
+    if (digit_count == 0U) {
+        free(text);
+        return MYLITE_OK;
+    }
+    if (is_negative) {
+        limit = signed_negative_abs_max;
+    }
+    for (size_t digit_index = 0U; digit_index < digit_count; ++digit_index) {
+        unsigned char byte = (unsigned char)digits[digit_index];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            free(text);
+            return MYLITE_OK;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (magnitude > (limit - digit) / decimal_base) {
+            *out_out_of_range = true;
+            free(text);
+            return MYLITE_OK;
+        }
+        magnitude = (magnitude * decimal_base) + digit;
+    }
+    if (is_negative) {
+        *out_value = magnitude == signed_negative_abs_max ? INT64_MIN : -(int64_t)magnitude;
+    } else {
+        *out_value = (int64_t)magnitude;
+    }
+    *out_matched = true;
+    free(text);
+    return MYLITE_OK;
 }
 
 static int date_add_set_unknown_identifier_error(
@@ -116738,6 +117296,94 @@ static bool date_add_checked_add_int64(int64_t left, int64_t right, int64_t *out
     }
     *out_value = left + right;
     return true;
+}
+
+static bool date_add_checked_multiply_int64(int64_t left, int64_t right, int64_t *out_value) {
+    if (out_value == NULL) {
+        return false;
+    }
+    if (left == 0 || right == 0) {
+        *out_value = 0;
+        return true;
+    }
+    if (left == -1 && right == INT64_MIN) {
+        return false;
+    }
+    if (right == -1 && left == INT64_MIN) {
+        return false;
+    }
+    if (left > 0) {
+        if ((right > 0 && left > INT64_MAX / right) || (right < 0 && right < INT64_MIN / left)) {
+            return false;
+        }
+    } else if ((right > 0 && left < INT64_MIN / right) || (right < 0 && left < INT64_MAX / right)) {
+        return false;
+    }
+    *out_value = left * right;
+    return true;
+}
+
+static bool date_interval_add_calendar_months(
+    const struct date_add_datetime_parts *input,
+    int64_t interval_months,
+    struct date_add_datetime_parts *out_datetime
+) {
+    int64_t zero_based_month = 0;
+    int64_t result_month = 0;
+    uint32_t day_maximum = 0U;
+
+    if (input == NULL || out_datetime == NULL) {
+        return false;
+    }
+    *out_datetime = *input;
+    if (!date_add_checked_add_int64(
+            (input->year * date_months_per_year) + (int64_t)input->month - 1,
+            interval_months,
+            &zero_based_month
+        )) {
+        return false;
+    }
+    out_datetime->year = zero_based_month / date_months_per_year;
+    result_month = zero_based_month % date_months_per_year;
+    if (result_month < 0) {
+        result_month += date_months_per_year;
+        --out_datetime->year;
+    }
+    out_datetime->month = (uint32_t)result_month + 1U;
+    if (out_datetime->year < date_minimum_year || out_datetime->year > date_maximum_year) {
+        return false;
+    }
+    day_maximum = date_interval_days_in_month(out_datetime->year, out_datetime->month);
+    if (out_datetime->day > day_maximum) {
+        out_datetime->day = day_maximum;
+    }
+    return true;
+}
+
+static uint32_t date_interval_days_in_month(int64_t year, uint32_t month) {
+    static const uint32_t month_days[] = {
+        31U,
+        28U,
+        31U,
+        30U,
+        31U,
+        30U,
+        31U,
+        31U,
+        30U,
+        31U,
+        30U,
+        31U,
+    };
+
+    if (month < date_first_month || month > date_months_per_year) {
+        return 0U;
+    }
+    if (month == date_february && year >= 0 && year <= UINT32_MAX &&
+        date_year_is_leap((uint32_t)year)) {
+        return date_leap_day;
+    }
+    return month_days[month - 1U];
 }
 
 static int64_t date_add_seconds_per_day(void) {
@@ -123748,7 +124394,11 @@ static bool is_date_interval_second_projection_expression(
         return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL &&
                 child_at(expression, 2U) != NULL) != 0;
     }
-    return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
+    if (mylite_sql_ast_node_child_count(expression) != 3U) {
+        return false;
+    }
+    return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL &&
+            child_at(expression, 2U) != NULL) != 0;
 }
 
 static bool is_time_arithmetic_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -153915,8 +154565,10 @@ static int plan_row_scalar_date_interval_second_expression(
 ) {
     enum mylite_date_interval_second_input_kind input_kind =
         MYLITE_DATE_INTERVAL_SECOND_INPUT_STRING;
+    enum mylite_date_interval_unit unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
     const char *function_name = "DATE_ADD";
     const char *input_kind_name = NULL;
+    const char *unit_name = NULL;
     int subtract_flag = 0;
     int rc = MYLITE_OK;
 
@@ -153930,14 +154582,34 @@ static int plan_row_scalar_date_interval_second_expression(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(4U, sizeof(*out_expression->arguments));
+    if (expression->kind != MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
+        rc = date_interval_unit_from_ast(
+            database,
+            date_interval_unit_node(expression),
+            function_name,
+            &unit
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    unit_name = mylite_date_interval_unit_name(unit);
+    if (unit_name == NULL) {
+        return set_row_scalar_date_interval_second_unsupported_error(
+            database,
+            function_name,
+            "supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, and SECOND interval "
+            "units"
+        );
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(date_interval_planned_argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND;
-    out_expression->argument_count = 4U;
+    out_expression->argument_count = date_interval_planned_argument_count;
 
     rc = plan_row_scalar_date_interval_second_temporal_argument(
         database,
@@ -153960,15 +154632,20 @@ static int plan_row_scalar_date_interval_second_expression(
             database,
             date_interval_second_interval_node(expression),
             function_name,
+            unit,
             &out_expression->arguments[2]
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_text_value(database, unit_name, &out_expression->arguments[3].value);
+        out_expression->arguments[3].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     }
     if (rc == MYLITE_OK) {
         if (date_interval_second_function_subtracts(expression->kind)) {
             subtract_flag = 1;
         }
-        out_expression->arguments[3].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
-        out_expression->arguments[3].value =
+        out_expression->arguments[4].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[4].value =
             (struct planned_value){.is_null = false, .integer = subtract_flag};
     }
     return rc;
@@ -154173,6 +154850,7 @@ static int plan_row_scalar_date_interval_second_interval_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     const char *function_name,
+    enum mylite_date_interval_unit unit,
     struct planned_row_scalar_expression *out_expression
 ) {
     int64_t interval_seconds = 0;
@@ -154181,6 +154859,7 @@ static int plan_row_scalar_date_interval_second_interval_argument(
         database,
         function_name,
         expression,
+        unit,
         &interval_seconds,
         &interval_is_null
     );
@@ -176151,11 +176830,14 @@ static int append_row_scalar_date_interval_second_expression_sql(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count != 4U || expression->arguments == NULL) {
+    if (expression == NULL || expression->argument_count != date_interval_planned_argument_count ||
+        expression->arguments == NULL) {
         return MYLITE_ERROR;
     }
     rc = dynamic_string_append(string, "_mylite_date_interval_second(");
-    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < date_interval_planned_argument_count;
+         ++argument_index) {
         if (argument_index != 0U) {
             rc = dynamic_string_append(string, ", ");
         }
@@ -185723,10 +186405,12 @@ static int bind_row_scalar_date_interval_second_expression_parameters(
 ) {
     int rc = MYLITE_OK;
 
-    if (expression == NULL || expression->argument_count != 4U) {
+    if (expression == NULL || expression->argument_count != date_interval_planned_argument_count) {
         return MYLITE_ERROR;
     }
-    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < date_interval_planned_argument_count;
+         ++argument_index) {
         rc = bind_row_scalar_non_concat_expression_parameters(
             statement,
             &expression->arguments[argument_index],

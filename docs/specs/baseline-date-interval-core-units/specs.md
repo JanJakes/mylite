@@ -213,7 +213,7 @@ Required diagnostics:
 - wrong function shape:
   `FUNCTION() supports only FUNCTION(date, INTERVAL value unit)`;
 - unsupported unit:
-  `FUNCTION() supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, and SECOND units`;
+  `FUNCTION() supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, and SECOND interval units`;
 - unsupported temporal scalar argument:
   `FUNCTION() supports only date or datetime string literals and NULL`;
 - unsupported row temporal argument:

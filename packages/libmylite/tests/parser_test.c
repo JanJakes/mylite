@@ -3810,7 +3810,7 @@ static int test_date_add_second_function(void) {
         "DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
         "date_add span"
     );
-    failures += expect_child_count(first_expression, 2U, "date_add child count");
+    failures += expect_child_count(first_expression, 3U, "date_add child count");
     failures += expect_literal(
         child_at(first_expression, 0U),
         MYLITE_SQL_AST_LITERAL_STRING,
@@ -3820,6 +3820,11 @@ static int test_date_add_second_function(void) {
         child_at(first_expression, 1U),
         MYLITE_SQL_AST_LITERAL_INTEGER,
         "date_add interval argument"
+    );
+    failures += expect_node(
+        child_at(first_expression, 2U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "date_add interval unit"
     );
     failures += expect_node(
         second_expression,
@@ -3853,7 +3858,7 @@ static int test_date_add_second_function(void) {
         "DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
         "date_sub span"
     );
-    failures += expect_child_count(first_expression, 2U, "date_sub child count");
+    failures += expect_child_count(first_expression, 3U, "date_sub child count");
     failures += expect_node(second_expression, MYLITE_SQL_AST_ADDDATE_FUNCTION, "adddate function");
     failures += expect_node(
         child_at(second_expression, 1U),
@@ -3996,7 +4001,7 @@ static int test_date_add_second_function(void) {
 
     failures += parse_sql(
         "SELECT DATE_ADD('2008-01-02', INTERVAL 1 MINUTE);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

@@ -4503,21 +4503,56 @@ cast_basic_target(A) ::= UNSIGNED INTEGER_TYPE. {
 cast_basic_target(A) ::= UNSIGNED INT. {
     A = MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION;
 }
-expression(A) ::= DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_two_argument_function(
-        state, T, L, MYLITE_SQL_AST_DATE_ADD_FUNCTION, V, I, R);
+date_interval_unit(A) ::= YEAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
-expression(A) ::= DATE_SUB(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_two_argument_function(
-        state, T, L, MYLITE_SQL_AST_DATE_SUB_FUNCTION, V, I, R);
+date_interval_unit(A) ::= QUARTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
-expression(A) ::= ADDDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_two_argument_function(
-        state, T, L, MYLITE_SQL_AST_ADDDATE_FUNCTION, V, I, R);
+date_interval_unit(A) ::= MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
-expression(A) ::= SUBDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_two_argument_function(
-        state, T, L, MYLITE_SQL_AST_SUBDATE_FUNCTION, V, I, R);
+date_interval_unit(A) ::= WEEK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_unit(A) ::= DAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_unit(A) ::= HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_unit(A) ::= MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_unit(A) ::= SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+date_interval_unit(A) ::= MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+expression(A) ::=
+    DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I)
+    date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_DATE_ADD_FUNCTION, V, I, U, R);
+}
+expression(A) ::=
+    DATE_SUB(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I)
+    date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_DATE_SUB_FUNCTION, V, I, U, R);
+}
+expression(A) ::=
+    ADDDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I)
+    date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_ADDDATE_FUNCTION, V, I, U, R);
+}
+expression(A) ::=
+    SUBDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I)
+    date_interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_three_argument_function(
+        state, T, L, MYLITE_SQL_AST_SUBDATE_FUNCTION, V, I, U, R);
 }
 expression(A) ::= ADDTIME(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(

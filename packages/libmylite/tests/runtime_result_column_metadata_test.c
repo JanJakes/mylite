@@ -30,6 +30,7 @@ enum {
     mysql_json_value_display_length = 2048,
     mysql_json_type_display_length = 68,
     mysql_scalar_var_string_decimals = 31,
+    mysql_date_display_length = 10,
     mysql_datetime_display_length = 19,
     mysql_temporal_function_string_display_length = 116,
     mysql_literal_string_abc_display_length = 12,
@@ -653,6 +654,104 @@ static int test_descriptor_result_column_metadata(void) {
                 .nullable = 1,
             },
             "binary table collation metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT DATE_ADD(dt, INTERVAL 1 DAY) AS d_day, "
+        "DATE_ADD(dt, INTERVAL 1 MINUTE) AS d_minute, "
+        "DATE_ADD(dttm, INTERVAL 1 MONTH) AS dttm_month, "
+        "DATE_SUB(ts, INTERVAL 1 WEEK) AS ts_week, "
+        "DATE_ADD(v, INTERVAL 1 DAY) AS v_day FROM meta LIMIT 0",
+        &result
+    );
+    if (failures == 0) {
+        enum {
+            date_interval_row_column_count = 5,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            date_interval_row_column_count,
+            "row DATE interval metadata column count"
+        );
+        failures += expect_column_metadata(
+            result,
+            0U,
+            (struct expected_column_metadata){
+                .label = "d_day",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATE,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_date_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row DATE_ADD DATE unit metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            1U,
+            (struct expected_column_metadata){
+                .label = "d_minute",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_datetime_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row DATE_ADD DATE time-unit metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            2U,
+            (struct expected_column_metadata){
+                .label = "dttm_month",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_datetime_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row DATE_ADD DATETIME metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            3U,
+            (struct expected_column_metadata){
+                .label = "ts_week",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = mysql_datetime_display_length,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            "row DATE_SUB TIMESTAMP metadata"
+        );
+        failures += expect_column_metadata(
+            result,
+            4U,
+            (struct expected_column_metadata){
+                .label = "v_day",
+                .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
+                .flags = 0U,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .display_length = mysql_temporal_function_string_display_length,
+                .decimals = mysql_scalar_var_string_decimals,
+                .nullable = 1,
+            },
+            "row DATE_ADD string metadata"
         );
     }
     mylite_result_free(result);

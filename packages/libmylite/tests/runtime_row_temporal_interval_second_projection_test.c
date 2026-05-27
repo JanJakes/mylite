@@ -135,6 +135,19 @@ static int test_row_temporal_interval_projection_and_reopen(void) {
     static const char *const values_limited[] = {"3", NULL, "1", "2008-01-02 13:29:18"};
     static const char *const columns_qualified[] = {"id", "shifted"};
     static const char *const values_qualified[] = {"1", "2008-01-02 13:29:18"};
+    static const char *const columns_units[] = {"id", "d_day", "d_minute", "dt_month", "d_week"};
+    static const char *const values_units[] = {
+        "1",
+        "2008-01-03",
+        "2008-01-02 00:01:00",
+        "2008-02-02 13:29:17",
+        "2008-01-09",
+        "3",
+        "2024-03-01",
+        "2024-02-29 00:01:00",
+        "2024-03-28 23:59:59",
+        "2024-03-07",
+    };
     static const char *const columns_reopen[] = {"shifted"};
     static const char *const values_reopen[] = {"2008-01-02 13:29:18"};
     char path[test_path_capacity];
@@ -223,6 +236,23 @@ static int test_row_temporal_interval_projection_and_reopen(void) {
             .context = "row temporal interval qualified column",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "DATE_ADD(d, INTERVAL 1 DAY) AS d_day, "
+                   "DATE_ADD(d, INTERVAL 1 MINUTE) AS d_minute, "
+                   "DATE_ADD(dt, INTERVAL 1 MONTH) AS dt_month, "
+                   "DATE_ADD(d, INTERVAL '1' WEEK) AS d_week "
+                   "FROM t WHERE id IN (1, 3) ORDER BY id",
+            .columns = columns_units,
+            .column_count = sizeof(columns_units) / sizeof(columns_units[0]),
+            .values = values_units,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "row temporal interval core units",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -304,7 +334,8 @@ static int test_row_temporal_interval_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_ADD() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += execute_error(
@@ -314,17 +345,19 @@ static int test_row_temporal_interval_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_ADD() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += execute_error(
         database,
-        "SELECT DATE_SUB(dt, INTERVAL '1' SECOND) FROM t",
+        "SELECT DATE_SUB(dt, INTERVAL '1x' SECOND) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_SUB() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_SUB() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += execute_error(

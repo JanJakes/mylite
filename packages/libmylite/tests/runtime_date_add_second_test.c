@@ -17,6 +17,7 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     core_column_count = 8,
+    date_interval_unit_column_count = 9,
     alias_core_column_count = 12,
     alias_label_column_count = 3,
     label_column_count = 2,
@@ -123,6 +124,28 @@ static int test_date_add_second_values_and_file_safety(void) {
         "2024-02-29 00:00:00",
         "2024-03-01 00:00:00",
     };
+    static const char *const unit_columns[] = {
+        "DATE_ADD('2024-01-31', INTERVAL 1 DAY)",
+        "DATE_ADD('2024-01-31', INTERVAL 2 MINUTE)",
+        "DATE_ADD('2024-01-31', INTERVAL 1 MONTH)",
+        "DATE_ADD('2024-01-31', INTERVAL 1 QUARTER)",
+        "DATE_ADD('2024-02-29 23:59:59', INTERVAL 1 YEAR)",
+        "DATE_ADD('2024-01-01', INTERVAL '1' WEEK)",
+        "DATE_SUB('2024-01-08', INTERVAL 1 WEEK)",
+        "SUBDATE('2024-01-01 00:00:00', INTERVAL -2 HOUR)",
+        "ADDDATE('2024-01-01 00:00:00', INTERVAL +30 MINUTE)",
+    };
+    static const char *const unit_values[] = {
+        "2024-02-01",
+        "2024-01-31 00:02:00",
+        "2024-02-29",
+        "2024-04-30",
+        "2025-02-28 23:59:59",
+        "2024-01-08",
+        "2024-01-01",
+        "2024-01-01 02:00:00",
+        "2024-01-01 00:30:00",
+    };
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"0"};
     char path[test_path_capacity];
@@ -191,6 +214,25 @@ static int test_date_add_second_values_and_file_safety(void) {
             .values = rollover_values,
             .row_count = 1U,
             .context = "DATE_ADD leap rollover",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATE_ADD('2024-01-31', INTERVAL 1 DAY),"
+                   "DATE_ADD('2024-01-31', INTERVAL 2 MINUTE),"
+                   "DATE_ADD('2024-01-31', INTERVAL 1 MONTH),"
+                   "DATE_ADD('2024-01-31', INTERVAL 1 QUARTER),"
+                   "DATE_ADD('2024-02-29 23:59:59', INTERVAL 1 YEAR),"
+                   "DATE_ADD('2024-01-01', INTERVAL '1' WEEK),"
+                   "DATE_SUB('2024-01-08', INTERVAL 1 WEEK),"
+                   "SUBDATE('2024-01-01 00:00:00', INTERVAL -2 HOUR),"
+                   "ADDDATE('2024-01-01 00:00:00', INTERVAL +30 MINUTE)",
+            .columns = unit_columns,
+            .column_count = date_interval_unit_column_count,
+            .values = unit_values,
+            .row_count = 1U,
+            .context = "DATE interval core units",
         }
     );
 
@@ -364,12 +406,13 @@ static int test_date_add_second_sql_modes_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL '1' SECOND)",
+        "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL '1x' SECOND)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_ADD() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += execute_error(
@@ -401,11 +444,12 @@ static int test_date_add_second_sql_modes_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 MINUTE)",
+        "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 MICROSECOND)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "DATE_ADD() supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, "
+                            "MINUTE, and SECOND interval units",
         }
     );
     failures += execute_error(
@@ -415,7 +459,8 @@ static int test_date_add_second_sql_modes_and_errors(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_ADD() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += expect_query(
@@ -791,12 +836,13 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL '1' SECOND)",
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL '1x' SECOND)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_SUB() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_SUB() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += execute_error(
@@ -837,11 +883,12 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 MINUTE)",
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 MICROSECOND)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "DATE_SUB() supports only YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, "
+                            "MINUTE, and SECOND interval units",
         }
     );
     failures += execute_error(
@@ -851,7 +898,8 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_SUB() INTERVAL SECOND supports only signed integer literals and NULL",
+                "DATE_SUB() INTERVAL SECOND supports only signed integer literals, exact signed "
+                "integer string literals, and NULL",
         }
     );
     failures += execute_error(

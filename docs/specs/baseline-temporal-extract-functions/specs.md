@@ -175,9 +175,10 @@ This slice intentionally does not support:
   `docs/specs/baseline-time-function/specs.md`,
   `docs/specs/baseline-extract-function/specs.md`, and
   `docs/specs/baseline-quarter-function/specs.md`;
-- use in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults,
+- use in `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults,
   generated columns, indexes, constraints, joins, CTEs, or arbitrary SQLite
-  pass-through.
+  pass-through. A later `baseline-temporal-extract-predicates` slice admits
+  limited single-table `WHERE` predicates for numeric temporal extractors only.
 
 ## Grammar
 

@@ -13,6 +13,7 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
 };
 
@@ -33,6 +34,7 @@ struct expected_query {
 
 static int test_no_source_dual_and_do_temporal_extract(void);
 static int test_table_backed_temporal_extract_and_reopen(void);
+static int test_temporal_extract_predicates(void);
 static int test_temporal_extract_diagnostics(void);
 static int test_extract_function(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -66,6 +68,7 @@ int main(void) {
 
     failures += test_no_source_dual_and_do_temporal_extract();
     failures += test_table_backed_temporal_extract_and_reopen();
+    failures += test_temporal_extract_predicates();
     failures += test_temporal_extract_diagnostics();
     failures += test_extract_function();
 
@@ -486,6 +489,439 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
             .values = values_reopen,
             .row_count = 1U,
             .context = "reopened temporal extract",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_temporal_extract_predicates(void) {
+    static const char *const columns_id[] = {"id"};
+    static const char *const values_year_2008[] = {"1", "2"};
+    static const char *const values_month_day[] = {"1"};
+    static const char *const values_hour_or_minute[] = {"1", "2"};
+    static const char *const values_second_null_safe[] = {"1", "3"};
+    static const char *const values_day[] = {"1"};
+    static const char *const values_dayofweek[] = {"1"};
+    static const char *const values_dayofyear[] = {"1"};
+    static const char *const values_week[] = {"2"};
+    static const char *const values_weekday[] = {"1"};
+    static const char *const values_weekofyear[] = {"1"};
+    static const char *const values_yearweek[] = {"2"};
+    static const char *const values_microsecond[] = {"1"};
+    static const char *const values_time_to_sec[] = {"3"};
+    static const char *const values_to_days[] = {"1"};
+    static const char *const values_to_seconds[] = {"1"};
+    static const char *const values_extract_month[] = {"2"};
+    static const char *const values_extract_day_hour[] = {"1"};
+    static const char *const values_extract_hour_second[] = {"3"};
+    static const char *const values_truth[] = {"1", "2"};
+    static const char *const values_not_truth[] = {"3"};
+    static const char *const values_null[] = {"4"};
+    static const char *const values_not_null[] = {"1", "2", "3"};
+    static const char *const values_order_limit[] = {"3", "2"};
+    static const char *const values_invalid_null[] = {"2", "3"};
+    static const char *const columns_warnings[] = {"Level", "Code", "Message"};
+    static const char *const values_invalid_warnings[] = {
+        "Warning",
+        "1292",
+        "Incorrect datetime value: 'not-a-date'",
+    };
+    static const char *const columns_warning_count[] = {"@@warning_count"};
+    static const char *const values_warning_count[] = {"1"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "predicates", path, sizeof(path));
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE t(id INT, d DATE NULL, dt DATETIME NULL, tm TIME NULL, txt VARCHAR(32))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO t VALUES "
+        "(1,'2008-01-02','2008-01-02 13:29:17','13:29:17',"
+        "'2008-01-02 13:29:17.123456'),"
+        "(2,'2008-02-03','2008-02-03 00:42:00','00:42:00',"
+        "'2008-02-03 00:42:00'),"
+        "(3,'0000-00-00',NULL,'-13:29:17',"
+        "'0000-00-00 01:02:03'),"
+        "(4,NULL,NULL,NULL,NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) = 2008 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_year_2008,
+            .row_count = 2U,
+            .context = "temporal extract YEAR predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE MONTH(dt) = 1 AND DAYOFMONTH(dt) = 2 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_month_day,
+            .row_count = 1U,
+            .context = "temporal extract MONTH and DAYOFMONTH predicates",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE HOUR(tm) = 0 OR MINUTE(dt) = 29 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_hour_or_minute,
+            .row_count = 2U,
+            .context = "temporal extract HOUR or MINUTE predicates",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE SECOND(tm) <=> 17 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_second_null_safe,
+            .row_count = 2U,
+            .context = "temporal extract SECOND null-safe predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE DAY(d) = 2 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_day,
+            .row_count = 1U,
+            .context = "temporal extract DAY predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE DAYOFWEEK(d) = 4 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_dayofweek,
+            .row_count = 1U,
+            .context = "temporal extract DAYOFWEEK predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE DAYOFYEAR(d) = 2 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_dayofyear,
+            .row_count = 1U,
+            .context = "temporal extract DAYOFYEAR predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE WEEK(d, 3) = 5 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_week,
+            .row_count = 1U,
+            .context = "temporal extract WEEK predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE WEEKDAY(d) = 2 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_weekday,
+            .row_count = 1U,
+            .context = "temporal extract WEEKDAY predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE WEEKOFYEAR(d) = 1 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_weekofyear,
+            .row_count = 1U,
+            .context = "temporal extract WEEKOFYEAR predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEARWEEK(d, 3) = 200805 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_yearweek,
+            .row_count = 1U,
+            .context = "temporal extract YEARWEEK predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE MICROSECOND(txt) = 123456 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_microsecond,
+            .row_count = 1U,
+            .context = "temporal extract MICROSECOND predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE TIME_TO_SEC(tm) < 0 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_time_to_sec,
+            .row_count = 1U,
+            .context = "temporal extract TIME_TO_SEC predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE TO_DAYS(d) = 733408 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_to_days,
+            .row_count = 1U,
+            .context = "temporal extract TO_DAYS predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE TO_SECONDS(dt) = 63366499757 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_to_seconds,
+            .row_count = 1U,
+            .context = "temporal extract TO_SECONDS predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE EXTRACT(MONTH FROM d) = 2 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_extract_month,
+            .row_count = 1U,
+            .context = "EXTRACT MONTH predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE EXTRACT(DAY_HOUR FROM dt) = 213 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_extract_day_hour,
+            .row_count = 1U,
+            .context = "EXTRACT DAY_HOUR predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE EXTRACT(HOUR_SECOND FROM tm) = -132917 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_extract_hour_second,
+            .row_count = 1U,
+            .context = "EXTRACT HOUR_SECOND predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_truth,
+            .row_count = 2U,
+            .context = "temporal extract truth predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE NOT YEAR(d) ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_not_truth,
+            .row_count = 1U,
+            .context = "temporal extract not truth predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) <=> NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_null,
+            .row_count = 1U,
+            .context = "temporal extract null-safe NULL predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) IS NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_null,
+            .row_count = 1U,
+            .context = "temporal extract IS NULL predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) IS NOT NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_not_null,
+            .row_count = 3U,
+            .context = "temporal extract IS NOT NULL predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t AS app_t WHERE QUARTER(app_t.d) <= 1 "
+                   "ORDER BY id DESC LIMIT 2",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_order_limit,
+            .row_count = 2U,
+            .context = "temporal extract predicate alias order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE EXTRACT(YEAR FROM d) = 2008 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_year_2008,
+            .row_count = 2U,
+            .context = "EXTRACT predicate",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE bad(id INT, txt VARCHAR(32))", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO bad VALUES (1,'2008-01-02'),(2,'not-a-date'),(3,NULL),(4,'0000-00-00')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM bad WHERE YEAR(txt) IS NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_invalid_null,
+            .row_count = 2U,
+            .context = "temporal extract invalid string IS NULL predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_invalid_warnings,
+            .row_count = 1U,
+            .context = "temporal extract predicate invalid warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@warning_count",
+            .columns = columns_warning_count,
+            .column_count = sizeof(columns_warning_count) / sizeof(columns_warning_count[0]),
+            .values = values_warning_count,
+            .row_count = 1U,
+            .context = "temporal extract predicate warning count",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE DATE(d) = '2008-01-02'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "temporal extract predicates support only numeric temporal extractor functions",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE YEAR(d) = '2008'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "temporal extract predicates support only integer, boolean, and NULL "
+                            "comparison literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE YEAR(d) = 9223372036854775808",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "temporal extract predicate comparison literals must fit the signed 64-bit range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE YEAR(missing) = 2008",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing'",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE other(id INT, d DATE NULL)", NULL);
+    failures += execute_ok(database, "INSERT INTO other VALUES (1,'2008-01-02')", NULL);
+    failures += execute_error(
+        database,
+        "SELECT t.id FROM t JOIN other ON t.id = other.id WHERE YEAR(t.d) = 2008",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "temporal extract function predicates support only one descriptor table source",
         }
     );
 

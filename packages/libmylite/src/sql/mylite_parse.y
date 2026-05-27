@@ -3793,6 +3793,22 @@ predicate_atom(A) ::= substring_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
+predicate_atom(A) ::= temporal_extract_predicate_expression(C). {
+    A = C;
+}
+predicate_atom(A) ::= temporal_extract_predicate_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
+predicate_atom(A) ::= temporal_extract_predicate_expression(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+predicate_atom(A) ::= temporal_extract_predicate_expression(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
 predicate_atom(A) ::= find_in_set_expression(C) EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
@@ -5577,6 +5593,113 @@ substring_expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) RP
 substring_expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, D, R);
+}
+temporal_extract_predicate_expression(A) ::= DATE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DATE_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= TIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TIME_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= TIME_TO_SEC(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= TO_DAYS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TO_DAYS_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= TO_SECONDS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TO_SECONDS_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::=
+    EXTRACT(T) LPAREN extract_unit(U) FROM expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_EXTRACT_FUNCTION, U, B, R);
+}
+temporal_extract_predicate_expression(A) ::= WEEK(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_WEEK_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= WEEK(T) LPAREN expression(B) COMMA expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_WEEK_FUNCTION, B, C, R);
+}
+temporal_extract_predicate_expression(A) ::= WEEKDAY(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_WEEKDAY_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= DAYNAME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYNAME_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= WEEKOFYEAR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= YEARWEEK(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_YEARWEEK_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= YEARWEEK(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_YEARWEEK_FUNCTION, B, C, R);
+}
+temporal_extract_predicate_expression(A) ::= QUARTER(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_QUARTER_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= MONTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MONTH_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= MONTHNAME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MONTHNAME_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= DAY(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAY_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= DAYOFMONTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYOFMONTH_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= DAYOFWEEK(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYOFWEEK_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= DAYOFYEAR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYOFYEAR_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= LAST_DAY(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LAST_DAY_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= HOUR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_HOUR_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= MINUTE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MINUTE_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= SECOND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SECOND_FUNCTION, B, R);
+}
+temporal_extract_predicate_expression(A) ::= MICROSECOND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MICROSECOND_FUNCTION, B, R);
 }
 expression(A) ::=
     SUBSTRING_INDEX(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {

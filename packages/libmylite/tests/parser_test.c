@@ -5906,6 +5906,13 @@ static int test_temporal_extract_functions(void) {
         expect_span_text(child_at(expression, 0U), "MICROSECOND", "extract unsupported unit");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT id FROM t WHERE YEAR(d) = 2008 AND EXTRACT(YEAR FROM d) IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT DAYNAME();", MYLITE_SQL_PARSE_OK, &result);
     expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(

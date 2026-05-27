@@ -77,13 +77,17 @@ static int test_information_schema_static_catalogs(void) {
         "MAXLEN",
     };
     static const char *const character_sets_values[] = {
+        "ascii",
+        "ascii_general_ci",
+        "US ASCII",
+        "1",
         "binary",
         "binary",
         "Binary pseudo charset",
         "1",
-        "ascii",
-        "ascii_general_ci",
-        "US ASCII",
+        "latin1",
+        "latin1_swedish_ci",
+        "cp1252 West European",
         "1",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
@@ -100,20 +104,6 @@ static int test_information_schema_static_catalogs(void) {
         "PAD_ATTRIBUTE",
     };
     static const char *const collations_values[] = {
-        "binary",
-        "binary",
-        "63",
-        "Yes",
-        "Yes",
-        "1",
-        "NO PAD",
-        "ascii_bin",
-        "ascii",
-        "65",
-        "",
-        "Yes",
-        "1",
-        "PAD SPACE",
         "ascii_general_ci",
         "ascii",
         "11",
@@ -121,33 +111,19 @@ static int test_information_schema_static_catalogs(void) {
         "Yes",
         "1",
         "PAD SPACE",
-        "utf8mb4_general_ci",
-        "utf8mb4",
-        "45",
-        "",
+        "binary",
+        "binary",
+        "63",
+        "Yes",
         "Yes",
         "1",
-        "PAD SPACE",
-        "utf8mb4_bin",
-        "utf8mb4",
-        "46",
-        "",
+        "NO PAD",
+        "latin1_swedish_ci",
+        "latin1",
+        "8",
+        "Yes",
         "Yes",
         "1",
-        "PAD SPACE",
-        "utf8mb4_unicode_ci",
-        "utf8mb4",
-        "224",
-        "",
-        "Yes",
-        "8",
-        "PAD SPACE",
-        "utf8mb4_unicode_520_ci",
-        "utf8mb4",
-        "246",
-        "",
-        "Yes",
-        "8",
         "PAD SPACE",
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
@@ -156,12 +132,12 @@ static int test_information_schema_static_catalogs(void) {
         "Yes",
         "0",
         "NO PAD",
-        "utf8mb4_0900_bin",
+        "utf8mb4_ja_0900_as_cs_ks",
         "utf8mb4",
-        "309",
+        "304",
         "",
         "Yes",
-        "1",
+        "24",
         "NO PAD",
     };
     static const char *const collation_applicability_columns[] = {
@@ -169,23 +145,15 @@ static int test_information_schema_static_catalogs(void) {
         "CHARACTER_SET_NAME",
     };
     static const char *const collation_applicability_values[] = {
-        "ascii_bin",
-        "ascii",
         "ascii_general_ci",
         "ascii",
         "binary",
         "binary",
+        "latin1_swedish_ci",
+        "latin1",
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
-        "utf8mb4_0900_bin",
-        "utf8mb4",
-        "utf8mb4_bin",
-        "utf8mb4",
-        "utf8mb4_general_ci",
-        "utf8mb4",
-        "utf8mb4_unicode_520_ci",
-        "utf8mb4",
-        "utf8mb4_unicode_ci",
+        "utf8mb4_ja_0900_as_cs_ks",
         "utf8mb4",
     };
     static const char *const single_engine_column[] = {"ENGINE"};
@@ -194,12 +162,13 @@ static int test_information_schema_static_catalogs(void) {
     static const char *const single_charset_value[] = {"utf8mb4"};
     static const char *const single_collation_column[] = {"COLLATION_NAME"};
     static const char *const single_collation_value[] = {"utf8mb4_0900_ai_ci"};
-    static const char *const first_collation_value[] = {"ascii_bin"};
+    static const char *const first_collation_value[] = {"armscii8_bin"};
     static const char *const single_applicability_values[] = {"utf8mb4_bin", "utf8mb4"};
     static const char *const support_column[] = {"SUPPORT"};
     static const char *const support_value[] = {"DEFAULT"};
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_nine[] = {"9"};
+    static const char *const count_41[] = {"41"};
+    static const char *const count_286[] = {"286"};
     static const char *const count_zero[] = {"0"};
     static const char *const system_table_columns[] = {
         "TABLE_SCHEMA",
@@ -548,7 +517,9 @@ static int test_information_schema_static_catalogs(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS",
+            .sql = "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS "
+                   "WHERE CHARACTER_SET_NAME IN ('ascii','binary','latin1','utf8mb4') "
+                   "ORDER BY CHARACTER_SET_NAME",
             .column_names = character_sets_columns,
             .column_count = sizeof(character_sets_columns) / sizeof(character_sets_columns[0]),
             .values = character_sets_values,
@@ -560,7 +531,10 @@ static int test_information_schema_static_catalogs(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS",
+            .sql = "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS "
+                   "WHERE COLLATION_NAME IN ('ascii_general_ci','binary','latin1_swedish_ci',"
+                   "'utf8mb4_0900_ai_ci','utf8mb4_ja_0900_as_cs_ks') "
+                   "ORDER BY COLLATION_NAME",
             .column_names = collations_columns,
             .column_count = sizeof(collations_columns) / sizeof(collations_columns[0]),
             .values = collations_values,
@@ -574,6 +548,8 @@ static int test_information_schema_static_catalogs(void) {
         (struct expected_query){
             .sql = "SELECT COLLATION_NAME, CHARACTER_SET_NAME "
                    "FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY "
+                   "WHERE COLLATION_NAME IN ('ascii_general_ci','binary','latin1_swedish_ci',"
+                   "'utf8mb4_0900_ai_ci','utf8mb4_ja_0900_as_cs_ks') "
                    "ORDER BY COLLATION_NAME",
             .column_names = collation_applicability_columns,
             .column_count = sizeof(collation_applicability_columns) /
@@ -649,10 +625,21 @@ static int test_information_schema_static_catalogs(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.CHARACTER_SETS",
+            .column_names = count_column,
+            .column_count = 1U,
+            .values = count_41,
+            .row_count = 1U,
+            .context = "character sets count star",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATIONS",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_nine,
+            .values = count_286,
             .row_count = 1U,
             .context = "collations count star",
         }
@@ -663,7 +650,7 @@ static int test_information_schema_static_catalogs(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_nine,
+            .values = count_286,
             .row_count = 1U,
             .context = "collation applicability count star",
         }
@@ -866,7 +853,7 @@ static int test_information_schema_static_catalogs(void) {
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
                 .column_names = count_column,
                 .column_count = 1U,
-                .values = count_nine,
+                .values = count_286,
                 .row_count = 1U,
                 .context = "reopened collation applicability static rows",
             }
@@ -892,7 +879,7 @@ static int test_information_schema_static_catalogs(void) {
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
                 .column_names = count_column,
                 .column_count = 1U,
-                .values = count_nine,
+                .values = count_286,
                 .row_count = 1U,
                 .context = "second independent handle collation applicability rows",
             }

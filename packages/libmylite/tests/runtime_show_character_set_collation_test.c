@@ -18,9 +18,13 @@ enum {
     test_path_capacity = 1024,
     character_set_column_count = 4,
     collation_column_count = 7,
+    mysql_character_set_catalog_row_count = 41,
+    mysql_collation_catalog_row_count = 286,
     decimal_base = 10,
     suffix_capacity = 16,
     mysql_error_parse = 1064,
+    mysql_error_unknown_character_set = 1115,
+    mysql_error_unknown_collation = 1273,
 };
 
 struct expected_sql_error {
@@ -57,19 +61,11 @@ static const char *const character_set_ascii_row[character_set_column_count] = {
     "1",
 };
 
-static const char *const character_set_rows[] = {
-    "binary",
-    "Binary pseudo charset",
-    "binary",
+static const char *const character_set_latin1_row[character_set_column_count] = {
+    "latin1",
+    "cp1252 West European",
+    "latin1_swedish_ci",
     "1",
-    "ascii",
-    "US ASCII",
-    "ascii_general_ci",
-    "1",
-    "utf8mb4",
-    "UTF-8 Unicode",
-    "utf8mb4_0900_ai_ci",
-    "4",
 };
 
 static const char *const collation_columns[collation_column_count] = {
@@ -80,72 +76,6 @@ static const char *const collation_columns[collation_column_count] = {
     "Compiled",
     "Sortlen",
     "Pad_attribute",
-};
-
-static const char *const collation_rows[] = {
-    "binary",
-    "binary",
-    "63",
-    "Yes",
-    "Yes",
-    "1",
-    "NO PAD",
-    "ascii_bin",
-    "ascii",
-    "65",
-    "",
-    "Yes",
-    "1",
-    "PAD SPACE",
-    "ascii_general_ci",
-    "ascii",
-    "11",
-    "Yes",
-    "Yes",
-    "1",
-    "PAD SPACE",
-    "utf8mb4_general_ci",
-    "utf8mb4",
-    "45",
-    "",
-    "Yes",
-    "1",
-    "PAD SPACE",
-    "utf8mb4_bin",
-    "utf8mb4",
-    "46",
-    "",
-    "Yes",
-    "1",
-    "PAD SPACE",
-    "utf8mb4_unicode_ci",
-    "utf8mb4",
-    "224",
-    "",
-    "Yes",
-    "8",
-    "PAD SPACE",
-    "utf8mb4_unicode_520_ci",
-    "utf8mb4",
-    "246",
-    "",
-    "Yes",
-    "8",
-    "PAD SPACE",
-    "utf8mb4_0900_ai_ci",
-    "utf8mb4",
-    "255",
-    "Yes",
-    "Yes",
-    "0",
-    "NO PAD",
-    "utf8mb4_0900_bin",
-    "utf8mb4",
-    "309",
-    "",
-    "Yes",
-    "1",
-    "NO PAD",
 };
 
 static const char *const collation_binary_row[collation_column_count] = {
@@ -208,7 +138,28 @@ static const char *const collation_unicode_row[collation_column_count] = {
     "PAD SPACE",
 };
 
+static const char *const collation_latin1_swedish_row[collation_column_count] = {
+    "latin1_swedish_ci",
+    "latin1",
+    "8",
+    "Yes",
+    "Yes",
+    "1",
+    "PAD SPACE",
+};
+
+static const char *const collation_ja_0900_as_cs_ks_row[collation_column_count] = {
+    "utf8mb4_ja_0900_as_cs_ks",
+    "utf8mb4",
+    "304",
+    "",
+    "Yes",
+    "24",
+    "NO PAD",
+};
+
 static int test_show_character_set_and_collation_values_filters_and_state(void);
+static int test_catalog_only_metadata_rows_do_not_expand_ddl(void);
 static int test_show_character_set_and_collation_schema_independence_and_persistence(void);
 static int test_show_character_set_and_collation_diagnostics(void);
 static int test_independent_show_character_set_and_collation_handles(void);
@@ -245,6 +196,7 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
+    failures += test_catalog_only_metadata_rows_do_not_expand_ddl();
     failures += test_show_character_set_and_collation_values_filters_and_state();
     failures += test_show_character_set_and_collation_schema_independence_and_persistence();
     failures += test_show_character_set_and_collation_diagnostics();
@@ -263,8 +215,8 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         "SHOW CHARACTER SET",
         character_set_columns,
         character_set_column_count,
-        character_set_rows,
-        sizeof(character_set_rows) / sizeof(character_set_rows[0]) / character_set_column_count,
+        NULL,
+        mysql_character_set_catalog_row_count,
         "show character set"
     );
     failures += expect_result(
@@ -293,6 +245,15 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         character_set_ascii_row,
         1U,
         "show ascii character set uppercase like"
+    );
+    failures += expect_result(
+        database,
+        "SHOW CHARACTER SET LIKE 'latin1'",
+        character_set_columns,
+        character_set_column_count,
+        character_set_latin1_row,
+        1U,
+        "show catalog-only latin1 character set"
     );
     failures += expect_result(
         database,
@@ -326,8 +287,8 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         "SHOW COLLATION",
         collation_columns,
         collation_column_count,
-        collation_rows,
-        sizeof(collation_rows) / sizeof(collation_rows[0]) / collation_column_count,
+        NULL,
+        mysql_collation_catalog_row_count,
         "show collation"
     );
     failures += expect_result(
@@ -395,6 +356,24 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
     );
     failures += expect_result(
         database,
+        "SHOW COLLATION LIKE 'latin1_swedish_ci'",
+        collation_columns,
+        collation_column_count,
+        collation_latin1_swedish_row,
+        1U,
+        "show catalog-only latin1 collation"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION LIKE 'utf8mb4_ja_0900_as_cs_ks'",
+        collation_columns,
+        collation_column_count,
+        collation_ja_0900_as_cs_ks_row,
+        1U,
+        "show catalog-only utf8mb4 0900 collation"
+    );
+    failures += expect_result(
+        database,
         "SHOW COLLATION LIKE 'missing%'",
         collation_columns,
         collation_column_count,
@@ -404,6 +383,43 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
     );
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_catalog_only_metadata_rows_do_not_expand_ddl(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "catalog_only_ddl") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog-only ddl file");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_error(
+        database,
+        "CREATE TABLE catalog_charset (name VARCHAR(5)) CHARSET=latin1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: 'latin1'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE catalog_collation (name VARCHAR(5)) COLLATE=utf8mb4_ja_0900_as_cs_ks",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: 'utf8mb4_ja_0900_as_cs_ks'",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 
@@ -429,8 +445,8 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW CHARACTER SET",
         character_set_columns,
         character_set_column_count,
-        character_set_rows,
-        sizeof(character_set_rows) / sizeof(character_set_rows[0]) / character_set_column_count,
+        NULL,
+        mysql_character_set_catalog_row_count,
         "show character set without schema"
     );
     failures += execute_statement_ok(database, "CREATE DATABASE app");
@@ -447,8 +463,8 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW CHARACTER SET",
         character_set_columns,
         character_set_column_count,
-        character_set_rows,
-        sizeof(character_set_rows) / sizeof(character_set_rows[0]) / character_set_column_count,
+        NULL,
+        mysql_character_set_catalog_row_count,
         "show character set with selected schema"
     );
     failures += expect_result(
@@ -456,8 +472,8 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW COLLATION",
         collation_columns,
         collation_column_count,
-        collation_rows,
-        sizeof(collation_rows) / sizeof(collation_rows[0]) / collation_column_count,
+        NULL,
+        mysql_collation_catalog_row_count,
         "show collation with selected schema"
     );
     session = mylite_connection_session_state(database);
@@ -647,7 +663,6 @@ static int test_show_character_set_and_collation_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-
     mylite_close(database);
     return failures;
 }

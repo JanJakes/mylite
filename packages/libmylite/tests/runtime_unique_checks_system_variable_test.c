@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -111,7 +113,8 @@ static int test_unique_checks_values_and_persistence(void) {
         "@@character_set_server",
         "@@version_comment",
     };
-    static const char *const mixed_values[] = {"1", "1", "1", "1", "InnoDB", "utf8mb4", "MyLite"};
+    static const char *const mixed_values[] =
+        {"1", "1", "1", "1", "InnoDB", "utf8mb4", MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING};
     static const char *const diagnostics_columns[] = {
         "@@unique_checks",
         "@@warning_count",

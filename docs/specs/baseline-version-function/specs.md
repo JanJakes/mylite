@@ -7,10 +7,13 @@ It builds on `mylite_execute()`, statement context, parser scaffolding,
 public `mylite_version()`, and the existing scalar session-select execution
 path used by `DATABASE()`, `SCHEMA()`, `USER()`, and `CURRENT_USER`.
 
-The feature intentionally exposes MyLite's own engine version string. It does
-not claim wire-level MySQL server-version negotiation, protocol handshake
-behavior, server status variables, or a MySQL server version impersonation
-policy.
+The original baseline returned MyLite's own engine version string. The later
+`baseline-mysql-server-version-identity` slice supersedes only that value:
+SQL-visible `VERSION()` now returns the fixed MySQL 8.4.9 compatibility
+version string, while the public C API `mylite_version()` continues to return
+MyLite's library version. This still does not claim wire-level MySQL
+server-version negotiation, protocol handshake behavior, or server status
+variable completeness.
 
 ## Sources
 
@@ -68,7 +71,7 @@ The implementation must add:
 - support for mixing `VERSION()` with the existing supported scalar session
   functions in the same select list;
 - result column names copied from the selected expression source span;
-- one result row containing `mylite_version()` / `MYLITE_VERSION_STRING`;
+- one result row containing the SQL-visible MySQL 8.4.9 compatibility version;
 - MySQL-compatible `1582` diagnostics for parsed `VERSION(...)` calls with a
   nonzero argument count;
 - deterministic diagnostics for bare `VERSION` and unsupported scalar-select
@@ -80,7 +83,7 @@ The implementation must add:
 
 This feature must not implement:
 
-- MySQL server version impersonation or MySQL distribution suffixes;
+- protocol handshake version reporting or configurable server-version identity;
 - protocol handshake version reporting;
 - `@@version`, version-related system variables, status variables, or
   `SHOW VARIABLES`;
@@ -103,10 +106,10 @@ This feature must not implement:
 - Analyzer/planner code recognizes one-row scalar selects with no table source
   or `FROM DUAL`, including mixes with existing supported scalar session
   functions.
-- Runtime execution returns the MyLite public version string. It does not read
-  or mutate catalog descriptors, physical SQLite schema, catalog generation,
-  descriptor caches, session selected-schema state, identity state, or
-  `sqlite_schema_generation`.
+- Runtime execution returns the SQL-visible MySQL compatibility version string.
+  It does not read or mutate catalog descriptors, physical SQLite schema,
+  catalog generation, descriptor caches, session selected-schema state,
+  identity state, or `sqlite_schema_generation`.
 - The result builder owns one-row text result construction. `VERSION()` always
   returns non-`NULL` text in this slice.
 - Storage/VFS and SQLite are not involved beyond the already-open handle. The
@@ -158,8 +161,9 @@ diagnostic until those expression forms are implemented for a real feature.
 
 ## Runtime Semantics
 
-`VERSION()` returns `mylite_version()` as text. In the current build this is
-`MYLITE_VERSION_STRING`, generated from the CMake project version.
+`VERSION()` returns the SQL-visible MySQL 8.4.9 compatibility string as text.
+This is intentionally separate from `mylite_version()`, which remains the
+public MyLite library version.
 
 Successful scalar version selects:
 
@@ -210,7 +214,7 @@ SQLite functions, use SQLite callbacks, change VFS behavior, or patch SQLite.
 
 Fast C tests must cover:
 
-- `VERSION()` returning `MYLITE_VERSION_STRING`;
+- `VERSION()` returning the SQL-visible MySQL 8.4.9 compatibility string;
 - `FROM DUAL` returning the same value;
 - mixed supported scalar version, current database, and current identity
   function selects;

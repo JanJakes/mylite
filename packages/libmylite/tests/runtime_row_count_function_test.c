@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,7 +84,7 @@ static int test_row_count_function_transitions(void) {
     static const char *const mixed_columns[] =
         {"ROW_COUNT()", "DATABASE()", "USER()", "CURRENT_USER", "VERSION()"};
     static const char *const mixed_values[] =
-        {"0", "app", "root@%", "root@%", MYLITE_VERSION_STRING};
+        {"0", "app", "root@%", "root@%", MYLITE_MYSQL_SERVER_VERSION_STRING};
     static const char *const dropped_columns[] = {"ROW_COUNT()", "DATABASE()"};
     static const char *const dropped_values[] = {"-1", NULL};
     char path[test_path_capacity];

@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -181,8 +183,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"transaction_read_only", "OFF"},
         {"unique_checks", "ON"},
         {"updatable_views_with_limit", "YES"},
-        {"version", mylite_version()},
-        {"version_comment", "MyLite"},
+        {"version", MYLITE_MYSQL_SERVER_VERSION_STRING},
+        {"version_comment", MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING},
         {"version_compile_machine", "aarch64"},
         {"version_compile_os", "Linux"},
         {"version_compile_zlib", "1.3.2"},
@@ -257,8 +259,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"transaction_read_only", "OFF"},
         {"unique_checks", "ON"},
         {"updatable_views_with_limit", "YES"},
-        {"version", mylite_version()},
-        {"version_comment", "MyLite"},
+        {"version", MYLITE_MYSQL_SERVER_VERSION_STRING},
+        {"version_comment", MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING},
         {"version_compile_machine", "aarch64"},
         {"version_compile_os", "Linux"},
         {"version_compile_zlib", "1.3.2"},
@@ -598,7 +600,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         "SHOW VARIABLES WHERE Variable_name > 's' AND Variable_name IN ('autocommit','version')",
         (struct expected_variable_row){
             .name = "version",
-            .value = mylite_version(),
+            .value = MYLITE_MYSQL_SERVER_VERSION_STRING,
         },
         "show variables where greater than"
     );

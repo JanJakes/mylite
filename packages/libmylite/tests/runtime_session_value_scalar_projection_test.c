@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -152,7 +154,7 @@ static int test_session_value_scalar_projection_values_and_file_safety(void) {
 
     mixed_values[mixed_database_index] = "app";
     mixed_values[mixed_schema_index] = "app";
-    mixed_values[mixed_version_index] = mylite_version();
+    mixed_values[mixed_version_index] = MYLITE_MYSQL_SERVER_VERSION_STRING;
     mixed_values[mixed_connection_id_index] = connection_id_text;
     mixed_values[mixed_last_insert_id_index] = "0";
     mixed_values[mixed_literal_index] = "1";
@@ -176,7 +178,7 @@ static int test_session_value_scalar_projection_values_and_file_safety(void) {
         }
     );
 
-    parenthesized_values[0] = mylite_version();
+    parenthesized_values[0] = MYLITE_MYSQL_SERVER_VERSION_STRING;
     parenthesized_values[1] = "1";
     parenthesized_values[2] = "2";
     parenthesized_values[3] = "0";
@@ -401,7 +403,7 @@ static int test_session_value_scalar_projection_independent_handles(void) {
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    first_values[0] = mylite_version();
+    first_values[0] = MYLITE_MYSQL_SERVER_VERSION_STRING;
     failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file handle");
     failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file handle");
     failures += execute_ok(second, "CREATE DATABASE second_app", NULL);

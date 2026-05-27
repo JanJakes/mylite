@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -40,6 +42,7 @@ struct expected_scalar_result {
 };
 
 static int test_version_function_values(void);
+static int test_mysql_server_identity_constants(void);
 static int test_version_function_independent_handles(void);
 static int test_version_function_unsupported_forms(void);
 static int test_version_system_variable_values_and_persistence(void);
@@ -74,6 +77,7 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
+    failures += test_mysql_server_identity_constants();
     failures += test_version_function_values();
     failures += test_version_function_independent_handles();
     failures += test_version_function_unsupported_forms();
@@ -84,9 +88,26 @@ int main(void) {
     return failures == 0 ? 0 : 1;
 }
 
+static int test_mysql_server_identity_constants(void) {
+    int failures = 0;
+
+    failures += expect_text_or_null(
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        "8.4.9",
+        "SQL-visible MySQL server version constant"
+    );
+    failures += expect_text_or_null(
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
+        "MySQL Community Server - GPL",
+        "SQL-visible MySQL server version comment constant"
+    );
+
+    return failures;
+}
+
 static int test_version_function_values(void) {
     static const char *const version_columns[] = {"VERSION()"};
-    static const char *const version_values[] = {MYLITE_VERSION_STRING};
+    static const char *const version_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING};
     static const char *const lower_columns[] = {"version()"};
     static const char *const mixed_case_columns[] = {"Version()"};
     static const char *const spaced_columns[] = {"VERSION ()"};
@@ -94,20 +115,23 @@ static int test_version_function_values(void) {
     static const char *const mixed_columns[] =
         {"VERSION()", "DATABASE()", "USER()", "CURRENT_USER"};
     static const char *const mixed_no_schema_values[] = {
-        MYLITE_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
         NULL,
         "root@%",
         "root@%",
     };
     static const char *const mixed_app_values[] = {
-        MYLITE_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
         "app",
         "root@%",
         "root@%",
     };
     static const char *const version_database_columns[] = {"VERSION()", "DATABASE()"};
-    static const char *const version_app_values[] = {MYLITE_VERSION_STRING, "app"};
-    static const char *const version_no_schema_values[] = {MYLITE_VERSION_STRING, NULL};
+    static const char *const version_app_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING, "app"};
+    static const char *const version_no_schema_values[] = {
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        NULL
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -302,7 +326,7 @@ static int test_version_function_values(void) {
 
 static int test_version_function_independent_handles(void) {
     static const char *const version_columns[] = {"VERSION()"};
-    static const char *const version_values[] = {MYLITE_VERSION_STRING};
+    static const char *const version_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING};
     char path[test_path_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -452,11 +476,11 @@ static int test_version_system_variable_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const version_values[] = {
-        MYLITE_VERSION_STRING,
-        MYLITE_VERSION_STRING,
-        "MyLite",
-        "MyLite",
-        MYLITE_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
         "0",
         "-1",
     };
@@ -467,10 +491,10 @@ static int test_version_system_variable_values_and_persistence(void) {
         "@@global.`version_comment`",
     };
     static const char *const quoted_values[] = {
-        MYLITE_VERSION_STRING,
-        "MyLite",
-        MYLITE_VERSION_STRING,
-        "MyLite",
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
     };
     static const char *const diagnostic_columns[] = {
         "@@version",
@@ -480,21 +504,22 @@ static int test_version_system_variable_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const warning_values[] = {
-        MYLITE_VERSION_STRING,
-        "MyLite",
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
         "1",
         "0",
         "-1",
     };
     static const char *const error_values[] = {
-        MYLITE_VERSION_STRING,
-        "MyLite",
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
         "1",
         "1",
         "-1",
     };
     static const char *const reopen_columns[] = {"@@version", "@@version_comment", "DATABASE()"};
-    static const char *const reopen_values[] = {MYLITE_VERSION_STRING, "MyLite", NULL};
+    static const char *const reopen_values[] =
+        {MYLITE_MYSQL_SERVER_VERSION_STRING, MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING, NULL};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -654,8 +679,10 @@ static int test_version_system_variable_values_and_persistence(void) {
 
 static int test_version_system_variable_independent_handles(void) {
     static const char *const columns[] = {"@@version", "@@version_comment", "@@warning_count"};
-    static const char *const first_values[] = {MYLITE_VERSION_STRING, "MyLite", "1"};
-    static const char *const second_values[] = {MYLITE_VERSION_STRING, "MyLite", "0"};
+    static const char *const first_values[] =
+        {MYLITE_MYSQL_SERVER_VERSION_STRING, MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING, "1"};
+    static const char *const second_values[] =
+        {MYLITE_MYSQL_SERVER_VERSION_STRING, MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING, "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     mylite_result *result = NULL;

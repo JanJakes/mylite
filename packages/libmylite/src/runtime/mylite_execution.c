@@ -9,6 +9,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
+#include "mylite_mysql_server_identity.h"
 #include "mylite_parser.h"
 #include "mylite_rand.h"
 #include "mylite_regexp.h"
@@ -94039,7 +94040,7 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "ANY_VALUE");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_VERSION_FUNCTION:
-        out_cell->value = mylite_version();
+        out_cell->value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
     case MYLITE_SQL_AST_PI_FUNCTION:
         out_cell->value = scalar_pi_text;
@@ -98451,7 +98452,7 @@ static int string_length_session_scalar_argument_value(
         return MYLITE_OK;
     }
     case MYLITE_SQL_AST_VERSION_FUNCTION:
-        out_cell->value = mylite_version();
+        out_cell->value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
     case MYLITE_SQL_AST_PI_FUNCTION:
         out_cell->value = scalar_pi_text;
@@ -112055,7 +112056,7 @@ static int hex_scalar_argument_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     case MYLITE_SQL_AST_VERSION_FUNCTION:
-        out_cell->value = mylite_version();
+        out_cell->value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return current_timestamp_scalar_value(database, out_cell);
@@ -121408,10 +121409,10 @@ static int system_variable_value(
         }
         return rc;
     case SESSION_SYSTEM_VARIABLE_VERSION:
-        out_cell->value = mylite_version();
+        out_cell->value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
-        out_cell->value = "MyLite";
+        out_cell->value = MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING;
         return MYLITE_OK;
     default:
         break;
@@ -122256,10 +122257,10 @@ static int show_system_variable_value(
         return rc;
     }
     case SESSION_SYSTEM_VARIABLE_VERSION:
-        *out_value = mylite_version();
+        *out_value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
-        *out_value = "MyLite";
+        *out_value = MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_NONE:
         break;

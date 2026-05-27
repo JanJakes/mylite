@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -160,7 +162,8 @@ static int test_rand_values_and_file_safety(void) {
     static const char *const rand_alias_values[] = {NULL, NULL};
     static const bool rand_alias_ranges[] = {true, true};
     static const char *const rand_mixed_columns[] = {"RAND()", "VERSION()", "DATABASE()"};
-    static const char *const rand_mixed_values[] = {NULL, MYLITE_VERSION_STRING, "app"};
+    static const char *const rand_mixed_values[] =
+        {NULL, MYLITE_MYSQL_SERVER_VERSION_STRING, "app"};
     static const bool rand_mixed_ranges[] = {true, false, false};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];

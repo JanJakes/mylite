@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -175,7 +177,7 @@ static int test_connection_id_function_values(void) {
     mixed_values[mixed_current_user_value_index] = "root@%";
     mixed_values[mixed_session_user_value_index] = "root@%";
     mixed_values[mixed_system_user_value_index] = "root@%";
-    mixed_values[mixed_version_value_index] = MYLITE_VERSION_STRING;
+    mixed_values[mixed_version_value_index] = MYLITE_MYSQL_SERVER_VERSION_STRING;
     failures += execute_ok(
         database,
         "SELECT CONNECTION_ID(), ROW_COUNT(), DATABASE(), USER(), CURRENT_USER, "

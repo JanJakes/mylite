@@ -27,8 +27,9 @@ identity:
      `version_comment`.
    - Support no-scope and `global` forms for both variables.
    - Reject `session` and `local` forms with MySQL error `1238`.
-   - Return `mylite_version()` for `@@version`.
-   - Return MyLite's fixed version comment for `@@version_comment`.
+   - Return the SQL-visible MySQL 8.4.9 compatibility value for `@@version`.
+   - Return the SQL-visible MySQL 8.4.9 community-server comment for
+     `@@version_comment`.
    - Preserve source-span result labels.
    - Preserve existing diagnostics count and character-set variable behavior.
    - Preserve nondiagnostic scalar-select statement lifecycle semantics.
@@ -49,8 +50,9 @@ identity:
    - Update `docs/compatibility/runtime-system-variables.md`.
    - Update `docs/compatibility/functions-system.md` to remove the old
      `@@version` non-goal from the `VERSION()` row.
-   - Do not claim MySQL server-version impersonation, protocol handshake
-     behavior, `SHOW VARIABLES`, or version compile variables.
+   - Do not claim protocol handshake behavior, configurable server-version
+     identity, Performance Schema variable tables, or changes to the existing
+     fixed version-compile placeholder slice.
 
 6. Verification
    - `cmake --build --preset dev`
@@ -61,8 +63,9 @@ identity:
 
 ## Out Of Scope
 
-- MySQL server-version impersonation, MySQL build comments, or protocol
-  handshake version reporting.
+- Protocol handshake version reporting, configurable server-version/build
+  comment identity, or changes to the existing fixed version-compile
+  placeholder slice.
 - `SHOW VARIABLES`, Performance Schema, or `INFORMATION_SCHEMA` variable
   tables.
 - Variables other than `version` and `version_comment`.

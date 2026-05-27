@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -104,7 +106,8 @@ static int test_pi_values_and_file_safety(void) {
     static const char *const pi_alias_columns[] = {"p", "q"};
     static const char *const pi_alias_values[] = {"3.141593", "3.141593"};
     static const char *const pi_mixed_columns[] = {"PI()", "VERSION()", "DATABASE()"};
-    static const char *const pi_mixed_values[] = {"3.141593", MYLITE_VERSION_STRING, "app"};
+    static const char *const pi_mixed_values[] =
+        {"3.141593", MYLITE_MYSQL_SERVER_VERSION_STRING, "app"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];

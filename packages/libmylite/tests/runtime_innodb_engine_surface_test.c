@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -457,7 +459,7 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
     static const char *const mixed_values[] = {
         "InnoDB",
         "utf8mb4",
-        "MyLite",
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
     };
     static const char *const temp_variable_columns[] = {
         "@@default_tmp_storage_engine",

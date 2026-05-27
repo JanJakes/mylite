@@ -58,12 +58,10 @@ expect_error() {
 }
 
 version=$(run_mysql 'SELECT VERSION();')
-case "$version" in
-    8.4.9*) ;;
-    *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
-esac
+expect_value "mysql runtime version" "8.4.9" "$version"
 
 comment=$(run_mysql 'SELECT @@version_comment;')
+expect_value "mysql runtime version comment" "MySQL Community Server - GPL" "$comment"
 
 headers=$(run_mysql_with_headers "SELECT 1; SELECT @@version, @@global.version, @@version_comment, @@global.version_comment, @@warning_count, ROW_COUNT();" | tail -n 2 | head -n 1)
 expect_value \

@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -120,7 +122,7 @@ static int test_updatable_views_with_limit_values_and_persistence(void) {
         "1",
         "InnoDB",
         "utf8mb4",
-        "MyLite",
+        MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING,
     };
     static const char *const diagnostics_columns[] = {
         "@@updatable_views_with_limit",

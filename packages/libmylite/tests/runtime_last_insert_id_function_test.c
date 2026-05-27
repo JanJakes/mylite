@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -136,7 +138,7 @@ static int test_last_insert_id_values_and_statement_interactions(void) {
         "root@%",
         "NONE",
         connection_id_text,
-        MYLITE_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
         "0",
     };
     char path[test_path_capacity];

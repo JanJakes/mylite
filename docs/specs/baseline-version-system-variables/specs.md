@@ -12,9 +12,12 @@ The slice builds on the existing `SYSTEM_VARIABLE` lexer/parser token, the
 scalar session `SELECT` execution path, the previously implemented
 `VERSION()` function, and the generalized runtime system-variable resolver.
 
-MyLite intentionally exposes MyLite identity rather than impersonating a
-MySQL server build. `@@version` returns the public MyLite engine version
-string. `@@version_comment` returns a fixed MyLite comment string.
+The original baseline exposed MyLite identity. The later
+`baseline-mysql-server-version-identity` slice supersedes only the values:
+`@@version` returns the fixed MySQL 8.4.9 compatibility version string and
+`@@version_comment` returns the fixed MySQL 8.4.9 community-server comment.
+The public C API `mylite_version()` continues to return MyLite's library
+version.
 
 ## Sources
 
@@ -89,8 +92,10 @@ The implementation must add:
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- `@@version` values sourced from `mylite_version()`;
-- `@@version_comment` values sourced from a fixed MyLite-owned string;
+- `@@version` values sourced from the SQL-visible MySQL 8.4.9 compatibility
+  version constant;
+- `@@version_comment` values sourced from the SQL-visible MySQL 8.4.9
+  community-server comment constant;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -110,11 +115,13 @@ SELECT @@version, VERSION(), @@warning_count, ROW_COUNT() FROM DUAL
 
 This feature must not implement:
 
-- MySQL server-version impersonation or MySQL build comments;
+- protocol handshake version reporting or configurable server-version/build
+  comment identity;
 - protocol handshake version reporting;
 - variables other than `version` and `version_comment`;
-- `version_compile_machine`, `version_compile_os`,
-  `version_compile_zlib`, or version-token variables;
+- changes to the later fixed `version_compile_machine`,
+  `version_compile_os`, and `version_compile_zlib` placeholder slice, or
+  version-token variables;
 - `SHOW VARIABLES`, Performance Schema variable tables, or
   `INFORMATION_SCHEMA` variable tables;
 - `SET`, persisted variables, dynamic variable assignment, or privilege
@@ -197,8 +204,8 @@ The supported variables return:
 
 | Variable | Value |
 | --- | --- |
-| `version` | `mylite_version()` |
-| `version_comment` | `MyLite` |
+| `version` | `8.4.9` |
+| `version_comment` | `MySQL Community Server - GPL` |
 
 The values are stable process/build identity values. They do not change across
 `CREATE DATABASE`, `USE`, table DDL, DML, close/reopen, or independent handles.
@@ -250,7 +257,8 @@ MyLite preamble and does not change catalog or SQLite schema generations.
 Fast C tests must cover:
 
 - `@@version`, `@@global.version`, `@@version_comment`, and
-  `@@global.version_comment` returning MyLite values;
+  `@@global.version_comment` returning SQL-visible MySQL 8.4.9 compatibility
+  values;
 - `FROM DUAL` returning the same values;
 - result labels preserving source text, including case-insensitive names and
   quoted final variable-name components;

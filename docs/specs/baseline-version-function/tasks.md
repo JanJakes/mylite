@@ -9,8 +9,9 @@ scalar `SELECT` statements.
    - Verify MySQL 8.4.9 behavior for `VERSION()`, `FROM DUAL`, result column
      labels, warning counts, selected-database interaction, unsupported
      arguments, bare `VERSION`, and wider scalar forms.
-   - Specify MyLite's intentional return value as `mylite_version()` rather
-     than a MySQL server-version impersonation.
+   - Superseded by `baseline-mysql-server-version-identity`: specify the
+     SQL-visible MySQL 8.4.9 compatibility value while preserving
+     `mylite_version()` as the public library version.
    - Record the supported MyLite subset in `specs.md`.
 
 2. Parser and AST
@@ -28,7 +29,7 @@ scalar `SELECT` statements.
    - Extend the scalar session/system select execution path so it can evaluate
      `VERSION()` with existing supported scalar functions in the same select
      list.
-   - Return `mylite_version()`.
+   - Return the SQL-visible MySQL 8.4.9 compatibility value.
    - Keep catalog, session mutation, SQLite schema, VFS, storage, and public
      ABI untouched.
 
@@ -52,8 +53,8 @@ scalar `SELECT` statements.
 6. Compatibility docs
    - Update `COMPATIBILITY.md` for limited `VERSION()` support.
    - Update `docs/compatibility/functions-system.md`.
-   - Do not claim MySQL server-version impersonation, protocol handshake
-     support, `@@version`, or system-variable support.
+   - Do not claim protocol handshake support, configurable server-version
+     identity, `@@version`, or system-variable support.
 
 7. Build integration and verification
    - Register any new test binary in `packages/libmylite/CMakeLists.txt`.
@@ -63,7 +64,7 @@ scalar `SELECT` statements.
 
 ## Non-Goals
 
-- Do not implement MySQL server-version impersonation, protocol handshake
-  version reporting, `@@version`, `SHOW VARIABLES`, aliases, table-backed
+- Do not implement protocol handshake version reporting, configurable
+  server-version identity, `@@version`, `SHOW VARIABLES`, aliases, table-backed
   scalar evaluation, `LIMIT`, general scalar expressions, function
   registration, arbitrary SQLite pass-through, or SQLite fork patches.

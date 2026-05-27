@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_mysql_server_identity.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -108,7 +110,7 @@ static int test_current_user_identity_values(void) {
     static const char *const mixed_alias_columns[] =
         {"ROW_COUNT()", "SESSION_USER()", "SYSTEM_USER()", "USER()", "CURRENT_USER", "VERSION()"};
     static const char *const mixed_alias_values[] =
-        {"0", "root@%", "root@%", "root@%", "root@%", MYLITE_VERSION_STRING};
+        {"0", "root@%", "root@%", "root@%", "root@%", MYLITE_MYSQL_SERVER_VERSION_STRING};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -554,7 +556,7 @@ static int test_current_role_function_values_and_persistence(void) {
         "root@%",
         "root@%",
         "root@%",
-        MYLITE_VERSION_STRING,
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
         "0",
         "-1",
     };

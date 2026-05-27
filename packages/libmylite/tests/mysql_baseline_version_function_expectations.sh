@@ -80,10 +80,9 @@ cleanup() {
 trap cleanup EXIT
 
 version=$(run_mysql 'SELECT VERSION();')
-case "$version" in
-    8.4.9*) ;;
-    *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
-esac
+if [ "$version" != "8.4.9" ]; then
+    fail "expected MySQL 8.4.9 runtime, got [$version]"
+fi
 
 cleanup
 

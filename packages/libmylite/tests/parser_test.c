@@ -4255,6 +4255,25 @@ static int test_date_format_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = +0.42 "
+        "ORDER BY id LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(child_at(statement, 2U), 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "date_format where predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_DATE_FORMAT_FUNCTION,
+        "date_format where predicate lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE date_format (date_format INT); SELECT date_format FROM date_format;",
         MYLITE_SQL_PARSE_OK,
         &result

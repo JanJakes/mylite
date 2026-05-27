@@ -120,9 +120,9 @@ This slice intentionally does not support:
   `GET_FORMAT()`, `TIME_FORMAT()`, `STR_TO_DATE()`, or arbitrary nesting;
 - table-backed expression projection outside flat `DATE_FORMAT()` and the
   exact top-level numeric equality shape described above;
-- use in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults,
-  generated columns, indexes, constraints, joins, CTEs, or arbitrary SQLite
-  pass-through.
+- use in `WHERE` beyond the later `baseline-date-format-predicates` equality
+  slice, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, generated
+  columns, indexes, constraints, joins, CTEs, or arbitrary SQLite pass-through.
 
 ## Grammar
 

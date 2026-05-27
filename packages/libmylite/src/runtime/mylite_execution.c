@@ -2823,6 +2823,7 @@ struct select_predicate_plan_options {
     bool allow_in_subquery;
     bool allow_column_reference_rhs;
     bool allow_same_scope_column_reference_rhs;
+    bool allow_date_format_numeric_predicate;
     const struct select_source_context *outer_source_context;
     const struct mylite_catalog_column_descriptor *outer_columns;
     size_t outer_column_count;
@@ -22997,6 +22998,18 @@ static bool predicate_node_is_string_length_expression(
 );
 static bool predicate_node_is_substring_expression(
     const struct mylite_sql_ast_node *predicate_node
+);
+static bool predicate_node_is_date_format_numeric_predicate_expression(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int plan_date_format_numeric_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
 );
 static bool predicate_node_is_temporal_extract_expression(
     const struct mylite_sql_ast_node *predicate_node
@@ -82815,6 +82828,7 @@ static int plan_select(
     struct select_predicate_plan_options predicate_options = {
         .allow_exists = true,
         .allow_in_subquery = true,
+        .allow_date_format_numeric_predicate = true,
     };
     bool allow_field_order = allow_order_by_field;
     size_t table_column_count = 0U;
@@ -160023,6 +160037,7 @@ static int plan_joined_select_predicate(
     const struct select_predicate_plan_options options = {
         .allow_exists = false,
         .allow_same_scope_column_reference_rhs = true,
+        .allow_date_format_numeric_predicate = true,
     };
 
     return plan_select_predicate_with_options(
@@ -160443,6 +160458,8 @@ static int plan_select_predicate_ast_node(
                             predicate_node_is_json_valid_expression(current) ||
                             predicate_node_is_json_contains_expression(current) ||
                             predicate_node_is_string_length_expression(current) ||
+                            (options != NULL && options->allow_date_format_numeric_predicate &&
+                             predicate_node_is_date_format_numeric_predicate_expression(current)) ||
                             predicate_node_is_temporal_extract_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
@@ -160494,6 +160511,8 @@ static int plan_select_predicate_ast_node_without_exists(
                             predicate_node_is_json_valid_expression(current) ||
                             predicate_node_is_json_contains_expression(current) ||
                             predicate_node_is_string_length_expression(current) ||
+                            (options != NULL && options->allow_date_format_numeric_predicate &&
+                             predicate_node_is_date_format_numeric_predicate_expression(current)) ||
                             predicate_node_is_temporal_extract_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
@@ -160669,6 +160688,16 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node_is_date_format_numeric_predicate_expression(predicate_node)) {
+        rc = plan_date_format_numeric_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
     } else if (predicate_node_is_temporal_extract_expression(predicate_node)) {
         rc = plan_temporal_extract_truth_predicate(
             database,
@@ -160814,6 +160843,16 @@ static int plan_select_predicate_leaf_node_without_exists(
         );
     } else if (predicate_node_is_string_length_expression(predicate_node)) {
         rc = plan_string_length_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node_is_date_format_numeric_predicate_expression(predicate_node)) {
+        rc = plan_date_format_numeric_truth_predicate(
             database,
             predicate_node,
             source_context,
@@ -161627,6 +161666,70 @@ static bool predicate_node_is_temporal_extract_expression(
     return (predicate_node != NULL && (predicate_node->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
                                        is_temporal_extract_function_kind(predicate_node->kind))) !=
            0;
+}
+
+static bool predicate_node_is_date_format_numeric_predicate_expression(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *left = NULL;
+
+    predicate_node = unwrap_parenthesized_predicate(predicate_node);
+    if (predicate_node == NULL || predicate_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+
+    left = unwrap_parenthesized_expression(child_at(predicate_node, 0U));
+    return (left != NULL && left->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION) != 0;
+}
+
+static int plan_date_format_numeric_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    if (select_source_context_is_joined(source_context)) {
+        set_unsupported_error(
+            database,
+            "DATE_FORMAT() numeric predicates support only one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
+    if (node.row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_date_format_numeric_equal_expression(
+        database,
+        predicate_node,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        node.row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
 }
 
 static int plan_temporal_extract_truth_predicate(

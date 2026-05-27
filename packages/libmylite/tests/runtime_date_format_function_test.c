@@ -30,11 +30,13 @@ struct expected_query {
     size_t column_count;
     const char *const *values;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
 static int test_no_source_dual_and_do_date_format(void);
 static int test_table_backed_date_format(void);
+static int test_date_format_predicates(void);
 static int test_date_format_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -67,6 +69,7 @@ int main(void) {
 
     failures += test_no_source_dual_and_do_date_format();
     failures += test_table_backed_date_format();
+    failures += test_date_format_predicates();
     failures += test_date_format_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -272,6 +275,256 @@ static int test_table_backed_date_format(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table date_format where order limit",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_date_format_predicates(void) {
+    static const char *const columns_id[] = {"id"};
+    static const char *const values_1_5[] = {"1", "5"};
+    static const char *const values_2[] = {"2"};
+    static const char *const values_1_2[] = {"1", "2"};
+    static const char *const values_5[] = {"5"};
+    static const char *const warning_columns[] = {"Level", "Code", "Message"};
+    static const char *const invalid_warning_values[] = {
+        "Warning",
+        "1292",
+        "Incorrect datetime value: 'not-a-date'",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "predicates", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE options("
+        "id INT, option_value VARCHAR(32), d DATE NULL, dt DATETIME NULL, "
+        "ts TIMESTAMP NULL, tm TIME NULL"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO options VALUES "
+        "(1, '2008-01-02 00:42:00', '2008-01-02', '2008-01-02 00:42:00', "
+        "'2008-01-02 00:42:00', '00:42:00'), "
+        "(2, '2008-01-02 13:29:17', '2008-01-02', '2008-01-02 13:29:17', "
+        "'2008-01-02 13:29:17', '13:29:17'), "
+        "(3, NULL, NULL, NULL, NULL, NULL), "
+        "(4, 'not-a-date', NULL, NULL, NULL, NULL), "
+        "(5, '2008-01-02 00:42:59', NULL, NULL, NULL, NULL)",
+        NULL
+    );
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = 0.42 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_1_5,
+            .row_count = 2U,
+            .warning_count = 1U,
+            .context = "date_format predicate decimal",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = warning_columns,
+            .column_count = sizeof(warning_columns) / sizeof(warning_columns[0]),
+            .values = invalid_warning_values,
+            .row_count = 1U,
+            .context = "date_format predicate invalid warning",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = +0.42 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_1_5,
+            .row_count = 2U,
+            .warning_count = 1U,
+            .context = "date_format predicate unary positive",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = -0.42 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = NULL,
+            .row_count = 0U,
+            .warning_count = 1U,
+            .context = "date_format predicate unary negative",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = 13.29 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "date_format predicate hour minute match",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(d, '%H.%i') = 0.00 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_1_2,
+            .row_count = 2U,
+            .context = "date_format date predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(dt, '%H.%i') = 13.29 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .context = "date_format datetime predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(ts, '%H.%i') = 13.29 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .context = "date_format timestamp predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = 0.42 "
+                   "ORDER BY id DESC LIMIT 1",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_5,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "date_format predicate order limit",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE other(id INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO other VALUES (1)", NULL);
+    failures += execute_error(
+        database,
+        "SELECT options.id FROM options JOIN other ON options.id = other.id "
+        "WHERE DATE_FORMAT(options.option_value, '%H.%i') = 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "DATE_FORMAT() numeric predicates support only one descriptor table source",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(missing, '%H.%i') = 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H:%i') = 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i')",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') <> 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format)",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = '0.42'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax near",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax near",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = 0 + 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax near",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM options WHERE DATE_FORMAT(tm, '%H.%i') = 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "DATE_FORMAT() does not yet support TIME values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE options SET id = 10 WHERE DATE_FORMAT(option_value, '%H.%i') = 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor column WHERE predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM options WHERE DATE_FORMAT(option_value, '%H.%i') = 0.42",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor column WHERE predicates",
         }
     );
 
@@ -516,7 +769,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

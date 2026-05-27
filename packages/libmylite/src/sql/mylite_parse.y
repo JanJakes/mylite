@@ -3793,6 +3793,9 @@ predicate_atom(A) ::= substring_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
+predicate_atom(A) ::= date_format_numeric_predicate_expression(C). {
+    A = C;
+}
 predicate_atom(A) ::= temporal_extract_predicate_expression(C). {
     A = C;
 }
@@ -5593,6 +5596,29 @@ substring_expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) RP
 substring_expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) FOR expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, D, R);
+}
+date_format_numeric_predicate_expression(A) ::=
+    DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R) predicate_comparison_operator(O)
+        date_format_numeric_predicate_value(V). {
+    struct mylite_sql_ast_node *date_format =
+        mylite_sql_parser_make_two_argument_function(
+            state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
+    A = mylite_sql_parser_make_binary_expression(
+        state, date_format, O.token, O.operator_kind, V);
+}
+date_format_numeric_predicate_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+date_format_numeric_predicate_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+date_format_numeric_predicate_value(A) ::= PLUS(P) date_format_numeric_predicate_value(V). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE, V);
+}
+date_format_numeric_predicate_value(A) ::= MINUS(M) date_format_numeric_predicate_value(V). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE, V);
 }
 temporal_extract_predicate_expression(A) ::= DATE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(

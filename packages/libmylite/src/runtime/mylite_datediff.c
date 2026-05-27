@@ -40,6 +40,7 @@ enum {
     datediff_leap_century_year_cycle = 100,
     datediff_leap_quadricentennial_year_cycle = 400,
     datediff_days_per_common_year = 365,
+    datediff_warning_value_preview_length = 200,
 };
 
 struct datediff_date_parts {
@@ -728,7 +729,9 @@ static int append_incorrect_datetime_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)datediff_warning_value_preview_length
+            ? datediff_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;

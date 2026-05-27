@@ -65,6 +65,7 @@ enum {
     date_interval_second_leap_cycle_four_year_days = 1460,
     date_interval_second_leap_cycle_century_days = 36524,
     date_interval_second_march_based_month_switch = 10,
+    date_interval_second_warning_value_preview_length = 200,
     date_interval_second_result_capacity = 20,
 };
 
@@ -1529,7 +1530,9 @@ static int append_date_interval_second_incorrect_datetime_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)date_interval_second_warning_value_preview_length
+            ? date_interval_second_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;
@@ -1586,7 +1589,9 @@ static int set_date_interval_second_incorrect_datetime_error(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)date_interval_second_warning_value_preview_length
+            ? date_interval_second_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
 

@@ -179,6 +179,7 @@ static void base64_next_encode_group(
 ) {
     static const char alphabet[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static const char padding_character = '=';
     size_t group_start = *in_out_input_index;
     unsigned int first_byte = bytes[(*in_out_input_index)++];
     unsigned int second_byte = 0U;
@@ -199,12 +200,18 @@ static void base64_next_encode_group(
     group[1] = alphabet
         [((first_byte & base64_low_two_bit_mask) << 4U) |
          ((second_byte >> 4U) & base64_low_four_bit_mask)];
-    group[2] = group_input_size > 1U
-                   ? alphabet
-                         [((second_byte & base64_low_four_bit_mask) << 2U) |
-                          ((third_byte >> base64_third_sextet_shift) & base64_low_two_bit_mask)]
-                   : '=';
-    group[3] = group_input_size > 2U ? alphabet[third_byte & base64_low_six_bit_mask] : '=';
+    if (group_input_size > 1U) {
+        group[2] = alphabet
+            [((second_byte & base64_low_four_bit_mask) << 2U) |
+             ((third_byte >> base64_third_sextet_shift) & base64_low_two_bit_mask)];
+    } else {
+        group[2] = padding_character;
+    }
+    if (group_input_size > 2U) {
+        group[3] = alphabet[third_byte & base64_low_six_bit_mask];
+    } else {
+        group[3] = padding_character;
+    }
 }
 
 static int base64_append_encoded_group(

@@ -55,6 +55,7 @@ enum {
     unix_timestamp_month_formula_divisor = 5,
     unix_timestamp_march_based_month_wrap = 10,
     unix_timestamp_valid_minimum = 1,
+    unix_timestamp_warning_value_preview_length = 200,
     unix_timestamp_seconds_per_minute = 60,
     unix_timestamp_minutes_per_hour = 60,
     unix_timestamp_hours_per_day = 24,
@@ -921,7 +922,9 @@ static int append_incorrect_datetime_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)unix_timestamp_warning_value_preview_length
+            ? unix_timestamp_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;

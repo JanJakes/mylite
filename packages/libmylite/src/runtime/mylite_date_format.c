@@ -74,6 +74,7 @@ enum {
     days_per_week = 7,
     ordinal_teen_suffix_minimum = 11,
     ordinal_teen_suffix_maximum = 13,
+    date_format_warning_value_preview_length = 200,
 };
 
 struct date_format_parts {
@@ -2150,7 +2151,9 @@ static int append_str_to_date_truncated_warning(
         sizeof(message),
         "Truncated incorrect %s value: '%.*s'",
         kind_name,
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)date_format_warning_value_preview_length
+            ? date_format_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     if (written < 0) {
@@ -2183,7 +2186,9 @@ static int append_str_to_date_incorrect_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s' for function str_to_date",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)date_format_warning_value_preview_length
+            ? date_format_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;
@@ -2218,7 +2223,9 @@ static int append_incorrect_datetime_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)date_format_warning_value_preview_length
+            ? date_format_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;
@@ -2253,7 +2260,9 @@ static int append_incorrect_time_warning(
         message,
         sizeof(message),
         "Truncated incorrect time value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)date_format_warning_value_preview_length
+            ? date_format_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;

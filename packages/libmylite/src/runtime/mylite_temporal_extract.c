@@ -69,6 +69,7 @@ enum {
     week_minimum_days_in_first_week = 4,
     sunday_weekday_index = 1,
     yearweek_scale = 100,
+    temporal_extract_warning_value_preview_length = 200,
     digit_radix = 10,
 };
 
@@ -2504,7 +2505,9 @@ static int append_incorrect_temporal_warning(
         sizeof(message),
         "%s: '%.*s'",
         prefix == NULL ? "Incorrect datetime value" : prefix,
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)temporal_extract_warning_value_preview_length
+            ? temporal_extract_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;

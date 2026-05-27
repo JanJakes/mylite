@@ -86,7 +86,7 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.ROUTINES` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real stored routine descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no stored routine DDL, `CALL`, routine execution, parameter descriptors, stored definitions, definers, or privileges |
 | `INFORMATION_SCHEMA.SCHEMA_PRIVILEGES` | 🟡 | Queryable empty synthetic schema-privilege metadata view with MySQL 8.4.9-shaped columns and matching system metadata; no schema grant descriptors, accounts, roles, grants, revokes, privilege filtering, or enforcement |
 | `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | Limited queryable synthetic rows for `information_schema`, `mysql`, `performance_schema`, `sys`, and MyLite catalog schemas with descriptor-owned user-schema default charset/collation metadata and fixed default-encryption metadata; no privileges, encryption mutation, schema extension rows, or full schema option catalog |
-| `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | ❌ | Schema options |
+| `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | 🟡 | Limited queryable synthetic schema-options rows for built-in and MyLite catalog schemas, with MySQL 8.4.9-shaped columns, matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata, and empty `OPTIONS` values; no `ALTER SCHEMA ... READ ONLY`, mutable read-only state, privileges, or physical data dictionary tables |
 | `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` | ❌ | Columns in each table that store spatial data |
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | Available spatial reference systems |
 | `INFORMATION_SCHEMA.ST_UNITS_OF_MEASURE` | ❌ | Acceptable units for ST_Distance() |

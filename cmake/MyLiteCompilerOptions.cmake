@@ -1,6 +1,10 @@
 function(mylite_configure_c_target target)
   target_compile_features("${target}" PUBLIC c_std_17)
 
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions("${target}" PRIVATE _DEFAULT_SOURCE)
+  endif()
+
   set_target_properties("${target}" PROPERTIES
     C_EXTENSIONS OFF
     C_VISIBILITY_PRESET hidden

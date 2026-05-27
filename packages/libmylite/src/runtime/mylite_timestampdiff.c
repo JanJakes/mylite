@@ -44,6 +44,7 @@ enum {
     timestampdiff_seconds_per_hour = 3600,
     timestampdiff_seconds_per_day = 86400,
     timestampdiff_seconds_per_week = 604800,
+    timestampdiff_warning_value_preview_length = 200,
     timestampdiff_sqlite_argument_count = 5,
 };
 
@@ -978,7 +979,9 @@ static int append_incorrect_datetime_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%.*s'",
-        value_length > 200U ? 200 : (int)value_length,
+        value_length > (size_t)timestampdiff_warning_value_preview_length
+            ? timestampdiff_warning_value_preview_length
+            : (int)value_length,
         value == NULL ? "" : value
     );
     int rc = MYLITE_OK;

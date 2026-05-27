@@ -1195,7 +1195,7 @@ static int test_text_diagnostics(void) {
         "CREATE TABLE diag (id INT NOT NULL, tt TINYTEXT, nn TEXT NOT NULL)"
     );
 
-    memcpy(too_long_sql, too_long_prefix, too_long_prefix_length);
+    memcpy(too_long_sql, too_long_prefix, too_long_prefix_length + 1U);
     memset(too_long_sql + too_long_prefix_length, 'x', tinytext_overlength_byte_count);
     memcpy(
         too_long_sql + too_long_prefix_length + tinytext_overlength_byte_count,

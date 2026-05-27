@@ -411,6 +411,7 @@ enum {
     checksum_table_name_display_length = 384,
     checksum_table_checksum_display_length = 22,
     information_schema_schemata_column_count = 6,
+    information_schema_schemata_extensions_column_count = 3,
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
     information_schema_character_sets_column_count = 4,
@@ -687,6 +688,8 @@ static const double angle_conversion_half_turn_degrees = 180.0;
 static const double double_scientific_integer_threshold = 1.0e15;
 static const double logarithm_base_two = 2.0;
 static const double logarithm_base_ten = 10.0;
+static const long double decimal_round_integer_step = 1.0L;
+static const int tm_year_calendar_offset = 1900;
 static const uint64_t longtext_max_length = 4294967295ULL;
 static const uint64_t mysql_json_document_display_length = 4294967292ULL;
 static const uint64_t max_allowed_packet_default_value = 67108864ULL;
@@ -4283,6 +4286,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE = 23,
     INFORMATION_SCHEMA_TABLE_PARTITIONS = 24,
     INFORMATION_SCHEMA_TABLE_PLUGINS = 25,
+    INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS = 26,
 };
 
 struct information_schema_column_definition {
@@ -4530,6 +4534,46 @@ static const struct information_schema_column_definition information_schema_sche
      "utf8mb3",
      "utf8mb3_bin",
      "enum('NO','YES')"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_schemata_extensions_columns[] = {
+        {"CATALOG_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"SCHEMA_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"OPTIONS",
+         NULL,
+         "YES",
+         "varchar",
+         "256",
+         "768",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(256)"},
 };
 
 static const struct information_schema_column_definition information_schema_tables_columns[] = {
@@ -7758,6 +7802,10 @@ static const struct information_schema_table_definition information_schema_table
      "SCHEMATA",
      information_schema_schemata_columns,
      information_schema_schemata_column_count},
+    {INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS,
+     "SCHEMATA_EXTENSIONS",
+     information_schema_schemata_extensions_columns,
+     information_schema_schemata_extensions_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLES,
      "TABLES",
      information_schema_tables_columns,
@@ -10728,6 +10776,15 @@ static int append_information_schema_schemata_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_schemata_schema_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema
+);
+static int append_information_schema_schemata_extensions_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_schemata_extensions_schema_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema
@@ -44912,6 +44969,8 @@ static int append_information_schema_system_rows(
     switch (rows->definition->kind) {
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
         return append_information_schema_schemata_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
+        return append_information_schema_schemata_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLES:
         return append_information_schema_tables_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
@@ -44982,6 +45041,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
+    case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
     case INFORMATION_SCHEMA_TABLE_TABLES:
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
@@ -45013,6 +45073,13 @@ static int append_information_schema_catalog_schema(
     }
     if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_SCHEMATA) {
         return append_information_schema_schemata_schema_row(
+            context->database,
+            context->rows,
+            schema
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS) {
+        return append_information_schema_schemata_extensions_schema_row(
             context->database,
             context->rows,
             schema
@@ -45225,6 +45292,42 @@ static int append_information_schema_schemata_schema_row(
         schema->default_collation,
         NULL,
         "NO",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_schemata_extensions_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(builtin_schema_descriptors) /
+                                                           sizeof(builtin_schema_descriptors[0]);
+         ++index) {
+        const struct builtin_schema_descriptor *schema = &builtin_schema_descriptors[index];
+        const char *values[information_schema_schemata_extensions_column_count] = {
+            "def",
+            schema->name,
+            "",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_schemata_extensions_schema_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema
+) {
+    const char *values[information_schema_schemata_extensions_column_count] = {
+        "def",
+        schema->name,
+        "",
     };
 
     return append_information_schema_row(database, rows, values);
@@ -96813,7 +96916,7 @@ static int rand_seed_numeric_literal_value(
         rounded = floor_value;
         if (fraction > half || (fabsl(fraction - half) <= LDBL_EPSILON &&
                                 fmodl(floor_value, (long double)integer_even_divisor) != 0.0L)) {
-            rounded += 1.0L;
+            rounded += decimal_round_integer_step;
         }
     } else {
         rounded = floorl(value + half);
@@ -113451,6 +113554,7 @@ static int format_base_conversion_value(
     char *buffer,
     size_t buffer_size
 ) {
+    static const char base_conversion_digits[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     char reversed[base_conversion_text_capacity];
     size_t digit_count = 0U;
 
@@ -113476,9 +113580,7 @@ static int format_base_conversion_value(
             set_runtime_error(database, "failed to format base conversion value");
             return MYLITE_ERROR;
         }
-        reversed[digit_count] = digit < (unsigned int)decimal_base
-                                    ? (char)('0' + digit)
-                                    : (char)('A' + digit - (unsigned int)decimal_base);
+        reversed[digit_count] = base_conversion_digits[digit];
         ++digit_count;
         value /= base;
     }
@@ -116361,8 +116463,11 @@ static void copy_format_fraction_digits(
         return;
     }
     for (size_t index = 0U; index < decimal_places; ++index) {
-        out_fraction_digits[index] =
-            index < value->fraction_length ? value->fraction_digits[index] : '0';
+        if (index < value->fraction_length) {
+            out_fraction_digits[index] = value->fraction_digits[index];
+        } else {
+            out_fraction_digits[index] = '0';
+        }
     }
     out_fraction_digits[decimal_places] = '\0';
 }
@@ -142817,8 +142922,11 @@ static int build_decimal_digit_buffer(
             set_runtime_error(database, "DECIMAL digit buffer overflow");
             return MYLITE_ERROR;
         }
-        out_buffer->digits[digit_count] =
-            fraction_index < parts->fraction_end ? text[fraction_index] : '0';
+        if (fraction_index < parts->fraction_end) {
+            out_buffer->digits[digit_count] = text[fraction_index];
+        } else {
+            out_buffer->digits[digit_count] = '0';
+        }
         ++digit_count;
     }
     out_buffer->digit_count = digit_count;
@@ -143070,7 +143178,7 @@ static int format_current_timestamp_text(
         buffer,
         buffer_size,
         "%04d-%02d-%02d %02d:%02d:%02d",
-        time_parts.tm_year + 1900,
+        time_parts.tm_year + tm_year_calendar_offset,
         time_parts.tm_mon + 1,
         time_parts.tm_mday,
         time_parts.tm_hour,
@@ -143099,7 +143207,7 @@ static int format_sysdate_text(struct mylite_db *database, char *buffer, size_t 
         buffer,
         buffer_size,
         "%04d-%02d-%02d %02d:%02d:%02d",
-        time_parts.tm_year + 1900,
+        time_parts.tm_year + tm_year_calendar_offset,
         time_parts.tm_mon + 1,
         time_parts.tm_mday,
         time_parts.tm_hour,
@@ -143128,7 +143236,7 @@ static int format_current_date_text(struct mylite_db *database, char *buffer, si
         buffer,
         buffer_size,
         "%04d-%02d-%02d",
-        time_parts.tm_year + 1900,
+        time_parts.tm_year + tm_year_calendar_offset,
         time_parts.tm_mon + 1,
         time_parts.tm_mday
     );
@@ -143180,7 +143288,7 @@ static int format_utc_timestamp_text(struct mylite_db *database, char *buffer, s
         buffer,
         buffer_size,
         "%04d-%02d-%02d %02d:%02d:%02d",
-        time_parts.tm_year + 1900,
+        time_parts.tm_year + tm_year_calendar_offset,
         time_parts.tm_mon + 1,
         time_parts.tm_mday,
         time_parts.tm_hour,
@@ -143209,7 +143317,7 @@ static int format_utc_date_text(struct mylite_db *database, char *buffer, size_t
         buffer,
         buffer_size,
         "%04d-%02d-%02d",
-        time_parts.tm_year + 1900,
+        time_parts.tm_year + tm_year_calendar_offset,
         time_parts.tm_mon + 1,
         time_parts.tm_mday
     );
@@ -143282,7 +143390,7 @@ static int format_session_timestamp_epoch_text(
         buffer,
         buffer_size,
         "%04d-%02d-%02d %02d:%02d:%02d",
-        time_parts.tm_year + 1900,
+        time_parts.tm_year + tm_year_calendar_offset,
         time_parts.tm_mon + 1,
         time_parts.tm_mday,
         time_parts.tm_hour,
@@ -187062,12 +187170,17 @@ static int handle_generated_not_null_violation(
             &column_name_length
         )) {
         for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-            size_t descriptor_name_length = strlen(columns[column_index].name);
+            const char *descriptor_name = columns[column_index].name;
+            size_t descriptor_name_length = 0U;
 
+            if (descriptor_name == NULL) {
+                continue;
+            }
+            descriptor_name_length = strlen(descriptor_name);
             if (columns[column_index].is_generated && !columns[column_index].is_nullable &&
                 descriptor_name_length == column_name_length &&
-                strncmp(columns[column_index].name, column_name, column_name_length) == 0) {
-                set_bad_null_error(database, columns[column_index].name);
+                strncmp(descriptor_name, column_name, column_name_length) == 0) {
+                set_bad_null_error(database, descriptor_name);
                 *out_was_generated_not_null_violation = true;
                 return MYLITE_ERROR;
             }
@@ -187076,8 +187189,11 @@ static int handle_generated_not_null_violation(
     }
 
     for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-        if (columns[column_index].is_generated && !columns[column_index].is_nullable) {
-            set_bad_null_error(database, columns[column_index].name);
+        const char *descriptor_name = columns[column_index].name;
+
+        if (descriptor_name != NULL && columns[column_index].is_generated &&
+            !columns[column_index].is_nullable) {
+            set_bad_null_error(database, descriptor_name);
             *out_was_generated_not_null_violation = true;
             return MYLITE_ERROR;
         }

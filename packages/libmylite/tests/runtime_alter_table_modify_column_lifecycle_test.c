@@ -37,8 +37,11 @@ enum {
     mysql_error_invalid_use_of_null = 1138,
     mysql_error_duplicate_key = 1062,
     mysql_error_incorrect_prefix_key = 1089,
+    mysql_error_blob_key_without_length = 1170,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_data_truncated = 1265,
+    mysql_error_data_too_long = 1406,
 };
 
 struct expected_sql_error {
@@ -56,6 +59,7 @@ struct expected_query {
 };
 
 static int test_modify_column_success_persistence_and_dml(void);
+static int test_modify_column_text_family_replacement(void);
 static int test_modify_column_keyed_tables(void);
 static int test_modify_column_diagnostics_and_rollback(void);
 static int test_modify_column_independent_handles(void);
@@ -108,6 +112,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_modify_column_success_persistence_and_dml();
+    failures += test_modify_column_text_family_replacement();
     failures += test_modify_column_keyed_tables();
     failures += test_modify_column_diagnostics_and_rollback();
     failures += test_modify_column_independent_handles();
@@ -514,6 +519,348 @@ static int test_modify_column_success_persistence_and_dml(void) {
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
             .message_part = "Table 'app.renamed_target' doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_modify_column_text_family_replacement(void) {
+    enum {
+        long_insert_sql_capacity = 512,
+    };
+
+    static const char *const show_columns_after_varchar_to_text[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "v",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+        "body",
+        "text",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const show_create_after_varchar_to_text[] = {
+        "text_modify",
+        "CREATE TABLE `text_modify` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `v` text NOT NULL,\n"
+        "  `body` text\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const rows_after_varchar_to_text[] = {
+        "1",
+        "abc",
+        "old text",
+        "2",
+        "def",
+        NULL,
+    };
+    static const char *const default_rows_after_longtext[] = {
+        "1",
+        "old text",
+        "2",
+        NULL,
+        "3",
+        "fresh",
+    };
+    static const char *const national_column_rows[] = {
+        "n",
+        "text",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const national_value_rows[] = {
+        "1",
+        "aa",
+        "bb",
+        "2",
+        NULL,
+        NULL,
+    };
+    static const char *const prefix_index_rows[] = {"k_v", "v", "10", "BTREE"};
+    static const char *const fulltext_show_create_rows[] = {
+        "fulltext_text",
+        "CREATE TABLE `fulltext_text` (\n"
+        "  `v` text,\n"
+        "  FULLTEXT KEY `ft_v` (`v`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const fulltext_index_rows[] = {"ft_v", "v", "FULLTEXT"};
+    static const char *const persisted_rows[] = {"1", "abc", "2", "def", "3", "ghi"};
+    static const char *const long_value =
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    char path[test_path_capacity];
+    char long_insert_sql[long_insert_sql_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int written = 0;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "text-family") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text-family file");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE text_modify ("
+        "id INT NOT NULL, v VARCHAR(10) NOT NULL DEFAULT 'd', body TEXT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO text_modify VALUES (1, 'abc', 'old text'), (2, 'def', NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_modify_ok(database, "ALTER TABLE text_modify MODIFY v TEXT NOT NULL", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM text_modify",
+            .values = show_columns_after_varchar_to_text,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "show columns after varchar to text modify",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE text_modify",
+            .values = show_create_after_varchar_to_text,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "show create after varchar to text modify",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, body FROM text_modify ORDER BY id",
+            .values = rows_after_varchar_to_text,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows after varchar to text modify",
+        }
+    );
+
+    failures += expect_modify_ok(
+        database,
+        "ALTER TABLE text_modify MODIFY body LONGTEXT DEFAULT ('fresh')",
+        2
+    );
+    failures += execute_ok(database, "INSERT INTO text_modify (id, v) VALUES (3, 'ghi')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, body FROM text_modify ORDER BY id",
+            .values = default_rows_after_longtext,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "text-family default after modify",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE national_modify (id INT, n NCHAR(2), v NVARCHAR(5))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO national_modify VALUES (1, 'aa', 'bb'), (2, NULL, NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_modify_ok(database, "ALTER TABLE national_modify MODIFY n TEXT", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM national_modify LIKE 'n'",
+            .values = national_column_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "national char source after text modify",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n, v FROM national_modify ORDER BY id",
+            .values = national_value_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "national values after text modify",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE prefix_text (v VARCHAR(20), KEY k_v (v(10)))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_modify_ok(database, "ALTER TABLE prefix_text MODIFY v TEXT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, COLUMN_NAME, SUB_PART, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'prefix_text'",
+            .values = prefix_index_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "prefix index after text modify",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE fulltext_text (v VARCHAR(20), FULLTEXT KEY ft_v (v))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_modify_ok(database, "ALTER TABLE fulltext_text MODIFY v TEXT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE fulltext_text",
+            .values = fulltext_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "fulltext show create after text modify",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, COLUMN_NAME, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'fulltext_text'",
+            .values = fulltext_index_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "fulltext statistics after text modify",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE full_key_text (v VARCHAR(20), KEY k_v (v))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE full_key_text MODIFY v TEXT",
+        (struct expected_sql_error){
+            .code = mysql_error_blob_key_without_length,
+            .sqlstate = "42000",
+            .message_part = "BLOB/TEXT column 'v' used in key specification without a key length",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE null_text (v VARCHAR(20))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO null_text VALUES ('a'), (NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE null_text MODIFY v TEXT NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'v' at row 2",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE shrink_text (v LONGTEXT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    written = snprintf(
+        long_insert_sql,
+        sizeof(long_insert_sql),
+        "INSERT INTO shrink_text VALUES ('%s')",
+        long_value
+    );
+    if (written < 0 || (size_t)written >= sizeof(long_insert_sql)) {
+        fprintf(stderr, "long text insert SQL is too long\n");
+        failures += 1;
+    } else {
+        failures += execute_ok(database, long_insert_sql, &result);
+        mylite_result_free(result);
+        result = NULL;
+    }
+    failures += execute_error(
+        database,
+        "ALTER TABLE shrink_text MODIFY v TINYTEXT",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "text-family modify preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen text-family file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM text_modify ORDER BY id",
+            .values = persisted_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "text-family modify persists after reopen",
         }
     );
 
@@ -947,8 +1294,9 @@ static int test_modify_column_diagnostics_and_rollback(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, "
-                            "and temporal columns",
+            .message_part =
+                "ALTER TABLE MODIFY COLUMN supports only compatible baseline integer, character, "
+                "text, binary string, and temporal column replacements",
         }
     );
     failures += execute_error(

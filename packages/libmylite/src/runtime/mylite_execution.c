@@ -12884,6 +12884,11 @@ static int validate_modify_column_existing_rows(
     const struct planned_alter_table_modify_column *plan,
     int64_t *out_row_count
 );
+static int validate_modify_column_null_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+);
 static int validate_existing_integer_for_column(
     struct mylite_db *database,
     int64_t value,
@@ -71793,8 +71798,8 @@ static int plan_alter_table_modify_column(
     out_plan->rowid_alias_message =
         "ALTER TABLE MODIFY COLUMN requires an unshadowed SQLite rowid alias";
     out_plan->integer_support_message =
-        "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, and temporal "
-        "columns";
+        "ALTER TABLE MODIFY COLUMN supports only compatible baseline integer, character, "
+        "text, binary string, and temporal column replacements";
     out_plan->row_count_overflow_message =
         "too many rows to validate for ALTER TABLE MODIFY COLUMN";
     out_plan->failure_message = "failed to modify table column";
@@ -71860,8 +71865,8 @@ static int plan_alter_table_change_column(
     out_plan->rowid_alias_message =
         "ALTER TABLE CHANGE COLUMN requires an unshadowed SQLite rowid alias";
     out_plan->integer_support_message =
-        "ALTER TABLE CHANGE COLUMN supports only baseline integer, character, and temporal "
-        "columns";
+        "ALTER TABLE CHANGE COLUMN supports only compatible baseline integer, character, "
+        "text, binary string, and temporal column replacements";
     out_plan->row_count_overflow_message =
         "too many rows to validate for ALTER TABLE CHANGE COLUMN";
     out_plan->failure_message = "failed to change table column";
@@ -74049,10 +74054,7 @@ static int validate_modify_column_existing_rows(
         }
         ++row_number;
         if (sqlite_type == SQLITE_NULL) {
-            if (!target_column.is_nullable) {
-                set_invalid_use_of_null_error(database);
-                rc = MYLITE_ERROR;
-            }
+            rc = validate_modify_column_null_value(database, &target_column, row_number);
         } else if (sqlite_type == SQLITE_INTEGER) {
             rc = validate_existing_integer_for_column(
                 database,
@@ -74101,6 +74103,23 @@ static int validate_modify_column_existing_rows(
     }
 
     return rc;
+}
+
+static int validate_modify_column_null_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+) {
+    if (target_column->is_nullable) {
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_text_family(target_column)) {
+        set_data_truncated_error(database, target_column->name, row_number);
+    } else {
+        set_invalid_use_of_null_error(database);
+    }
+
+    return MYLITE_ERROR;
 }
 
 static int validate_existing_integer_for_column(
@@ -134622,7 +134641,7 @@ static bool modify_column_text_family_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 ) {
-    return (column_descriptor_is_text_family(original_column) &&
+    return (column_descriptor_is_string_family(original_column) &&
             planned_column_is_text_family(replacement_column)) != 0;
 }
 

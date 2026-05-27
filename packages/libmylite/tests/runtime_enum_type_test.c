@@ -753,8 +753,9 @@ static int test_enum_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, "
-                            "and temporal columns",
+            .message_part =
+                "ALTER TABLE MODIFY COLUMN supports only compatible baseline integer, character, "
+                "text, binary string, and temporal column replacements",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE enum_key (v ENUM('a','b'))");

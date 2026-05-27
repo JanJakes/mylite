@@ -833,8 +833,8 @@ static int test_spatial_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, and temporal "
-                "columns",
+                "ALTER TABLE MODIFY COLUMN supports only compatible baseline integer, character, "
+                "text, binary string, and temporal column replacements",
         }
     );
     failures += execute_error(
@@ -844,8 +844,8 @@ static int test_spatial_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "ALTER TABLE CHANGE COLUMN supports only baseline integer, character, and temporal "
-                "columns",
+                "ALTER TABLE CHANGE COLUMN supports only compatible baseline integer, character, "
+                "text, binary string, and temporal column replacements",
         }
     );
     failures += execute_error(

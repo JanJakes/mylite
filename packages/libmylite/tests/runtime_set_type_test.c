@@ -813,8 +813,9 @@ static int test_set_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, "
-                            "and temporal columns",
+            .message_part =
+                "ALTER TABLE MODIFY COLUMN supports only compatible baseline integer, character, "
+                "text, binary string, and temporal column replacements",
         }
     );
     failures += execute_error(

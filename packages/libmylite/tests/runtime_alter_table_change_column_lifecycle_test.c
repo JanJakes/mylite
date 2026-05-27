@@ -37,6 +37,7 @@ enum {
     mysql_error_table_does_not_exist = 1146,
     mysql_error_invalid_default = 1067,
     mysql_error_invalid_use_of_null = 1138,
+    mysql_error_blob_key_without_length = 1170,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_data_out_of_range = 1264,
 };
@@ -56,6 +57,7 @@ struct expected_query {
 };
 
 static int test_change_column_success_persistence_and_dml(void);
+static int test_change_column_text_family_replacement(void);
 static int test_change_column_keyed_tables(void);
 static int test_change_column_diagnostics_and_rollback(void);
 static int test_change_column_independent_handles(void);
@@ -108,6 +110,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_change_column_success_persistence_and_dml();
+    failures += test_change_column_text_family_replacement();
     failures += test_change_column_keyed_tables();
     failures += test_change_column_diagnostics_and_rollback();
     failures += test_change_column_independent_handles();
@@ -684,6 +687,264 @@ static int test_change_column_success_persistence_and_dml(void) {
     return failures;
 }
 
+static int test_change_column_text_family_replacement(void) {
+    static const char *const show_columns_after_char_to_longtext[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "c_new",
+        "longtext",
+        "YES",
+        "",
+        NULL,
+        "",
+        "v",
+        "varchar(20)",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const rows_after_char_to_longtext[] = {
+        "1",
+        "z",
+        "abc",
+        "2",
+        NULL,
+        "def",
+    };
+    static const char *const default_rows_after_text_change[] = {
+        "1",
+        "abc",
+        "2",
+        "def",
+        "3",
+        "fresh",
+    };
+    static const char *const national_column_rows[] = {
+        "nv_text",
+        "mediumtext",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const national_value_rows[] = {
+        "1",
+        "aa",
+        "2",
+        NULL,
+    };
+    static const char *const hyphen_columns[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "with-hyphen",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const hyphen_rows[] = {"abc"};
+    static const char *const persisted_rows[] = {
+        "1",
+        "z",
+        "abc",
+        "2",
+        NULL,
+        "def",
+        "3",
+        "third",
+        "fresh",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "text-family") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text-family change file");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE text_change ("
+        "id INT NOT NULL, c CHAR(5) DEFAULT 'xy', v VARCHAR(20) NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO text_change VALUES (1, 'z', 'abc'), (2, NULL, 'def')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE text_change CHANGE c c_new LONGTEXT NULL AFTER id",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM text_change",
+            .values = show_columns_after_char_to_longtext,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "show columns after char to longtext change",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, c_new, v FROM text_change ORDER BY id",
+            .values = rows_after_char_to_longtext,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows after char to longtext change",
+        }
+    );
+
+    failures +=
+        expect_change_ok(database, "ALTER TABLE text_change CHANGE v v TEXT DEFAULT ('fresh')", 2);
+    failures +=
+        execute_ok(database, "INSERT INTO text_change (id, c_new) VALUES (3, 'third')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM text_change ORDER BY id",
+            .values = default_rows_after_text_change,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "text default after change",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE national_change (id INT, nv NVARCHAR(5))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "INSERT INTO national_change VALUES (1, 'aa'), (2, NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_change_ok(database, "ALTER TABLE national_change CHANGE nv nv_text MEDIUMTEXT", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM national_change LIKE 'nv_text'",
+            .values = national_column_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "national varchar source after text change",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nv_text FROM national_change ORDER BY id",
+            .values = national_value_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "national values after text change",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE hyphen_change (id INT, `with-hyphen` VARCHAR(255) NOT NULL DEFAULT '')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO hyphen_change VALUES (1, 'abc')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE hyphen_change CHANGE `with-hyphen` `with-hyphen` TEXT NOT NULL",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM hyphen_change",
+            .values = hyphen_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 2U,
+            .context = "show columns after hyphen text change",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT `with-hyphen` FROM hyphen_change",
+            .values = hyphen_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "rows after hyphen text change",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE full_key_change (v VARCHAR(20), KEY k_v (v))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE full_key_change CHANGE v v TEXT",
+        (struct expected_sql_error){
+            .code = mysql_error_blob_key_without_length,
+            .sqlstate = "42000",
+            .message_part = "BLOB/TEXT column 'v' used in key specification without a key length",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen text-family change file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, c_new, v FROM text_change ORDER BY id",
+            .values = persisted_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "text-family change persists after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_change_column_keyed_tables(void) {
     static const char *const rows_after_rename[] = {
         "1",
@@ -1167,8 +1428,9 @@ static int test_change_column_diagnostics_and_rollback(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE CHANGE COLUMN supports only baseline integer, character, "
-                            "and temporal columns",
+            .message_part =
+                "ALTER TABLE CHANGE COLUMN supports only compatible baseline integer, character, "
+                "text, binary string, and temporal column replacements",
         }
     );
     failures += execute_error(

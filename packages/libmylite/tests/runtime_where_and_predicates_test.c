@@ -2471,15 +2471,20 @@ static int test_where_and_predicates(void) {
             .message_part = "WHERE supports only unqualified predicate columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "UPDATE numbers SET n = 1 WHERE numbers.i BETWEEN -2 AND 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "UPDATE numbers SET n = 1 WHERE numbers.i BETWEEN -2 AND 1 AND id = -999",
+        &result
     );
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "qualified update between predicate affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE missing IN (1, 2)",
@@ -2588,15 +2593,20 @@ static int test_where_and_predicates(void) {
             .message_part = "WHERE supports only unqualified predicate columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "UPDATE numbers SET n = 1 WHERE numbers.i IN (-2, 1, 0)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "UPDATE numbers SET n = 1 WHERE numbers.i IN (-2, 1, 0) AND id = -999",
+        &result
     );
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "qualified update in predicate affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE missing IS TRUE",
@@ -2654,15 +2664,20 @@ static int test_where_and_predicates(void) {
             .message_part = "WHERE supports only unqualified predicate columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "UPDATE numbers SET n = 1 WHERE numbers.i IS TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "UPDATE numbers SET n = 1 WHERE numbers.i IS TRUE AND id = -999",
+        &result
     );
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "qualified update is predicate affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE ! (id = 1)",
@@ -3277,15 +3292,20 @@ static int test_where_xor_predicates(void) {
             .message_part = "WHERE supports only unqualified predicate columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "UPDATE numbers SET n = 1 WHERE numbers.id = 1 XOR nn = 8",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "UPDATE numbers SET n = 1 WHERE (numbers.id = 1 XOR nn = 8) AND id = -999",
+        &result
     );
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "qualified update xor predicate affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE i XOR nn = 8",

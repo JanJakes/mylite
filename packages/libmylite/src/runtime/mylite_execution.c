@@ -19063,6 +19063,22 @@ static int plan_single_table_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 );
+static int plan_single_table_update_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
+static int validate_update_subquery_predicate_sources(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static int validate_update_subquery_predicate_node_source(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct planned_select_predicate_node *node
+);
 static int collect_single_table_update_optional_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *optional_clause,
@@ -28698,6 +28714,11 @@ static int append_joined_delete_from_sql(
     const struct planned_delete *plan
 );
 static int build_update_sql(const struct planned_update *plan, char **out_sql);
+static int append_single_update_target_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+);
+static bool planned_update_needs_target_alias(const struct planned_update *plan);
 static size_t update_assignment_parameter_count(const struct planned_update *plan);
 static int append_update_assignment_sql(
     struct dynamic_string *string,
@@ -28722,6 +28743,10 @@ static bool planned_update_column_has_auto_update(
 );
 static size_t planned_update_auto_update_column_count(const struct planned_update *plan);
 static int build_update_matched_sql(const struct planned_update *plan, char **out_sql);
+static int append_single_update_matched_from_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+);
 static int bind_update_matched_count_parameters(
     sqlite3_stmt *statement,
     const struct planned_update *plan
@@ -28741,6 +28766,10 @@ static int append_update_rowid_limited_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
+);
+static int append_single_update_rowid_source_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
 );
 static int append_joined_update_rowid_filter_sql(
     struct dynamic_string *string,
@@ -80746,13 +80775,12 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_predicate(
+        rc = plan_single_table_update_predicate(
             database,
             clauses.where_clause,
-            NULL,
             table_columns,
             table_column_count,
-            &out_plan->predicate
+            out_plan
         );
     }
     if (rc == MYLITE_OK) {
@@ -80794,6 +80822,82 @@ static int plan_single_table_update(
     }
 
     return rc;
+}
+
+static int plan_single_table_update_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    struct select_source_context source_context = {
+        .source = &out_plan->target,
+    };
+    const struct select_predicate_plan_options predicate_options = {
+        .allow_exists = true,
+        .allow_in_subquery = true,
+    };
+    int rc = plan_select_predicate_with_options(
+        database,
+        where_clause,
+        &source_context,
+        table_columns,
+        table_column_count,
+        &predicate_options,
+        &out_plan->predicate
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = validate_update_subquery_predicate_sources(database, out_plan);
+    }
+    return rc;
+}
+
+static int validate_update_subquery_predicate_sources(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    if (plan == NULL || !planned_select_predicate_has_expression(&plan->predicate)) {
+        return MYLITE_OK;
+    }
+
+    for (size_t node_index = 0U; node_index < plan->predicate.node_count; ++node_index) {
+        int rc = validate_update_subquery_predicate_node_source(
+            database,
+            plan,
+            &plan->predicate.nodes[node_index]
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_update_subquery_predicate_node_source(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct planned_select_predicate_node *node
+) {
+    if (node == NULL) {
+        return MYLITE_OK;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS && node->exists_subquery != NULL &&
+        node->exists_subquery->has_table_source &&
+        node->exists_subquery->source.table.table_id == plan->table.table_id) {
+        set_update_table_used_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_IN && node->in_subquery != NULL &&
+        node->in_subquery->source.table.table_id == plan->table.table_id) {
+        set_update_table_used_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int collect_single_table_update_optional_clause(
@@ -81478,7 +81582,7 @@ static int build_single_table_update_matched_count_sql(
 
     rc = dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+        rc = append_single_update_matched_from_sql(&string, plan);
     }
     if (rc == MYLITE_OK && planned_update_has_row_filter(plan)) {
         rc = append_update_row_filter_sql(&string, plan, &next_parameter);
@@ -184570,7 +184674,7 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
 
     rc = dynamic_string_append(&string, "UPDATE ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+        rc = append_single_update_target_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " SET ");
@@ -184600,6 +184704,35 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_single_update_target_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+
+    if (rc == MYLITE_OK && planned_update_needs_target_alias(plan)) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK && planned_update_needs_target_alias(plan)) {
+        rc = append_select_source_alias(string, 0U);
+    }
+
+    return rc;
+}
+
+static bool planned_update_needs_target_alias(const struct planned_update *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->is_joined) {
+        return false;
+    }
+    if (!plan->predicate.qualify_column_references) {
+        return false;
+    }
+    return true;
 }
 
 static size_t update_assignment_parameter_count(const struct planned_update *plan) {
@@ -184763,12 +184896,10 @@ static int build_update_matched_sql(const struct planned_update *plan, char **ou
     dynamic_string_init(&string);
 
     rc = dynamic_string_append(&string, "SELECT 1 FROM ");
-    if (rc == MYLITE_OK) {
-        if (plan->is_joined) {
-            rc = append_joined_update_from_sql(&string, plan);
-        } else {
-            rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
-        }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = append_joined_update_from_sql(&string, plan);
+    } else if (rc == MYLITE_OK) {
+        rc = append_single_update_matched_from_sql(&string, plan);
     }
     if (rc == MYLITE_OK && plan->is_joined) {
         rc = append_joined_update_matched_target_filter_sql(&string, plan, &next_parameter);
@@ -184788,6 +184919,13 @@ static int build_update_matched_sql(const struct planned_update *plan, char **ou
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_single_update_matched_from_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    return append_single_update_target_sql(string, plan);
 }
 
 static int append_joined_update_matched_target_filter_sql(
@@ -184859,7 +184997,7 @@ static int append_update_rowid_limited_sql(
         rc = dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+        rc = append_single_update_rowid_source_sql(string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
@@ -184875,6 +185013,13 @@ static int append_update_rowid_limited_sql(
     }
 
     return rc;
+}
+
+static int append_single_update_rowid_source_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    return append_single_update_target_sql(string, plan);
 }
 
 static int append_joined_update_rowid_filter_sql(

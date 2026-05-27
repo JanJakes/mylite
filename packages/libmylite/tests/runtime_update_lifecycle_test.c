@@ -726,15 +726,7 @@ static int test_update_diagnostics(void) {
             .message_part = "UPDATE supports only unqualified assignment columns",
         }
     );
-    failures += execute_error(
-        database,
-        "UPDATE numbers SET i = 1 WHERE numbers.id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
-    );
+    failures += expect_update_ok(database, "UPDATE numbers SET i = 1 WHERE numbers.id = -999", 0);
     failures += execute_error(
         database,
         "UPDATE numbers SET i = 1 ORDER BY numbers.id LIMIT 1",

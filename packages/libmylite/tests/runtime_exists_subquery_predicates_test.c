@@ -344,7 +344,7 @@ static int test_exists_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "UPDATE users SET group_id = 0 "
+        "DELETE FROM users "
         "WHERE EXISTS (SELECT 1 FROM orders AS o WHERE o.user_id = users.id)",
         (struct expected_sql_error){
             .code = mysql_error_parse,

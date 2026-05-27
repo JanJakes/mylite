@@ -7,7 +7,11 @@ succeeds, the current metadata `SELECT` subset can resolve unqualified metadata
 table names while that schema is selected, and currently supported mutating
 schema, table, index, rename, truncate, and single-table DML statements that
 target `information_schema` fail with `1044 / 42000` access denied diagnostics.
-MyLite does not implement a privilege engine or writable system views.
+The same built-in write guard protects `mysql`, `performance_schema`, and `sys`
+as metadata-only schemas; `performance_schema` uses the `1044 / 42000`
+diagnostic and `mysql` / `sys` use `3552 / HY000` system-schema diagnostics.
+MyLite does not implement a privilege engine, writable system views, or
+physical system-schema tables.
 
 The query surface is synthetic and limited. Supported `SELECT` forms can filter
 one metadata table source with descriptor-defined metadata columns using

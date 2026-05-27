@@ -6,6 +6,7 @@ Some MySQL server features do not naturally map to an in-process single-file dat
 | --- | --- | --- |
 | Replication and binary logs | ❌ | Embedded replication/binlog policy |
 | Account management and privileges | ❌ | Embedded account/privilege policy |
+| Built-in system schema writes | 🟡 | `information_schema`, `mysql`, `performance_schema`, and `sys` are synthetic metadata-only schemas in MyLite. `USE` and metadata listing are supported, but schema/table/index/rename/truncate/single-table DML writes are rejected before catalog mutation; `mysql` and `sys` write protection is deliberately stricter than MySQL 8.4.9 `root` temporary-table behavior. |
 | Resource groups | ❌ | Resource group diagnostics |
 | Components and plugins | ❌ | Component/plugin metadata policy |
 | Server lifecycle commands | ❌ | Lifecycle command diagnostics |

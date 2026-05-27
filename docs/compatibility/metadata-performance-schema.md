@@ -7,7 +7,9 @@ catalog and can be selected with `USE performance_schema`. The MySQL 8.4.9
 target runtime's Performance Schema table names are exposed as metadata-only
 rows through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`,
 and `SHOW TABLE STATUS`, but the tables remain non-queryable and unsupported
-unless listed otherwise below.
+unless listed otherwise below. MyLite rejects schema, table, index, rename,
+truncate, and single-table DML writes targeting `performance_schema` with
+`1044 / 42000` access-denied diagnostics.
 
 | Table | Status | Notes |
 | --- | --- | --- |

@@ -7,7 +7,10 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `mysql` table names are exposed as metadata-only rows through
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`, but the tables remain non-queryable and unsupported unless
-listed otherwise below.
+listed otherwise below. MyLite rejects schema, table, index, rename, truncate,
+and single-table DML writes targeting `mysql` with `3552 / HY000` system-schema
+diagnostics as a stricter embedded-design decision; MySQL 8.4.9 permits some
+`root` temporary-table writes in `mysql`.
 
 | Table | Status | Notes |
 | --- | --- | --- |

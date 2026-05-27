@@ -20,7 +20,12 @@ enum {
     test_path_capacity = 1024,
     rand_core_column_count = 7,
     rand_seed_column_count = 13,
+    rand_seed_coercion_column_count = 17,
+    rand_seed_string_column_count = 4,
+    rand_seed_warning_timing_column_count = 2,
+    rand_seed_cast_column_count = 7,
     rand_seed_dual_column_count = 2,
+    rand_seed_dual_warning_column_count = 1,
     rand_seed_mixed_column_count = 3,
     rand_alias_column_count = 2,
     rand_mixed_column_count = 3,
@@ -142,11 +147,117 @@ static int test_rand_values_and_file_safety(void) {
         "0.9050373219931845",
         "0.40540353712197724",
     };
+    static const char *const rand_seed_coercion_columns[] = {
+        "RAND(3.4)",
+        "RAND(3.5)",
+        "RAND(3.9)",
+        "RAND(-3.4)",
+        "RAND(-3.5)",
+        "RAND(-3.9)",
+        "RAND(+TRUE)",
+        "RAND(-TRUE)",
+        "RAND(+NULL)",
+        "RAND(-NULL)",
+        "RAND(NULLIF(1, 1))",
+        "RAND(NULLIF(1, 2))",
+        "RAND(3.9e0)",
+        "RAND(1e0)",
+        "RAND(-2e0)",
+        "RAND(4.5e0)",
+        "RAND(4.4e0)",
+    };
+    static const char *const rand_seed_coercion_values[] = {
+        "0.9057697559760601",
+        "0.15595286540310166",
+        "0.15595286540310166",
+        "0.40467110313910165",
+        "0.15448799371206015",
+        "0.15448799371206015",
+        "0.40540353712197724",
+        "0.9050373219931845",
+        "0.15522042769493574",
+        "0.15522042769493574",
+        "0.15522042769493574",
+        "0.40540353712197724",
+        "0.15595286540310166",
+        "0.40540353712197724",
+        "0.6548542125661431",
+        "0.15595286540310166",
+        "0.15595286540310166",
+    };
+    static const char *const rand_seed_string_columns[] = {
+        "RAND('5')",
+        "RAND('3.9')",
+        "RAND('abc')",
+        "RAND('  -2x')",
+    };
+    static const char *const rand_seed_string_values[] = {
+        "0.40613597483014313",
+        "0.9057697559760601",
+        "0.15522042769493574",
+        "0.6548542125661431",
+    };
+    static const char *const rand_seed_string_warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '3.9'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'abc'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '  -2x'",
+    };
+    static const char *const rand_seed_warning_timing_columns[] = {
+        "RAND('3.9')",
+        "@@warning_count",
+    };
+    static const char *const rand_seed_warning_timing_values[] = {
+        "0.9057697559760601",
+        "0",
+    };
+    static const char *const rand_seed_single_warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '3.9'",
+    };
+    static const char *const rand_seed_cast_columns[] = {
+        "RAND(CAST('5' AS SIGNED))",
+        "RAND(CAST('3.9' AS SIGNED))",
+        "RAND(CAST('abc' AS SIGNED))",
+        "RAND(CAST(NULL AS UNSIGNED))",
+        "RAND(CONVERT('5', SIGNED))",
+        "RAND(CONVERT('3.9', UNSIGNED))",
+        "RAND(CONVERT(NULL, SIGNED))",
+    };
+    static const char *const rand_seed_cast_values[] = {
+        "0.40613597483014313",
+        "0.9057697559760601",
+        "0.15522042769493574",
+        "0.15522042769493574",
+        "0.40613597483014313",
+        "0.9057697559760601",
+        "0.15522042769493574",
+    };
+    static const char *const rand_seed_cast_warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '3.9'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'abc'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '3.9'",
+    };
+    static const char *const show_warning_columns[] = {"Level", "Code", "Message"};
     static const char *const rand_seed_dual_columns[] = {"RAND (1)", "r"};
     static const char *const rand_seed_dual_values[] = {
         "0.40540353712197724",
         "0.15522042769493574",
     };
+    static const char *const rand_seed_dual_warning_columns[] = {"RAND('3.9')"};
+    static const char *const rand_seed_dual_warning_values[] = {"0.9057697559760601"};
     static const char *const rand_seed_mixed_columns[] = {
         "RAND(1)",
         "RAND()",
@@ -222,6 +333,111 @@ static int test_rand_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT RAND(3.4),RAND(3.5),RAND(3.9),RAND(-3.4),RAND(-3.5),"
+                   "RAND(-3.9),RAND(+TRUE),RAND(-TRUE),RAND(+NULL),RAND(-NULL),"
+                   "RAND(NULLIF(1, 1)),RAND(NULLIF(1, 2)),RAND(3.9e0),"
+                   "RAND(1e0),RAND(-2e0),RAND(4.5e0),RAND(4.4e0)",
+            .columns = rand_seed_coercion_columns,
+            .column_count = rand_seed_coercion_column_count,
+            .values = rand_seed_coercion_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "coerced rand numeric and expression seeds",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND('5'),RAND('3.9'),RAND('abc'),RAND('  -2x')",
+            .columns = rand_seed_string_columns,
+            .column_count = rand_seed_string_column_count,
+            .values = rand_seed_string_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 3U,
+            .affected_rows = 0,
+            .context = "coerced rand string seeds",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = rand_seed_string_warning_values,
+            .range_columns = NULL,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "coerced rand string seed warnings",
+        }
+    );
+    failures += execute_ok(database, "DO 0", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND('3.9'),@@warning_count",
+            .columns = rand_seed_warning_timing_columns,
+            .column_count = rand_seed_warning_timing_column_count,
+            .values = rand_seed_warning_timing_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "coerced rand same-statement warning count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = rand_seed_single_warning_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "coerced rand same-statement warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND(CAST('5' AS SIGNED)),RAND(CAST('3.9' AS SIGNED)),"
+                   "RAND(CAST('abc' AS SIGNED)),RAND(CAST(NULL AS UNSIGNED)),"
+                   "RAND(CONVERT('5', SIGNED)),RAND(CONVERT('3.9', UNSIGNED)),"
+                   "RAND(CONVERT(NULL, SIGNED))",
+            .columns = rand_seed_cast_columns,
+            .column_count = rand_seed_cast_column_count,
+            .values = rand_seed_cast_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 3U,
+            .affected_rows = 0,
+            .context = "coerced rand cast seed values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = rand_seed_cast_warning_values,
+            .range_columns = NULL,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "coerced rand cast seed warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT RAND (1), RAND(NULL) AS r FROM DUAL",
             .columns = rand_seed_dual_columns,
             .column_count = rand_seed_dual_column_count,
@@ -231,6 +447,34 @@ static int test_rand_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "seeded rand dual values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND('3.9') FROM DUAL",
+            .columns = rand_seed_dual_warning_columns,
+            .column_count = rand_seed_dual_warning_column_count,
+            .values = rand_seed_dual_warning_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "coerced rand dual warning value",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = rand_seed_single_warning_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "coerced rand dual warnings",
         }
     );
     failures += expect_query(
@@ -462,6 +706,12 @@ static int test_rand_table_backed_selects(void) {
 static int test_rand_do_and_independent_handles(void) {
     static const char *const diagnostic_columns[] = {"@@warning_count", "ROW_COUNT()"};
     static const char *const do_values[] = {"0", "0"};
+    static const char *const show_warning_columns[] = {"Level", "Code", "Message"};
+    static const char *const do_warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '3.9'",
+    };
     static const char *const rand_columns[] = {"RAND()"};
     static const char *const rand_values[] = {NULL};
     static const bool rand_ranges[] = {true};
@@ -479,6 +729,29 @@ static int test_rand_do_and_independent_handles(void) {
     failures += expect_int64(mylite_result_affected_rows(result), 0, "rand DO affected rows");
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(database, "DO RAND('3.9')", &result);
+    failures += expect_size(mylite_result_column_count(result), 0U, "coerced rand DO column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "coerced rand DO row count");
+    failures += expect_size(mylite_result_warning_count(result), 1U, "coerced rand DO warnings");
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 0, "coerced rand DO affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = do_warning_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "coerced rand DO warnings",
+        }
+    );
+    failures += execute_ok(database, "DO 0", NULL);
     failures += expect_query(
         database,
         (struct expected_query){
@@ -573,38 +846,11 @@ static int test_rand_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT RAND('1')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT RAND(1.5)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT RAND(1+0)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT RAND(+TRUE)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
+            .message_part = "RAND(seed) does not support this seed expression",
         }
     );
     failures += execute_error(
@@ -614,6 +860,15 @@ static int test_rand_errors_and_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "RAND(seed) integer literal is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT RAND(1e309)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND(seed) numeric seed is out of range",
         }
     );
     failures += execute_error(

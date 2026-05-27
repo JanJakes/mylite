@@ -112,6 +112,12 @@ This slice intentionally does not support:
 - protocol-grade approximate numeric metadata;
 - replication warnings or binlog-format semantics.
 
+The later [baseline RAND seed coercion](../baseline-rand-seed-coercion/specs.md)
+phase supersedes the no-source scalar part of these deferred seed-conversion
+notes for decimal, approximate, string, `NULLIF()`, and integer `CAST` /
+`CONVERT` seed expressions. Table-backed nonconstant seed expressions remain
+deferred.
+
 ## Grammar
 
 MyLite keeps the existing independently authored grammar shape and changes the

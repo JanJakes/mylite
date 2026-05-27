@@ -73,8 +73,10 @@ SELECT column_list FROM table_name [WHERE predicate] ORDER BY RAND() [ASC|DESC] 
 SELECT column_list FROM table_name [WHERE predicate] ORDER BY RAND(seed_literal) [ASC|DESC] [LIMIT limit]
 ```
 
-The existing no-source, `DUAL`, and `DO` `RAND()` / `RAND(seed)` forms remain
-unchanged.
+The existing no-source, `DUAL`, and `DO` `RAND()` / `RAND(seed)` forms are
+managed by their own scalar baseline phases. The later no-source seed-coercion
+baseline widens those scalar forms, but this table-backed phase keeps the
+literal-only seed domain below.
 
 `seed_literal` is the same literal seed domain as the existing scalar baseline:
 decimal integer literals with optional unary sign, `TRUE`, `FALSE`, and `NULL`.

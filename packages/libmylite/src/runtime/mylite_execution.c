@@ -244,6 +244,7 @@ enum {
     mysql_error_foreign_key_missing_unique = 6125,
     sqlite_use_nul_terminated_string = -1,
     year_conversion_incorrect_integer = 2,
+    integer_even_divisor = 2,
     decimal_base = 10,
     decimal_round_half_digit = 5,
     rounding_negative_places_zero_threshold = 20,
@@ -14692,6 +14693,65 @@ static int rand_seed_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     uint32_t *out_seed
+);
+static int rand_scalar_seed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+);
+static int rand_scalar_seed_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool has_unary_sign,
+    bool is_negative,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+);
+static int rand_seed_numeric_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    uint32_t *out_seed
+);
+static int rand_seed_string_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+);
+static int rand_seed_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+);
+static int rand_seed_nullif_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int rand_seed_from_scalar_cell(
+    struct mylite_db *database,
+    struct session_scalar_cell *cell,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+);
+static int rand_seed_from_integer_text(
+    struct mylite_db *database,
+    const char *text,
+    uint32_t *out_seed
+);
+static int rand_seed_from_magnitude(uint64_t magnitude, bool is_negative, uint32_t *out_seed);
+static int rand_seed_convert_string_value(
+    struct mylite_db *database,
+    const char *text,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+);
+static void move_session_scalar_warning_state(
+    struct session_scalar_cell *destination,
+    struct session_scalar_cell *source
 );
 static int rand_seed_literal_value(
     struct mylite_db *database,
@@ -94761,6 +94821,7 @@ static int rand_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    struct session_scalar_cell seed_warnings = {0};
     size_t child_count = 0U;
     uint32_t seed = 0U;
     double value = 0.0;
@@ -94781,7 +94842,7 @@ static int rand_function_value(
     if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION && child_count == 0U) {
         value = mylite_rand_unseeded_unit_double();
     } else if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION && child_count == 1U) {
-        rc = rand_seed_value(database, child_at(expression, 0U), &seed);
+        rc = rand_scalar_seed_value(database, child_at(expression, 0U), &seed, &seed_warnings);
         if (rc == MYLITE_OK) {
             value = mylite_rand_seeded_unit_double(seed);
         }
@@ -94801,8 +94862,393 @@ static int rand_function_value(
     }
     if (rc == MYLITE_OK) {
         out_cell->value = out_cell->double_text;
+        move_session_scalar_warning_state(out_cell, &seed_warnings);
     }
+    session_scalar_cell_deinit(&seed_warnings);
     return rc;
+}
+
+static int rand_scalar_seed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    bool has_unary_sign = false;
+    bool is_negative = false;
+
+    if (out_seed == NULL || out_warnings == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_seed = 0U;
+    *out_warnings = (struct session_scalar_cell){0};
+    if (literal == NULL) {
+        set_unsupported_error(database, "RAND(seed) does not support this seed expression");
+        return MYLITE_ERROR;
+    }
+
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(literal);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            set_unsupported_error(database, "RAND(seed) does not support this seed expression");
+            return MYLITE_ERROR;
+        }
+        has_unary_sign = true;
+        is_negative = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL) {
+        return rand_scalar_seed_literal_value(
+            database,
+            literal,
+            has_unary_sign,
+            is_negative,
+            out_seed,
+            out_warnings
+        );
+    }
+    if (has_unary_sign) {
+        set_unsupported_error(database, "RAND(seed) does not support this seed expression");
+        return MYLITE_ERROR;
+    }
+    return rand_seed_expression_value(database, literal, out_seed, out_warnings);
+}
+
+static int rand_scalar_seed_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool has_unary_sign,
+    bool is_negative,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal == NULL || out_seed == NULL || out_warnings == NULL) {
+        return MYLITE_MISUSE;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        *out_seed = 0U;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        return rand_seed_from_magnitude(1U, is_negative, out_seed);
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        return rand_seed_from_magnitude(0U, false, out_seed);
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return rand_seed_literal_value(database, literal, is_negative, out_seed);
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        return rand_seed_numeric_literal_value(database, literal, is_negative, out_seed);
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        if (!has_unary_sign) {
+            return rand_seed_string_literal_value(database, literal, out_seed, out_warnings);
+        }
+        break;
+    default:
+        break;
+    }
+
+    set_unsupported_error(database, "RAND(seed) does not support this seed expression");
+    return MYLITE_ERROR;
+}
+
+static int rand_seed_numeric_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    uint32_t *out_seed
+) {
+    char *text = NULL;
+    char *end = NULL;
+    long double value = 0.0L;
+    long double rounded = 0.0L;
+    long double half = 0.0L;
+    uint64_t magnitude = 0U;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal == NULL || literal->span.text == NULL || out_seed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_seed = 0U;
+    text = (char *)malloc(literal->span.length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(text, literal->span.text, literal->span.length);
+    text[literal->span.length] = '\0';
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+
+    errno = 0;
+    value = strtold(text, &end);
+    if (end == text || end == NULL || *end != '\0' || errno == ERANGE || !isfinite(value) ||
+        value < 0.0L) {
+        free(text);
+        set_unsupported_error(database, "RAND(seed) numeric seed is out of range");
+        return MYLITE_ERROR;
+    }
+    half = (long double)decimal_round_half_digit / (long double)decimal_base;
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+        long double floor_value = floorl(value);
+        long double fraction = value - floor_value;
+
+        rounded = floor_value;
+        if (fraction > half || (fabsl(fraction - half) <= LDBL_EPSILON &&
+                                fmodl(floor_value, (long double)integer_even_divisor) != 0.0L)) {
+            rounded += 1.0L;
+        }
+    } else {
+        rounded = floorl(value + half);
+    }
+    if (rounded > (long double)UINT64_MAX) {
+        free(text);
+        set_unsupported_error(database, "RAND(seed) numeric seed is out of range");
+        return MYLITE_ERROR;
+    }
+    magnitude = (uint64_t)rounded;
+    free(text);
+    return rand_seed_from_magnitude(magnitude, is_negative, out_seed);
+}
+
+static int rand_seed_string_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+) {
+    struct session_scalar_cell string_cell = {0};
+    int rc = scalar_text_conversion_input_value(
+        database,
+        literal,
+        &(const struct scalar_text_conversion_messages){
+            .unsupported = "RAND(seed) supports only string seed literals",
+            .signed_value = "RAND(seed) supports only string seed literals",
+            .string_unsupported = "RAND(seed) supports only string seed literals",
+            .embedded_nul = "RAND(seed) string literals do not support embedded NUL bytes",
+        },
+        &string_cell
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = rand_seed_from_scalar_cell(database, &string_cell, out_seed, out_warnings);
+    }
+    session_scalar_cell_deinit(&string_cell);
+    return rc;
+}
+
+static int rand_seed_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "RAND(seed) does not support this seed expression");
+        return MYLITE_ERROR;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_NULLIF_FUNCTION:
+        rc = rand_seed_nullif_expression_value(database, expression, &cell);
+        break;
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+        rc = cast_signed_value(database, expression, &cell);
+        break;
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+        rc = cast_unsigned_value(database, expression, &cell);
+        break;
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+        rc = convert_signed_type_value(database, expression, &cell);
+        break;
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
+        rc = convert_unsigned_type_value(database, expression, &cell);
+        break;
+    default:
+        set_unsupported_error(database, "RAND(seed) does not support this seed expression");
+        return MYLITE_ERROR;
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = rand_seed_from_scalar_cell(database, &cell, out_seed, out_warnings);
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int rand_seed_nullif_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell first_cell = {0};
+    struct session_scalar_cell second_cell = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_NULLIF_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, "NULLIF");
+        return MYLITE_ERROR;
+    }
+
+    rc = if_non_function_scalar_value(database, child_at(expression, 0U), "NULLIF", &first_cell);
+    if (rc == MYLITE_OK) {
+        rc = if_non_function_scalar_value(
+            database,
+            child_at(expression, 1U),
+            "NULLIF",
+            &second_cell
+        );
+    }
+    if (rc == MYLITE_OK && first_cell.value != NULL &&
+        (second_cell.value == NULL || strcmp(first_cell.value, second_cell.value) != 0)) {
+        copy_session_scalar_cell(out_cell, &first_cell);
+    }
+    session_scalar_cell_deinit(&first_cell);
+    session_scalar_cell_deinit(&second_cell);
+    return rc;
+}
+
+static int rand_seed_from_scalar_cell(
+    struct mylite_db *database,
+    struct session_scalar_cell *cell,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+) {
+    if (cell == NULL || out_seed == NULL || out_warnings == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (cell->owned_text != NULL && out_warnings->owned_text == NULL) {
+        out_warnings->owned_text = cell->owned_text;
+        cell->owned_text = NULL;
+    }
+    move_session_scalar_warning_state(out_warnings, cell);
+    if (cell->value == NULL) {
+        *out_seed = 0U;
+        return MYLITE_OK;
+    }
+    return rand_seed_convert_string_value(database, cell->value, out_seed, out_warnings);
+}
+
+static int rand_seed_from_integer_text(
+    struct mylite_db *database,
+    const char *text,
+    uint32_t *out_seed
+) {
+    struct mylite_sql_source_span span = {0};
+    uint64_t magnitude = 0U;
+    bool is_negative = false;
+
+    if (text == NULL || out_seed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (*text == '-') {
+        is_negative = true;
+        ++text;
+    }
+    span.text = text;
+    span.length = strlen(text);
+    if (parse_unsigned_integer_literal(&span, &magnitude) != MYLITE_OK) {
+        set_unsupported_error(database, "RAND(seed) numeric seed is out of range");
+        return MYLITE_ERROR;
+    }
+    return rand_seed_from_magnitude(magnitude, is_negative, out_seed);
+}
+
+static int rand_seed_from_magnitude(uint64_t magnitude, bool is_negative, uint32_t *out_seed) {
+    uint32_t truncated = 0U;
+
+    if (out_seed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    truncated = (uint32_t)magnitude;
+    if (is_negative) {
+        *out_seed = (uint32_t)(0U - truncated);
+    } else {
+        *out_seed = truncated;
+    }
+    return MYLITE_OK;
+}
+
+static int rand_seed_convert_string_value(
+    struct mylite_db *database,
+    const char *text,
+    uint32_t *out_seed,
+    struct session_scalar_cell *out_warnings
+) {
+    struct session_scalar_cell cast_cell = {0};
+    int rc =
+        scalar_integer_cast_string_value(database, text, SCALAR_INTEGER_CAST_SIGNED, &cast_cell);
+
+    if (rc == MYLITE_OK) {
+        move_session_scalar_warning_state(out_warnings, &cast_cell);
+        if (cast_cell.value == NULL) {
+            *out_seed = 0U;
+        } else {
+            rc = rand_seed_from_integer_text(database, cast_cell.value, out_seed);
+        }
+    }
+    session_scalar_cell_deinit(&cast_cell);
+    return rc;
+}
+
+static void move_session_scalar_warning_state(
+    struct session_scalar_cell *destination,
+    struct session_scalar_cell *source
+) {
+    if (destination == NULL || source == NULL) {
+        return;
+    }
+
+    if (source->has_staged_truncated_integer_warning) {
+        destination->has_staged_truncated_integer_warning = true;
+        if (source->staged_truncated_integer_text == source->owned_text &&
+            source->owned_text != NULL) {
+            free(destination->owned_text);
+            destination->owned_text = source->owned_text;
+            destination->staged_truncated_integer_text = destination->owned_text;
+            source->owned_text = NULL;
+        } else {
+            destination->staged_truncated_integer_text = source->staged_truncated_integer_text;
+        }
+    }
+    if (source->has_staged_truncated_decimal_warning) {
+        destination->has_staged_truncated_decimal_warning = true;
+        memcpy(
+            destination->staged_truncated_decimal_text,
+            source->staged_truncated_decimal_text,
+            sizeof(destination->staged_truncated_decimal_text)
+        );
+    }
+    if (source->has_staged_unhex_incorrect_string_warning) {
+        destination->has_staged_unhex_incorrect_string_warning = true;
+        memcpy(
+            destination->staged_unhex_incorrect_string_text,
+            source->staged_unhex_incorrect_string_text,
+            sizeof(destination->staged_unhex_incorrect_string_text)
+        );
+    }
+    destination->staged_signed_complement_warning_count +=
+        source->staged_signed_complement_warning_count;
+    destination->staged_unsigned_complement_warning_count +=
+        source->staged_unsigned_complement_warning_count;
+    destination->staged_division_by_zero_warning_count +=
+        source->staged_division_by_zero_warning_count;
+    destination->staged_invalid_logarithm_warning_count +=
+        source->staged_invalid_logarithm_warning_count;
 }
 
 static int rand_seed_value(

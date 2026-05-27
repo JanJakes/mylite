@@ -52,6 +52,9 @@ Runtime probes establish these expectations for this slice:
 - MySQL evaluates table-backed `RAND()` once per row and accepts
   `ORDER BY RAND()`, but both are outside this baseline slice.
 
+Later seeded and table-backed `RAND()` baseline phases supersede the initial
+deferred notes above only for their explicitly documented subsets.
+
 ## Supported Surface
 
 MyLite supports:

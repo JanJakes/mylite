@@ -216,6 +216,64 @@ expect_accepts \
     "SELECT RAND(3), RAND(NULL), RAND(TRUE), RAND(FALSE), RAND(-1);" \
     "$DATABASE"
 
+expect_output \
+    "coerced numeric RAND seeds" \
+    "0.9057697559760601	0.15595286540310166	0.15595286540310166	0.40467110313910165	0.15448799371206015	0.15448799371206015	0.40540353712197724	0.9050373219931845	0.15522042769493574	0.15522042769493574	0.15522042769493574	0.40540353712197724	0.15595286540310166	0.40540353712197724	0.6548542125661431	0.15595286540310166	0.15595286540310166" \
+    "SELECT RAND(3.4), RAND(3.5), RAND(3.9), RAND(-3.4), RAND(-3.5), "\
+"RAND(-3.9), RAND(+TRUE), RAND(-TRUE), RAND(+NULL), RAND(-NULL), "\
+"RAND(NULLIF(1, 1)), RAND(NULLIF(1, 2)), RAND(3.9e0), RAND(1e0), "\
+"RAND(-2e0), RAND(4.5e0), RAND(4.4e0);" \
+    "$DATABASE"
+
+expect_error \
+    "out-of-range approximate RAND seed rejected by MySQL" \
+    1367 \
+    "22007" \
+    "Illegal double '1e309' value found during parsing" \
+    "SELECT RAND(1e309);" \
+    "$DATABASE"
+
+expect_output \
+    "coerced string RAND seed warnings" \
+    "0.40613597483014313	0.9057697559760601	0.15522042769493574	0.6548542125661431
+Warning	1292	Truncated incorrect INTEGER value: '3.9'
+Warning	1292	Truncated incorrect INTEGER value: 'abc'
+Warning	1292	Truncated incorrect INTEGER value: '  -2x'" \
+    "SELECT RAND('5'), RAND('3.9'), RAND('abc'), RAND('  -2x'); SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "coerced RAND same-statement warning count" \
+    "0.9057697559760601	0
+Warning	1292	Truncated incorrect INTEGER value: '3.9'" \
+    "DO 0; SELECT RAND('3.9'), @@warning_count; SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "coerced RAND DUAL warnings" \
+    "0.9057697559760601
+Warning	1292	Truncated incorrect INTEGER value: '3.9'" \
+    "SELECT RAND('3.9') FROM DUAL; SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "coerced RAND DO warnings" \
+    "Warning	1292	Truncated incorrect INTEGER value: '3.9'" \
+    "DO RAND('3.9'); SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "coerced CAST and CONVERT RAND seed warnings" \
+    "0.40613597483014313	0.9057697559760601	0.15522042769493574	0.15522042769493574	0.40613597483014313	0.9057697559760601	0.15522042769493574
+Warning	1292	Truncated incorrect INTEGER value: '3.9'
+Warning	1292	Truncated incorrect INTEGER value: 'abc'
+Warning	1292	Truncated incorrect INTEGER value: '3.9'" \
+    "SELECT RAND(CAST('5' AS SIGNED)), RAND(CAST('3.9' AS SIGNED)), "\
+"RAND(CAST('abc' AS SIGNED)), RAND(CAST(NULL AS UNSIGNED)), "\
+"RAND(CONVERT('5', SIGNED)), RAND(CONVERT('3.9', UNSIGNED)), "\
+"RAND(CONVERT(NULL, SIGNED)); SHOW WARNINGS;" \
+    "$DATABASE"
+
 run_mysql \
     "DROP TABLE IF EXISTS t; CREATE TABLE t(id INT, k INT NULL); "\
 "INSERT INTO t VALUES (1, NULL), (2, 2), (3, 2), (4, 4), (5, NULL);" \

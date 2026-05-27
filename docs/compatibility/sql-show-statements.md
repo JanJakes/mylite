@@ -20,7 +20,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW CREATE TRIGGER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE VIEW` | 🟡 | Limited descriptor-driven output for baseline metadata-only views with MySQL-shaped columns `View`, `Create View`, `character_set_client`, and `collation_connection`; rejects base tables as not-view and does not support view options beyond fixed descriptor metadata, privilege filtering, mutable quote-control state, or executable/updatable views |
-| `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited descriptor-driven catalog schema listing with `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `WHERE`, system schemas, or privileges |
+| `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited schema listing for synthetic built-in schemas `information_schema`, `mysql`, `performance_schema`, and `sys` plus descriptor-owned user schemas, with `LIKE 'pattern'` filters and MySQL-shaped column labels; no NUL-producing pattern escapes, `WHERE`, privileges, or system-table expansion for the built-in schemas |
 | `SHOW ENGINE` | 🟡 | Limited to `SHOW ENGINE InnoDB STATUS`, with non-`InnoDB` engine names rejected by MyLite's embedded InnoDB-only policy; no `MUTEX`, `LOGS`, Performance Schema engine status, alternate engines, filters, privileges, or live engine internals |
 | `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINE MUTEX` | ❌ | Result shape, filters, privileges |

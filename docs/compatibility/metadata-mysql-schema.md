@@ -2,6 +2,10 @@
 
 Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB Cluster, and debug/development objects documented or shipped with MySQL 8.4.9. Each implementation should match the target build availability.
 
+The `mysql` schema name is exposed in the limited built-in schema catalog and
+can be selected with `USE mysql`, but its tables remain unsupported unless
+listed otherwise below.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `mysql.catalogs` | ❌ | Dictionary table: catalog metadata |

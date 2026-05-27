@@ -68,6 +68,28 @@ static int test_information_schema_core_queries(void) {
         NULL,
         "NO",
     };
+    static const char *const builtin_schemata_values[] = {
+        "information_schema",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        NULL,
+        "NO",
+        "mysql",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        NULL,
+        "NO",
+        "performance_schema",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        NULL,
+        "NO",
+        "sys",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        NULL,
+        "NO",
+    };
     static const char *const table_columns[] = {
         "TABLE_SCHEMA",
         "TABLE_NAME",
@@ -152,6 +174,13 @@ static int test_information_schema_core_queries(void) {
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_one[] = {"1"};
     static const char *const count_zero[] = {"0"};
+    static const char *const builtin_schemata_columns[] = {
+        "SCHEMA_NAME",
+        "DEFAULT_CHARACTER_SET_NAME",
+        "DEFAULT_COLLATION_NAME",
+        "SQL_PATH",
+        "DEFAULT_ENCRYPTION",
+    };
     static const char *const system_table_columns[] = {
         "TABLE_SCHEMA",
         "TABLE_NAME",
@@ -186,6 +215,21 @@ static int test_information_schema_core_queries(void) {
             .values = schemata_values,
             .row_count = 1U,
             .context = "schemata wildcard app row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME, "
+                   "SQL_PATH, DEFAULT_ENCRYPTION FROM INFORMATION_SCHEMA.SCHEMATA "
+                   "WHERE SCHEMA_NAME IN ('information_schema', 'mysql', "
+                   "'performance_schema', 'sys') ORDER BY SCHEMA_NAME",
+            .column_names = builtin_schemata_columns,
+            .column_count = sizeof(builtin_schemata_columns) / sizeof(builtin_schemata_columns[0]),
+            .values = builtin_schemata_values,
+            .row_count = sizeof(builtin_schemata_values) / sizeof(builtin_schemata_values[0]) /
+                         (sizeof(builtin_schemata_columns) / sizeof(builtin_schemata_columns[0])),
+            .context = "schemata built-in rows",
         }
     );
     failures += expect_query(

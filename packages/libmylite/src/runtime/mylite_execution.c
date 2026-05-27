@@ -157,6 +157,7 @@ enum {
     mysql_error_generated_column_value = 3105,
     mysql_error_default_val_generated = 3773,
     mysql_error_database_does_not_exist = 3503,
+    mysql_error_system_schema_access = 3552,
     mysql_error_primary_key_index_invisible = 3522,
     mysql_error_spatial_column_cannot_be_null = 3673,
     mysql_warning_spatial_index_no_srid = 3674,
@@ -353,6 +354,7 @@ enum {
     date_interval_months_per_quarter = 3,
     date_interval_planned_argument_count = 5,
     system_variable_body_offset = 2,
+    show_databases_initial_name_capacity = 8,
     show_tables_result_column_count = 2,
     show_tables_name_column = 0,
     show_tables_type_column = 1,
@@ -3974,6 +3976,12 @@ struct information_schema_table_definition {
     size_t column_count;
 };
 
+struct builtin_schema_descriptor {
+    const char *name;
+    const char *default_charset;
+    const char *default_collation;
+};
+
 struct information_schema_row_set {
     const struct information_schema_table_definition *definition;
     char ***rows;
@@ -7508,9 +7516,22 @@ static const struct information_schema_table_definition information_schema_table
      information_schema_view_table_usage_column_count},
 };
 
+static const struct builtin_schema_descriptor builtin_schema_descriptors[] = {
+    {"information_schema", "utf8mb3", "utf8mb3_general_ci"},
+    {"mysql", "utf8mb4", "utf8mb4_0900_ai_ci"},
+    {"performance_schema", "utf8mb4", "utf8mb4_0900_ai_ci"},
+    {"sys", "utf8mb4", "utf8mb4_0900_ai_ci"},
+};
+
+struct show_database_name {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
 struct show_databases_context {
-    mylite_result *result;
-    const struct show_like_filter *filter;
+    struct mylite_db *database;
+    struct show_database_name *names;
+    size_t name_count;
+    size_t name_capacity;
 };
 
 struct collect_drop_schema_tables_context {
@@ -9998,7 +10019,7 @@ static int append_information_schema_row(
     struct information_schema_row_set *rows,
     const char *const *values
 );
-static int append_information_schema_schemata_system_row(
+static int append_information_schema_schemata_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -19499,14 +19520,20 @@ static int collect_identifier_parts(
     size_t *part_count,
     struct mylite_db *database
 );
-static int reject_information_schema_write_target(
+static int reject_builtin_schema_write_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node
 );
-static int reject_information_schema_schema_write_name(
+static int reject_builtin_schema_schema_write_name(
     struct mylite_db *database,
     const char *schema_name
 );
+static const struct builtin_schema_descriptor *find_builtin_schema_descriptor(
+    const char *schema_name
+);
+static bool selected_schema_is_builtin_schema(const struct mylite_db *database);
+static const char *builtin_schema_error_name(const char *schema_name);
+static void set_builtin_schema_write_error(struct mylite_db *database, const char *schema_name);
 static bool selected_schema_is_information_schema(const struct mylite_db *database);
 static bool schema_name_is_information_schema(const char *schema_name);
 static int copy_identifier_text(
@@ -24099,7 +24126,7 @@ static int plan_joined_update_assignment(
     const struct select_source_context *source_context,
     struct planned_update *out_plan
 );
-static int reject_information_schema_joined_update_assignment_target(
+static int reject_builtin_schema_joined_update_assignment_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list
 );
@@ -24107,7 +24134,7 @@ static int finish_joined_update_target_plan(
     struct mylite_db *database,
     struct planned_update *out_plan
 );
-static int reject_information_schema_joined_update_target(
+static int reject_builtin_schema_joined_update_target(
     struct mylite_db *database,
     const struct planned_update *plan
 );
@@ -27329,10 +27356,23 @@ static const char *show_column_collation_text(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column
 );
-static int append_show_database(
+static int collect_show_database(
     const struct mylite_catalog_schema_descriptor *schema,
     void *user_data
 );
+static int append_builtin_show_database_names(struct show_databases_context *context);
+static int show_database_list_append(
+    struct mylite_db *database,
+    struct show_databases_context *context,
+    const char *name
+);
+static int append_sorted_show_database_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    struct show_databases_context *context
+);
+static int compare_show_database_names(const void *left, const void *right);
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size);
 static int build_physical_view_name(int64_t table_id, char *destination, size_t destination_size);
@@ -29965,6 +30005,7 @@ static void set_json_binary_charset_error(struct mylite_db *database);
 static void set_json_null_member_name_error(struct mylite_db *database);
 static void set_no_database_error(struct mylite_db *database);
 static void set_database_access_denied_error(struct mylite_db *database, const char *schema_name);
+static void set_system_schema_access_error(struct mylite_db *database, const char *schema_name);
 static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
 static int append_database_exists_note(struct mylite_db *database, const char *schema_name);
 static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
@@ -31451,17 +31492,17 @@ static int execute_use_statement(
     mylite_result **out_result
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
+    const struct builtin_schema_descriptor *builtin_schema = NULL;
     char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     mylite_result *result = NULL;
-    bool use_information_schema = false;
     int written = 0;
     int rc =
         copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
 
     if (rc == MYLITE_OK) {
-        use_information_schema = schema_name_is_information_schema(schema_name);
+        builtin_schema = find_builtin_schema_descriptor(schema_name);
     }
-    if (rc == MYLITE_OK && use_information_schema) {
+    if (rc == MYLITE_OK && builtin_schema != NULL) {
         rc = mylite_result_create(&result);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
@@ -31488,7 +31529,7 @@ static int execute_use_statement(
         database->session.selected_schema,
         sizeof(database->session.selected_schema),
         "%s",
-        use_information_schema ? "information_schema" : schema.name
+        builtin_schema != NULL ? builtin_schema->name : schema.name
     );
     if (written < 0 || (size_t)written >= sizeof(database->session.selected_schema)) {
         mylite_result_free(result);
@@ -38729,7 +38770,7 @@ static int maybe_finish_create_schema_if_not_exists_noop(
 
     rc = copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
     if (rc == MYLITE_OK) {
-        rc = reject_information_schema_schema_write_name(database, schema_name);
+        rc = reject_builtin_schema_schema_write_name(database, schema_name);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
@@ -39526,7 +39567,7 @@ static int maybe_finish_drop_schema_if_exists_noop(
 
     rc = copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
     if (rc == MYLITE_OK) {
-        rc = reject_information_schema_schema_write_name(database, schema_name);
+        rc = reject_builtin_schema_schema_write_name(database, schema_name);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
@@ -41413,7 +41454,7 @@ static int plan_alter_schema_default_charset_collation(
         rc = copy_identifier_text(schema_node, schema_name, sizeof(schema_name), database);
     }
     if (rc == MYLITE_OK) {
-        rc = reject_information_schema_schema_write_name(database, schema_name);
+        rc = reject_builtin_schema_schema_write_name(database, schema_name);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
@@ -41653,7 +41694,7 @@ static int validate_alter_table_algorithm_lock_options(
         algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT &&
         (lock == MYLITE_SQL_AST_ALTER_LOCK_NONE || lock == MYLITE_SQL_AST_ALTER_LOCK_SHARED ||
          lock == MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE)) {
-        rc = reject_information_schema_write_target(database, child_at(statement, 0U));
+        rc = reject_builtin_schema_write_target(database, child_at(statement, 0U));
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -44084,7 +44125,7 @@ static int append_information_schema_system_rows(
 ) {
     switch (rows->definition->kind) {
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
-        return append_information_schema_schemata_system_row(database, rows);
+        return append_information_schema_schemata_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLES:
         return append_information_schema_tables_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
@@ -44361,20 +44402,29 @@ static int append_information_schema_row(
     return MYLITE_OK;
 }
 
-static int append_information_schema_schemata_system_row(
+static int append_information_schema_schemata_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
-    const char *values[information_schema_schemata_column_count] = {
-        "def",
-        "information_schema",
-        "utf8mb3",
-        "utf8mb3_general_ci",
-        NULL,
-        "NO",
-    };
+    int rc = MYLITE_OK;
 
-    return append_information_schema_row(database, rows, values);
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(builtin_schema_descriptors) /
+                                                           sizeof(builtin_schema_descriptors[0]);
+         ++index) {
+        const struct builtin_schema_descriptor *schema = &builtin_schema_descriptors[index];
+        const char *values[information_schema_schemata_column_count] = {
+            "def",
+            schema->name,
+            schema->default_charset,
+            schema->default_collation,
+            NULL,
+            "NO",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
 }
 
 static int append_information_schema_schemata_schema_row(
@@ -53016,20 +53066,27 @@ static int execute_show_databases_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        context.result = result;
-        context.filter = &filter;
-        rc = mylite_catalog_for_each_schema(database, append_show_database, &context);
+        context.database = database;
+        rc = append_builtin_show_database_names(&context);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_for_each_schema(database, collect_show_database, &context);
         if (rc != MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW DATABASES result");
         }
     }
+    if (rc == MYLITE_OK) {
+        rc = append_sorted_show_database_rows(database, result, &filter, &context);
+    }
     if (rc != MYLITE_OK) {
+        free(context.names);
         mylite_result_free(result);
         free(column_name);
         show_like_filter_deinit(&filter);
         return rc;
     }
 
+    free(context.names);
     free(column_name);
     show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
@@ -60047,7 +60104,7 @@ static int plan_create_table_like(
     out_plan->create_table.pack_keys = -1;
     out_plan->create_table.stats_persistent = -1;
     out_plan->create_table.stats_auto_recalc = -1;
-    rc = reject_information_schema_write_target(database, child_at(statement, 0U));
+    rc = reject_builtin_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
         rc = resolve_visible_table_reference(
             database,
@@ -60415,7 +60472,7 @@ static int plan_create_table_select(
         MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
         sizeof(MYLITE_CATALOG_DEFAULT_TABLE_COLLATION)
     );
-    rc = reject_information_schema_write_target(database, child_at(statement, 0U));
+    rc = reject_builtin_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
         rc = plan_select(database, child_at(statement, 1U), false, &out_plan->source);
     }
@@ -63899,7 +63956,7 @@ static int create_schema_from_statement(
     );
 
     if (rc == MYLITE_OK) {
-        rc = reject_information_schema_schema_write_name(database, schema_name);
+        rc = reject_builtin_schema_schema_write_name(database, schema_name);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
@@ -63959,7 +64016,7 @@ static int plan_drop_schema(
 
     *out_plan = (struct planned_drop_schema){0};
     if (rc == MYLITE_OK) {
-        rc = reject_information_schema_schema_write_name(database, schema_name);
+        rc = reject_builtin_schema_schema_write_name(database, schema_name);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
@@ -81033,7 +81090,7 @@ static int plan_joined_update(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    rc = reject_information_schema_joined_update_assignment_target(database, assignment_list);
+    rc = reject_builtin_schema_joined_update_assignment_target(database, assignment_list);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -81095,7 +81152,7 @@ static int plan_joined_update(
     return rc;
 }
 
-static int reject_information_schema_joined_update_assignment_target(
+static int reject_builtin_schema_joined_update_assignment_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list
 ) {
@@ -81122,8 +81179,8 @@ static int reject_information_schema_joined_update_assignment_target(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (part_count == 3U && schema_name_is_information_schema(parts[0])) {
-        set_database_access_denied_error(database, parts[0]);
+    if (part_count == 3U && find_builtin_schema_descriptor(parts[0]) != NULL) {
+        set_builtin_schema_write_error(database, parts[0]);
         return MYLITE_ERROR;
     }
 
@@ -81214,7 +81271,7 @@ static int finish_joined_update_target_plan(
     out_plan->target = target_source->source;
     out_plan->table = target_source->table;
 
-    rc = reject_information_schema_joined_update_target(database, out_plan);
+    rc = reject_builtin_schema_joined_update_target(database, out_plan);
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -81271,7 +81328,7 @@ static int finish_joined_update_target_plan(
     return rc;
 }
 
-static int reject_information_schema_joined_update_target(
+static int reject_builtin_schema_joined_update_target(
     struct mylite_db *database,
     const struct planned_update *plan
 ) {
@@ -81279,8 +81336,8 @@ static int reject_information_schema_joined_update_target(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (text_equals_ascii_case_insensitive(plan->target.schema.name, "information_schema")) {
-        set_database_access_denied_error(database, plan->target.schema.name);
+    if (find_builtin_schema_descriptor(plan->target.schema.name) != NULL) {
+        set_builtin_schema_write_error(database, plan->target.schema.name);
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -123108,6 +123165,7 @@ static int database_character_set_system_variable_value(
     const char **out_value
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
+    const struct builtin_schema_descriptor *builtin_schema = NULL;
     int rc = MYLITE_OK;
 
     if (out_value == NULL) {
@@ -123118,8 +123176,9 @@ static int database_character_set_system_variable_value(
         *out_value = MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
         return MYLITE_OK;
     }
-    if (selected_schema_is_information_schema(database)) {
-        *out_value = "utf8mb3";
+    builtin_schema = find_builtin_schema_descriptor(database->session.selected_schema);
+    if (builtin_schema != NULL) {
+        *out_value = builtin_schema->default_charset;
         return MYLITE_OK;
     }
 
@@ -123145,6 +123204,7 @@ static int database_collation_system_variable_value(
     const char **out_value
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
+    const struct builtin_schema_descriptor *builtin_schema = NULL;
     int rc = MYLITE_OK;
 
     if (out_value == NULL) {
@@ -123155,8 +123215,9 @@ static int database_collation_system_variable_value(
         *out_value = MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
         return MYLITE_OK;
     }
-    if (selected_schema_is_information_schema(database)) {
-        *out_value = "utf8mb3_general_ci";
+    builtin_schema = find_builtin_schema_descriptor(database->session.selected_schema);
+    if (builtin_schema != NULL) {
+        *out_value = builtin_schema->default_collation;
         return MYLITE_OK;
     }
 
@@ -127271,7 +127332,7 @@ static int plan_joined_delete(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    rc = reject_information_schema_write_target(database, target_node);
+    rc = reject_builtin_schema_write_target(database, target_node);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -127915,7 +127976,7 @@ static int resolve_writable_table_name(
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
 ) {
-    int rc = reject_information_schema_write_target(database, node);
+    int rc = reject_builtin_schema_write_target(database, node);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -127974,7 +128035,7 @@ static int resolve_visible_writable_table_reference(
     struct table_name_resolution *out_resolution,
     struct mylite_catalog_table_descriptor *out_table
 ) {
-    int rc = reject_information_schema_write_target(database, node);
+    int rc = reject_builtin_schema_write_target(database, node);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -128009,7 +128070,7 @@ static int resolve_writable_table_name_allow_missing_schema(
     struct table_name_resolution *out_resolution,
     bool *out_missing_schema
 ) {
-    int rc = reject_information_schema_write_target(database, node);
+    int rc = reject_builtin_schema_write_target(database, node);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -128296,7 +128357,7 @@ static int resolve_writable_truncate_table_name(
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
 ) {
-    int rc = reject_information_schema_write_target(database, node);
+    int rc = reject_builtin_schema_write_target(database, node);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -128352,11 +128413,12 @@ static int resolve_truncate_table_name(
     return MYLITE_ERROR;
 }
 
-static int reject_information_schema_write_target(
+static int reject_builtin_schema_write_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node
 ) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct builtin_schema_descriptor *schema = NULL;
     size_t part_count = 0U;
     int rc = collect_identifier_parts(
         database == NULL ? NULL : node,
@@ -128369,25 +128431,74 @@ static int reject_information_schema_write_target(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if ((part_count == 2U && schema_name_is_information_schema(parts[0])) ||
-        (part_count == 1U && selected_schema_is_information_schema(database))) {
-        set_database_access_denied_error(database, "information_schema");
+    if (part_count == 2U) {
+        schema = find_builtin_schema_descriptor(parts[0]);
+    } else if (part_count == 1U && selected_schema_is_builtin_schema(database)) {
+        schema = find_builtin_schema_descriptor(database->session.selected_schema);
+    }
+    if (schema != NULL) {
+        set_builtin_schema_write_error(database, schema->name);
         return MYLITE_ERROR;
     }
 
     return MYLITE_OK;
 }
 
-static int reject_information_schema_schema_write_name(
+static int reject_builtin_schema_schema_write_name(
     struct mylite_db *database,
     const char *schema_name
 ) {
-    if (schema_name_is_information_schema(schema_name)) {
-        set_database_access_denied_error(database, "information_schema");
+    const struct builtin_schema_descriptor *schema = find_builtin_schema_descriptor(schema_name);
+
+    if (schema != NULL) {
+        set_builtin_schema_write_error(database, schema->name);
         return MYLITE_ERROR;
     }
 
     return MYLITE_OK;
+}
+
+static const struct builtin_schema_descriptor *find_builtin_schema_descriptor(
+    const char *schema_name
+) {
+    if (schema_name_is_information_schema(schema_name)) {
+        return &builtin_schema_descriptors[0];
+    }
+    for (size_t index = 1U;
+         index < sizeof(builtin_schema_descriptors) / sizeof(builtin_schema_descriptors[0]);
+         ++index) {
+        if (strcmp(schema_name, builtin_schema_descriptors[index].name) == 0) {
+            return &builtin_schema_descriptors[index];
+        }
+    }
+
+    return NULL;
+}
+
+static bool selected_schema_is_builtin_schema(const struct mylite_db *database) {
+    if (database == NULL || !database->session.has_selected_schema) {
+        return false;
+    }
+
+    return find_builtin_schema_descriptor(database->session.selected_schema) != NULL;
+}
+
+static const char *builtin_schema_error_name(const char *schema_name) {
+    const struct builtin_schema_descriptor *schema = find_builtin_schema_descriptor(schema_name);
+
+    return schema == NULL ? schema_name : schema->name;
+}
+
+static void set_builtin_schema_write_error(struct mylite_db *database, const char *schema_name) {
+    const char *canonical_name = builtin_schema_error_name(schema_name);
+
+    if (schema_name_is_information_schema(canonical_name) ||
+        strcmp(canonical_name, "performance_schema") == 0) {
+        set_database_access_denied_error(database, canonical_name);
+        return;
+    }
+
+    set_system_schema_access_error(database, canonical_name);
 }
 
 static bool selected_schema_is_information_schema(const struct mylite_db *database) {
@@ -173663,24 +173774,130 @@ static const char *show_column_collation_text(
     return NULL;
 }
 
-static int append_show_database(
+static int collect_show_database(
     const struct mylite_catalog_schema_descriptor *schema,
     void *user_data
 ) {
     struct show_databases_context *context = user_data;
-    const char *values[1] = {NULL};
 
-    if (schema == NULL || context == NULL || context->result == NULL) {
+    if (schema == NULL || context == NULL) {
         return MYLITE_MISUSE;
     }
 
-    if (!show_like_filter_matches(context->filter, schema->name, true)) {
-        return MYLITE_OK;
+    return show_database_list_append(context->database, context, schema->name);
+}
+
+static int append_builtin_show_database_names(struct show_databases_context *context) {
+    if (context == NULL) {
+        return MYLITE_MISUSE;
     }
 
-    values[0] = schema->name;
+    for (size_t index = 0U;
+         index < sizeof(builtin_schema_descriptors) / sizeof(builtin_schema_descriptors[0]);
+         ++index) {
+        int rc = show_database_list_append(
+            context->database,
+            context,
+            builtin_schema_descriptors[index].name
+        );
 
-    return mylite_result_append_text_row(context->result, values);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int show_database_list_append(
+    struct mylite_db *database,
+    struct show_databases_context *context,
+    const char *name
+) {
+    struct show_database_name *new_names = NULL;
+    int written = 0;
+
+    if (context == NULL || name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (context->name_count == context->name_capacity) {
+        size_t new_capacity = context->name_capacity == 0U ? show_databases_initial_name_capacity
+                                                           : context->name_capacity * 2U;
+
+        if (new_capacity < context->name_capacity) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        new_names = realloc(context->names, new_capacity * sizeof(context->names[0]));
+        if (new_names == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        context->names = new_names;
+        context->name_capacity = new_capacity;
+    }
+
+    written = snprintf(
+        context->names[context->name_count].name,
+        sizeof(context->names[context->name_count].name),
+        "%s",
+        name
+    );
+    if (written < 0 || (size_t)written >= sizeof(context->names[context->name_count].name)) {
+        set_identifier_too_long_error(database, "database");
+        return MYLITE_ERROR;
+    }
+    ++context->name_count;
+    return MYLITE_OK;
+}
+
+static int append_sorted_show_database_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    struct show_databases_context *context
+) {
+    const char *previous_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (result == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    qsort(
+        context->names,
+        context->name_count,
+        sizeof(context->names[0]),
+        compare_show_database_names
+    );
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < context->name_count; ++index) {
+        const char *name = context->names[index].name;
+        const char *values[1] = {name};
+
+        if (previous_name != NULL &&
+            compare_ascii_case_insensitive_text(previous_name, name) == 0) {
+            continue;
+        }
+        previous_name = name;
+        if (!show_like_filter_matches(filter, name, true)) {
+            continue;
+        }
+
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): qsort fixes this callback shape.
+static int compare_show_database_names(const void *left, const void *right) {
+    const struct show_database_name *left_name = left;
+    const struct show_database_name *right_name = right;
+
+    return compare_ascii_case_insensitive_text(left_name->name, right_name->name);
 }
 
 static int make_show_like_filter(
@@ -193164,6 +193381,26 @@ static void set_database_access_denied_error(struct mylite_db *database, const c
         mylite_connection_diagnostics(database),
         mysql_error_database_access_denied,
         "42000",
+        message
+    );
+}
+
+static void set_system_schema_access_error(struct mylite_db *database, const char *schema_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Access to system schema '%s' is rejected.",
+        schema_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_system_schema_access,
+        "HY000",
         message
     );
 }

@@ -2,6 +2,10 @@
 
 Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB Cluster, and debug/development objects documented or shipped with MySQL 8.4.9. Each implementation should match the target build availability.
 
+The `performance_schema` schema name is exposed in the limited built-in schema
+catalog and can be selected with `USE performance_schema`, but its tables remain
+unsupported unless listed otherwise below.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `performance_schema.accounts` | ❌ | Connection stats per account |

@@ -16,6 +16,7 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     mixed_scalar_column_count = 5,
+    show_databases_with_builtins_and_app_count = 5,
     row_count_text_capacity = 32,
     mysql_error_parse = 1064,
 };
@@ -230,7 +231,11 @@ static int test_row_count_function_transitions(void) {
     failures += expect_row_count(database, 0, "drop table row count");
 
     failures += execute_ok(database, "SHOW DATABASES", &result);
-    failures += expect_size(mylite_result_row_count(result), 1U, "show databases row count");
+    failures += expect_size(
+        mylite_result_row_count(result),
+        show_databases_with_builtins_and_app_count,
+        "show databases row count"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_row_count(database, -1, "show databases row count state");

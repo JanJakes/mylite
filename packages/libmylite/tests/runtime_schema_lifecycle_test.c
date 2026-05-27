@@ -21,12 +21,15 @@ enum {
     show_warnings_column_count = 3,
     show_count_warnings_column_count = 1,
     mysql_error_parse = 1064,
+    mysql_error_database_access_denied = 1044,
     mysql_error_no_database_selected = 1046,
     mysql_error_database_exists = 1007,
     mysql_error_cant_drop_database = 1008,
+    mysql_error_system_schema_access = 3552,
     mysql_error_unknown_database = 1049,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_unknown = 1105,
+    show_database_like_column_name_capacity = 128,
 };
 
 struct expected_sql_error {
@@ -112,6 +115,13 @@ static int expect_show_schema_statement(
     size_t expected_count,
     const char *context
 );
+static int expect_show_schema_statement_with_builtins(
+    mylite_db *database,
+    const char *sql,
+    const char *const *expected_names,
+    size_t expected_count,
+    const char *context
+);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -151,6 +161,10 @@ int main(void) {
 static int test_schema_success_persistence_and_cleanup(void) {
     static const char *const initial_schemas[] = {"app", "archive"};
     static const char *const archive_only[] = {"archive"};
+    static const char *const show_mysql[] = {"mysql"};
+    static const char *const show_performance_schema[] = {"performance_schema"};
+    static const char *const show_sys[] = {"sys"};
+    static const char *const show_app[] = {"app"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -180,7 +194,27 @@ static int test_schema_success_persistence_and_cleanup(void) {
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open schema file");
     failures += expect_show_databases(database, NULL, 0U, "initial show databases");
-
+    failures += expect_show_schema_statement(
+        database,
+        "SHOW DATABASES LIKE 'mysql'",
+        show_mysql,
+        1U,
+        "show mysql built-in schema"
+    );
+    failures += expect_show_schema_statement(
+        database,
+        "SHOW DATABASES LIKE 'performance_schema'",
+        show_performance_schema,
+        1U,
+        "show performance_schema built-in schema"
+    );
+    failures += expect_show_schema_statement(
+        database,
+        "SHOW SCHEMAS LIKE 'sys'",
+        show_sys,
+        1U,
+        "show sys built-in schema"
+    );
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     failures += expect_empty_result(result, 1, "create database result");
     mylite_result_free(result);
@@ -191,6 +225,59 @@ static int test_schema_success_persistence_and_cleanup(void) {
         failures += expect_bool(session->has_selected_schema, false, "create does not select");
     }
 
+    failures += execute_ok(database, "USE mysql", &result);
+    failures += expect_empty_result(result, 0, "use mysql built-in schema");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT DATABASE()",
+            .expected = "mysql",
+            .context = "selected mysql built-in schema",
+        }
+    );
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT @@character_set_database",
+            .expected = "utf8mb4",
+            .context = "mysql built-in schema charset",
+        }
+    );
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT @@collation_database",
+            .expected = "utf8mb4_0900_ai_ci",
+            .context = "mysql built-in schema collation",
+        }
+    );
+    failures += execute_ok(database, "USE performance_schema", &result);
+    failures += expect_empty_result(result, 0, "use performance_schema built-in schema");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT DATABASE()",
+            .expected = "performance_schema",
+            .context = "selected performance_schema built-in schema",
+        }
+    );
+    failures += execute_ok(database, "USE sys", &result);
+    failures += expect_empty_result(result, 0, "use sys built-in schema");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT DATABASE()",
+            .expected = "sys",
+            .context = "selected sys built-in schema",
+        }
+    );
+
     failures += execute_ok(database, "CREATE SCHEMA archive", &result);
     failures += expect_empty_result(result, 1, "create schema result");
     mylite_result_free(result);
@@ -198,6 +285,13 @@ static int test_schema_success_persistence_and_cleanup(void) {
 
     failures += expect_show_databases(database, initial_schemas, 2U, "show created schemas");
     failures += expect_show_schemas(database, initial_schemas, 2U, "show schemas alias");
+    failures += expect_show_schema_statement(
+        database,
+        "SHOW DATABASES LIKE 'app'",
+        show_app,
+        1U,
+        "show user schema like filter"
+    );
 
     failures += execute_ok(database, "USE app", &result);
     failures += expect_empty_result(result, 0, "use result");
@@ -686,6 +780,64 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
             .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE DATABASE mysql",
+        (struct expected_sql_error){
+            .code = mysql_error_system_schema_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system schema 'mysql' is rejected.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP DATABASE mysql",
+        (struct expected_sql_error){
+            .code = mysql_error_system_schema_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system schema 'mysql' is rejected.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE DATABASE performance_schema",
+        (struct expected_sql_error){
+            .code = mysql_error_database_access_denied,
+            .sqlstate = "42000",
+            .message_part = "Access denied for user 'root'@'%' to database 'performance_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE mysql.t (id INT)",
+        (struct expected_sql_error){
+            .code = mysql_error_system_schema_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system schema 'mysql' is rejected.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE sys.t (id INT)",
+        (struct expected_sql_error){
+            .code = mysql_error_system_schema_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system schema 'sys' is rejected.",
+        }
+    );
+    failures += execute_ok(database, "USE sys", &result);
+    failures += expect_empty_result(result, 0, "use sys before selected write diagnostic");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "CREATE TABLE selected_sys_write (id INT)",
+        (struct expected_sql_error){
+            .code = mysql_error_system_schema_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system schema 'sys' is rejected.",
         }
     );
     failures += execute_error(
@@ -1185,7 +1337,7 @@ static int expect_show_databases(
     size_t expected_count,
     const char *context
 ) {
-    return expect_show_schema_statement(
+    return expect_show_schema_statement_with_builtins(
         database,
         "SHOW DATABASES",
         expected_names,
@@ -1200,13 +1352,58 @@ static int expect_show_schemas(
     size_t expected_count,
     const char *context
 ) {
-    return expect_show_schema_statement(
+    return expect_show_schema_statement_with_builtins(
         database,
         "SHOW SCHEMAS",
         expected_names,
         expected_count,
         context
     );
+}
+
+static int expect_show_schema_statement_with_builtins(
+    mylite_db *database,
+    const char *sql,
+    const char *const *expected_names,
+    size_t expected_count,
+    const char *context
+) {
+    static const char *const builtin_schemas[] = {
+        "information_schema",
+        "mysql",
+        "performance_schema",
+        "sys",
+    };
+    size_t builtin_count = sizeof(builtin_schemas) / sizeof(builtin_schemas[0]);
+    size_t merged_count = builtin_count + expected_count;
+    const char **merged_names =
+        (const char **)calloc(merged_count == 0U ? 1U : merged_count, sizeof(*merged_names));
+    int failures = 0;
+
+    if (merged_names == NULL) {
+        fprintf(stderr, "failed to allocate expected SHOW DATABASES rows for %s\n", context);
+        return 1;
+    }
+    for (size_t index = 0U; index < builtin_count; ++index) {
+        merged_names[index] = builtin_schemas[index];
+    }
+    for (size_t index = 0U; index < expected_count; ++index) {
+        merged_names[builtin_count + index] = expected_names[index];
+    }
+    for (size_t index = 1U; index < merged_count; ++index) {
+        const char *name = merged_names[index];
+        size_t insert_at = index;
+
+        while (insert_at > 0U && strcmp(merged_names[insert_at - 1U], name) > 0) {
+            merged_names[insert_at] = merged_names[insert_at - 1U];
+            --insert_at;
+        }
+        merged_names[insert_at] = name;
+    }
+
+    failures = expect_show_schema_statement(database, sql, merged_names, merged_count, context);
+    free((void *)merged_names);
+    return failures;
 }
 
 static int expect_show_schema_statement(
@@ -1218,9 +1415,31 @@ static int expect_show_schema_statement(
 ) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
+    const char *expected_column_name = "Database";
+    const char *like_pattern = strstr(sql, " LIKE '");
+    char like_column_name[show_database_like_column_name_capacity];
+
+    if (like_pattern != NULL) {
+        const char *pattern_start = like_pattern + strlen(" LIKE '");
+        const char *pattern_end = strchr(pattern_start, '\'');
+
+        if (pattern_end != NULL) {
+            int written = snprintf(
+                like_column_name,
+                sizeof(like_column_name),
+                "Database (%.*s)",
+                (int)(pattern_end - pattern_start),
+                pattern_start
+            );
+
+            if (written >= 0 && (size_t)written < sizeof(like_column_name)) {
+                expected_column_name = like_column_name;
+            }
+        }
+    }
 
     failures += expect_size(mylite_result_column_count(result), 1U, context);
-    failures += expect_text(mylite_result_column_name(result, 0U), "Database", context);
+    failures += expect_text(mylite_result_column_name(result, 0U), expected_column_name, context);
     failures += expect_size(mylite_result_row_count(result), expected_count, context);
     for (size_t index = 0U; index < expected_count; ++index) {
         failures += expect_text(

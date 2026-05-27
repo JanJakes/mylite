@@ -32,6 +32,16 @@ statements. It does not admit unsigned columns, division, modulo, functions,
 casts, string or decimal coercion, expression predicates, expression ordering,
 or DML assignment expressions.
 
+The limited row-scalar `CAST()` / `CONVERT()` slice admits binary, character,
+signed integer, unsigned integer, `USING BINARY`, and `USING
+utf8mb4`/`utf8`/`utf8mb3`/`latin1` conversion projections over descriptor
+integer-family columns, nonbinary string-family columns, scalar literals, and
+supported folded session scalar values in one-base-table `SELECT` statements.
+It uses MyLite-owned conversion and result metadata while SQLite scans the rows.
+It does not admit binary string or `BIT` column operands, decimal/approximate/
+temporal/JSON/spatial column operands, general expression operands, predicates,
+ordering/grouping expressions, or DML assignments.
+
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, and SQL-level
 prepared statement source/`USING` positions. It does not make user variables

@@ -49,6 +49,16 @@ slice, except for `TIME` descriptor columns whose direct MySQL `STRCMP()`
 coercion is deferred. It does not add binary, non-ASCII collation, approximate
 numeric, parameter, or arbitrary expression conversion.
 
+Row-scalar `CAST()` / `CONVERT()` conversion is limited to one-base-table
+projection lists over descriptor integer-family columns, nonbinary
+string-family columns, scalar literals, and supported folded session scalar
+values. It supports binary, character, signed integer, unsigned integer,
+`USING BINARY`, and `USING utf8mb4`/`utf8`/`utf8mb3`/`latin1` targets with
+MyLite-owned value conversion and metadata while SQLite streams the source rows.
+It does not add general selected-row conversion, predicates, ordering/grouping
+expressions, DML assignment casts, binary string or `BIT` operands,
+decimal/approximate/temporal/JSON/spatial operands, or general transcoding.
+
 ## Numeric types
 
 | Feature | Status | Notes |

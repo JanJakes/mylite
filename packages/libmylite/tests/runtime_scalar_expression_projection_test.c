@@ -1185,60 +1185,6 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CAST(id AS BINARY) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CONVERT('ABC' USING BINARY) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CONVERT('ABC', BINARY) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CAST(id AS SIGNED) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CONVERT('ABC', CHAR) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CONVERT('ABC' USING utf8mb4) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
         "DO CAST(1 + 2 AS BINARY)",
         (struct expected_sql_error){
             .code = mysql_error_parse,

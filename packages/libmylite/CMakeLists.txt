@@ -38,6 +38,7 @@ endif()
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
   src/runtime/mylite_bitwise_aggregate.c
+  src/runtime/mylite_cast_convert.c
   src/runtime/mylite_catalog.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_date_format.c
@@ -350,6 +351,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_scalar_expression_projection_test)
+
+  add_executable(mylite_runtime_row_cast_convert_projection_test
+    tests/runtime_row_cast_convert_projection_test.c
+  )
+  target_link_libraries(mylite_runtime_row_cast_convert_projection_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_row_cast_convert_projection_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_row_cast_convert_projection_test)
 
   add_executable(mylite_runtime_optimizer_hints_noop_test
     tests/runtime_optimizer_hints_noop_test.c
@@ -4096,6 +4108,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.scalar_expression_projection
     COMMAND mylite_runtime_scalar_expression_projection_test
+  )
+  add_test(
+    NAME libmylite.runtime.row_cast_convert_projection
+    COMMAND mylite_runtime_row_cast_convert_projection_test
   )
   add_test(
     NAME libmylite.runtime.optimizer_hints_noop

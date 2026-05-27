@@ -1,6 +1,7 @@
 #include "mylite_sqlite_bootstrap.h"
 
 #include "mylite_bitwise_aggregate.h"
+#include "mylite_cast_convert.h"
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
@@ -230,6 +231,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_integer_arithmetic_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_cast_convert_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_temporal_extract_function(sqlite);

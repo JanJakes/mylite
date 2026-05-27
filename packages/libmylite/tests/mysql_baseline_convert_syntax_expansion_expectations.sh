@@ -119,6 +119,37 @@ expect_output \
 "CONVERT(FALSE USING utf8mb4); SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
+convert_charset_expected=$(cat <<\EXPECTED
+ABC	ABC	ABC	ABC	123	NULL
+Warning	3719	'utf8' is currently an alias for the character set UTF8MB3, but will be an alias for UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be unambiguous.
+Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 instead
+-1	2
+EXPECTED
+)
+expect_output \
+    "convert using scalar charsets and warnings" \
+    "$convert_charset_expected" \
+    "SELECT CONVERT('ABC' USING utf8), CONVERT('ABC' USING utf8mb3), "\
+"CONVERT('ABC' USING latin1), CONVERT('ABC' USING 'utf8mb4'), "\
+"CONVERT(123 USING 'latin1'), CONVERT(NULL USING latin1); "\
+"SHOW WARNINGS; SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+convert_collate_expected=$(cat <<\EXPECTED
+ABC	ABC	ABC
+Warning	3719	'utf8' is currently an alias for the character set UTF8MB3, but will be an alias for UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be unambiguous.
+-1	1
+EXPECTED
+)
+expect_output \
+    "convert using scalar collate" \
+    "$convert_collate_expected" \
+    "SELECT CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin, "\
+"CONVERT('ABC' USING utf8) COLLATE utf8mb3_bin, "\
+"CONVERT('ABC' USING latin1) COLLATE 'latin1_bin'; "\
+"SHOW WARNINGS; SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
 integer_boundary_expected=$(cat <<\EXPECTED
 0x313233343536373839303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132333435363738393031	123456789012345678901234567890123456789012345678901234567890123456789012345678901
 -1	0
@@ -160,9 +191,9 @@ expect_output \
 
 expect_output \
     "mysql accepted deferred broader convert forms" \
-    "0x4142430000	ABC	0	ABC" \
+    "0x4142430000	ABC	0" \
     "SELECT CONVERT('ABC', BINARY(5)), CONVERT('ABC', CHAR), "\
-"CONVERT('ABC', SIGNED), CONVERT('ABC' USING latin1);" \
+"CONVERT('ABC', SIGNED);" \
     "$DATABASE"
 
 expect_error \
@@ -171,6 +202,46 @@ expect_error \
     "42000" \
     "You have an error in your SQL syntax" \
     "SELECT CONVERT('ABC', BINARY, 1);" \
+    "$DATABASE"
+
+expect_error \
+    "unknown convert using charset" \
+    1115 \
+    42000 \
+    "Unknown character set: 'nosuch_charset'" \
+    "SELECT CONVERT('ABC' USING nosuch_charset);" \
+    "$DATABASE"
+
+expect_error \
+    "unknown convert collate" \
+    1273 \
+    HY000 \
+    "Unknown collation: 'nosuch_collation'" \
+    "SELECT CONVERT('ABC' USING utf8mb4) COLLATE nosuch_collation;" \
+    "$DATABASE"
+
+expect_error \
+    "convert collate rejects mismatched charset" \
+    1253 \
+    42000 \
+    "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET 'utf8mb4'" \
+    "SELECT CONVERT('ABC' USING utf8mb4) COLLATE latin1_swedish_ci;" \
+    "$DATABASE"
+
+expect_error \
+    "collate rejects null binary charset" \
+    1253 \
+    42000 \
+    "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'" \
+    "SELECT NULL COLLATE utf8mb4_bin;" \
+    "$DATABASE"
+
+expect_error \
+    "collate rejects binary literal charset" \
+    1253 \
+    42000 \
+    "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'" \
+    "SELECT X'41' COLLATE utf8mb4_bin;" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_convert_syntax_expansion_expectations: ok"

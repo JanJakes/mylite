@@ -1601,6 +1601,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_charset_express
     struct mylite_sql_ast_node *charset,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_collate_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_token collate_token,
+    struct mylite_sql_ast_node *collation
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token left_paren,

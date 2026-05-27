@@ -15,6 +15,8 @@ enum {
     path_suffix_capacity = 16,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
+    mysql_error_collation_not_valid_for_character_set = 1253,
+    mysql_error_illegal_mix_of_collations = 1267,
 };
 
 struct expected_sql_error {
@@ -29,6 +31,7 @@ struct expected_query {
     size_t column_count;
     const char *const *values;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -93,14 +96,26 @@ static int test_no_source_dual_and_do_coercibility(void) {
         "binary_concat",
         "utf8mb4_concat",
         "rand_concat",
+        "collated_concat",
+        "binary_collated_concat",
     };
-    static const char *const values_concat[] = {"3", "2", "2", "4"};
+    static const char *const values_concat[] = {"3", "2", "2", "4", "0", "0"};
     static const char *const columns_nondefault_collation[] = {
         "literal_value",
         "concat_value",
         "convert_value",
     };
     static const char *const values_nondefault_collation[] = {"4", "4", "2"};
+    static const char *const columns_convert_charset[] = {
+        "utf8_value",
+        "utf8mb3_value",
+        "latin1_value",
+        "utf8mb4_collated_value",
+        "latin1_collated_value",
+        "literal_collated_value",
+        "integer_collated_value",
+    };
+    static const char *const values_convert_charset[] = {"2", "2", "2", "0", "0", "0", "0"};
     static const char *const columns_dual[] = {"literal_value", "binary_value"};
     static const char *const values_dual[] = {"4", "2"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
@@ -157,7 +172,11 @@ static int test_no_source_dual_and_do_coercibility(void) {
                    "COERCIBILITY(CONCAT(CAST('a' AS BINARY), 'b')) AS binary_concat, "
                    "COERCIBILITY(CONCAT(CONVERT('a' USING utf8mb4), 'x')) "
                    "AS utf8mb4_concat, "
-                   "COERCIBILITY(CONCAT(RAND(0), 'x')) AS rand_concat",
+                   "COERCIBILITY(CONCAT(RAND(0), 'x')) AS rand_concat, "
+                   "COERCIBILITY(CONCAT('a' COLLATE utf8mb4_bin, 'x')) "
+                   "AS collated_concat, "
+                   "COERCIBILITY(CONCAT(CAST('a' AS BINARY), 'x' COLLATE utf8mb4_bin)) "
+                   "AS binary_collated_concat",
             .columns = columns_concat,
             .column_count = sizeof(columns_concat) / sizeof(columns_concat[0]),
             .values = values_concat,
@@ -178,6 +197,27 @@ static int test_no_source_dual_and_do_coercibility(void) {
             .values = values_nondefault_collation,
             .row_count = 1U,
             .context = "nondefault connection collation coercibility",
+        }
+    );
+    failures += execute_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COERCIBILITY(CONVERT('ABC' USING utf8)) AS utf8_value, "
+                   "COERCIBILITY(CONVERT('ABC' USING utf8mb3)) AS utf8mb3_value, "
+                   "COERCIBILITY(CONVERT('ABC' USING latin1)) AS latin1_value, "
+                   "COERCIBILITY(CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin) "
+                   "AS utf8mb4_collated_value, "
+                   "COERCIBILITY(CONVERT('ABC' USING latin1) COLLATE latin1_bin) "
+                   "AS latin1_collated_value, "
+                   "COERCIBILITY('ABC' COLLATE utf8mb4_bin) AS literal_collated_value, "
+                   "COERCIBILITY(123 COLLATE utf8mb4_bin) AS integer_collated_value",
+            .columns = columns_convert_charset,
+            .column_count = sizeof(columns_convert_charset) / sizeof(columns_convert_charset[0]),
+            .values = values_convert_charset,
+            .row_count = 1U,
+            .warning_count = 2U,
+            .context = "convert charset and collate coercibility",
         }
     );
     failures += expect_query(
@@ -375,6 +415,26 @@ static int test_coercibility_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COERCIBILITY(NULL COLLATE utf8mb4_bin)",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COERCIBILITY(CONCAT('a' COLLATE utf8mb4_bin, "
+        "'b' COLLATE utf8mb4_0900_ai_ci))",
+        (struct expected_sql_error){
+            .code = mysql_error_illegal_mix_of_collations,
+            .sqlstate = "HY000",
+            .message_part = "Illegal mix of collations (utf8mb4_bin,EXPLICIT) and "
+                            "(utf8mb4_0900_ai_ci,EXPLICIT) for operation 'concat'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COERCIBILITY(CAST(missing AS BINARY))",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -451,7 +511,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
     for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
         failures += expect_text(
             mylite_result_column_name(result, column_index),

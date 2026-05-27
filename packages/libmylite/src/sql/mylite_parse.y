@@ -39,6 +39,7 @@
 %left BITWISE_XOR.
 %left CONCAT_OPERATOR.
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
+%left COLLATE.
 %right UPLUS UMINUS BITWISE_NOT.
 
 %fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT.
@@ -4475,6 +4476,9 @@ expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAREN(R). {
 }
 expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_charset_expression(state, T, V, C, R);
+}
+expression(A) ::= expression(V) COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_collate_expression(state, V, C, N);
 }
 expression(A) ::= ROW_NUMBER(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
     A = mylite_sql_parser_make_row_number_window_function(state, T, W, R);

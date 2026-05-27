@@ -69,7 +69,7 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; USE ${DATABASE}; SET NAMES utf8mb4;" >/dev/null
 
 scalar_expected=$(cat <<EXPECTED
-utf8mb4	utf8mb4_0900_ai_ci	binary	binary	binary	binary	binary	binary	utf8mb3	utf8mb3_general_ci	utf8mb4	utf8mb4_0900_ai_ci	utf8mb4	utf8mb4_0900_ai_ci	binary	binary
+utf8mb4	utf8mb4_0900_ai_ci	binary	binary	binary	binary	binary	binary	utf8mb3	utf8mb3_general_ci	utf8mb4	utf8mb4_0900_ai_ci	utf8mb4	utf8mb4_0900_ai_ci	binary	binary	utf8mb4	utf8mb4_bin	utf8mb4	utf8mb4_bin
 0	-1
 EXPECTED
 )
@@ -82,7 +82,11 @@ expect_output \
 "COLLATION(NULL), CHARSET(123), COLLATION(RAND(0)), CHARSET(DATABASE()), "\
 "COLLATION(DATABASE()), CHARSET(CONVERT('ABC' USING utf8mb4)), "\
 "COLLATION(CONCAT(1, 'a')), CHARSET(CONCAT(NULL, 1)), COLLATION(CONCAT(NULL, 1)), "\
-"CHARSET(CONCAT(CAST('a' AS BINARY), 'b')), COLLATION(CONCAT(X'41', 'b')); "\
+"CHARSET(CONCAT(CAST('a' AS BINARY), 'b')), COLLATION(CONCAT(X'41', 'b')), "\
+"CHARSET(CONCAT('a' COLLATE utf8mb4_bin, 'b')), "\
+"COLLATION(CONCAT('a' COLLATE utf8mb4_bin, 'b')), "\
+"CHARSET(CONCAT(CAST('a' AS BINARY), 'b' COLLATE utf8mb4_bin)), "\
+"COLLATION(CONCAT(X'41', 'b' COLLATE utf8mb4_bin)); "\
 "SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
@@ -96,6 +100,29 @@ expect_output \
     "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci; "\
 "SELECT COLLATION('abc'), COLLATION(CONCAT('a', 'b')), "\
 "COLLATION(CONVERT('ABC' USING utf8mb4)), CHARSET(CONVERT('ABC' USING utf8mb4));" \
+    "$DATABASE"
+
+convert_charset_expected=$(cat <<\EXPECTED
+utf8mb3	utf8mb3_general_ci	utf8mb3	utf8mb3_general_ci	latin1	latin1_swedish_ci	utf8mb4	utf8mb4_bin	latin1	latin1_bin
+Warning	3719	'utf8' is currently an alias for the character set UTF8MB3, but will be an alias for UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be unambiguous.
+Warning	3719	'utf8' is currently an alias for the character set UTF8MB3, but will be an alias for UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be unambiguous.
+Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 instead
+Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 instead
+-1	4
+EXPECTED
+)
+expect_output \
+    "convert charset metadata and warnings" \
+    "$convert_charset_expected" \
+    "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"SELECT CHARSET(CONVERT('ABC' USING utf8)), COLLATION(CONVERT('ABC' USING utf8)), "\
+"CHARSET(CONVERT('ABC' USING utf8mb3)), COLLATION(CONVERT('ABC' USING utf8mb3)), "\
+"CHARSET(CONVERT('ABC' USING latin1)), COLLATION(CONVERT('ABC' USING latin1)), "\
+"CHARSET(CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin), "\
+"COLLATION(CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin), "\
+"CHARSET(CONVERT('ABC' USING latin1) COLLATE latin1_bin), "\
+"COLLATION(CONVERT('ABC' USING latin1) COLLATE latin1_bin); "\
+"SHOW WARNINGS; SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
 expect_output \
@@ -155,6 +182,30 @@ expect_error \
     42000 \
     "You have an error in your SQL syntax" \
     "SELECT COLLATION('a', 'b');" \
+    "$DATABASE"
+
+expect_error \
+    "charset rejects null collate mismatch" \
+    1253 \
+    42000 \
+    "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'" \
+    "SELECT CHARSET(NULL COLLATE utf8mb4_bin);" \
+    "$DATABASE"
+
+expect_error \
+    "collation rejects binary collate mismatch" \
+    1253 \
+    42000 \
+    "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'" \
+    "SELECT COLLATION(X'41' COLLATE utf8mb4_bin);" \
+    "$DATABASE"
+
+expect_error \
+    "collation rejects conflicting explicit concat collations" \
+    1267 \
+    HY000 \
+    "Illegal mix of collations (utf8mb4_bin,EXPLICIT) and (utf8mb4_0900_ai_ci,EXPLICIT) for operation 'concat'" \
+    "SELECT COLLATION(CONCAT('a' COLLATE utf8mb4_bin, 'b' COLLATE utf8mb4_0900_ai_ci));" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_charset_collation_functions_expectations: ok"

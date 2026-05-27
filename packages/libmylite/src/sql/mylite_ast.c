@@ -863,6 +863,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "convert_unsigned_type_expression";
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return "convert_using_charset_expression";
+    case MYLITE_SQL_AST_COLLATE_EXPRESSION:
+        return "collate_expression";
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
         return "charset_function";
     case MYLITE_SQL_AST_COLLATION_FUNCTION:

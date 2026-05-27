@@ -7447,6 +7447,27 @@ static int test_charset_collation_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin AS c FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_COLLATE_EXPRESSION, "postfix collate");
+    failures += expect_span_text(
+        expression,
+        "CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin",
+        "postfix collate span"
+    );
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION,
+        "postfix collate expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT CHARSET ('a'), (COLLATION(CONVERT('A' USING BINARY))), COERCIBILITY('x') "
         "FROM DUAL;",
         MYLITE_SQL_PARSE_OK,

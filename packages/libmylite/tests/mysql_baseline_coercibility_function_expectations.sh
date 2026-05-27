@@ -93,14 +93,16 @@ expect_output \
 "SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
-concat_expected="3	2	2	4"
+concat_expected="3	2	2	4	0	0"
 expect_output \
     "concat coercibility inheritance" \
     "$concat_expected" \
     "SELECT COERCIBILITY(CONCAT(DATABASE(), 'x')), "\
 "COERCIBILITY(CONCAT(CAST('a' AS BINARY), 'b')), "\
 "COERCIBILITY(CONCAT(CONVERT('a' USING utf8mb4), 'x')), "\
-"COERCIBILITY(CONCAT(RAND(0), 'x'));" \
+"COERCIBILITY(CONCAT(RAND(0), 'x')), "\
+"COERCIBILITY(CONCAT('a' COLLATE utf8mb4_bin, 'x')), "\
+"COERCIBILITY(CONCAT(CAST('a' AS BINARY), 'x' COLLATE utf8mb4_bin));" \
     "$DATABASE"
 
 expect_output \
@@ -109,6 +111,26 @@ expect_output \
     "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci; "\
 "SELECT COERCIBILITY('abc'), COERCIBILITY(CONCAT('a', 'b')), "\
 "COERCIBILITY(CONVERT('ABC' USING utf8mb4));" \
+    "$DATABASE"
+
+convert_charset_expected=$(cat <<\EXPECTED
+2	2	2	0	0	0	0
+Warning	3719	'utf8' is currently an alias for the character set UTF8MB3, but will be an alias for UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be unambiguous.
+Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 instead
+-1	2
+EXPECTED
+)
+expect_output \
+    "convert charset and collate coercibility" \
+    "$convert_charset_expected" \
+    "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"SELECT COERCIBILITY(CONVERT('ABC' USING utf8)), "\
+"COERCIBILITY(CONVERT('ABC' USING utf8mb3)), "\
+"COERCIBILITY(CONVERT('ABC' USING latin1)), "\
+"COERCIBILITY(CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin), "\
+"COERCIBILITY(CONVERT('ABC' USING latin1) COLLATE latin1_bin), "\
+"COERCIBILITY('ABC' COLLATE utf8mb4_bin), COERCIBILITY(123 COLLATE utf8mb4_bin); "\
+"SHOW WARNINGS; SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
 expect_output \
@@ -169,6 +191,22 @@ expect_error \
     42000 \
     "Incorrect parameter count" \
     "SELECT COERCIBILITY('a', 'b');" \
+    "$DATABASE"
+
+expect_error \
+    "coercibility rejects null collate mismatch" \
+    1253 \
+    42000 \
+    "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'" \
+    "SELECT COERCIBILITY(NULL COLLATE utf8mb4_bin);" \
+    "$DATABASE"
+
+expect_error \
+    "coercibility rejects conflicting explicit concat collations" \
+    1267 \
+    HY000 \
+    "Illegal mix of collations (utf8mb4_bin,EXPLICIT) and (utf8mb4_0900_ai_ci,EXPLICIT) for operation 'concat'" \
+    "SELECT COERCIBILITY(CONCAT('a' COLLATE utf8mb4_bin, 'b' COLLATE utf8mb4_0900_ai_ci));" \
     "$DATABASE"
 
 expect_error \

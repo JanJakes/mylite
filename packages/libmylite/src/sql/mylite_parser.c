@@ -5578,6 +5578,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_charset_express
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_collate_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_token collate_token,
+    struct mylite_sql_ast_node *collation
+) {
+    struct mylite_sql_source_span span = span_from_token(&collate_token);
+    struct mylite_sql_ast_node *expression = NULL;
+
+    if (value != NULL) {
+        span = span_join(value->span, span);
+    }
+    if (collation != NULL) {
+        span = span_join(span, collation->span);
+    }
+
+    expression = make_node(state, MYLITE_SQL_AST_COLLATE_EXPRESSION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, value);
+    mylite_sql_ast_node_append_child(expression, collation);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token left_paren,

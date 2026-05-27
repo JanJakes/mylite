@@ -10,11 +10,11 @@ are compiled in MySQL 8.4.9.
 | --- | --- | --- |
 | Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` rows, `INFORMATION_SCHEMA.COLLATIONS` metadata, and `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` mappings for `binary`, `ascii_general_ci`, `ascii_bin`, `utf8mb4_0900_ai_ci`, `utf8mb4_0900_bin`, `utf8mb4_general_ci`, `utf8mb4_bin`, `utf8mb4_unicode_ci`, and `utf8mb4_unicode_520_ci`; no other collations, other character sets, or `mysql.collations` |
 | Default collation selection | 🟡 | Limited `CREATE DATABASE` / `ALTER DATABASE` descriptor-owned schema default collations for admitted `utf8mb4`, `ascii`, and `binary` defaults; limited `CREATE TABLE`, `CREATE TABLE ... LIKE`, `ALTER TABLE ... [DEFAULT] COLLATE`, same-`utf8mb4` `ALTER TABLE ... CONVERT TO CHARACTER SET`, `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, and `INFORMATION_SCHEMA.TABLES` preservation for admitted `utf8mb4` and `ascii` table default collations; limited `CREATE TABLE` / `CREATE TEMPORARY TABLE` inherited `COLLATE binary` defaults from table or schema metadata normalize inherited non-national `CHAR`, `VARCHAR`, and bare `TEXT` family descriptors to binary string/BLOB descriptors and store table collation `binary`; limited explicit column `COLLATE` metadata for admitted `utf8mb4` and `ascii` collations on `CHAR`, `VARCHAR`, and bare `TEXT` family descriptors where the host DDL action admits that type; limited explicit column `COLLATE binary` normalization for admitted `CHAR`, `VARCHAR`, and bare `TEXT` family definitions to existing binary string/BLOB descriptors; limited `SET NAMES utf8mb4 COLLATE admitted_collation` updates session readback; scalar `@@collation_server` remains fixed while session/local `@@collation_database` follows the selected schema descriptor; admitted `CHAR` / `VARCHAR` primary and unique key enforcement still uses MyLite's fixed ASCII subset of `utf8mb4_0900_ai_ci`; no cross-character-set conversion, general collation comparison/order/group/distinct semantics, full Unicode weights, mutable server-global state, or full charset/collation catalogs |
-| Function result introspection | 🟡 | Limited `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` support for admitted scalar arguments and descriptor-backed column metadata in no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection contexts; no full expression metadata, general conversion, or comparison semantics |
+| Function result introspection | 🟡 | Limited `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` support for admitted scalar arguments, descriptor-backed column metadata, scalar `CONVERT(value USING utf8mb4\|utf8\|utf8mb3\|latin1)` metadata, scalar postfix `COLLATE` metadata for admitted `utf8mb4`, `utf8mb3`, and `latin1` collations, and current explicit-collation scalar `CONCAT()` metadata/conflict shapes in no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection contexts; no full expression metadata, general conversion, non-ASCII `latin1` transcoding, or comparison semantics |
 | Unicode Collation Algorithm families | ❌ | UCA families and sensitivity |
 | Binary collations | 🟡 | Limited static metadata row for `binary`, descriptor-owned schema defaults through supported `CREATE DATABASE` / `ALTER DATABASE` option forms, explicit column-level `COLLATE binary` normalization to binary string/BLOB descriptors, and limited `CREATE TABLE` / `CREATE TEMPORARY TABLE` inherited table-default `COLLATE binary` behavior for admitted string descriptors, plus metadata admission and session/table/column default preservation for `utf8mb4_bin` and `utf8mb4_0900_bin`; no binary comparison, `ALTER TABLE ... DEFAULT COLLATE binary`, `NO PAD` trailing-space comparison, or ordering semantics |
 | PAD SPACE and NO PAD collations | 🟡 | Limited default-mode `CHAR` storage/readback trims trailing spaces as verified for MySQL 8.4.9, limited static collation rows report MySQL 8.4.9 PAD attributes for the admitted collations, and admitted ASCII `CHAR` / `VARCHAR` primary and unique keys use MyLite's fixed ASCII key-collation subset; no general comparison semantics, non-ASCII string-key collation weights, or `PAD_CHAR_TO_FULL_LENGTH` mode |
-| Collation coercibility rules | 🟡 | Limited `COERCIBILITY()` metadata values for admitted scalar expressions and descriptor-backed columns; no coercibility-driven comparison, ordering, grouping, distinct, set-operation, conversion, or full expression collation resolution |
+| Collation coercibility rules | 🟡 | Limited `COERCIBILITY()` metadata values for admitted scalar expressions, scalar postfix `COLLATE`, scalar `CONVERT(... USING ...)`, and descriptor-backed columns; no coercibility-driven comparison, ordering, grouping, distinct, set-operation, conversion, or full expression collation resolution |
 
 ## MySQL 8.4.9 default collation catalog
 
@@ -78,10 +78,10 @@ are compiled in MySQL 8.4.9.
 | `koi8u_general_ci` | ❌ | koi8u; id 22; default; sortlen 1; PAD SPACE |
 | `koi8u_bin` | ❌ | koi8u; id 75; sortlen 1; PAD SPACE |
 | `latin1_german1_ci` | ❌ | latin1; id 5; sortlen 1; PAD SPACE |
-| `latin1_swedish_ci` | ❌ | latin1; id 8; default; sortlen 1; PAD SPACE |
+| `latin1_swedish_ci` | 🟡 | Limited scalar `CONVERT(value USING latin1)` default metadata and scalar postfix `COLLATE latin1_swedish_ci` validation for ASCII scalar values; latin1; id 8; default; sortlen 1; PAD SPACE; no static catalog row, DDL/default admission, non-ASCII transcoding, or comparison semantics |
 | `latin1_danish_ci` | ❌ | latin1; id 15; sortlen 1; PAD SPACE |
 | `latin1_german2_ci` | ❌ | latin1; id 31; sortlen 2; PAD SPACE |
-| `latin1_bin` | ❌ | latin1; id 47; sortlen 1; PAD SPACE |
+| `latin1_bin` | 🟡 | Limited scalar postfix `COLLATE latin1_bin` metadata for ASCII `latin1` conversion results; latin1; id 47; sortlen 1; PAD SPACE; no static catalog row, DDL/default admission, non-ASCII transcoding, or comparison semantics |
 | `latin1_general_ci` | ❌ | latin1; id 48; sortlen 1; PAD SPACE |
 | `latin1_general_cs` | ❌ | latin1; id 49; sortlen 1; PAD SPACE |
 | `latin1_spanish_ci` | ❌ | latin1; id 94; sortlen 1; PAD SPACE |
@@ -189,9 +189,9 @@ are compiled in MySQL 8.4.9.
 | `utf32_croatian_ci` | ❌ | utf32; id 181; sortlen 8; PAD SPACE |
 | `utf32_unicode_520_ci` | ❌ | utf32; id 182; sortlen 8; PAD SPACE |
 | `utf32_vietnamese_ci` | ❌ | utf32; id 183; sortlen 8; PAD SPACE |
-| `utf8mb3_general_ci` | 🟡 | Limited metadata collation for national `CHAR` / `VARCHAR` aliases in `SHOW CREATE TABLE`, `SHOW FULL COLUMNS`, `INFORMATION_SCHEMA.COLUMNS`, and result-column metadata; no static `SHOW COLLATION` row, table/default admission, conversion, or general comparison/order/group/distinct semantics |
+| `utf8mb3_general_ci` | 🟡 | Limited metadata collation for national `CHAR` / `VARCHAR` aliases in `SHOW CREATE TABLE`, `SHOW FULL COLUMNS`, `INFORMATION_SCHEMA.COLUMNS`, and result-column metadata plus scalar `CONVERT(value USING utf8\|utf8mb3)` default metadata; no static `SHOW COLLATION` row, table/default admission outside national aliases, storage conversion, or general comparison/order/group/distinct semantics |
 | `utf8mb3_tolower_ci` | ❌ | utf8mb3; id 76; sortlen 1; PAD SPACE |
-| `utf8mb3_bin` | ❌ | utf8mb3; id 83; sortlen 1; PAD SPACE |
+| `utf8mb3_bin` | 🟡 | Limited scalar postfix `COLLATE utf8mb3_bin` metadata for scalar `utf8` / `utf8mb3` conversion results; utf8mb3; id 83; sortlen 1; PAD SPACE; no static catalog row, DDL/default admission, storage conversion, or comparison semantics |
 | `utf8mb3_unicode_ci` | ❌ | utf8mb3; id 192; sortlen 8; PAD SPACE |
 | `utf8mb3_icelandic_ci` | ❌ | utf8mb3; id 193; sortlen 8; PAD SPACE |
 | `utf8mb3_latvian_ci` | ❌ | utf8mb3; id 194; sortlen 8; PAD SPACE |

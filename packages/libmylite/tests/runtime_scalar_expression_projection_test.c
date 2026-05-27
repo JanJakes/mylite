@@ -27,6 +27,8 @@ enum {
     convert_using_binary_column_count = 2,
     convert_using_binary_label_column_count = 3,
     convert_using_charset_column_count = 7,
+    convert_using_charset_expanded_column_count = 6,
+    convert_using_charset_collate_column_count = 3,
     convert_integer_boundary_column_count = 2,
     cast_convert_basic_char_column_count = 7,
     cast_convert_basic_integer_column_count = 7,
@@ -36,7 +38,18 @@ enum {
     cast_convert_basic_status_column_count = 2,
     show_warning_column_count = 3,
     cast_convert_basic_unsigned_warning_count = 4,
+    convert_charset_warning_count = 2,
+    convert_collate_warning_count = 1,
+    mysql_collation_utf8mb3_general_ci_id = 33,
+    mysql_collation_utf8mb3_bin_id = 83,
+    mysql_collation_latin1_swedish_ci_id = 8,
+    mysql_collation_latin1_bin_id = 47,
+    mysql_collation_utf8mb4_0900_ai_ci_id = 255,
+    mysql_collation_utf8mb4_bin_id = 46,
     mysql_error_parse = 1064,
+    mysql_error_collation_not_valid_for_character_set = 1253,
+    mysql_error_unknown_collation = 1273,
+    mysql_error_unknown_character_set = 1115,
     mysql_error_incorrect_parameter_count = 1582,
 };
 
@@ -51,6 +64,7 @@ struct expected_query {
     const char *const *columns;
     size_t column_count;
     const char *const *values;
+    const uint32_t *collation_ids;
     size_t row_count;
     size_t warning_count;
     int64_t affected_rows;
@@ -79,6 +93,7 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
@@ -220,6 +235,61 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         "-7",
         "1",
         "0",
+    };
+    static const char *const convert_using_charset_expanded_columns[] = {
+        "CONVERT('ABC' USING utf8)",
+        "CONVERT('ABC' USING utf8mb3)",
+        "CONVERT('ABC' USING latin1)",
+        "CONVERT('ABC' USING 'utf8mb4')",
+        "CONVERT(123 USING 'latin1')",
+        "CONVERT(NULL USING latin1)",
+    };
+    static const char *const convert_using_charset_expanded_values[] = {
+        "ABC",
+        "ABC",
+        "ABC",
+        "ABC",
+        "123",
+        NULL,
+    };
+    static const uint32_t convert_using_charset_expanded_collation_ids[] = {
+        mysql_collation_utf8mb3_general_ci_id,
+        mysql_collation_utf8mb3_general_ci_id,
+        mysql_collation_latin1_swedish_ci_id,
+        mysql_collation_utf8mb4_0900_ai_ci_id,
+        mysql_collation_latin1_swedish_ci_id,
+        mysql_collation_latin1_swedish_ci_id,
+    };
+    static const char utf8_alias_warning[] =
+        "'utf8' is currently an alias for the character set UTF8MB3, but will be an alias "
+        "for UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be "
+        "unambiguous.";
+    static const char utf8mb3_deprecated_warning[] =
+        "'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 "
+        "instead";
+    static const char *const convert_charset_warning_values[] = {
+        "Warning",
+        "3719",
+        utf8_alias_warning,
+        "Warning",
+        "1287",
+        utf8mb3_deprecated_warning,
+    };
+    static const char *const convert_using_charset_collate_columns[] = {
+        "CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin",
+        "CONVERT('ABC' USING utf8) COLLATE utf8mb3_bin",
+        "CONVERT('ABC' USING latin1) COLLATE 'latin1_bin'",
+    };
+    static const char *const convert_using_charset_collate_values[] = {"ABC", "ABC", "ABC"};
+    static const uint32_t convert_using_charset_collate_collation_ids[] = {
+        mysql_collation_utf8mb4_bin_id,
+        mysql_collation_utf8mb3_bin_id,
+        mysql_collation_latin1_bin_id,
+    };
+    static const char *const convert_collate_warning_values[] = {
+        "Warning",
+        "3719",
+        utf8_alias_warning,
     };
     static const char convert_integer_boundary_value[] =
         "123456789012345678901234567890123456789012345678901234567890123456789012345678901";
@@ -503,6 +573,58 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .values = convert_using_charset_values,
             .row_count = 1U,
             .context = "convert using utf8mb4 scalar values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('ABC' USING utf8), CONVERT('ABC' USING utf8mb3), "
+                   "CONVERT('ABC' USING latin1), CONVERT('ABC' USING 'utf8mb4'), "
+                   "CONVERT(123 USING 'latin1'), CONVERT(NULL USING latin1)",
+            .columns = convert_using_charset_expanded_columns,
+            .column_count = convert_using_charset_expanded_column_count,
+            .values = convert_using_charset_expanded_values,
+            .collation_ids = convert_using_charset_expanded_collation_ids,
+            .row_count = 1U,
+            .warning_count = convert_charset_warning_count,
+            .context = "convert using scalar charsets",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = convert_charset_warning_values,
+            .row_count = convert_charset_warning_count,
+            .context = "convert using scalar charset warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('ABC' USING utf8mb4) COLLATE utf8mb4_bin, "
+                   "CONVERT('ABC' USING utf8) COLLATE utf8mb3_bin, "
+                   "CONVERT('ABC' USING latin1) COLLATE 'latin1_bin'",
+            .columns = convert_using_charset_collate_columns,
+            .column_count = convert_using_charset_collate_column_count,
+            .values = convert_using_charset_collate_values,
+            .collation_ids = convert_using_charset_collate_collation_ids,
+            .row_count = 1U,
+            .warning_count = convert_collate_warning_count,
+            .context = "convert using scalar collate values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = convert_collate_warning_values,
+            .row_count = convert_collate_warning_count,
+            .context = "convert using scalar collate warnings",
         }
     );
     failures += expect_query(
@@ -971,20 +1093,39 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC' USING latin1)",
+        "SELECT CONVERT('ABC' USING nosuch_charset)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
-            .message_part = "CONVERT USING charset supports only utf8mb4",
+            .message_part = "Unknown character set: 'nosuch_charset'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC' USING 'utf8mb4')",
+        "SELECT CONVERT('é' USING latin1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "CONVERT USING charset supports only utf8mb4",
+            .message_part = "CONVERT USING latin1 supports only ASCII scalar values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING utf8mb4) COLLATE nosuch_collation",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: 'nosuch_collation'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING utf8mb4) COLLATE latin1_swedish_ci",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part =
+                "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(
@@ -1004,7 +1145,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "CONVERT USING utf8mb4 supports only string, integer, boolean, and NULL values",
+                "CONVERT USING charset supports only string, integer, boolean, and NULL values",
         }
     );
     failures += execute_error(
@@ -1308,6 +1449,18 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
             expected.columns[column],
             expected.context
         );
+        if (expected.collation_ids != NULL) {
+            failures += expect_uint32(
+                mylite_result_column_collation_id(result, column),
+                expected.collation_ids[column],
+                expected.context
+            );
+            failures += expect_uint32(
+                mylite_result_column_charset_id(result, column),
+                expected.collation_ids[column],
+                expected.context
+            );
+        }
     }
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
@@ -1439,6 +1592,14 @@ static int expect_text(const char *actual, const char *expected, const char *con
     }
     if (strcmp(actual, expected) != 0) {
         fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %u, got %u\n", context, expected, actual);
         return 1;
     }
     return 0;

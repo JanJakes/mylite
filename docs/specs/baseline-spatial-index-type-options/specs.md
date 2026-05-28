@@ -111,7 +111,7 @@ Deferred:
   `USING RTREE`;
 - physical SQLite R-tree indexes or optimizer behavior;
 - geometry value parsing, spatial functions, SRID attributes, spatial search,
-  or `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS`;
+  or non-`NULL` `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` SRS metadata;
 - broader index type names, parser plugins, `KEY_BLOCK_SIZE`, engine
   attributes, standalone `ALGORITHM` / `LOCK`, and other index options not
   already admitted by the surrounding index-option baseline.

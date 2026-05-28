@@ -400,8 +400,9 @@ Spatial indexes report:
 - `IS_VISIBLE`: `YES` / `NO`;
 - `EXPRESSION`: SQL `NULL`.
 
-`INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` remains unsupported and empty/unlisted
-according to the existing static metadata policy until SRID-aware spatial
+A later `baseline-information-schema-st-geometry-columns` slice adds limited
+descriptor-backed `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` rows for spatial
+columns, with `SRS_NAME` and `SRS_ID` still `NULL` until SRID-aware spatial
 metadata is designed.
 
 ## DML Semantics

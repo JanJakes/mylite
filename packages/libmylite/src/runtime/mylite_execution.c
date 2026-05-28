@@ -439,6 +439,11 @@ enum {
     information_schema_plugins_column_count = 11,
     information_schema_processlist_column_count = 8,
     information_schema_profiling_column_count = 18,
+    information_schema_st_geometry_columns_column_count = 7,
+    information_schema_st_geometry_columns_schema_column = 1,
+    information_schema_st_geometry_columns_table_column = 2,
+    information_schema_st_geometry_columns_column_name_column = 3,
+    information_schema_st_geometry_columns_type_name_column = 6,
     information_schema_processlist_db_column = 3,
     information_schema_processlist_info_column = 7,
     information_schema_routines_column_count = 31,
@@ -4320,6 +4325,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE = 39,
     INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE = 40,
     INFORMATION_SCHEMA_TABLE_PROFILING = 41,
+    INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS = 42,
 };
 
 struct information_schema_column_definition {
@@ -5856,6 +5862,83 @@ static const struct information_schema_column_definition information_schema_prof
      "utf8mb3_general_ci",
      "varchar(20)"},
     {"SOURCE_LINE", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_st_geometry_columns_columns[] = {
+        {"TABLE_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"COLUMN_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"SRS_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "80",
+         "240",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(80)"},
+        {"SRS_ID", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+        {"GEOMETRY_TYPE_NAME",
+         NULL,
+         "YES",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "longtext"},
 };
 
 static const struct information_schema_column_definition
@@ -9102,6 +9185,10 @@ static const struct information_schema_table_definition information_schema_table
      "STATISTICS",
      information_schema_statistics_columns,
      information_schema_statistics_column_count},
+    {INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS,
+     "ST_GEOMETRY_COLUMNS",
+     information_schema_st_geometry_columns_columns,
+     information_schema_st_geometry_columns_column_count},
     {INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS,
      "REFERENTIAL_CONSTRAINTS",
      information_schema_referential_constraints_columns,
@@ -12257,6 +12344,12 @@ static int append_information_schema_columns_base_rows(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
 );
+static int append_information_schema_st_geometry_columns_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
 static int append_information_schema_columns_extensions_table_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -12278,6 +12371,13 @@ static int append_information_schema_columns_base_column_row(
     const struct primary_key_info *primary_key,
     const struct loaded_index_info *indexes,
     size_t index_count
+);
+static int append_information_schema_st_geometry_columns_column_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
 );
 static int append_information_schema_columns_extensions_column_row(
     struct mylite_db *database,
@@ -46336,6 +46436,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_ROLE_COLUMN_GRANTS:
@@ -46414,6 +46515,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
         break;
     }
 
@@ -46613,6 +46715,13 @@ static int append_information_schema_catalog_base_table(
         );
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
         return append_information_schema_referential_constraints_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
+        return append_information_schema_st_geometry_columns_base_rows(
             context->database,
             context->rows,
             context->schema,
@@ -48157,6 +48266,29 @@ static int append_information_schema_columns_base_rows(
     return rc;
 }
 
+static int append_information_schema_st_geometry_columns_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        rc = append_information_schema_st_geometry_columns_column_row(
+            database,
+            rows,
+            schema,
+            table,
+            &columns[column_index]
+        );
+    }
+    free(columns);
+    return rc;
+}
+
 static int append_information_schema_columns_extensions_table_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -48336,6 +48468,40 @@ static int append_information_schema_columns_base_column_row(
         values[information_schema_columns_generation_expression_column] =
             column->generation_expression;
     }
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_st_geometry_columns_column_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    const char *geometry_type_name = NULL;
+    const char *values[information_schema_st_geometry_columns_column_count] = {
+        "def",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+
+    if (!column_descriptor_is_spatial(column)) {
+        return MYLITE_OK;
+    }
+    if (!spatial_logical_type_display_text(column->logical_type, &geometry_type_name)) {
+        set_runtime_error(database, "unsupported spatial metadata descriptor");
+        return MYLITE_ERROR;
+    }
+
+    values[information_schema_st_geometry_columns_schema_column] = schema->name;
+    values[information_schema_st_geometry_columns_table_column] = table->name;
+    values[information_schema_st_geometry_columns_column_name_column] = column->name;
+    values[information_schema_st_geometry_columns_type_name_column] = geometry_type_name;
 
     return append_information_schema_row(database, rows, values);
 }

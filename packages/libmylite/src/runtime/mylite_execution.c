@@ -432,6 +432,7 @@ enum {
     information_schema_engines_column_count = 6,
     information_schema_events_column_count = 24,
     information_schema_keywords_column_count = 2,
+    information_schema_optimizer_trace_column_count = 4,
     information_schema_parameters_column_count = 16,
     information_schema_partitions_column_count = 25,
     information_schema_plugins_column_count = 11,
@@ -4315,6 +4316,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_ENABLED_ROLES = 37,
     INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES = 38,
     INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE = 39,
+    INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE = 40,
 };
 
 struct information_schema_column_definition {
@@ -5734,6 +5736,58 @@ static const struct information_schema_column_definition information_schema_keyw
      "utf8mb4_0900_ai_ci",
      "varchar(128)"},
     {"RESERVED", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_optimizer_trace_columns[] = {
+        {"QUERY",
+         "",
+         "NO",
+         "varchar",
+         "21845",
+         "65535",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(65535)"},
+        {"TRACE",
+         "",
+         "NO",
+         "varchar",
+         "21845",
+         "65535",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(65535)"},
+        {"MISSING_BYTES_BEYOND_MAX_MEM_SIZE",
+         "",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "int"},
+        {"INSUFFICIENT_PRIVILEGES",
+         "",
+         "NO",
+         "tinyint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "tinyint(1)"},
 };
 
 static const struct information_schema_column_definition
@@ -8920,6 +8974,10 @@ static const struct information_schema_table_definition information_schema_table
      "KEYWORDS",
      information_schema_keywords_columns,
      information_schema_keywords_column_count},
+    {INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE,
+     "OPTIMIZER_TRACE",
+     information_schema_optimizer_trace_columns,
+     information_schema_optimizer_trace_column_count},
     {INFORMATION_SCHEMA_TABLE_PARAMETERS,
      "PARAMETERS",
      information_schema_parameters_columns,
@@ -46196,6 +46254,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_ADMINISTRABLE_ROLE_AUTHORIZATIONS:
     case INFORMATION_SCHEMA_TABLE_APPLICABLE_ROLES:
     case INFORMATION_SCHEMA_TABLE_ENABLED_ROLES:
+    case INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
@@ -46243,6 +46302,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_ENGINES:
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_KEYWORDS:
+    case INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PLUGINS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:

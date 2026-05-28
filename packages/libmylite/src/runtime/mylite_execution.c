@@ -431,6 +431,7 @@ enum {
     information_schema_innodb_foreign_column_count = 5,
     information_schema_innodb_foreign_cols_column_count = 4,
     information_schema_innodb_indexes_column_count = 8,
+    information_schema_innodb_tables_column_count = 10,
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
@@ -451,6 +452,17 @@ enum {
     information_schema_innodb_generated_cluster_system_field_count = 3,
     information_schema_innodb_generated_cluster_key_part_count = 1,
     information_schema_innodb_field_position_offset = 1,
+    information_schema_innodb_table_redundant_flag = 0,
+    information_schema_innodb_table_compact_flag = 1,
+    information_schema_innodb_table_dynamic_flag = 33,
+    information_schema_innodb_table_compressed_flag = 41,
+    information_schema_innodb_table_hidden_column_count = 3,
+    information_schema_innodb_table_space = 0,
+    information_schema_innodb_table_default_zip_page_size = 0,
+    information_schema_innodb_table_default_compressed_zip_page_size = 8192,
+    information_schema_innodb_table_zip_page_unit = 1024,
+    information_schema_innodb_table_instant_cols = 0,
+    information_schema_innodb_table_total_row_versions = 0,
     information_schema_innodb_foreign_delete_cascade_type = 1,
     information_schema_innodb_foreign_delete_set_null_type = 2,
     information_schema_innodb_foreign_update_cascade_type = 4,
@@ -4393,6 +4405,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN_COLS = 61,
     INFORMATION_SCHEMA_TABLE_INNODB_FIELDS = 62,
     INFORMATION_SCHEMA_TABLE_INNODB_INDEXES = 63,
+    INFORMATION_SCHEMA_TABLE_INNODB_TABLES = 64,
 };
 
 struct information_schema_column_definition {
@@ -5083,6 +5096,75 @@ static const struct information_schema_column_definition
         {"PAGE_NO", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
         {"SPACE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
         {"MERGE_THRESHOLD", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_tables_columns[] = {
+        {"TABLE_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"NAME",
+         "",
+         "NO",
+         "varchar",
+         "218",
+         "655",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(655)"},
+        {"FLAG", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"N_COLS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"SPACE", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint"},
+        {"ROW_FORMAT",
+         "",
+         "YES",
+         "varchar",
+         "4",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(12)"},
+        {"ZIP_PAGE_SIZE",
+         "",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"SPACE_TYPE",
+         "",
+         "YES",
+         "varchar",
+         "3",
+         "10",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(10)"},
+        {"INSTANT_COLS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"TOTAL_ROW_VERSIONS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -9750,6 +9832,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_INDEXES",
      information_schema_innodb_indexes_columns,
      information_schema_innodb_indexes_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_TABLES,
+     "INNODB_TABLES",
+     information_schema_innodb_tables_columns,
+     information_schema_innodb_tables_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF,
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
@@ -13175,6 +13261,28 @@ static int append_information_schema_st_geometry_columns_base_rows(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_innodb_tables_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int information_schema_innodb_table_flag(
+    struct mylite_db *database,
+    const char *row_format,
+    int64_t *out_flag
+);
+static int information_schema_innodb_table_column_count(
+    struct mylite_db *database,
+    size_t column_count,
+    int64_t *out_column_count
+);
+static int information_schema_innodb_table_zip_page_size(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const char *row_format,
+    int64_t *out_zip_page_size
 );
 static int append_information_schema_columns_extensions_table_rows(
     struct mylite_db *database,
@@ -47424,6 +47532,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE:
     case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -47525,6 +47634,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN:
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN_COLS:
     case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLES:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
         break;
     }
@@ -47719,6 +47829,13 @@ static int append_information_schema_catalog_base_table(
         return append_information_schema_innodb_indexes_base_rows(
             context->database,
             context->rows,
+            table
+        );
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLES:
+        return append_information_schema_innodb_tables_base_row(
+            context->database,
+            context->rows,
+            context->schema,
             table
         );
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
@@ -50270,6 +50387,204 @@ static int append_information_schema_columns_numeric_metadata(
         values[information_schema_columns_numeric_scale_column] = NULL;
     }
 
+    return MYLITE_OK;
+}
+
+static int append_information_schema_innodb_tables_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct table_status_values status = {0};
+    char *table_name = NULL;
+    char table_id_text[integer_text_capacity];
+    char flag_text[integer_text_capacity];
+    char column_count_text[integer_text_capacity];
+    char space_text[integer_text_capacity];
+    char zip_page_size_text[integer_text_capacity];
+    char instant_cols_text[integer_text_capacity];
+    char total_row_versions_text[integer_text_capacity];
+    size_t column_count = 0U;
+    int64_t flag = 0;
+    int64_t innodb_column_count = 0;
+    int64_t zip_page_size = 0;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_tables_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLES columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_table_status_row_format(database, table, &status);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_information_schema_schema_object_name(
+            database,
+            schema->name,
+            table->name,
+            &table_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_innodb_table_flag(database, status.row_format, &flag);
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_innodb_table_column_count(
+            database,
+            column_count,
+            &innodb_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_innodb_table_zip_page_size(
+            database,
+            table,
+            status.row_format,
+            &zip_page_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            table->table_id,
+            table_id_text,
+            sizeof(table_id_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(database, flag, flag_text, sizeof(flag_text));
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            innodb_column_count,
+            column_count_text,
+            sizeof(column_count_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_table_space,
+            space_text,
+            sizeof(space_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            zip_page_size,
+            zip_page_size_text,
+            sizeof(zip_page_size_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_table_instant_cols,
+            instant_cols_text,
+            sizeof(instant_cols_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_table_total_row_versions,
+            total_row_versions_text,
+            sizeof(total_row_versions_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[information_schema_innodb_tables_column_count] = {
+            table_id_text,
+            table_name,
+            flag_text,
+            column_count_text,
+            space_text,
+            status.row_format,
+            zip_page_size_text,
+            "Single",
+            instant_cols_text,
+            total_row_versions_text,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    free(table_name);
+    free(columns);
+    return rc;
+}
+
+static int information_schema_innodb_table_flag(
+    struct mylite_db *database,
+    const char *row_format,
+    int64_t *out_flag
+) {
+    if (text_equals_ascii_case_insensitive(row_format, "Redundant")) {
+        *out_flag = information_schema_innodb_table_redundant_flag;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format, "Compact")) {
+        *out_flag = information_schema_innodb_table_compact_flag;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format, "Dynamic")) {
+        *out_flag = information_schema_innodb_table_dynamic_flag;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(row_format, "Compressed")) {
+        *out_flag = information_schema_innodb_table_compressed_flag;
+        return MYLITE_OK;
+    }
+
+    set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLES row format");
+    return MYLITE_ERROR;
+}
+
+static int information_schema_innodb_table_column_count(
+    struct mylite_db *database,
+    size_t column_count,
+    int64_t *out_column_count
+) {
+    if (column_count > (size_t)INT64_MAX - information_schema_innodb_table_hidden_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLES column count");
+        return MYLITE_ERROR;
+    }
+
+    *out_column_count =
+        (int64_t)(column_count + information_schema_innodb_table_hidden_column_count);
+    return MYLITE_OK;
+}
+
+static int information_schema_innodb_table_zip_page_size(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const char *row_format,
+    int64_t *out_zip_page_size
+) {
+    if (!text_equals_ascii_case_insensitive(row_format, "Compressed")) {
+        *out_zip_page_size = information_schema_innodb_table_default_zip_page_size;
+        return MYLITE_OK;
+    }
+    if (table->key_block_size < 0) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLES zip page size");
+        return MYLITE_ERROR;
+    }
+    if (table->key_block_size == 0) {
+        *out_zip_page_size = information_schema_innodb_table_default_compressed_zip_page_size;
+        return MYLITE_OK;
+    }
+    if (table->key_block_size > INT64_MAX / information_schema_innodb_table_zip_page_unit) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLES zip page size");
+        return MYLITE_ERROR;
+    }
+
+    *out_zip_page_size = table->key_block_size * information_schema_innodb_table_zip_page_unit;
     return MYLITE_OK;
 }
 

@@ -449,6 +449,7 @@ enum {
     information_schema_role_table_grants_column_count = 9,
     information_schema_table_privileges_column_count = 6,
     information_schema_triggers_column_count = 22,
+    information_schema_user_attributes_column_count = 3,
     information_schema_user_privileges_column_count = 4,
     information_schema_views_column_count = 10,
     information_schema_view_table_usage_column_count = 6,
@@ -4311,6 +4312,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_ADMINISTRABLE_ROLE_AUTHORIZATIONS = 35,
     INFORMATION_SCHEMA_TABLE_APPLICABLE_ROLES = 36,
     INFORMATION_SCHEMA_TABLE_ENABLED_ROLES = 37,
+    INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES = 38,
 };
 
 struct information_schema_column_definition {
@@ -7619,6 +7621,46 @@ static const struct information_schema_column_definition
 };
 
 static const struct information_schema_column_definition
+    information_schema_user_attributes_columns[] = {
+        {"USER",
+         "",
+         "NO",
+         "char",
+         "32",
+         "96",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "char(32)"},
+        {"HOST",
+         "",
+         "NO",
+         "char",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "char(255)"},
+        {"ATTRIBUTE",
+         NULL,
+         "YES",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "longtext"},
+};
+
+static const struct information_schema_column_definition
     information_schema_administrable_role_authorizations_columns[] = {
         {"USER",
          NULL,
@@ -8868,6 +8910,10 @@ static const struct information_schema_table_definition information_schema_table
      "USER_PRIVILEGES",
      information_schema_user_privileges_columns,
      information_schema_user_privileges_column_count},
+    {INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES,
+     "USER_ATTRIBUTES",
+     information_schema_user_attributes_columns,
+     information_schema_user_attributes_column_count},
     {INFORMATION_SCHEMA_TABLE_VIEWS,
      "VIEWS",
      information_schema_views_columns,
@@ -11833,6 +11879,10 @@ static int append_information_schema_keywords_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_user_privileges_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_user_attributes_system_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -46056,6 +46106,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_keywords_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
         return append_information_schema_user_privileges_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES:
+        return append_information_schema_user_attributes_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
         return append_information_schema_partitions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
@@ -46120,6 +46172,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
+    case INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES:
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
@@ -46624,6 +46677,19 @@ static int append_information_schema_user_privileges_system_rows(
     }
 
     return rc;
+}
+
+static int append_information_schema_user_attributes_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_user_attributes_column_count] = {
+        "root",
+        "%",
+        NULL,
+    };
+
+    return append_information_schema_row(database, rows, values);
 }
 
 static int append_information_schema_processlist_system_row(

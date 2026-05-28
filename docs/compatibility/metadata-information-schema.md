@@ -105,7 +105,7 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATS` | ❌ | Thread pool thread group statistics |
 | `INFORMATION_SCHEMA.TP_THREAD_STATE` | ❌ | Thread pool thread information |
 | `INFORMATION_SCHEMA.TRIGGERS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real trigger descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no `CREATE TRIGGER`, `DROP TRIGGER`, trigger execution, stored trigger definitions, definers, privileges, or SQLite trigger reflection |
-| `INFORMATION_SCHEMA.USER_ATTRIBUTES` | ❌ | User comments and attributes |
+| `INFORMATION_SCHEMA.USER_ATTRIBUTES` | 🟡 | Limited synthetic user-attribute row for MyLite's embedded `root@%` identity with `ATTRIBUTE = NULL`, MySQL 8.4.9-shaped columns, and matching system metadata; no account storage, comments, arbitrary attributes, MySQL system-account rows, privilege filtering, or `mysql.user` table |
 | `INFORMATION_SCHEMA.USER_PRIVILEGES` | 🟡 | Limited synthetic global privilege rows for MyLite's embedded `root@%` identity with MySQL 8.4.9-shaped columns and matching system metadata; no account storage, roles, grants, revokes, privilege filtering, or enforcement |
 | `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` | ❌ | Stored functions used in views |
 | `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` | 🟡 | Queryable synthetic view-dependency catalog with MySQL 8.4.9-shaped columns and one source-table dependency row for each baseline direct single-base-table view; no dependencies on routines, joins, subqueries, privilege filtering, or view execution |

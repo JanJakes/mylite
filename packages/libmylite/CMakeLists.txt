@@ -1716,6 +1716,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_information_schema_privileges_test)
 
+  add_executable(mylite_runtime_information_schema_user_attributes_test
+    tests/runtime_information_schema_user_attributes_test.c
+  )
+  target_link_libraries(mylite_runtime_information_schema_user_attributes_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_information_schema_user_attributes_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_information_schema_user_attributes_test)
+
   add_executable(mylite_runtime_information_schema_role_grant_tables_test
     tests/runtime_information_schema_role_grant_tables_test.c
   )
@@ -4711,6 +4722,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.information_schema_privileges
     COMMAND mylite_runtime_information_schema_privileges_test
+  )
+  add_test(
+    NAME libmylite.runtime.information_schema_user_attributes
+    COMMAND mylite_runtime_information_schema_user_attributes_test
   )
   add_test(
     NAME libmylite.runtime.information_schema_role_grant_tables

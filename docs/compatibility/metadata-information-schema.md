@@ -51,7 +51,7 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.INNODB_CMPMEM` | ❌ | Status for compressed pages within InnoDB buffer pool |
 | `INFORMATION_SCHEMA.INNODB_CMPMEM_RESET` | ❌ | Status for compressed pages within InnoDB buffer pool |
 | `INFORMATION_SCHEMA.INNODB_COLUMNS` | ❌ | Columns in each InnoDB table |
-| `INFORMATION_SCHEMA.INNODB_DATAFILES` | ❌ | Table shape and diagnostics |
+| `INFORMATION_SCHEMA.INNODB_DATAFILES` | 🟡 | Queryable static default InnoDB datafile catalog with MySQL 8.4.9-shaped columns, matching system metadata, and the observed four fresh-runtime rows for `ibdata1`, `sys/sys_config`, and the two undo files; no descriptor-owned user table files, physical `.ibd` storage, mutable tablespaces, privileges, or complete InnoDB data dictionary |
 | `INFORMATION_SCHEMA.INNODB_FIELDS` | ❌ | Key columns of InnoDB indexes |
 | `INFORMATION_SCHEMA.INNODB_FOREIGN` | ❌ | InnoDB foreign-key metadata |
 | `INFORMATION_SCHEMA.INNODB_FOREIGN_COLS` | ❌ | InnoDB foreign-key column status information |
@@ -66,7 +66,7 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.INNODB_SESSION_TEMP_TABLESPACES` | ❌ | Session temporary-tablespace metadata |
 | `INFORMATION_SCHEMA.INNODB_TABLES` | ❌ | InnoDB table metadata |
 | `INFORMATION_SCHEMA.INNODB_TABLESPACES` | ❌ | InnoDB file-per-table, general, and undo tablespace metadata |
-| `INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF` | ❌ | Table shape and diagnostics |
+| `INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF` | 🟡 | Queryable static default InnoDB tablespace summary catalog with MySQL 8.4.9-shaped columns, matching system metadata, and the observed four fresh-runtime rows for system, sys config, and undo tablespaces; no descriptor-owned user table rows, physical tablespaces, temporary tablespaces, privileges, or complete InnoDB data dictionary |
 | `INFORMATION_SCHEMA.INNODB_TABLESTATS` | ❌ | InnoDB table low-level status information |
 | `INFORMATION_SCHEMA.INNODB_TEMP_TABLE_INFO` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.INNODB_TRX` | ❌ | Active InnoDB transaction information |

@@ -423,6 +423,8 @@ enum {
     information_schema_tables_extensions_column_count = 5,
     information_schema_table_constraints_extensions_column_count = 6,
     information_schema_tablespaces_extensions_column_count = 2,
+    information_schema_innodb_datafiles_column_count = 2,
+    information_schema_innodb_tablespaces_brief_column_count = 5,
     tablespace_name_separator_size = 1,
     tablespace_name_terminator_size = 1,
     information_schema_tables_column_count = 21,
@@ -4336,6 +4338,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS = 42,
     INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS = 43,
     INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE = 44,
+    INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES = 45,
+    INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF = 46,
 };
 
 struct information_schema_column_definition {
@@ -4365,6 +4369,14 @@ struct information_schema_table_definition {
     const char *name;
     const struct information_schema_column_definition *columns;
     size_t column_count;
+};
+
+struct information_schema_innodb_tablespace_row {
+    const char *space;
+    const char *name;
+    const char *path;
+    const char *flag;
+    const char *space_type;
 };
 
 struct information_schema_st_unit_of_measure_row {
@@ -4763,6 +4775,98 @@ static const struct information_schema_column_definition
          "utf8mb3_bin",
          "varchar(268)"},
         {"ENGINE_ATTRIBUTE", NULL, "YES", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_datafiles_columns[] = {
+        {"SPACE",
+         NULL,
+         "YES",
+         "varbinary",
+         "256",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "varbinary(256)"},
+        {"PATH",
+         NULL,
+         "NO",
+         "varchar",
+         "512",
+         "1536",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(512)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_tablespaces_brief_columns[] = {
+        {"SPACE",
+         NULL,
+         "YES",
+         "varbinary",
+         "256",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "varbinary(256)"},
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "268",
+         "804",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(268)"},
+        {"PATH",
+         NULL,
+         "NO",
+         "varchar",
+         "512",
+         "1536",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(512)"},
+        {"FLAG",
+         NULL,
+         "YES",
+         "varbinary",
+         "256",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "varbinary(256)"},
+        {"SPACE_TYPE",
+         "",
+         "NO",
+         "varchar",
+         "7",
+         "21",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(7)"},
 };
 
 static const struct information_schema_column_definition information_schema_tables_columns[] = {
@@ -9178,6 +9282,14 @@ static const struct information_schema_table_definition information_schema_table
      "TABLESPACES_EXTENSIONS",
      information_schema_tablespaces_extensions_columns,
      information_schema_tablespaces_extensions_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES,
+     "INNODB_DATAFILES",
+     information_schema_innodb_datafiles_columns,
+     information_schema_innodb_datafiles_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF,
+     "INNODB_TABLESPACES_BRIEF",
+     information_schema_innodb_tablespaces_brief_columns,
+     information_schema_innodb_tablespaces_brief_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLES,
      "TABLES",
      information_schema_tables_columns,
@@ -9354,6 +9466,13 @@ static const char *const builtin_tablespace_extension_names[] = {
     "innodb_undo_002",
     "mysql",
     "sys/sys_config",
+};
+
+static const struct information_schema_innodb_tablespace_row builtin_innodb_tablespace_rows[] = {
+    {"0", "innodb_system", "ibdata1", "18432", "System"},
+    {"4294967279", "innodb_undo_001", "./undo_001", "0", "Single"},
+    {"4294967278", "innodb_undo_002", "./undo_002", "0", "Single"},
+    {"1", "sys/sys_config", "./sys/sys_config.ibd", "16417", "Single"},
 };
 
 static const struct information_schema_st_unit_of_measure_row st_units_of_measure_rows[] = {
@@ -12313,6 +12432,14 @@ static int append_information_schema_tablespaces_extensions_table_row(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_innodb_datafiles_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_innodb_tablespaces_brief_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
 );
 static int copy_information_schema_tablespace_name(
     struct mylite_db *database,
@@ -46584,6 +46711,10 @@ static int append_information_schema_system_rows(
         return append_information_schema_tables_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS:
         return append_information_schema_tablespaces_extensions_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
+        return append_information_schema_innodb_datafiles_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
+        return append_information_schema_innodb_tablespaces_brief_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLES:
         return append_information_schema_tables_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
@@ -46673,6 +46804,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
@@ -47582,6 +47715,64 @@ static int append_information_schema_tablespaces_extensions_table_row(
     }
 
     free(tablespace_name);
+    return rc;
+}
+
+static int append_information_schema_innodb_datafiles_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_datafiles_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_DATAFILES columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(builtin_innodb_tablespace_rows) / sizeof(builtin_innodb_tablespace_rows[0]);
+         ++index) {
+        const struct information_schema_innodb_tablespace_row *tablespace =
+            &builtin_innodb_tablespace_rows[index];
+        const char *values[information_schema_innodb_datafiles_column_count] = {
+            tablespace->space,
+            tablespace->path,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_innodb_tablespaces_brief_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count !=
+        information_schema_innodb_tablespaces_brief_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(builtin_innodb_tablespace_rows) / sizeof(builtin_innodb_tablespace_rows[0]);
+         ++index) {
+        const struct information_schema_innodb_tablespace_row *tablespace =
+            &builtin_innodb_tablespace_rows[index];
+        const char *values[information_schema_innodb_tablespaces_brief_column_count] = {
+            tablespace->space,
+            tablespace->name,
+            tablespace->path,
+            tablespace->flag,
+            tablespace->space_type,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
     return rc;
 }
 

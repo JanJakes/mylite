@@ -427,6 +427,7 @@ enum {
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
+    information_schema_innodb_ft_index_column_count = 6,
     information_schema_innodb_tablespaces_brief_column_count = 5,
     information_schema_innodb_temp_table_info_column_count = 4,
     tablespace_name_separator_size = 1,
@@ -4349,6 +4350,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG = 49,
     INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED = 50,
     INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED = 51,
+    INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE = 52,
+    INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE = 53,
 };
 
 struct information_schema_column_definition {
@@ -4925,6 +4928,71 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_general_ci",
          "varchar(193)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_ft_index_columns[] = {
+        {"WORD",
+         "",
+         "NO",
+         "varchar",
+         "112",
+         "337",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(337)"},
+        {"FIRST_DOC_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"LAST_DOC_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"DOC_COUNT",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"DOC_ID", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint unsigned"},
+        {"POSITION",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
 };
 
 static const struct information_schema_column_definition
@@ -9394,6 +9462,14 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_FT_DELETED",
      information_schema_innodb_ft_deleted_columns,
      information_schema_innodb_ft_deleted_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE,
+     "INNODB_FT_INDEX_CACHE",
+     information_schema_innodb_ft_index_columns,
+     information_schema_innodb_ft_index_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE,
+     "INNODB_FT_INDEX_TABLE",
+     information_schema_innodb_ft_index_columns,
+     information_schema_innodb_ft_index_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO,
      "INNODB_TEMP_TABLE_INFO",
      information_schema_innodb_temp_table_info_columns,
@@ -46875,6 +46951,8 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -46932,6 +47010,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:

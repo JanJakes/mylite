@@ -423,6 +423,7 @@ enum {
     information_schema_tables_extensions_column_count = 5,
     information_schema_table_constraints_extensions_column_count = 6,
     information_schema_tablespaces_extensions_column_count = 2,
+    information_schema_innodb_cmp_per_index_column_count = 8,
     information_schema_innodb_datafiles_column_count = 2,
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
@@ -4352,6 +4353,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED = 51,
     INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE = 52,
     INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE = 53,
+    INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX = 54,
+    INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET = 55,
 };
 
 struct information_schema_column_definition {
@@ -4787,6 +4790,51 @@ static const struct information_schema_column_definition
          "utf8mb3_bin",
          "varchar(268)"},
         {"ENGINE_ATTRIBUTE", NULL, "YES", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_cmp_per_index_columns[] = {
+        {"database_name",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(192)"},
+        {"table_name",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(192)"},
+        {"index_name",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(192)"},
+        {"compress_ops", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"compress_ops_ok", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"compress_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"uncompress_ops", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"uncompress_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -9438,6 +9486,14 @@ static const struct information_schema_table_definition information_schema_table
      "TABLESPACES_EXTENSIONS",
      information_schema_tablespaces_extensions_columns,
      information_schema_tablespaces_extensions_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX,
+     "INNODB_CMP_PER_INDEX",
+     information_schema_innodb_cmp_per_index_columns,
+     information_schema_innodb_cmp_per_index_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET,
+     "INNODB_CMP_PER_INDEX_RESET",
+     information_schema_innodb_cmp_per_index_columns,
+     information_schema_innodb_cmp_per_index_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES,
      "INNODB_DATAFILES",
      information_schema_innodb_datafiles_columns,
@@ -46948,6 +47004,8 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED:
@@ -47006,6 +47064,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET:
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED:

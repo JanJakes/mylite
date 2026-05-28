@@ -45,8 +45,8 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.INNODB_BUFFER_POOL_STATS` | ❌ | InnoDB buffer pool statistics |
 | `INFORMATION_SCHEMA.INNODB_CACHED_INDEXES` | ❌ | Number of index pages cached per index in InnoDB buffer pool |
 | `INFORMATION_SCHEMA.INNODB_CMP` | ❌ | Status for operations related to compressed InnoDB tables |
-| `INFORMATION_SCHEMA.INNODB_CMP_PER_INDEX` | ❌ | Table shape and diagnostics |
-| `INFORMATION_SCHEMA.INNODB_CMP_PER_INDEX_RESET` | ❌ | Table shape and diagnostics |
+| `INFORMATION_SCHEMA.INNODB_CMP_PER_INDEX` | 🟡 | Queryable empty synthetic InnoDB per-index compression-statistics view with MySQL 8.4.9-shaped lower-case table/index/counter column metadata and matching system metadata; no `innodb_cmp_per_index_enabled` collection path, compressed-page statistics, `_RESET` counter side effects, privileges, or physical InnoDB compression behavior |
+| `INFORMATION_SCHEMA.INNODB_CMP_PER_INDEX_RESET` | 🟡 | Queryable empty synthetic InnoDB per-index compression-statistics reset view with MySQL 8.4.9-shaped lower-case table/index/counter column metadata and matching system metadata; no `innodb_cmp_per_index_enabled` collection path, compressed-page statistics, `_RESET` counter side effects, privileges, or physical InnoDB compression behavior |
 | `INFORMATION_SCHEMA.INNODB_CMP_RESET` | ❌ | Status for operations related to compressed InnoDB tables |
 | `INFORMATION_SCHEMA.INNODB_CMPMEM` | ❌ | Status for compressed pages within InnoDB buffer pool |
 | `INFORMATION_SCHEMA.INNODB_CMPMEM_RESET` | ❌ | Status for compressed pages within InnoDB buffer pool |

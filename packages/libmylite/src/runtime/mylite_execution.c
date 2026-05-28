@@ -425,6 +425,7 @@ enum {
     information_schema_tablespaces_extensions_column_count = 2,
     information_schema_innodb_datafiles_column_count = 2,
     information_schema_innodb_ft_config_column_count = 2,
+    information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
     information_schema_innodb_tablespaces_brief_column_count = 5,
     information_schema_innodb_temp_table_info_column_count = 4,
@@ -4346,6 +4347,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO = 47,
     INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD = 48,
     INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG = 49,
+    INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED = 50,
+    INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED = 51,
 };
 
 struct information_schema_column_definition {
@@ -4889,6 +4892,11 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_general_ci",
          "varchar(18)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_ft_deleted_columns[] = {
+        {"DOC_ID", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint unsigned"},
 };
 
 static const struct information_schema_column_definition
@@ -9378,6 +9386,14 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_FT_CONFIG",
      information_schema_innodb_ft_config_columns,
      information_schema_innodb_ft_config_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED,
+     "INNODB_FT_BEING_DELETED",
+     information_schema_innodb_ft_deleted_columns,
+     information_schema_innodb_ft_deleted_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED,
+     "INNODB_FT_DELETED",
+     information_schema_innodb_ft_deleted_columns,
+     information_schema_innodb_ft_deleted_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO,
      "INNODB_TEMP_TABLE_INFO",
      information_schema_innodb_temp_table_info_columns,
@@ -46857,6 +46873,8 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -46912,6 +46930,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_BEING_DELETED:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:

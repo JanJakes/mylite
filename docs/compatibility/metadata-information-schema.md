@@ -55,10 +55,10 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.INNODB_FIELDS` | ❌ | Key columns of InnoDB indexes |
 | `INFORMATION_SCHEMA.INNODB_FOREIGN` | ❌ | InnoDB foreign-key metadata |
 | `INFORMATION_SCHEMA.INNODB_FOREIGN_COLS` | ❌ | InnoDB foreign-key column status information |
-| `INFORMATION_SCHEMA.INNODB_FT_BEING_DELETED` | ❌ | Snapshot of INNODB_FT_DELETED table |
+| `INFORMATION_SCHEMA.INNODB_FT_BEING_DELETED` | 🟡 | Queryable empty synthetic InnoDB full-text being-deleted document-id view with MySQL 8.4.9-shaped `DOC_ID bigint unsigned` metadata and matching system metadata; no `innodb_ft_aux_table`-driven rows, physical InnoDB full-text auxiliary tables, optimize/delete queues, privileges, or full-text search behavior |
 | `INFORMATION_SCHEMA.INNODB_FT_CONFIG` | 🟡 | Queryable empty synthetic InnoDB full-text configuration view with MySQL 8.4.9-shaped `KEY` / `VALUE` column metadata and matching system metadata; no `innodb_ft_aux_table`-driven rows, physical InnoDB full-text auxiliary tables, parser plugins, privileges, or full-text search behavior |
 | `INFORMATION_SCHEMA.INNODB_FT_DEFAULT_STOPWORD` | 🟡 | Queryable static InnoDB default full-text stopword catalog with MySQL 8.4.9-shaped lower-case `value` column metadata and the observed 36 default rows including duplicate `the`; catalog visibility does not imply full-text tokenization, `MATCH ... AGAINST`, parser plugins, custom stopword variables, privileges, or physical InnoDB full-text tables |
-| `INFORMATION_SCHEMA.INNODB_FT_DELETED` | ❌ | Rows deleted from InnoDB table FULLTEXT index |
+| `INFORMATION_SCHEMA.INNODB_FT_DELETED` | 🟡 | Queryable empty synthetic InnoDB full-text deleted document-id view with MySQL 8.4.9-shaped `DOC_ID bigint unsigned` metadata and matching system metadata; no `innodb_ft_aux_table`-driven rows, physical InnoDB full-text auxiliary tables, optimize/delete queues, privileges, or full-text search behavior |
 | `INFORMATION_SCHEMA.INNODB_FT_INDEX_CACHE` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.INNODB_FT_INDEX_TABLE` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.INNODB_INDEXES` | ❌ | InnoDB index metadata |

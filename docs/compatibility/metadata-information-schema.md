@@ -57,7 +57,7 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.INNODB_FOREIGN_COLS` | ❌ | InnoDB foreign-key column status information |
 | `INFORMATION_SCHEMA.INNODB_FT_BEING_DELETED` | ❌ | Snapshot of INNODB_FT_DELETED table |
 | `INFORMATION_SCHEMA.INNODB_FT_CONFIG` | ❌ | Table shape and diagnostics |
-| `INFORMATION_SCHEMA.INNODB_FT_DEFAULT_STOPWORD` | ❌ | Default list of stopwords for InnoDB FULLTEXT indexes |
+| `INFORMATION_SCHEMA.INNODB_FT_DEFAULT_STOPWORD` | 🟡 | Queryable static InnoDB default full-text stopword catalog with MySQL 8.4.9-shaped lower-case `value` column metadata and the observed 36 default rows including duplicate `the`; catalog visibility does not imply full-text tokenization, `MATCH ... AGAINST`, parser plugins, custom stopword variables, privileges, or physical InnoDB full-text tables |
 | `INFORMATION_SCHEMA.INNODB_FT_DELETED` | ❌ | Rows deleted from InnoDB table FULLTEXT index |
 | `INFORMATION_SCHEMA.INNODB_FT_INDEX_CACHE` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.INNODB_FT_INDEX_TABLE` | ❌ | Table shape and diagnostics |

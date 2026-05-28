@@ -424,6 +424,7 @@ enum {
     information_schema_table_constraints_extensions_column_count = 6,
     information_schema_tablespaces_extensions_column_count = 2,
     information_schema_innodb_datafiles_column_count = 2,
+    information_schema_innodb_ft_default_stopword_column_count = 1,
     information_schema_innodb_tablespaces_brief_column_count = 5,
     information_schema_innodb_temp_table_info_column_count = 4,
     tablespace_name_separator_size = 1,
@@ -4342,6 +4343,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES = 45,
     INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF = 46,
     INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO = 47,
+    INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD = 48,
 };
 
 struct information_schema_column_definition {
@@ -4869,6 +4871,22 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_general_ci",
          "varchar(7)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_ft_default_stopword_columns[] = {
+        {"value",
+         "",
+         "NO",
+         "varchar",
+         "6",
+         "18",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(18)"},
 };
 
 static const struct information_schema_column_definition
@@ -9322,6 +9340,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
      information_schema_innodb_tablespaces_brief_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD,
+     "INNODB_FT_DEFAULT_STOPWORD",
+     information_schema_innodb_ft_default_stopword_columns,
+     information_schema_innodb_ft_default_stopword_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO,
      "INNODB_TEMP_TABLE_INFO",
      information_schema_innodb_temp_table_info_columns,
@@ -9509,6 +9531,12 @@ static const struct information_schema_innodb_tablespace_row builtin_innodb_tabl
     {"4294967279", "innodb_undo_001", "./undo_001", "0", "Single"},
     {"4294967278", "innodb_undo_002", "./undo_002", "0", "Single"},
     {"1", "sys/sys_config", "./sys/sys_config.ibd", "16417", "Single"},
+};
+
+static const char *const innodb_ft_default_stopwords[] = {
+    "a",    "about", "an",  "are",  "as",   "at",    "be",  "by",   "com",  "de",  "en",   "for",
+    "from", "how",   "i",   "in",   "is",   "it",    "la",  "of",   "on",   "or",  "that", "the",
+    "this", "to",    "was", "what", "when", "where", "who", "will", "with", "und", "the",  "www",
 };
 
 static const struct information_schema_st_unit_of_measure_row st_units_of_measure_rows[] = {
@@ -12470,6 +12498,10 @@ static int append_information_schema_tablespaces_extensions_table_row(
     const struct mylite_catalog_table_descriptor *table
 );
 static int append_information_schema_innodb_datafiles_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_innodb_ft_default_stopword_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -46749,6 +46781,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_tablespaces_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
         return append_information_schema_innodb_datafiles_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
+        return append_information_schema_innodb_ft_default_stopword_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
         return append_information_schema_innodb_tablespaces_brief_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLES:
@@ -46842,6 +46876,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
@@ -47775,6 +47810,33 @@ static int append_information_schema_innodb_datafiles_system_rows(
         const char *values[information_schema_innodb_datafiles_column_count] = {
             tablespace->space,
             tablespace->path,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_innodb_ft_default_stopword_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count !=
+        information_schema_innodb_ft_default_stopword_column_count) {
+        set_runtime_error(
+            database,
+            "invalid INFORMATION_SCHEMA.INNODB_FT_DEFAULT_STOPWORD columns"
+        );
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(innodb_ft_default_stopwords) /
+                                                           sizeof(innodb_ft_default_stopwords[0]);
+         ++index) {
+        const char *values[information_schema_innodb_ft_default_stopword_column_count] = {
+            innodb_ft_default_stopwords[index],
         };
 
         rc = append_information_schema_row(database, rows, values);

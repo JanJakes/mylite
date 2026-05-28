@@ -424,6 +424,7 @@ enum {
     information_schema_table_constraints_extensions_column_count = 6,
     information_schema_tablespaces_extensions_column_count = 2,
     information_schema_innodb_cmp_column_count = 6,
+    information_schema_innodb_cmpmem_column_count = 6,
     information_schema_innodb_cmp_per_index_column_count = 8,
     information_schema_innodb_datafiles_column_count = 2,
     information_schema_innodb_ft_config_column_count = 2,
@@ -4358,6 +4359,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET = 55,
     INFORMATION_SCHEMA_TABLE_INNODB_CMP = 56,
     INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET = 57,
+    INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM = 58,
+    INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM_RESET = 59,
 };
 
 struct information_schema_column_definition {
@@ -4802,6 +4805,16 @@ static const struct information_schema_column_definition information_schema_inno
     {"compress_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
     {"uncompress_ops", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
     {"uncompress_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_cmpmem_columns[] = {
+        {"page_size", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"buffer_pool_instance", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"pages_used", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"pages_free", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"relocation_ops", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint"},
+        {"relocation_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -9506,6 +9519,14 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_CMP_RESET",
      information_schema_innodb_cmp_columns,
      information_schema_innodb_cmp_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM,
+     "INNODB_CMPMEM",
+     information_schema_innodb_cmpmem_columns,
+     information_schema_innodb_cmpmem_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM_RESET,
+     "INNODB_CMPMEM_RESET",
+     information_schema_innodb_cmpmem_columns,
+     information_schema_innodb_cmpmem_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX,
      "INNODB_CMP_PER_INDEX",
      information_schema_innodb_cmp_per_index_columns,
@@ -12712,6 +12733,10 @@ static int append_information_schema_innodb_datafiles_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_innodb_cmp_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_innodb_cmpmem_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -46998,6 +47023,9 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET:
         return append_information_schema_innodb_cmp_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM_RESET:
+        return append_information_schema_innodb_cmpmem_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
         return append_information_schema_innodb_ft_default_stopword_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
@@ -47101,6 +47129,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM_RESET:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET:
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
@@ -48065,6 +48095,34 @@ static int append_information_schema_innodb_cmp_system_rows(
                                                            sizeof(innodb_compressed_page_sizes[0]);
          ++index) {
         const char *values[information_schema_innodb_cmp_column_count] = {
+            innodb_compressed_page_sizes[index],
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_innodb_cmpmem_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_cmpmem_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_CMPMEM columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(innodb_compressed_page_sizes) /
+                                                           sizeof(innodb_compressed_page_sizes[0]);
+         ++index) {
+        const char *values[information_schema_innodb_cmpmem_column_count] = {
             innodb_compressed_page_sizes[index],
             "0",
             "0",

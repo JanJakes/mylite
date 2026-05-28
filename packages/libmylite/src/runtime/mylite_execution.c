@@ -423,6 +423,7 @@ enum {
     information_schema_character_sets_column_count = 4,
     information_schema_check_constraints_column_count = 4,
     information_schema_column_privileges_column_count = 7,
+    information_schema_column_statistics_column_count = 4,
     information_schema_collation_applicability_column_count = 2,
     information_schema_collations_column_count = 7,
     information_schema_engines_column_count = 6,
@@ -4297,6 +4298,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_TABLES_EXTENSIONS = 28,
     INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS_EXTENSIONS = 29,
     INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS = 30,
+    INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS = 31,
 };
 
 struct information_schema_column_definition {
@@ -5356,6 +5358,47 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_general_ci",
          "varchar(3)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_column_statistics_columns[] = {
+        {"SCHEMA_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"COLUMN_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"HISTOGRAM", NULL, "NO", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
 };
 
 static const struct information_schema_column_definition information_schema_collations_columns[] = {
@@ -8048,6 +8091,10 @@ static const struct information_schema_table_definition information_schema_table
      "COLUMN_PRIVILEGES",
      information_schema_column_privileges_columns,
      information_schema_column_privileges_column_count},
+    {INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS,
+     "COLUMN_STATISTICS",
+     information_schema_column_statistics_columns,
+     information_schema_column_statistics_column_count},
     {INFORMATION_SCHEMA_TABLE_COLLATIONS,
      "COLLATIONS",
      information_schema_collations_columns,
@@ -45319,6 +45366,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
+    case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS_EXTENSIONS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
@@ -45359,6 +45407,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
+    case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:

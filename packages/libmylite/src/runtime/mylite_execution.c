@@ -423,6 +423,7 @@ enum {
     information_schema_tables_extensions_column_count = 5,
     information_schema_table_constraints_extensions_column_count = 6,
     information_schema_tablespaces_extensions_column_count = 2,
+    information_schema_innodb_cmp_column_count = 6,
     information_schema_innodb_cmp_per_index_column_count = 8,
     information_schema_innodb_datafiles_column_count = 2,
     information_schema_innodb_ft_config_column_count = 2,
@@ -4355,6 +4356,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE = 53,
     INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX = 54,
     INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET = 55,
+    INFORMATION_SCHEMA_TABLE_INNODB_CMP = 56,
+    INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET = 57,
 };
 
 struct information_schema_column_definition {
@@ -4790,6 +4793,15 @@ static const struct information_schema_column_definition
          "utf8mb3_bin",
          "varchar(268)"},
         {"ENGINE_ATTRIBUTE", NULL, "YES", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+};
+
+static const struct information_schema_column_definition information_schema_innodb_cmp_columns[] = {
+    {"page_size", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"compress_ops", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"compress_ops_ok", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"compress_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"uncompress_ops", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"uncompress_time", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -9486,6 +9498,14 @@ static const struct information_schema_table_definition information_schema_table
      "TABLESPACES_EXTENSIONS",
      information_schema_tablespaces_extensions_columns,
      information_schema_tablespaces_extensions_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CMP,
+     "INNODB_CMP",
+     information_schema_innodb_cmp_columns,
+     information_schema_innodb_cmp_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET,
+     "INNODB_CMP_RESET",
+     information_schema_innodb_cmp_columns,
+     information_schema_innodb_cmp_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX,
      "INNODB_CMP_PER_INDEX",
      information_schema_innodb_cmp_per_index_columns,
@@ -9719,6 +9739,14 @@ static const char *const innodb_ft_default_stopwords[] = {
     "a",    "about", "an",  "are",  "as",   "at",    "be",  "by",   "com",  "de",  "en",   "for",
     "from", "how",   "i",   "in",   "is",   "it",    "la",  "of",   "on",   "or",  "that", "the",
     "this", "to",    "was", "what", "when", "where", "who", "will", "with", "und", "the",  "www",
+};
+
+static const char *const innodb_compressed_page_sizes[] = {
+    "1024",
+    "2048",
+    "4096",
+    "8192",
+    "16384",
 };
 
 static const struct information_schema_st_unit_of_measure_row st_units_of_measure_rows[] = {
@@ -12680,6 +12708,10 @@ static int append_information_schema_tablespaces_extensions_table_row(
     const struct mylite_catalog_table_descriptor *table
 );
 static int append_information_schema_innodb_datafiles_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_innodb_cmp_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -46963,6 +46995,9 @@ static int append_information_schema_system_rows(
         return append_information_schema_tablespaces_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
         return append_information_schema_innodb_datafiles_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET:
+        return append_information_schema_innodb_cmp_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
         return append_information_schema_innodb_ft_default_stopword_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
@@ -47064,6 +47099,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET:
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
@@ -48006,6 +48043,34 @@ static int append_information_schema_innodb_datafiles_system_rows(
         const char *values[information_schema_innodb_datafiles_column_count] = {
             tablespace->space,
             tablespace->path,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_innodb_cmp_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_cmp_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_CMP columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(innodb_compressed_page_sizes) /
+                                                           sizeof(innodb_compressed_page_sizes[0]);
+         ++index) {
+        const char *values[information_schema_innodb_cmp_column_count] = {
+            innodb_compressed_page_sizes[index],
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
         };
 
         rc = append_information_schema_row(database, rows, values);

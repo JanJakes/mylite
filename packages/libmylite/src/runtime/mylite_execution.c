@@ -57,6 +57,12 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#  include <windows.h>
+#else
+#  include <unistd.h>
+#endif
+
 enum {
     mysql_error_parse = 1064,
     mysql_error_cant_get_stat = 13,
@@ -439,6 +445,7 @@ enum {
     information_schema_plugins_column_count = 11,
     information_schema_processlist_column_count = 8,
     information_schema_profiling_column_count = 18,
+    information_schema_resource_groups_column_count = 5,
     information_schema_st_geometry_columns_column_count = 7,
     information_schema_st_geometry_columns_schema_column = 1,
     information_schema_st_geometry_columns_table_column = 2,
@@ -4326,6 +4333,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE = 40,
     INFORMATION_SCHEMA_TABLE_PROFILING = 41,
     INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS = 42,
+    INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS = 43,
 };
 
 struct information_schema_column_definition {
@@ -5862,6 +5870,48 @@ static const struct information_schema_column_definition information_schema_prof
      "utf8mb3_general_ci",
      "varchar(20)"},
     {"SOURCE_LINE", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_resource_groups_columns[] = {
+        {"RESOURCE_GROUP_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"RESOURCE_GROUP_TYPE",
+         NULL,
+         "NO",
+         "enum",
+         "6",
+         "18",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "enum('SYSTEM','USER')"},
+        {"RESOURCE_GROUP_ENABLED",
+         NULL,
+         "NO",
+         "tinyint",
+         NULL,
+         NULL,
+         "3",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "tinyint(1)"},
+        {"VCPU_IDS", NULL, "YES", "blob", "65535", "65535", NULL, NULL, NULL, NULL, NULL, "blob"},
+        {"THREAD_PRIORITY", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -9189,6 +9239,10 @@ static const struct information_schema_table_definition information_schema_table
      "ST_GEOMETRY_COLUMNS",
      information_schema_st_geometry_columns_columns,
      information_schema_st_geometry_columns_column_count},
+    {INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS,
+     "RESOURCE_GROUPS",
+     information_schema_resource_groups_columns,
+     information_schema_resource_groups_column_count},
     {INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS,
      "REFERENTIAL_CONSTRAINTS",
      information_schema_referential_constraints_columns,
@@ -12185,6 +12239,16 @@ static int append_information_schema_user_attributes_system_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_information_schema_resource_groups_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int format_information_schema_resource_group_vcpu_ids(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+);
+static long information_schema_online_processor_count(void);
 static int append_information_schema_processlist_system_row(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -46425,6 +46489,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_user_privileges_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES:
         return append_information_schema_user_attributes_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
+        return append_information_schema_resource_groups_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
         return append_information_schema_partitions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
@@ -46486,6 +46552,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PLUGINS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_PROFILING:
+    case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
@@ -47022,6 +47089,75 @@ static int append_information_schema_user_attributes_system_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_resource_groups_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    char vcpu_ids[integer_text_capacity];
+    const char *user_values[information_schema_resource_groups_column_count] = {
+        "USR_default",
+        "USER",
+        "1",
+        vcpu_ids,
+        "0",
+    };
+    const char *system_values[information_schema_resource_groups_column_count] = {
+        "SYS_default",
+        "SYSTEM",
+        "1",
+        vcpu_ids,
+        "0",
+    };
+    int rc =
+        format_information_schema_resource_group_vcpu_ids(database, vcpu_ids, sizeof(vcpu_ids));
+
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_row(database, rows, user_values);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_row(database, rows, system_values);
+    }
+    return rc;
+}
+
+static int format_information_schema_resource_group_vcpu_ids(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+) {
+    long cpu_count = information_schema_online_processor_count();
+    int written = 0;
+
+    if (cpu_count <= 1) {
+        written = snprintf(buffer, buffer_size, "0");
+    } else {
+        written = snprintf(buffer, buffer_size, "0-%ld", cpu_count - 1);
+    }
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format resource group vcpu ids");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static long information_schema_online_processor_count(void) {
+#ifdef _WIN32
+    SYSTEM_INFO info;
+
+    GetSystemInfo(&info);
+    if (info.dwNumberOfProcessors > 0U) {
+        return (long)info.dwNumberOfProcessors;
+    }
+#elif defined(_SC_NPROCESSORS_ONLN)
+    long count = sysconf(_SC_NPROCESSORS_ONLN);
+
+    if (count > 0) {
+        return count;
+    }
+#endif
+    return 1;
 }
 
 static int append_information_schema_processlist_system_row(

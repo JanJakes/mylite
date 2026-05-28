@@ -425,6 +425,7 @@ enum {
     information_schema_tablespaces_extensions_column_count = 2,
     information_schema_innodb_datafiles_column_count = 2,
     information_schema_innodb_tablespaces_brief_column_count = 5,
+    information_schema_innodb_temp_table_info_column_count = 4,
     tablespace_name_separator_size = 1,
     tablespace_name_terminator_size = 1,
     information_schema_tables_column_count = 21,
@@ -4340,6 +4341,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE = 44,
     INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES = 45,
     INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF = 46,
+    INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO = 47,
 };
 
 struct information_schema_column_definition {
@@ -4867,6 +4869,36 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_general_ci",
          "varchar(7)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_temp_table_info_columns[] = {
+        {"TABLE_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"NAME",
+         "",
+         "YES",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"N_COLS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"SPACE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
 };
 
 static const struct information_schema_column_definition information_schema_tables_columns[] = {
@@ -9290,6 +9322,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
      information_schema_innodb_tablespaces_brief_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO,
+     "INNODB_TEMP_TABLE_INFO",
+     information_schema_innodb_temp_table_info_columns,
+     information_schema_innodb_temp_table_info_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLES,
      "TABLES",
      information_schema_tables_columns,
@@ -46752,6 +46788,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
@@ -46806,6 +46843,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:

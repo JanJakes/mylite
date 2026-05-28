@@ -68,7 +68,7 @@ metadata-lock semantics.
 | `INFORMATION_SCHEMA.INNODB_TABLESPACES` | ❌ | InnoDB file-per-table, general, and undo tablespace metadata |
 | `INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF` | 🟡 | Queryable static default InnoDB tablespace summary catalog with MySQL 8.4.9-shaped columns, matching system metadata, and the observed four fresh-runtime rows for system, sys config, and undo tablespaces; no descriptor-owned user table rows, physical tablespaces, temporary tablespaces, privileges, or complete InnoDB data dictionary |
 | `INFORMATION_SCHEMA.INNODB_TABLESTATS` | ❌ | InnoDB table low-level status information |
-| `INFORMATION_SCHEMA.INNODB_TEMP_TABLE_INFO` | ❌ | Table shape and diagnostics |
+| `INFORMATION_SCHEMA.INNODB_TEMP_TABLE_INFO` | 🟡 | Queryable empty synthetic InnoDB temporary-table metadata view with MySQL 8.4.9-shaped columns and matching system metadata; no dynamic rows for user-created temporary tables, InnoDB table ids, generated InnoDB temporary names, temporary tablespace ids, privileges, or physical InnoDB temporary tablespaces |
 | `INFORMATION_SCHEMA.INNODB_TRX` | ❌ | Active InnoDB transaction information |
 | `INFORMATION_SCHEMA.INNODB_VIRTUAL` | ❌ | InnoDB virtual generated column metadata |
 | `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary-key, supported unique-index, and supported integer-family foreign-key columns on MyLite persistent base tables; includes current system-view column metadata, ordered rows for current composite primary-key and unique-index parts, and ordered referenced-table columns for supported one-column and composite FK descriptors; no non-integer foreign keys, views, temporary tables, privileges, or complete MySQL system catalogs |

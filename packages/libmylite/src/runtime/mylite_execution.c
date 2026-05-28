@@ -148,6 +148,7 @@ enum {
     mysql_warning_deprecated_system_variable = 1287,
     mysql_warning_found_rows_deprecated = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
+    mysql_warning_information_schema_profiling_deprecated = 1287,
     mysql_warning_sql_calc_found_rows_deprecated = 1287,
     mysql_warning_sql_no_cache_deprecated = 1681,
     mysql_warning_hash_index_unsupported = 3502,
@@ -437,6 +438,7 @@ enum {
     information_schema_partitions_column_count = 25,
     information_schema_plugins_column_count = 11,
     information_schema_processlist_column_count = 8,
+    information_schema_profiling_column_count = 18,
     information_schema_processlist_db_column = 3,
     information_schema_processlist_info_column = 7,
     information_schema_routines_column_count = 31,
@@ -4317,6 +4319,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_USER_ATTRIBUTES = 38,
     INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE = 39,
     INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE = 40,
+    INFORMATION_SCHEMA_TABLE_PROFILING = 41,
 };
 
 struct information_schema_column_definition {
@@ -5788,6 +5791,71 @@ static const struct information_schema_column_definition
          NULL,
          NULL,
          "tinyint(1)"},
+};
+
+static const struct information_schema_column_definition information_schema_profiling_columns[] = {
+    {"QUERY_ID", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"SEQ", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"STATE",
+     "",
+     "NO",
+     "varchar",
+     "10",
+     "30",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(30)"},
+    {"DURATION", "", "NO", "decimal", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "decimal(905,0)"},
+    {"CPU_USER", "", "YES", "decimal", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "decimal(905,0)"},
+    {"CPU_SYSTEM",
+     "",
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "decimal(905,0)"},
+    {"CONTEXT_VOLUNTARY", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"CONTEXT_INVOLUNTARY", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"BLOCK_OPS_IN", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"BLOCK_OPS_OUT", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"MESSAGES_SENT", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"MESSAGES_RECEIVED", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"PAGE_FAULTS_MAJOR", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"PAGE_FAULTS_MINOR", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"SWAPS", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+    {"SOURCE_FUNCTION",
+     "",
+     "YES",
+     "varchar",
+     "10",
+     "30",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(30)"},
+    {"SOURCE_FILE",
+     "",
+     "YES",
+     "varchar",
+     "6",
+     "20",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(20)"},
+    {"SOURCE_LINE", "", "YES", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -8994,6 +9062,10 @@ static const struct information_schema_table_definition information_schema_table
      "PROCESSLIST",
      information_schema_processlist_columns,
      information_schema_processlist_column_count},
+    {INFORMATION_SCHEMA_TABLE_PROFILING,
+     "PROFILING",
+     information_schema_profiling_columns,
+     information_schema_profiling_column_count},
     {INFORMATION_SCHEMA_TABLE_ROUTINES,
      "ROUTINES",
      information_schema_routines_columns,
@@ -20747,6 +20819,7 @@ static int copy_show_processlist_info(
 );
 static size_t statement_info_length_without_terminator(const char *sql, size_t sql_size);
 static int append_show_processlist_warning(struct mylite_db *database);
+static int append_information_schema_profiling_warning(struct mylite_db *database);
 static int plan_diagnostics_show_limit(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *limit_clause,
@@ -46162,6 +46235,10 @@ static int execute_information_schema_query(
         read_row_count > 0U) {
         rc = append_show_processlist_warning(database);
     }
+    if (rc == MYLITE_OK && query->definition->kind == INFORMATION_SCHEMA_TABLE_PROFILING &&
+        !(query->limit.has_limit && query->limit.row_count == 0)) {
+        rc = append_information_schema_profiling_warning(database);
+    }
     information_schema_row_set_deinit(&rows);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -46257,6 +46334,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_OPTIMIZER_TRACE:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
+    case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
@@ -46306,6 +46384,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PLUGINS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
+    case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
@@ -54266,6 +54345,16 @@ static int append_show_processlist_warning(struct mylite_db *database) {
         "HY000",
         "'INFORMATION_SCHEMA.PROCESSLIST' is deprecated and will be removed in a future "
         "release. Please use performance_schema.processlist instead"
+    );
+}
+
+static int append_information_schema_profiling_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_information_schema_profiling_deprecated,
+        "HY000",
+        "'INFORMATION_SCHEMA.PROFILING' is deprecated and will be removed in a future release. "
+        "Please use Performance Schema instead"
     );
 }
 

@@ -427,14 +427,30 @@ enum {
     information_schema_innodb_cmpmem_column_count = 6,
     information_schema_innodb_cmp_per_index_column_count = 8,
     information_schema_innodb_datafiles_column_count = 2,
+    information_schema_innodb_fields_column_count = 3,
     information_schema_innodb_foreign_column_count = 5,
     information_schema_innodb_foreign_cols_column_count = 4,
+    information_schema_innodb_indexes_column_count = 8,
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
     information_schema_innodb_ft_index_column_count = 6,
     information_schema_innodb_tablespaces_brief_column_count = 5,
     information_schema_innodb_temp_table_info_column_count = 4,
+    information_schema_innodb_index_nonunique_type = 0,
+    information_schema_innodb_index_generated_cluster_type = 1,
+    information_schema_innodb_index_unique_type = 2,
+    information_schema_innodb_index_primary_type = 3,
+    information_schema_innodb_index_fulltext_type = 32,
+    information_schema_innodb_index_spatial_type = 64,
+    information_schema_innodb_index_default_page_no = 0,
+    information_schema_innodb_index_fulltext_page_no = -1,
+    information_schema_innodb_index_space = 0,
+    information_schema_innodb_index_merge_threshold = 50,
+    information_schema_innodb_cluster_system_field_count = 2,
+    information_schema_innodb_generated_cluster_system_field_count = 3,
+    information_schema_innodb_generated_cluster_key_part_count = 1,
+    information_schema_innodb_field_position_offset = 1,
     information_schema_innodb_foreign_delete_cascade_type = 1,
     information_schema_innodb_foreign_delete_set_null_type = 2,
     information_schema_innodb_foreign_update_cascade_type = 4,
@@ -671,6 +687,10 @@ enum {
     utf8_four_byte_last = 0xf4,
     utf8_four_byte_last_second_max = 0x8f,
 };
+
+static const int64_t information_schema_innodb_generated_cluster_index_id_base =
+    1000000000000000000LL;
+static const char information_schema_innodb_generated_cluster_index_name[] = "GEN_CLUST_INDEX";
 
 static const char *const show_index_result_columns[show_index_result_column_count] = {
     "Table",
@@ -4371,6 +4391,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_CMPMEM_RESET = 59,
     INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN = 60,
     INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN_COLS = 61,
+    INFORMATION_SCHEMA_TABLE_INNODB_FIELDS = 62,
+    INFORMATION_SCHEMA_TABLE_INNODB_INDEXES = 63,
 };
 
 struct information_schema_column_definition {
@@ -4907,6 +4929,35 @@ static const struct information_schema_column_definition
 };
 
 static const struct information_schema_column_definition
+    information_schema_innodb_fields_columns[] = {
+        {"INDEX_ID",
+         NULL,
+         "YES",
+         "varbinary",
+         "256",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "varbinary(256)"},
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"POS", "0", "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+};
+
+static const struct information_schema_column_definition
     information_schema_innodb_foreign_columns[] = {
         {"ID",
          NULL,
@@ -4987,6 +5038,51 @@ static const struct information_schema_column_definition
          "utf8mb3_tolower_ci",
          "varchar(64)"},
         {"POS", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_indexes_columns[] = {
+        {"INDEX_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"NAME",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "193",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(193)"},
+        {"TABLE_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"TYPE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"N_FIELDS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"PAGE_NO", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"SPACE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"MERGE_THRESHOLD", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -9638,6 +9734,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_DATAFILES",
      information_schema_innodb_datafiles_columns,
      information_schema_innodb_datafiles_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_FIELDS,
+     "INNODB_FIELDS",
+     information_schema_innodb_fields_columns,
+     information_schema_innodb_fields_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN,
      "INNODB_FOREIGN",
      information_schema_innodb_foreign_columns,
@@ -9646,6 +9746,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_FOREIGN_COLS",
      information_schema_innodb_foreign_cols_columns,
      information_schema_innodb_foreign_cols_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_INDEXES,
+     "INNODB_INDEXES",
+     information_schema_innodb_indexes_columns,
+     information_schema_innodb_indexes_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF,
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
@@ -13169,6 +13273,81 @@ static int append_information_schema_table_constraints_base_rows(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_innodb_indexes_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_innodb_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table,
+    size_t column_count,
+    const struct loaded_index_info *clustered_index,
+    const struct loaded_index_info *index
+);
+static int append_information_schema_innodb_generated_cluster_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table,
+    size_t column_count
+);
+static int append_information_schema_innodb_fields_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_innodb_fields_index_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct loaded_index_info *index
+);
+static int append_information_schema_innodb_fields_part_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part
+);
+static int information_schema_innodb_index_type(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_info *clustered_index,
+    int64_t *out_type
+);
+static int information_schema_innodb_index_field_count(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    size_t column_count,
+    const struct loaded_index_info *clustered_index,
+    int64_t *out_field_count
+);
+static int information_schema_innodb_secondary_clustered_part_count(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_info *clustered_index,
+    size_t *out_count
+);
+static int information_schema_innodb_generated_cluster_field_count(
+    struct mylite_db *database,
+    size_t column_count,
+    int64_t *out_field_count
+);
+static int information_schema_innodb_generated_cluster_index_id(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t *out_index_id
+);
+static const struct loaded_index_info *information_schema_innodb_clustered_index(
+    const struct loaded_index_info *indexes,
+    size_t index_count
+);
+static bool information_schema_innodb_index_is_all_not_null_unique(
+    const struct loaded_index_info *index
+);
+static bool information_schema_innodb_index_contains_column(
+    const struct loaded_index_info *index,
+    int64_t column_id
 );
 static int append_information_schema_innodb_foreign_base_rows(
     struct mylite_db *database,
@@ -47236,6 +47415,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_PER_INDEX_RESET:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FIELDS:
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN:
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN_COLS:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_CONFIG:
@@ -47243,6 +47423,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DELETED:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_CACHE:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE:
+    case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -47340,8 +47521,10 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_INNODB_FIELDS:
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN:
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN_COLS:
+    case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
         break;
     }
@@ -47512,6 +47695,12 @@ static int append_information_schema_catalog_base_table(
             context->schema,
             table
         );
+    case INFORMATION_SCHEMA_TABLE_INNODB_FIELDS:
+        return append_information_schema_innodb_fields_base_rows(
+            context->database,
+            context->rows,
+            table
+        );
     case INFORMATION_SCHEMA_TABLE_INNODB_FOREIGN:
         return append_information_schema_innodb_foreign_base_rows(
             context->database,
@@ -47524,6 +47713,12 @@ static int append_information_schema_catalog_base_table(
             context->database,
             context->rows,
             context->schema,
+            table
+        );
+    case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
+        return append_information_schema_innodb_indexes_base_rows(
+            context->database,
+            context->rows,
             table
         );
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
@@ -50076,6 +50271,535 @@ static int append_information_schema_columns_numeric_metadata(
     }
 
     return MYLITE_OK;
+}
+
+static int append_information_schema_innodb_indexes_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    const struct loaded_index_info *clustered_index = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_indexes_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_INDEXES columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        clustered_index = information_schema_innodb_clustered_index(indexes, index_count);
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        rc = append_information_schema_innodb_index_row(
+            database,
+            rows,
+            table,
+            column_count,
+            clustered_index,
+            &indexes[index]
+        );
+    }
+    if (rc == MYLITE_OK && clustered_index == NULL) {
+        rc = append_information_schema_innodb_generated_cluster_index_row(
+            database,
+            rows,
+            table,
+            column_count
+        );
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int append_information_schema_innodb_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table,
+    size_t column_count,
+    const struct loaded_index_info *clustered_index,
+    const struct loaded_index_info *index
+) {
+    char index_id_text[integer_text_capacity];
+    char table_id_text[integer_text_capacity];
+    char type_text[integer_text_capacity];
+    char field_count_text[integer_text_capacity];
+    char page_no_text[integer_text_capacity];
+    char space_text[integer_text_capacity];
+    char merge_threshold_text[integer_text_capacity];
+    int64_t type = 0;
+    int64_t field_count = 0;
+    int64_t page_no = information_schema_innodb_index_default_page_no;
+    int rc = MYLITE_OK;
+
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        page_no = information_schema_innodb_index_fulltext_page_no;
+    }
+
+    rc = information_schema_format_i64(
+        database,
+        index->index.index_id,
+        index_id_text,
+        sizeof(index_id_text)
+    );
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            table->table_id,
+            table_id_text,
+            sizeof(table_id_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_innodb_index_type(database, index, clustered_index, &type);
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(database, type, type_text, sizeof(type_text));
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_innodb_index_field_count(
+            database,
+            index,
+            column_count,
+            clustered_index,
+            &field_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            field_count,
+            field_count_text,
+            sizeof(field_count_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(database, page_no, page_no_text, sizeof(page_no_text));
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_index_space,
+            space_text,
+            sizeof(space_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_index_merge_threshold,
+            merge_threshold_text,
+            sizeof(merge_threshold_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[information_schema_innodb_indexes_column_count] = {
+            index_id_text,
+            index->index.name,
+            table_id_text,
+            type_text,
+            field_count_text,
+            page_no_text,
+            space_text,
+            merge_threshold_text,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_information_schema_innodb_generated_cluster_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table,
+    size_t column_count
+) {
+    char index_id_text[integer_text_capacity];
+    char table_id_text[integer_text_capacity];
+    char type_text[integer_text_capacity];
+    char field_count_text[integer_text_capacity];
+    char page_no_text[integer_text_capacity];
+    char space_text[integer_text_capacity];
+    char merge_threshold_text[integer_text_capacity];
+    int64_t index_id = 0;
+    int64_t field_count = 0;
+    int rc =
+        information_schema_innodb_generated_cluster_index_id(database, table->table_id, &index_id);
+
+    if (rc == MYLITE_OK) {
+        rc = information_schema_innodb_generated_cluster_field_count(
+            database,
+            column_count,
+            &field_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            information_schema_format_i64(database, index_id, index_id_text, sizeof(index_id_text));
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            table->table_id,
+            table_id_text,
+            sizeof(table_id_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_index_generated_cluster_type,
+            type_text,
+            sizeof(type_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            field_count,
+            field_count_text,
+            sizeof(field_count_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_index_default_page_no,
+            page_no_text,
+            sizeof(page_no_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_index_space,
+            space_text,
+            sizeof(space_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            information_schema_innodb_index_merge_threshold,
+            merge_threshold_text,
+            sizeof(merge_threshold_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[information_schema_innodb_indexes_column_count] = {
+            index_id_text,
+            information_schema_innodb_generated_cluster_index_name,
+            table_id_text,
+            type_text,
+            field_count_text,
+            page_no_text,
+            space_text,
+            merge_threshold_text,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_information_schema_innodb_fields_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_fields_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_FIELDS columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        rc = append_information_schema_innodb_fields_index_rows(database, rows, &indexes[index]);
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int append_information_schema_innodb_fields_index_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct loaded_index_info *index
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        rc = append_information_schema_innodb_fields_part_row(
+            database,
+            rows,
+            index,
+            &index->parts[part_index]
+        );
+    }
+    return rc;
+}
+
+static int append_information_schema_innodb_fields_part_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part
+) {
+    char index_id_text[integer_text_capacity];
+    char position_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (part->index_column.ordinal_position < information_schema_innodb_field_position_offset) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_FIELDS position");
+        return MYLITE_ERROR;
+    }
+
+    rc = information_schema_format_i64(
+        database,
+        index->index.index_id,
+        index_id_text,
+        sizeof(index_id_text)
+    );
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            part->index_column.ordinal_position - information_schema_innodb_field_position_offset,
+            position_text,
+            sizeof(position_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[information_schema_innodb_fields_column_count] = {
+            index_id_text,
+            part->column.name,
+            position_text,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int information_schema_innodb_index_type(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_info *clustered_index,
+    int64_t *out_type
+) {
+    switch (index->index.kind) {
+    case MYLITE_CATALOG_INDEX_KIND_PRIMARY:
+        *out_type = information_schema_innodb_index_primary_type;
+        return MYLITE_OK;
+    case MYLITE_CATALOG_INDEX_KIND_SECONDARY:
+        if (index == clustered_index) {
+            *out_type = information_schema_innodb_index_primary_type;
+        } else {
+            *out_type = index->index.is_unique ? information_schema_innodb_index_unique_type
+                                               : information_schema_innodb_index_nonunique_type;
+        }
+        return MYLITE_OK;
+    case MYLITE_CATALOG_INDEX_KIND_FULLTEXT:
+        *out_type = information_schema_innodb_index_fulltext_type;
+        return MYLITE_OK;
+    case MYLITE_CATALOG_INDEX_KIND_SPATIAL:
+        *out_type = information_schema_innodb_index_spatial_type;
+        return MYLITE_OK;
+    case MYLITE_CATALOG_INDEX_KIND_INVALID:
+        break;
+    }
+
+    set_runtime_error(database, "unknown INFORMATION_SCHEMA.INNODB_INDEXES index type");
+    return MYLITE_ERROR;
+}
+
+static int information_schema_innodb_index_field_count(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    size_t column_count,
+    const struct loaded_index_info *clustered_index,
+    int64_t *out_field_count
+) {
+    size_t clustered_part_count = 0U;
+    size_t field_count = index->part_count;
+    int rc = MYLITE_OK;
+
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        if (index->part_count > (size_t)INT64_MAX) {
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_INDEXES field count");
+            return MYLITE_ERROR;
+        }
+        *out_field_count = (int64_t)index->part_count;
+        return MYLITE_OK;
+    }
+    if (index == clustered_index) {
+        if (column_count >
+            (size_t)INT64_MAX - information_schema_innodb_cluster_system_field_count) {
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_INDEXES field count");
+            return MYLITE_ERROR;
+        }
+        *out_field_count =
+            (int64_t)(column_count + information_schema_innodb_cluster_system_field_count);
+        return MYLITE_OK;
+    }
+
+    rc = information_schema_innodb_secondary_clustered_part_count(
+        database,
+        index,
+        clustered_index,
+        &clustered_part_count
+    );
+    if (rc == MYLITE_OK) {
+        if (field_count > (size_t)INT64_MAX - clustered_part_count) {
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_INDEXES field count");
+            return MYLITE_ERROR;
+        }
+        field_count += clustered_part_count;
+        *out_field_count = (int64_t)field_count;
+    }
+    return rc;
+}
+
+static int information_schema_innodb_secondary_clustered_part_count(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_info *clustered_index,
+    size_t *out_count
+) {
+    size_t count = 0U;
+
+    if (clustered_index == NULL) {
+        *out_count = information_schema_innodb_generated_cluster_key_part_count;
+        return MYLITE_OK;
+    }
+
+    for (size_t part_index = 0U; part_index < clustered_index->part_count; ++part_index) {
+        if (!information_schema_innodb_index_contains_column(
+                index,
+                clustered_index->parts[part_index].column.column_id
+            )) {
+            if (count == SIZE_MAX) {
+                set_runtime_error(
+                    database,
+                    "invalid INFORMATION_SCHEMA.INNODB_INDEXES field count"
+                );
+                return MYLITE_ERROR;
+            }
+            ++count;
+        }
+    }
+
+    *out_count = count;
+    return MYLITE_OK;
+}
+
+static int information_schema_innodb_generated_cluster_field_count(
+    struct mylite_db *database,
+    size_t column_count,
+    int64_t *out_field_count
+) {
+    if (column_count >
+        (size_t)INT64_MAX - information_schema_innodb_generated_cluster_system_field_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_INDEXES field count");
+        return MYLITE_ERROR;
+    }
+
+    *out_field_count =
+        (int64_t)(column_count + information_schema_innodb_generated_cluster_system_field_count);
+    return MYLITE_OK;
+}
+
+static int information_schema_innodb_generated_cluster_index_id(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t *out_index_id
+) {
+    if (table_id < 0 ||
+        table_id > INT64_MAX - information_schema_innodb_generated_cluster_index_id_base) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_INDEXES generated index id");
+        return MYLITE_ERROR;
+    }
+
+    *out_index_id = information_schema_innodb_generated_cluster_index_id_base + table_id;
+    return MYLITE_OK;
+}
+
+static const struct loaded_index_info *information_schema_innodb_clustered_index(
+    const struct loaded_index_info *indexes,
+    size_t index_count
+) {
+    for (size_t index = 0U; index < index_count; ++index) {
+        if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+            return &indexes[index];
+        }
+    }
+    for (size_t index = 0U; index < index_count; ++index) {
+        if (information_schema_innodb_index_is_all_not_null_unique(&indexes[index])) {
+            return &indexes[index];
+        }
+    }
+
+    return NULL;
+}
+
+static bool information_schema_innodb_index_is_all_not_null_unique(
+    const struct loaded_index_info *index
+) {
+    if (index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY || !index->index.is_unique ||
+        index->part_count == 0U) {
+        return false;
+    }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        if (index->parts[part_index].column.is_nullable) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool information_schema_innodb_index_contains_column(
+    const struct loaded_index_info *index,
+    int64_t column_id
+) {
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        if (index->parts[part_index].column.column_id == column_id) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int append_information_schema_innodb_foreign_base_rows(

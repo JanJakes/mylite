@@ -415,6 +415,9 @@ enum {
     information_schema_columns_extensions_column_count = 6,
     information_schema_tables_extensions_column_count = 5,
     information_schema_table_constraints_extensions_column_count = 6,
+    information_schema_tablespaces_extensions_column_count = 2,
+    tablespace_name_separator_size = 1,
+    tablespace_name_terminator_size = 1,
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
     information_schema_character_sets_column_count = 4,
@@ -4293,6 +4296,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_COLUMNS_EXTENSIONS = 27,
     INFORMATION_SCHEMA_TABLE_TABLES_EXTENSIONS = 28,
     INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS_EXTENSIONS = 29,
+    INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS = 30,
 };
 
 struct information_schema_column_definition {
@@ -4698,6 +4702,23 @@ static const struct information_schema_column_definition
          NULL,
          NULL,
          "json"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_tablespaces_extensions_columns[] = {
+        {"TABLESPACE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "268",
+         "804",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(268)"},
+        {"ENGINE_ATTRIBUTE", NULL, "YES", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
 };
 
 static const struct information_schema_column_definition information_schema_tables_columns[] = {
@@ -8003,6 +8024,10 @@ static const struct information_schema_table_definition information_schema_table
      "TABLES_EXTENSIONS",
      information_schema_tables_extensions_columns,
      information_schema_tables_extensions_column_count},
+    {INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS,
+     "TABLESPACES_EXTENSIONS",
+     information_schema_tablespaces_extensions_columns,
+     information_schema_tablespaces_extensions_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLES,
      "TABLES",
      information_schema_tables_columns,
@@ -8114,6 +8139,15 @@ static const struct builtin_schema_descriptor builtin_schema_descriptors[] = {
     {"mysql", "utf8mb4", "utf8mb4_0900_ai_ci"},
     {"performance_schema", "utf8mb4", "utf8mb4_0900_ai_ci"},
     {"sys", "utf8mb4", "utf8mb4_0900_ai_ci"},
+};
+
+static const char *const builtin_tablespace_extension_names[] = {
+    "innodb_system",
+    "innodb_temporary",
+    "innodb_undo_001",
+    "innodb_undo_002",
+    "mysql",
+    "sys/sys_config",
 };
 
 static const char *const builtin_information_schema_table_names[] = {
@@ -11013,6 +11047,22 @@ static int append_information_schema_tables_extensions_table_row(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_tablespaces_extensions_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_tablespaces_extensions_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int copy_information_schema_tablespace_name(
+    struct mylite_db *database,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    char **out_name
 );
 static int append_information_schema_character_sets_system_row(
     struct mylite_db *database,
@@ -45240,6 +45290,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_schemata_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLES_EXTENSIONS:
         return append_information_schema_tables_extensions_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS:
+        return append_information_schema_tablespaces_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLES:
         return append_information_schema_tables_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
@@ -45316,6 +45368,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
     case INFORMATION_SCHEMA_TABLE_TABLES:
     case INFORMATION_SCHEMA_TABLE_TABLES_EXTENSIONS:
+    case INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS:
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMNS_EXTENSIONS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
@@ -45470,6 +45523,13 @@ static int append_information_schema_catalog_base_table(
         );
     case INFORMATION_SCHEMA_TABLE_COLUMNS_EXTENSIONS:
         return append_information_schema_columns_extensions_table_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    case INFORMATION_SCHEMA_TABLE_TABLESPACES_EXTENSIONS:
+        return append_information_schema_tablespaces_extensions_table_row(
             context->database,
             context->rows,
             context->schema,
@@ -46035,6 +46095,92 @@ static int append_information_schema_tables_extensions_table_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_tablespaces_extensions_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_tablespaces_extensions_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.TABLESPACES_EXTENSIONS columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(builtin_tablespace_extension_names) /
+                                        sizeof(builtin_tablespace_extension_names[0]);
+         ++index) {
+        const char *values[information_schema_tablespaces_extensions_column_count] = {
+            builtin_tablespace_extension_names[index],
+            NULL,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_tablespaces_extensions_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    char *tablespace_name = NULL;
+    const char *values[information_schema_tablespaces_extensions_column_count] = {
+        NULL,
+        NULL,
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_tablespaces_extensions_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.TABLESPACES_EXTENSIONS columns");
+        return MYLITE_ERROR;
+    }
+    rc = copy_information_schema_tablespace_name(database, schema, table, &tablespace_name);
+    if (rc == MYLITE_OK) {
+        values[0] = tablespace_name;
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    free(tablespace_name);
+    return rc;
+}
+
+static int copy_information_schema_tablespace_name(
+    struct mylite_db *database,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    char **out_name
+) {
+    size_t schema_length = strlen(schema->name);
+    size_t table_length = strlen(table->name);
+    size_t required_length = 0U;
+    char *name = NULL;
+
+    *out_name = NULL;
+    if (schema_length > SIZE_MAX - table_length - tablespace_name_separator_size -
+                            tablespace_name_terminator_size) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    required_length = schema_length + table_length + tablespace_name_separator_size +
+                      tablespace_name_terminator_size;
+    name = (char *)malloc(required_length);
+    if (name == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    memcpy(name, schema->name, schema_length);
+    name[schema_length] = '/';
+    memcpy(&name[schema_length + tablespace_name_separator_size], table->name, table_length);
+    name[required_length - tablespace_name_terminator_size] = '\0';
+    *out_name = name;
+    return MYLITE_OK;
 }
 
 static int append_information_schema_builtin_table_row(

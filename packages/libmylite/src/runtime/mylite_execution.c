@@ -447,6 +447,7 @@ enum {
     information_schema_profiling_column_count = 18,
     information_schema_resource_groups_column_count = 5,
     information_schema_st_geometry_columns_column_count = 7,
+    information_schema_st_units_of_measure_column_count = 4,
     information_schema_st_geometry_columns_schema_column = 1,
     information_schema_st_geometry_columns_table_column = 2,
     information_schema_st_geometry_columns_column_name_column = 3,
@@ -4334,6 +4335,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_PROFILING = 41,
     INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS = 42,
     INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS = 43,
+    INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE = 44,
 };
 
 struct information_schema_column_definition {
@@ -4363,6 +4365,11 @@ struct information_schema_table_definition {
     const char *name;
     const struct information_schema_column_definition *columns;
     size_t column_count;
+};
+
+struct information_schema_st_unit_of_measure_row {
+    const char *unit_name;
+    const char *conversion_factor;
 };
 
 struct builtin_schema_descriptor {
@@ -5989,6 +5996,58 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_bin",
          "longtext"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_st_units_of_measure_columns[] = {
+        {"UNIT_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "255",
+         "1020",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(255)"},
+        {"UNIT_TYPE",
+         NULL,
+         "YES",
+         "varchar",
+         "7",
+         "28",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(7)"},
+        {"CONVERSION_FACTOR",
+         NULL,
+         "YES",
+         "double",
+         NULL,
+         NULL,
+         "22",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "double"},
+        {"DESCRIPTION",
+         NULL,
+         "YES",
+         "varchar",
+         "255",
+         "1020",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(255)"},
 };
 
 static const struct information_schema_column_definition
@@ -9239,6 +9298,10 @@ static const struct information_schema_table_definition information_schema_table
      "ST_GEOMETRY_COLUMNS",
      information_schema_st_geometry_columns_columns,
      information_schema_st_geometry_columns_column_count},
+    {INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE,
+     "ST_UNITS_OF_MEASURE",
+     information_schema_st_units_of_measure_columns,
+     information_schema_st_units_of_measure_column_count},
     {INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS,
      "RESOURCE_GROUPS",
      information_schema_resource_groups_columns,
@@ -9291,6 +9354,56 @@ static const char *const builtin_tablespace_extension_names[] = {
     "innodb_undo_002",
     "mysql",
     "sys/sys_config",
+};
+
+static const struct information_schema_st_unit_of_measure_row st_units_of_measure_rows[] = {
+    {"British chain (Benoit 1895 A)", "20.1167824"},
+    {"British chain (Benoit 1895 B)", "20.116782494375872"},
+    {"British chain (Sears 1922 truncated)", "20.116756"},
+    {"British chain (Sears 1922)", "20.116765121552632"},
+    {"British foot (1865)", "0.30480083333333335"},
+    {"British foot (1936)", "0.3048007491"},
+    {"British foot (Benoit 1895 A)", "0.3047997333333333"},
+    {"British foot (Benoit 1895 B)", "0.30479973476327077"},
+    {"British foot (Sears 1922 truncated)", "0.30479933333333337"},
+    {"British foot (Sears 1922)", "0.3047994715386762"},
+    {"British link (Benoit 1895 A)", "0.201167824"},
+    {"British link (Benoit 1895 B)", "0.2011678249437587"},
+    {"British link (Sears 1922 truncated)", "0.20116756"},
+    {"British link (Sears 1922)", "0.2011676512155263"},
+    {"British yard (Benoit 1895 A)", "0.9143992"},
+    {"British yard (Benoit 1895 B)", "0.9143992042898124"},
+    {"British yard (Sears 1922 truncated)", "0.914398"},
+    {"British yard (Sears 1922)", "0.9143984146160288"},
+    {"centimetre", "0.01"},
+    {"chain", "20.1168"},
+    {"Clarke's chain", "20.1166195164"},
+    {"Clarke's foot", "0.3047972654"},
+    {"Clarke's link", "0.201166195164"},
+    {"Clarke's yard", "0.9143917962"},
+    {"fathom", "1.8288"},
+    {"foot", "0.3048"},
+    {"German legal metre", "1.0000135965"},
+    {"Gold Coast foot", "0.3047997101815088"},
+    {"Indian foot", "0.30479951024814694"},
+    {"Indian foot (1937)", "0.30479841"},
+    {"Indian foot (1962)", "0.3047996"},
+    {"Indian foot (1975)", "0.3047995"},
+    {"Indian yard", "0.9143985307444408"},
+    {"Indian yard (1937)", "0.91439523"},
+    {"Indian yard (1962)", "0.9143988"},
+    {"Indian yard (1975)", "0.9143985"},
+    {"kilometre", "1000"},
+    {"link", "0.201168"},
+    {"metre", "1"},
+    {"millimetre", "0.001"},
+    {"nautical mile", "1852"},
+    {"Statute mile", "1609.344"},
+    {"US survey chain", "20.11684023368047"},
+    {"US survey foot", "0.30480060960121924"},
+    {"US survey link", "0.2011684023368047"},
+    {"US survey mile", "1609.3472186944375"},
+    {"yard", "0.9144"},
 };
 
 static const char *const builtin_information_schema_table_names[] = {
@@ -12240,6 +12353,10 @@ static int append_information_schema_user_attributes_system_row(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_resource_groups_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_st_units_of_measure_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -46491,6 +46608,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_user_attributes_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
         return append_information_schema_resource_groups_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
+        return append_information_schema_st_units_of_measure_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
         return append_information_schema_partitions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
@@ -46554,6 +46673,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PROFILING:
     case INFORMATION_SCHEMA_TABLE_RESOURCE_GROUPS:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_ROLE_COLUMN_GRANTS:
@@ -47118,6 +47238,30 @@ static int append_information_schema_resource_groups_system_rows(
     }
     if (rc == MYLITE_OK) {
         rc = append_information_schema_row(database, rows, system_values);
+    }
+    return rc;
+}
+
+static int append_information_schema_st_units_of_measure_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK &&
+         row_index < sizeof(st_units_of_measure_rows) / sizeof(st_units_of_measure_rows[0]);
+         ++row_index) {
+        const struct information_schema_st_unit_of_measure_row *unit =
+            &st_units_of_measure_rows[row_index];
+        const char *values[information_schema_st_units_of_measure_column_count] = {
+            unit->unit_name,
+            "LINEAR",
+            unit->conversion_factor,
+            "",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
     }
     return rc;
 }

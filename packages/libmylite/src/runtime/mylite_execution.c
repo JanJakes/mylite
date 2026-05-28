@@ -427,6 +427,7 @@ enum {
     information_schema_innodb_cmpmem_column_count = 6,
     information_schema_innodb_cmp_per_index_column_count = 8,
     information_schema_innodb_datafiles_column_count = 2,
+    information_schema_innodb_tablespaces_column_count = 15,
     information_schema_innodb_fields_column_count = 3,
     information_schema_innodb_foreign_column_count = 5,
     information_schema_innodb_foreign_cols_column_count = 4,
@@ -4446,6 +4447,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_INDEXES = 63,
     INFORMATION_SCHEMA_TABLE_INNODB_TABLES = 64,
     INFORMATION_SCHEMA_TABLE_INNODB_COLUMNS = 65,
+    INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES = 66,
 };
 
 struct information_schema_column_definition {
@@ -4483,6 +4485,24 @@ struct information_schema_innodb_tablespace_row {
     const char *path;
     const char *flag;
     const char *space_type;
+};
+
+struct information_schema_innodb_tablespace_full_row {
+    const char *space;
+    const char *name;
+    const char *flag;
+    const char *row_format;
+    const char *page_size;
+    const char *zip_page_size;
+    const char *space_type;
+    const char *fs_block_size;
+    const char *file_size;
+    const char *allocated_size;
+    const char *autoextend_size;
+    const char *server_version;
+    const char *space_version;
+    const char *encryption;
+    const char *state;
 };
 
 struct information_schema_innodb_column_type_info {
@@ -4990,6 +5010,157 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_bin",
          "varchar(512)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_tablespaces_columns[] = {
+        {"SPACE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"NAME",
+         "",
+         "NO",
+         "varchar",
+         "218",
+         "655",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(655)"},
+        {"FLAG", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"ROW_FORMAT",
+         "",
+         "YES",
+         "varchar",
+         "7",
+         "22",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(22)"},
+        {"PAGE_SIZE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"ZIP_PAGE_SIZE",
+         "",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"SPACE_TYPE",
+         "",
+         "YES",
+         "varchar",
+         "3",
+         "10",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(10)"},
+        {"FS_BLOCK_SIZE",
+         "",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"FILE_SIZE",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"ALLOCATED_SIZE",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"AUTOEXTEND_SIZE",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"SERVER_VERSION",
+         "",
+         "YES",
+         "varchar",
+         "3",
+         "10",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(10)"},
+        {"SPACE_VERSION",
+         "",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"ENCRYPTION",
+         "",
+         "YES",
+         "varchar",
+         "0",
+         "1",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(1)"},
+        {"STATE",
+         "",
+         "YES",
+         "varchar",
+         "3",
+         "10",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(10)"},
 };
 
 static const struct information_schema_column_definition
@@ -9912,6 +10083,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_DATAFILES",
      information_schema_innodb_datafiles_columns,
      information_schema_innodb_datafiles_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES,
+     "INNODB_TABLESPACES",
+     information_schema_innodb_tablespaces_columns,
+     information_schema_innodb_tablespaces_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_FIELDS,
      "INNODB_FIELDS",
      information_schema_innodb_fields_columns,
@@ -10151,6 +10326,85 @@ static const struct information_schema_innodb_tablespace_row builtin_innodb_tabl
     {"4294967279", "innodb_undo_001", "./undo_001", "0", "Single"},
     {"4294967278", "innodb_undo_002", "./undo_002", "0", "Single"},
     {"1", "sys/sys_config", "./sys/sys_config.ibd", "16417", "Single"},
+};
+
+static const struct information_schema_innodb_tablespace_full_row
+    builtin_innodb_tablespace_full_rows[] = {
+        {"1",
+         "sys/sys_config",
+         "16417",
+         "Dynamic",
+         "16384",
+         "0",
+         "Single",
+         "4096",
+         "114688",
+         "114688",
+         "0",
+         "8.4.9",
+         "1",
+         "N",
+         "normal"},
+        {"4294967278",
+         "innodb_undo_002",
+         "0",
+         "Undo",
+         "16384",
+         "0",
+         "Undo",
+         "4096",
+         "16777216",
+         "16777216",
+         "0",
+         "8.4.9",
+         "1",
+         "N",
+         "active"},
+        {"4294967279",
+         "innodb_undo_001",
+         "0",
+         "Undo",
+         "16384",
+         "0",
+         "Undo",
+         "4096",
+         "16777216",
+         "16777216",
+         "0",
+         "8.4.9",
+         "1",
+         "N",
+         "active"},
+        {"4294967293",
+         "innodb_temporary",
+         "4096",
+         "Compact or Redundant",
+         "16384",
+         "0",
+         "System",
+         "4096",
+         "12582912",
+         "12582912",
+         "0",
+         "8.4.9",
+         "1",
+         "N",
+         "normal"},
+        {"4294967294",
+         "mysql",
+         "18432",
+         "Any",
+         "16384",
+         "0",
+         "General",
+         "4096",
+         "32505856",
+         "32509952",
+         "0",
+         "8.4.9",
+         "1",
+         "N",
+         "normal"},
 };
 
 static const char *const innodb_ft_default_stopwords[] = {
@@ -13126,6 +13380,10 @@ static int append_information_schema_tablespaces_extensions_table_row(
     const struct mylite_catalog_table_descriptor *table
 );
 static int append_information_schema_innodb_datafiles_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_innodb_tablespaces_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -47683,6 +47941,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_tablespaces_extensions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_DATAFILES:
         return append_information_schema_innodb_datafiles_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES:
+        return append_information_schema_innodb_tablespaces_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET:
         return append_information_schema_innodb_cmp_system_rows(database, rows);
@@ -47810,6 +48070,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE:
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -48787,6 +49048,46 @@ static int append_information_schema_innodb_datafiles_system_rows(
         const char *values[information_schema_innodb_datafiles_column_count] = {
             tablespace->space,
             tablespace->path,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_innodb_tablespaces_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_tablespaces_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLESPACES columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(builtin_innodb_tablespace_full_rows) /
+                                        sizeof(builtin_innodb_tablespace_full_rows[0]);
+         ++index) {
+        const struct information_schema_innodb_tablespace_full_row *tablespace =
+            &builtin_innodb_tablespace_full_rows[index];
+        const char *values[information_schema_innodb_tablespaces_column_count] = {
+            tablespace->space,
+            tablespace->name,
+            tablespace->flag,
+            tablespace->row_format,
+            tablespace->page_size,
+            tablespace->zip_page_size,
+            tablespace->space_type,
+            tablespace->fs_block_size,
+            tablespace->file_size,
+            tablespace->allocated_size,
+            tablespace->autoextend_size,
+            tablespace->server_version,
+            tablespace->space_version,
+            tablespace->encryption,
+            tablespace->state,
         };
 
         rc = append_information_schema_row(database, rows, values);

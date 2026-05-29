@@ -1059,7 +1059,10 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
 static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
     if (actual == NULL || expected == NULL) {
         if (actual != expected) {
-            fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
+            const char *expected_text = expected == NULL ? "(null)" : expected;
+            const char *actual_text = actual == NULL ? "(null)" : actual;
+
+            fprintf(stderr, "%s: expected %s, got %s\n", context, expected_text, actual_text);
             return 1;
         }
         return 0;
@@ -1073,7 +1076,9 @@ static int expect_text_or_null(const char *actual, const char *expected, const c
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
     if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context, actual, needle);
+        const char *actual_text = actual == NULL ? "(null)" : actual;
+
+        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context, actual_text, needle);
         return 1;
     }
     return 0;

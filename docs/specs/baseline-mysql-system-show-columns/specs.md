@@ -4,9 +4,10 @@ This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
 `DESC` can introspect supported mysql system tables. The original slice covered
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`; the separate
-`baseline-mysql-component-table`, `baseline-mysql-func-table`, and
-`baseline-mysql-servers-table` slices extend the same metadata path to
-`mysql.component`, `mysql.func`, and `mysql.servers`. The tables are
+`baseline-mysql-component-table`, `baseline-mysql-func-table`,
+`baseline-mysql-servers-table`, and `baseline-mysql-gtid-executed-table`
+slices extend the same metadata path to `mysql.component`, `mysql.func`,
+`mysql.servers`, and `mysql.gtid_executed`. The tables are
 limited read-only synthetic system tables in MyLite; these features reuse owned
 column metadata rather than adding physical system tables.
 
@@ -35,21 +36,25 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_index_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.component
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.func
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.servers
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.gtid_executed
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} func {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} servers {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} gtid_executed {FROM | IN} mysql
 DESCRIBE mysql.innodb_table_stats
 DESCRIBE mysql.innodb_index_stats
 DESCRIBE mysql.component
 DESCRIBE mysql.func
 DESCRIBE mysql.servers
+DESCRIBE mysql.gtid_executed
 DESC mysql.innodb_table_stats
 DESC mysql.innodb_index_stats
 DESC mysql.component
 DESC mysql.func
 DESC mysql.servers
+DESC mysql.gtid_executed
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -61,7 +66,9 @@ SHOW FULL COLUMNS FROM innodb_index_stats;
 SHOW COLUMNS FROM component;
 SHOW COLUMNS FROM func;
 SHOW COLUMNS FROM servers;
+SHOW COLUMNS FROM gtid_executed;
 DESCRIBE innodb_table_stats;
+DESCRIBE gtid_executed;
 DESC servers;
 ```
 
@@ -114,10 +121,19 @@ NULL DEFAULT ''`, `Port int NOT NULL DEFAULT 0`, `Socket char(64) NOT NULL
 DEFAULT ''`, `Wrapper char(64) NOT NULL DEFAULT ''`, and `Owner char(64) NOT
 NULL DEFAULT ''`.
 
-`SHOW FULL COLUMNS` adds `Collation`, `Privileges`, and `Comment`. Runtime
-evidence shows `utf8mb3_bin` for the nonbinary `varchar` columns, SQL `NULL` for
-numeric and timestamp column collations, `select,insert,update,references` for
-privileges, and an empty comment for every column.
+`SHOW COLUMNS FROM mysql.gtid_executed` returns four rows specified by
+`baseline-mysql-gtid-executed-table`: `source_uuid char(36) NOT NULL PRIMARY
+KEY`, `interval_start bigint NOT NULL PRIMARY KEY`, `interval_end bigint NOT
+NULL`, and `gtid_tag char(32) NOT NULL PRIMARY KEY`. `SHOW FULL COLUMNS`
+reports `utf8mb4_0900_ai_ci` for the `char` columns, SQL `NULL` for the
+`bigint` column collations, fixed privileges, and MySQL-observed comments.
+
+`SHOW FULL COLUMNS` adds `Collation`, `Privileges`, and `Comment`. For the
+original optimizer-statistics rows, runtime evidence shows `utf8mb3_bin` for
+the nonbinary `varchar` columns, SQL `NULL` for numeric and timestamp column
+collations, `select,insert,update,references` for privileges, and an empty
+comment for every column. Later per-table slices specify their own fixed
+comments where MySQL exposes them.
 
 `Default` values are SQL `NULL` for nullable or no-explicit-default rows, except
 for `last_update`, which reports `CURRENT_TIMESTAMP`. The `last_update` `Extra`
@@ -151,7 +167,7 @@ value includes both `DEFAULT_GENERATED` and `on update CURRENT_TIMESTAMP`.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_columns_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_gtid_executed_table|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_columns_expectations.sh
 git diff --check
 cmake --workflow --preset check

@@ -11,6 +11,9 @@ The `baseline-mysql-func-table` slice extends it to the single `PRIMARY(name)`
 row for `mysql.func`.
 The `baseline-mysql-servers-table` slice extends it to the single
 `PRIMARY(Server_name)` row for `mysql.servers`.
+The `baseline-mysql-gtid-executed-table` slice extends it to the composite
+`PRIMARY(source_uuid, gtid_tag, interval_start)` row set for
+`mysql.gtid_executed`.
 
 ## Compatibility Authority
 
@@ -83,6 +86,8 @@ descriptor-owned statistics rows for user tables.
   `baseline-mysql-func-table`.
 - `mysql.servers` primary-key metadata is specified and tested by
   `baseline-mysql-servers-table`.
+- `mysql.gtid_executed` primary-key metadata is specified and tested by
+  `baseline-mysql-gtid-executed-table`.
 - Writes to `mysql` system tables remain rejected by the existing built-in
   schema write-protection rules.
 
@@ -137,7 +142,7 @@ innodb_index_stats	stat_name	6
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_information_schema_mysql_system_statistics_test
-ctest --preset dev -R '^libmylite\.runtime\.(information_schema_mysql_system_statistics|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(information_schema_mysql_system_statistics|mysql_gtid_executed_table|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_information_schema_mysql_system_statistics_expectations.sh
 git diff --check
 cmake --workflow --preset check

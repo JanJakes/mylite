@@ -159,6 +159,12 @@ empty reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
 primary-key metadata while keeping server-definition DDL, FEDERATED
 connections, persistence, and writes out of scope.
 
+The `baseline-mysql-gtid-executed-table` slice refines `mysql.gtid_executed`
+with direct empty reads plus MySQL-observed `DATA_FREE`, collation,
+create-options, empty comment, column comments, and composite primary-key
+metadata while keeping GTID persistence, compression, binary logging,
+replication state, and writes out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

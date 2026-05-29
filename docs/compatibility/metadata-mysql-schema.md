@@ -8,8 +8,8 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
-`SELECT` access to empty `mysql.component`, `mysql.func`, and
-`mysql.servers` plus `mysql.innodb_table_stats` and
+`SELECT` access to empty `mysql.component`, `mysql.func`, `mysql.servers`,
+and `mysql.gtid_executed` plus `mysql.innodb_table_stats` and
 `mysql.innodb_index_stats`, along with
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
@@ -78,7 +78,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.time_zone_name` | ❌ | Time zone name mapping table |
 | `mysql.time_zone_transition` | ❌ | Time zone transition table |
 | `mysql.time_zone_transition_type` | ❌ | Time zone transition type table |
-| `mysql.gtid_executed` | ❌ | Replication table storing GTID values |
+| `mysql.gtid_executed` | 🟡 | Limited read-only empty GTID persistence table with MySQL 8.4.9-shaped columns, column comments, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no GTID rows, binary logging, GTID mode or persistence, GTID table compression, replication state, reset-side effects, privilege filtering, or writable system table |
 | `mysql.ndb_binlog_index` | ❌ | NDB Cluster replication binary log information table |
 | `mysql.slave_master_info` | ❌ | Table shape and diagnostics |
 | `mysql.slave_relay_log_info` | ❌ | Replication metadata repository table for relay log metadata |

@@ -4,8 +4,9 @@ This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` can introspect
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The separate
 `baseline-mysql-component-table`, `baseline-mysql-func-table`, and
-`baseline-mysql-servers-table` slices extend the same path to
-`mysql.component`, `mysql.func`, and `mysql.servers`. The tables remain
+`baseline-mysql-servers-table`, and `baseline-mysql-gtid-executed-table`
+slices extend the same path to `mysql.component`, `mysql.func`,
+`mysql.servers`, and `mysql.gtid_executed`. The tables remain
 read-only synthetic system tables; these features expose their primary-key
 shape without creating physical system tables.
 
@@ -33,11 +34,13 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_index_stats
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.component
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.func
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.servers
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.gtid_executed
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} component {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} func {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} servers {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} gtid_executed {FROM | IN} mysql
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -49,6 +52,7 @@ SHOW KEYS FROM innodb_index_stats;
 SHOW INDEX FROM component;
 SHOW INDEX FROM func;
 SHOW INDEX FROM servers;
+SHOW INDEX FROM gtid_executed;
 ```
 
 The existing limited `SHOW INDEX WHERE` evaluator applies to the generated
@@ -83,6 +87,11 @@ by `baseline-mysql-func-table`, with `Cardinality = 0`.
 `SHOW INDEX FROM mysql.servers` returns the single `PRIMARY(Server_name)` row
 specified by `baseline-mysql-servers-table`, with `Cardinality = 0`.
 
+`SHOW INDEX FROM mysql.gtid_executed` returns
+`PRIMARY(source_uuid, gtid_tag, interval_start)` rows specified by
+`baseline-mysql-gtid-executed-table`, with `Cardinality = 0`. The primary-key
+order intentionally differs from the table's column order.
+
 `Cardinality` values are deterministic MyLite-owned placeholders matching the
 fresh MySQL 8.4.9 runtime evidence for the built-in statistics rows. They are
 not live storage-engine estimates and do not change when MyLite adds descriptor
@@ -116,7 +125,7 @@ rows to the synthetic statistics tables.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_index_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_index|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_index_empty_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_index|mysql_gtid_executed_table|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_index_empty_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_index_expectations.sh
 git diff --check
 cmake --workflow --preset check

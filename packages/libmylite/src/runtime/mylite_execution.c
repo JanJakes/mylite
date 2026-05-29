@@ -529,6 +529,7 @@ enum {
     information_schema_check_constraints_column_count = 4,
     information_schema_column_privileges_column_count = 7,
     information_schema_column_statistics_column_count = 4,
+    information_schema_connection_control_failed_login_attempts_column_count = 2,
     information_schema_collation_applicability_column_count = 2,
     information_schema_collations_column_count = 7,
     information_schema_enabled_roles_column_count = 4,
@@ -4474,6 +4475,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_FILES = 75,
     INFORMATION_SCHEMA_TABLE_INNODB_METRICS = 76,
     INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS = 77,
+    INFORMATION_SCHEMA_TABLE_CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS = 78,
 };
 
 struct information_schema_column_definition {
@@ -7777,6 +7779,34 @@ static const struct information_schema_column_definition
          "utf8mb3_tolower_ci",
          "varchar(64)"},
         {"HISTOGRAM", NULL, "NO", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_connection_control_failed_login_attempts_columns[] = {
+        {"USERHOST",
+         "",
+         "NO",
+         "varchar",
+         "119",
+         "357",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(357)"},
+        {"FAILED_ATTEMPTS",
+         "",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
 };
 
 static const struct information_schema_column_definition information_schema_collations_columns[] = {
@@ -12088,6 +12118,10 @@ static const struct information_schema_table_definition information_schema_table
      "COLUMN_STATISTICS",
      information_schema_column_statistics_columns,
      information_schema_column_statistics_column_count},
+    {INFORMATION_SCHEMA_TABLE_CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS,
+     "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS",
+     information_schema_connection_control_failed_login_attempts_columns,
+     information_schema_connection_control_failed_login_attempts_column_count},
     {INFORMATION_SCHEMA_TABLE_COLLATIONS,
      "COLLATIONS",
      information_schema_collations_columns,
@@ -12446,6 +12480,7 @@ static const char *const builtin_information_schema_table_names[] = {
     "COLUMNS_EXTENSIONS",
     "COLUMN_PRIVILEGES",
     "COLUMN_STATISTICS",
+    "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS",
     "ENABLED_ROLES",
     "ENGINES",
     "EVENTS",
@@ -50069,6 +50104,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS:
+    case INFORMATION_SCHEMA_TABLE_CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_ROLE_COLUMN_GRANTS:
@@ -50145,6 +50181,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_METRICS:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS:
+    case INFORMATION_SCHEMA_TABLE_CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:

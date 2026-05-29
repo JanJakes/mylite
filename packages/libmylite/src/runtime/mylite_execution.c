@@ -33608,6 +33608,34 @@ static int resolve_show_index_filter_nodes(
     const struct mylite_sql_ast_node *statement,
     struct show_index_filter_nodes *out_nodes
 );
+static int execute_show_index_mysql_system_target(
+    struct mylite_db *database,
+    const struct show_index_filter_nodes *nodes,
+    mylite_result **out_result,
+    bool *out_handled
+);
+static int resolve_show_index_mysql_system_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    const struct mysql_system_table_definition **out_definition,
+    bool *out_mysql_system_target
+);
+static int execute_show_index_mysql_system_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition,
+    mylite_result **out_result
+);
+static int append_show_index_mysql_system_table_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition
+);
+static const char *mysql_system_table_primary_key_cardinality(
+    const struct mysql_system_table_definition *definition,
+    size_t sequence
+);
 static int validate_show_index_where_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause
@@ -64267,10 +64295,22 @@ static int execute_show_index_statement(
     size_t column_count = 0U;
     size_t index_count = 0U;
     bool missing_schema = false;
+    bool mysql_system_handled = false;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
     rc = resolve_show_index_filter_nodes(database, statement, &nodes);
+    if (rc == MYLITE_OK) {
+        rc = execute_show_index_mysql_system_target(
+            database,
+            &nodes,
+            out_result,
+            &mysql_system_handled
+        );
+    }
+    if (rc != MYLITE_OK || mysql_system_handled) {
+        return rc;
+    }
     if (rc == MYLITE_OK) {
         rc = resolve_show_columns_table_name(
             database,
@@ -64334,6 +64374,219 @@ static int execute_show_index_statement(
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_index_mysql_system_target(
+    struct mylite_db *database,
+    const struct show_index_filter_nodes *nodes,
+    mylite_result **out_result,
+    bool *out_handled
+) {
+    const struct mysql_system_table_definition *definition = NULL;
+    bool mysql_system_target = false;
+    int rc = MYLITE_OK;
+
+    if (nodes == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+
+    rc = resolve_show_index_mysql_system_table(
+        database,
+        (struct show_columns_target_nodes){
+            .table = nodes->table,
+            .schema = nodes->schema,
+        },
+        &definition,
+        &mysql_system_target
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (definition != NULL) {
+        *out_handled = true;
+        return execute_show_index_mysql_system_table_statement(
+            database,
+            nodes->where,
+            definition,
+            out_result
+        );
+    }
+    if (mysql_system_target) {
+        *out_handled = true;
+        set_unsupported_error(database, "SHOW INDEX supports selected mysql system tables");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int resolve_show_index_mysql_system_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    const struct mysql_system_table_definition **out_definition,
+    bool *out_mysql_system_target
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_target = false;
+    int rc = MYLITE_OK;
+
+    if (out_definition == NULL || out_mysql_system_target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_definition = NULL;
+    *out_mysql_system_target = false;
+
+    rc = copy_show_columns_target_schema_and_table(
+        database,
+        nodes,
+        schema_name,
+        table_name,
+        &has_target
+    );
+    if (rc != MYLITE_OK || !has_target || !schema_name_is_mysql_system_schema(schema_name)) {
+        return rc;
+    }
+
+    *out_mysql_system_target = true;
+    if (mylite_catalog_name_is_reserved(table_name)) {
+        set_reserved_name_error(database, "table", table_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_definition = find_mysql_system_table_definition(schema_name, table_name);
+    if (*out_definition != NULL || mysql_system_table_directory_contains(table_name)) {
+        return MYLITE_OK;
+    }
+
+    set_table_does_not_exist_error(database, schema_name, table_name);
+    return MYLITE_ERROR;
+}
+
+static int execute_show_index_mysql_system_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = validate_show_index_where_clause(database, where_clause);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < show_index_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, show_index_result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_index_mysql_system_table_rows(database, result, where_clause, definition);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (
+            rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+        ) {
+            set_runtime_error(database, "failed to build SHOW INDEX result");
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_show_index_mysql_system_table_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition
+) {
+    int rc = MYLITE_OK;
+    size_t sequence = 0U;
+
+    if (result == NULL || definition == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < definition->query_definition.column_count;
+         ++column_index) {
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[column_index];
+        char sequence_text[integer_text_capacity];
+        bool where_matches = true;
+
+        if (strcmp(definition->column_keys[column_index], "PRI") != 0) {
+            continue;
+        }
+
+        ++sequence;
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)sequence,
+            sequence_text,
+            sizeof(sequence_text)
+        );
+        if (rc == MYLITE_OK) {
+            const char *values[show_index_result_column_count] = {
+                definition->query_definition.name,
+                "0",
+                "PRIMARY",
+                sequence_text,
+                column->name,
+                "A",
+                mysql_system_table_primary_key_cardinality(definition, sequence),
+                NULL,
+                NULL,
+                "",
+                "BTREE",
+                "",
+                "",
+                "YES",
+                NULL,
+            };
+
+            if (where_clause != NULL) {
+                rc =
+                    show_index_where_clause_matches(database, where_clause, values, &where_matches);
+            }
+            if (rc == MYLITE_OK && where_matches) {
+                rc = mylite_result_append_text_row(result, values);
+            }
+        }
+    }
+
+    return rc;
+}
+
+static const char *mysql_system_table_primary_key_cardinality(
+    const struct mysql_system_table_definition *definition,
+    size_t sequence
+) {
+    enum { mysql_innodb_index_stats_stat_name_sequence = 4 };
+
+    if (definition == NULL) {
+        return "0";
+    }
+    if (strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
+        return "2";
+    }
+    if (strcmp(definition->query_definition.name, "innodb_index_stats") == 0) {
+        if (sequence >= mysql_innodb_index_stats_stat_name_sequence) {
+            return "6";
+        }
+        return "2";
+    }
+    return "0";
 }
 
 static int resolve_show_index_filter_nodes(

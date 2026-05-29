@@ -16626,6 +16626,15 @@ static int append_information_schema_referential_constraints_foreign_key_row(
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
 );
+static int append_information_schema_statistics_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_statistics_mysql_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+);
 static int append_information_schema_statistics_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -51826,6 +51835,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_st_units_of_measure_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
         return append_information_schema_partitions_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_STATISTICS:
+        return append_information_schema_statistics_mysql_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_ADMINISTRABLE_ROLE_AUTHORIZATIONS:
     case INFORMATION_SCHEMA_TABLE_APPLICABLE_ROLES:
@@ -51867,7 +51878,6 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS_EXTENSIONS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
-    case INFORMATION_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
@@ -57799,6 +57809,85 @@ static int append_information_schema_referential_constraints_foreign_key_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_statistics_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        rc = append_information_schema_statistics_mysql_system_table_rows(
+            database,
+            rows,
+            &mysql_system_table_definitions[index]
+        );
+    }
+
+    return rc;
+}
+
+static int append_information_schema_statistics_mysql_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+) {
+    size_t sequence = 0U;
+    int rc = MYLITE_OK;
+
+    if (definition == NULL || definition->column_keys == NULL) {
+        return MYLITE_OK;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < definition->query_definition.column_count;
+         ++column_index) {
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[column_index];
+        char sequence_text[integer_text_capacity];
+
+        if (strcmp(definition->column_keys[column_index], "PRI") != 0) {
+            continue;
+        }
+
+        ++sequence;
+        const char *values[information_schema_statistics_column_count] = {
+            "def",
+            definition->schema_name,
+            definition->query_definition.name,
+            "0",
+            definition->schema_name,
+            "PRIMARY",
+            sequence_text,
+            column->name,
+            "A",
+            mysql_system_table_primary_key_cardinality(definition, sequence),
+            NULL,
+            NULL,
+            "",
+            "BTREE",
+            "",
+            "",
+            "YES",
+            NULL,
+        };
+
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)sequence,
+            sequence_text,
+            sizeof(sequence_text)
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+
+    return rc;
 }
 
 static int append_information_schema_statistics_base_rows(

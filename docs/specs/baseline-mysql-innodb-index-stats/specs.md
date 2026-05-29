@@ -134,8 +134,8 @@ Out of scope:
   identifiers, table partitions, subpartitions, temporary tables, views,
   privilege filtering, or complete data-dictionary tables;
 - broader `mysql` system-table shape support beyond the separately specified
-  `SHOW COLUMNS` / `DESCRIBE` and `SHOW INDEX` / `SHOW KEYS` metadata for this
-  table.
+  `SHOW COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW KEYS`, and
+  `INFORMATION_SCHEMA.STATISTICS` metadata for this table.
 
 ## Ownership Boundary
 

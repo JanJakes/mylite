@@ -438,6 +438,7 @@ enum {
     information_schema_innodb_session_temp_tablespaces_column_count = 6,
     information_schema_innodb_virtual_column_count = 3,
     information_schema_innodb_trx_column_count = 25,
+    information_schema_innodb_cached_indexes_column_count = 3,
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
@@ -4460,6 +4461,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_SESSION_TEMP_TABLESPACES = 68,
     INFORMATION_SCHEMA_TABLE_INNODB_VIRTUAL = 69,
     INFORMATION_SCHEMA_TABLE_INNODB_TRX = 70,
+    INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES = 71,
 };
 
 struct information_schema_column_definition {
@@ -5467,6 +5469,35 @@ static const struct information_schema_column_definition information_schema_inno
      NULL,
      NULL,
      "bigint unsigned"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_cached_indexes_columns[] = {
+        {"SPACE_ID", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"INDEX_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"N_CACHED_PAGES",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
 };
 
 static const struct information_schema_column_definition
@@ -10534,6 +10565,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_TRX",
      information_schema_innodb_trx_columns,
      information_schema_innodb_trx_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES,
+     "INNODB_CACHED_INDEXES",
+     information_schema_innodb_cached_indexes_columns,
+     information_schema_innodb_cached_indexes_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF,
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
@@ -48523,6 +48558,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS:
     case INFORMATION_SCHEMA_TABLE_INNODB_VIRTUAL:
     case INFORMATION_SCHEMA_TABLE_INNODB_TRX:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -48593,6 +48629,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES:
     case INFORMATION_SCHEMA_TABLE_INNODB_SESSION_TEMP_TABLESPACES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TRX:
+    case INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:

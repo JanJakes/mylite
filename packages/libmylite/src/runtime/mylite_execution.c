@@ -435,6 +435,7 @@ enum {
     information_schema_innodb_indexes_column_count = 8,
     information_schema_innodb_tables_column_count = 10,
     information_schema_innodb_tablestats_column_count = 9,
+    information_schema_innodb_session_temp_tablespaces_column_count = 6,
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
@@ -4454,6 +4455,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_COLUMNS = 65,
     INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES = 66,
     INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS = 67,
+    INFORMATION_SCHEMA_TABLE_INNODB_SESSION_TEMP_TABLESPACES = 68,
 };
 
 struct information_schema_column_definition {
@@ -4509,6 +4511,13 @@ struct information_schema_innodb_tablespace_full_row {
     const char *space_version;
     const char *encryption;
     const char *state;
+};
+
+struct information_schema_innodb_session_temp_tablespace_row {
+    const char *space;
+    const char *path;
+    const char *state;
+    const char *purpose;
 };
 
 struct information_schema_innodb_column_type_info {
@@ -5167,6 +5176,49 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_general_ci",
          "varchar(10)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_session_temp_tablespaces_columns[] = {
+        {"ID", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"SPACE", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int unsigned"},
+        {"PATH",
+         "",
+         "NO",
+         "varchar",
+         "1333",
+         "4001",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(4001)"},
+        {"SIZE", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint unsigned"},
+        {"STATE",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(192)"},
+        {"PURPOSE",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(192)"},
 };
 
 static const struct information_schema_column_definition
@@ -10222,6 +10274,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_TABLESTATS",
      information_schema_innodb_tablestats_columns,
      information_schema_innodb_tablestats_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_SESSION_TEMP_TABLESPACES,
+     "INNODB_SESSION_TEMP_TABLESPACES",
+     information_schema_innodb_session_temp_tablespaces_columns,
+     information_schema_innodb_session_temp_tablespaces_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF,
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
@@ -10516,6 +10572,20 @@ static const struct information_schema_innodb_tablespace_full_row
          "1",
          "N",
          "normal"},
+};
+
+static const struct information_schema_innodb_session_temp_tablespace_row
+    builtin_innodb_session_temp_tablespace_rows[] = {
+        {"4243767281", "./#innodb_temp/temp_1.ibt", "INACTIVE", "NONE"},
+        {"4243767282", "./#innodb_temp/temp_2.ibt", "INACTIVE", "NONE"},
+        {"4243767283", "./#innodb_temp/temp_3.ibt", "INACTIVE", "NONE"},
+        {"4243767284", "./#innodb_temp/temp_4.ibt", "INACTIVE", "NONE"},
+        {"4243767285", "./#innodb_temp/temp_5.ibt", "INACTIVE", "NONE"},
+        {"4243767286", "./#innodb_temp/temp_6.ibt", "INACTIVE", "NONE"},
+        {"4243767287", "./#innodb_temp/temp_7.ibt", "INACTIVE", "NONE"},
+        {"4243767288", "./#innodb_temp/temp_8.ibt", "INACTIVE", "NONE"},
+        {"4243767289", "./#innodb_temp/temp_9.ibt", "INACTIVE", "NONE"},
+        {"4243767290", "./#innodb_temp/temp_10.ibt", "ACTIVE", "INTRINSIC"},
 };
 
 static const char *const innodb_ft_default_stopwords[] = {
@@ -13495,6 +13565,10 @@ static int append_information_schema_innodb_datafiles_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_innodb_tablespaces_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_innodb_session_temp_tablespaces_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -48069,6 +48143,11 @@ static int append_information_schema_system_rows(
         return append_information_schema_innodb_datafiles_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES:
         return append_information_schema_innodb_tablespaces_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_INNODB_SESSION_TEMP_TABLESPACES:
+        return append_information_schema_innodb_session_temp_tablespaces_system_rows(
+            database,
+            rows
+        );
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP:
     case INFORMATION_SCHEMA_TABLE_INNODB_CMP_RESET:
         return append_information_schema_innodb_cmp_system_rows(database, rows);
@@ -48198,6 +48277,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_DEFAULT_STOPWORD:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_SESSION_TEMP_TABLESPACES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -49223,6 +49303,48 @@ static int append_information_schema_innodb_tablespaces_system_rows(
             tablespace->space_version,
             tablespace->encryption,
             tablespace->state,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_innodb_session_temp_tablespaces_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    char connection_id_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count !=
+        information_schema_innodb_session_temp_tablespaces_column_count) {
+        set_runtime_error(
+            database,
+            "invalid INFORMATION_SCHEMA.INNODB_SESSION_TEMP_TABLESPACES columns"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = format_uint64(
+        database,
+        database->session.connection_id,
+        connection_id_text,
+        sizeof(connection_id_text)
+    );
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(builtin_innodb_session_temp_tablespace_rows) /
+                                        sizeof(builtin_innodb_session_temp_tablespace_rows[0]);
+         ++index) {
+        const struct information_schema_innodb_session_temp_tablespace_row *tablespace =
+            &builtin_innodb_session_temp_tablespace_rows[index];
+        const char *values[information_schema_innodb_session_temp_tablespaces_column_count] = {
+            strcmp(tablespace->state, "ACTIVE") == 0 ? connection_id_text : "0",
+            tablespace->space,
+            tablespace->path,
+            "81920",
+            tablespace->state,
+            tablespace->purpose,
         };
 
         rc = append_information_schema_row(database, rows, values);

@@ -8,7 +8,7 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
-`SELECT` access to empty `mysql.component` plus
+`SELECT` access to empty `mysql.component` and `mysql.func` plus
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
@@ -64,7 +64,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.role_edges` | ❌ | Grant table: role graph edges |
 | `mysql.password_history` | ❌ | Grant table: password history |
 | `mysql.component` | 🟡 | Limited read-only empty component registry table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no installed component rows, component DDL, component loading, persisted component services, privilege filtering, or writable system table |
-| `mysql.func` | ❌ | Registry: loadable functions installed with CREATE FUNCTION |
+| `mysql.func` | 🟡 | Limited read-only empty loadable-function registry table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loadable-function rows, loadable-function DDL, function loading, persisted `mysql.func` rows, privilege filtering, or writable system table |
 | `mysql.plugin` | ❌ | Registry: server-side plugins installed with INSTALL PLUGIN |
 | `mysql.general_log` | ❌ | CSV log table for the general query log; limited `@@sql_log_off` scalar reads do not create or write this table |
 | `mysql.slow_log` | ❌ | CSV log table for the slow query log |

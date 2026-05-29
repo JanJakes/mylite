@@ -569,6 +569,7 @@ enum {
     information_schema_view_routine_usage_column_count = 6,
     information_schema_view_table_usage_column_count = 6,
     mysql_component_column_count = 3,
+    mysql_func_column_count = 4,
     mysql_innodb_index_stats_column_count = 8,
     mysql_innodb_table_stats_column_count = 6,
     information_schema_tables_index_length_column = 11,
@@ -4484,6 +4485,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS = 77,
     INFORMATION_SCHEMA_TABLE_CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS = 78,
     INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT = 79,
+    INFORMATION_SCHEMA_TABLE_MYSQL_FUNC = 80,
 };
 
 struct information_schema_column_definition {
@@ -12325,6 +12327,45 @@ static const char *const mysql_component_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_func_columns[] = {
+    {"name", "", "NO", "char", "64", "192", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(64)"},
+    {"ret", "0", "NO", "tinyint", NULL, NULL, "3", "0", NULL, NULL, NULL, "tinyint"},
+    {"dl", "", "NO", "char", "128", "384", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(128)"},
+    {"type",
+     NULL,
+     "NO",
+     "enum",
+     "9",
+     "27",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('function','aggregate')"},
+};
+
+static const char *const mysql_func_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_func_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_func_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_innodb_index_stats_columns[] = {
     {"database_name",
      NULL,
@@ -12557,6 +12598,11 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_component_column_keys,
      mysql_component_column_extras,
      mysql_component_column_privileges},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_FUNC, "func", mysql_func_columns, mysql_func_column_count},
+     mysql_func_column_keys,
+     mysql_func_column_extras,
+     mysql_func_column_privileges},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_INNODB_INDEXES,
       "innodb_index_stats",
@@ -15652,6 +15698,9 @@ static int append_mysql_system_table_system_rows(
     const struct mysql_system_table_definition *definition,
     struct information_schema_row_set *rows
 );
+static bool mysql_system_table_definition_has_no_rows(
+    const struct mysql_system_table_definition *definition
+);
 static int append_mysql_innodb_index_stats_builtin_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -16077,6 +16126,10 @@ static bool builtin_schema_table_is_mysql_stats(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_component(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_func(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -50850,13 +50903,12 @@ static int build_mysql_system_table_rows(
     const struct mysql_system_table_definition *definition,
     struct information_schema_row_set *out_rows
 ) {
-    bool is_component = strcmp(definition->schema_name, "mysql") == 0 &&
-                        strcmp(definition->query_definition.name, "component") == 0;
+    bool has_no_rows = mysql_system_table_definition_has_no_rows(definition);
     int rc = MYLITE_OK;
 
     *out_rows = (struct information_schema_row_set){.definition = &definition->query_definition};
     rc = append_mysql_system_table_system_rows(database, context, definition, out_rows);
-    if (rc == MYLITE_OK && !is_component) {
+    if (rc == MYLITE_OK && !has_no_rows) {
         rc = append_mysql_system_table_catalog_rows(database, definition, out_rows);
     }
     if (rc != MYLITE_OK) {
@@ -50873,8 +50925,7 @@ static int append_mysql_system_table_system_rows(
 ) {
     (void)context;
 
-    if (strcmp(definition->schema_name, "mysql") == 0 &&
-        strcmp(definition->query_definition.name, "component") == 0) {
+    if (mysql_system_table_definition_has_no_rows(definition)) {
         return MYLITE_OK;
     }
     if (strcmp(definition->schema_name, "mysql") == 0 &&
@@ -50888,6 +50939,14 @@ static int append_mysql_system_table_system_rows(
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
+}
+
+static bool mysql_system_table_definition_has_no_rows(
+    const struct mysql_system_table_definition *definition
+) {
+    return definition != NULL && strcmp(definition->schema_name, "mysql") == 0 &&
+           (strcmp(definition->query_definition.name, "component") == 0 ||
+            strcmp(definition->query_definition.name, "func") == 0);
 }
 
 static int append_mysql_innodb_index_stats_builtin_rows(
@@ -52012,6 +52071,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
         return MYLITE_OK;
     }
 
@@ -52085,6 +52145,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -53617,7 +53678,8 @@ static const char *builtin_schema_table_data_free(
         return NULL;
     }
     return builtin_schema_table_is_mysql_stats(directory, table_name) ||
-                   builtin_schema_table_is_mysql_component(directory, table_name)
+                   builtin_schema_table_is_mysql_component(directory, table_name) ||
+                   builtin_schema_table_is_mysql_func(directory, table_name)
                ? "4194304"
                : "0";
 }
@@ -53703,6 +53765,9 @@ static const char *builtin_schema_table_comment(
         if (strcmp(table_name, "component") == 0) {
             return "Components";
         }
+        if (strcmp(table_name, "func") == 0) {
+            return "User defined functions";
+        }
         if (strcmp(table_name, "user") == 0) {
             return "Users and global privileges";
         }
@@ -53742,6 +53807,14 @@ static bool builtin_schema_table_is_mysql_component(
 ) {
     return directory != NULL && table_name != NULL &&
            strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "component") == 0;
+}
+
+static bool builtin_schema_table_is_mysql_func(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "func") == 0;
 }
 
 static int append_information_schema_tables_base_row(

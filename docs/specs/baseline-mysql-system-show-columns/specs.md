@@ -4,10 +4,10 @@ This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
 `DESC` can introspect supported mysql system tables. The original slice covered
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`; the separate
-`baseline-mysql-component-table` slice extends the same metadata path to
-`mysql.component`. The tables are limited read-only synthetic system tables in
-MyLite; these features reuse owned column metadata rather than adding physical
-system tables.
+`baseline-mysql-component-table` and `baseline-mysql-func-table` slices extend
+the same metadata path to `mysql.component` and `mysql.func`. The tables are
+limited read-only synthetic system tables in MyLite; these features reuse owned
+column metadata rather than adding physical system tables.
 
 ## Compatibility Authority
 
@@ -32,15 +32,19 @@ The supported targets are:
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_table_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_index_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.component
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.func
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} func {FROM | IN} mysql
 DESCRIBE mysql.innodb_table_stats
 DESCRIBE mysql.innodb_index_stats
 DESCRIBE mysql.component
+DESCRIBE mysql.func
 DESC mysql.innodb_table_stats
 DESC mysql.innodb_index_stats
 DESC mysql.component
+DESC mysql.func
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -50,6 +54,7 @@ USE mysql;
 SHOW COLUMNS FROM innodb_table_stats;
 SHOW FULL COLUMNS FROM innodb_index_stats;
 SHOW COLUMNS FROM component;
+SHOW COLUMNS FROM func;
 DESCRIBE innodb_table_stats;
 ```
 
@@ -89,6 +94,11 @@ descriptor-backed `SHOW COLUMNS`.
 auto_increment PRIMARY KEY`, `component_group_id int unsigned NOT NULL`, and
 `component_urn text NOT NULL`.
 
+`SHOW COLUMNS FROM mysql.func` returns four rows specified by
+`baseline-mysql-func-table`: `name char(64) NOT NULL DEFAULT '' PRIMARY KEY`,
+`ret tinyint NOT NULL DEFAULT 0`, `dl char(128) NOT NULL DEFAULT ''`, and
+`type enum('function','aggregate') NOT NULL`.
+
 `SHOW FULL COLUMNS` adds `Collation`, `Privileges`, and `Comment`. Runtime
 evidence shows `utf8mb3_bin` for the nonbinary `varchar` columns, SQL `NULL` for
 numeric and timestamp column collations, `select,insert,update,references` for
@@ -126,7 +136,7 @@ value includes both `DEFAULT_GENERATED` and `on update CURRENT_TIMESTAMP`.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_columns_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_func_table|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_columns_expectations.sh
 git diff --check
 cmake --workflow --preset check

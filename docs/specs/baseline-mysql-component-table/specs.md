@@ -156,8 +156,8 @@ without introducing durable server-startup state.
   services, or automatic startup loading.
 - Writes to `mysql.component` remain blocked by the built-in schema write guard
   before catalog mutation.
-- Other object-information system tables, including `mysql.func` and
-  `mysql.plugin`, remain unsupported until separately specified.
+- Other object-information system tables, including `mysql.plugin`, remain
+  unsupported until separately specified.
 - `SHOW CREATE TABLE mysql.component` remains out of scope for this slice.
 - Privilege filtering is not implemented.
 - No physical `mysql.component` table, SQLite virtual table, or SQLite fork

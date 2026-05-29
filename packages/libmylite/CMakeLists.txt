@@ -1705,6 +1705,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_mysql_component_table_test)
 
+  add_executable(mylite_runtime_mysql_func_table_test
+    tests/runtime_mysql_func_table_test.c
+  )
+  target_link_libraries(mylite_runtime_mysql_func_table_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_mysql_func_table_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_mysql_func_table_test)
+
   add_executable(mylite_runtime_mysql_system_stats_table_status_test
     tests/runtime_mysql_system_stats_table_status_test.c
   )
@@ -5154,6 +5165,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.mysql_component_table
     COMMAND mylite_runtime_mysql_component_table_test
+  )
+  add_test(
+    NAME libmylite.runtime.mysql_func_table
+    COMMAND mylite_runtime_mysql_func_table_test
   )
   add_test(
     NAME libmylite.runtime.mysql_system_stats_table_status

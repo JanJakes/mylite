@@ -149,6 +149,11 @@ The `baseline-mysql-component-table` slice refines `mysql.component` with
 MySQL-observed `AUTO_INCREMENT`, `DATA_FREE`, comment, create-options, and
 primary-key metadata while keeping the table read-only and empty.
 
+The `baseline-mysql-func-table` slice refines `mysql.func` with direct empty
+reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
+primary-key metadata while keeping loadable-function execution, persistence,
+and writes out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

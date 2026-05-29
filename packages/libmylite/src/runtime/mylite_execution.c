@@ -434,6 +434,7 @@ enum {
     information_schema_innodb_columns_column_count = 8,
     information_schema_innodb_indexes_column_count = 8,
     information_schema_innodb_tables_column_count = 10,
+    information_schema_innodb_tablestats_column_count = 9,
     information_schema_innodb_ft_config_column_count = 2,
     information_schema_innodb_ft_deleted_column_count = 1,
     information_schema_innodb_ft_default_stopword_column_count = 1,
@@ -4289,6 +4290,10 @@ struct nonprimary_index_presence_context {
     bool has_nonprimary_index;
 };
 
+struct nonprimary_index_count_context {
+    int64_t count;
+};
+
 struct show_tables_context {
     struct mylite_db *database;
     mylite_result *result;
@@ -4448,6 +4453,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_TABLES = 64,
     INFORMATION_SCHEMA_TABLE_INNODB_COLUMNS = 65,
     INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES = 66,
+    INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS = 67,
 };
 
 struct information_schema_column_definition {
@@ -5432,6 +5438,107 @@ static const struct information_schema_column_definition
          "varchar(10)"},
         {"INSTANT_COLS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
         {"TOTAL_ROW_VERSIONS", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_innodb_tablestats_columns[] = {
+        {"TABLE_ID",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"NAME",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "193",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(193)"},
+        {"STATS_INITIALIZED",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "193",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(193)"},
+        {"NUM_ROWS",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"CLUST_INDEX_SIZE",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"OTHER_INDEX_SIZE",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"MODIFIED_COUNTER",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"AUTOINC",
+         "",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"REF_COUNT", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
 };
 
 static const struct information_schema_column_definition
@@ -10111,6 +10218,10 @@ static const struct information_schema_table_definition information_schema_table
      "INNODB_TABLES",
      information_schema_innodb_tables_columns,
      information_schema_innodb_tables_column_count},
+    {INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS,
+     "INNODB_TABLESTATS",
+     information_schema_innodb_tablestats_columns,
+     information_schema_innodb_tablestats_column_count},
     {INFORMATION_SCHEMA_TABLE_INNODB_TABLESPACES_BRIEF,
      "INNODB_TABLESPACES_BRIEF",
      information_schema_innodb_tablespaces_brief_columns,
@@ -13734,6 +13845,21 @@ static int append_information_schema_innodb_tables_base_row(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_innodb_tablestats_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int information_schema_count_nonprimary_indexes(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t *out_count
+);
+static int count_nonprimary_index(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
 );
 static int information_schema_innodb_table_flag(
     struct mylite_db *database,
@@ -48003,6 +48129,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_FT_INDEX_TABLE:
     case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
@@ -48107,6 +48234,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_INNODB_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLES:
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
         break;
     }
@@ -48311,6 +48439,13 @@ static int append_information_schema_catalog_base_table(
         );
     case INFORMATION_SCHEMA_TABLE_INNODB_TABLES:
         return append_information_schema_innodb_tables_base_row(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    case INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS:
+        return append_information_schema_innodb_tablestats_base_row(
             context->database,
             context->rows,
             context->schema,
@@ -51820,6 +51955,152 @@ static int append_information_schema_innodb_tables_base_row(
     free(table_name);
     free(columns);
     return rc;
+}
+
+static int append_information_schema_innodb_tablestats_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    char *table_name = NULL;
+    char table_id_text[integer_text_capacity];
+    char row_count_text[integer_text_capacity];
+    char other_index_size_text[integer_text_capacity];
+    char autoinc_text[integer_text_capacity];
+    int64_t row_count = 0;
+    int64_t other_index_size = 0;
+    int64_t autoinc = 0;
+    bool has_auto_increment = false;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_innodb_tablestats_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.INNODB_TABLESTATS columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_information_schema_schema_object_name(
+        database,
+        schema->name,
+        table->name,
+        &table_name
+    );
+    if (rc == MYLITE_OK) {
+        rc = read_show_table_status_row_count(database, table, &row_count);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (rc != MYLITE_OK) {
+            set_runtime_error(database, "failed to read INFORMATION_SCHEMA.INNODB_TABLESTATS rows");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_count_nonprimary_indexes(
+            database,
+            table->table_id,
+            &other_index_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = table_status_has_auto_increment(database, table, &has_auto_increment);
+    }
+    if (rc == MYLITE_OK && has_auto_increment) {
+        autoinc = table->auto_increment_next;
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            table->table_id,
+            table_id_text,
+            sizeof(table_id_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            row_count,
+            row_count_text,
+            sizeof(row_count_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            other_index_size,
+            other_index_size_text,
+            sizeof(other_index_size_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(database, autoinc, autoinc_text, sizeof(autoinc_text));
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[information_schema_innodb_tablestats_column_count] = {
+            table_id_text,
+            table_name,
+            "Initialized",
+            row_count_text,
+            "1",
+            other_index_size_text,
+            "0",
+            autoinc_text,
+            "1",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    free(table_name);
+    return rc;
+}
+
+static int information_schema_count_nonprimary_indexes(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t *out_count
+) {
+    struct nonprimary_index_count_context context = {.count = 0};
+    int rc = MYLITE_OK;
+
+    if (out_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_count = 0;
+
+    rc = mylite_catalog_for_each_index_in_table(
+        database,
+        table_id,
+        count_nonprimary_index,
+        &context
+    );
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA.INNODB_TABLESTATS indexes");
+        return MYLITE_ERROR;
+    }
+    *out_count = context.count;
+    return MYLITE_OK;
+}
+
+static int count_nonprimary_index(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+) {
+    struct nonprimary_index_count_context *context = user_data;
+
+    if (context == NULL || index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (index->kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        if (context->count == INT64_MAX) {
+            return MYLITE_ERROR;
+        }
+        ++context->count;
+    }
+    return MYLITE_OK;
 }
 
 static int information_schema_innodb_table_flag(

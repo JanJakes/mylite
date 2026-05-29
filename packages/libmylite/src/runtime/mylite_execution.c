@@ -568,6 +568,7 @@ enum {
     information_schema_views_column_count = 10,
     information_schema_view_routine_usage_column_count = 6,
     information_schema_view_table_usage_column_count = 6,
+    mysql_innodb_table_stats_column_count = 6,
     information_schema_tables_index_length_column = 11,
     information_schema_tables_auto_increment_column = 13,
     information_schema_tables_create_time_column = 14,
@@ -4511,6 +4512,14 @@ struct information_schema_table_definition {
     size_t column_count;
 };
 
+struct mysql_system_table_definition {
+    const char *schema_name;
+    struct information_schema_table_definition query_definition;
+    const char *const *column_keys;
+    const char *const *column_extras;
+    const char *const *column_privileges;
+};
+
 struct information_schema_files_row {
     const char *file_id;
     const char *file_name;
@@ -4723,6 +4732,13 @@ struct information_schema_query {
 struct information_schema_catalog_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct mysql_system_table_catalog_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
+    const struct mysql_system_table_definition *definition;
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
@@ -12260,6 +12276,108 @@ static const struct information_schema_table_definition information_schema_table
      information_schema_view_table_usage_column_count},
 };
 
+static const struct information_schema_column_definition mysql_innodb_table_stats_columns[] = {
+    {"database_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"table_name",
+     NULL,
+     "NO",
+     "varchar",
+     "199",
+     "597",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(199)"},
+    {"last_update",
+     "CURRENT_TIMESTAMP",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+    {"n_rows", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+    {"clustered_index_size",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"sum_of_other_index_sizes",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+};
+
+static const char *const mysql_innodb_table_stats_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_innodb_table_stats_column_extras[] = {
+    "",
+    "",
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_innodb_table_stats_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mysql_system_table_definition mysql_system_table_definitions[] = {
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS,
+      "innodb_table_stats",
+      mysql_innodb_table_stats_columns,
+      mysql_innodb_table_stats_column_count},
+     mysql_innodb_table_stats_column_keys,
+     mysql_innodb_table_stats_column_extras,
+     mysql_innodb_table_stats_column_privileges},
+};
+
 static const struct builtin_schema_descriptor builtin_schema_descriptors[] = {
     {"information_schema", "utf8mb3", "utf8mb3_general_ci"},
     {"mysql", "utf8mb4", "utf8mb4_0900_ai_ci"},
@@ -15288,6 +15406,92 @@ static int select_statement_targets_information_schema(
     const struct mylite_sql_ast_node *statement,
     bool *out_matches
 );
+static int execute_mysql_system_table_select_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int select_statement_targets_mysql_system_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+);
+static int resolve_mysql_system_table_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct information_schema_query *out_query,
+    const struct mysql_system_table_definition **out_definition
+);
+static int mysql_system_table_resolve_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct information_schema_query *out_query,
+    const struct mysql_system_table_definition **out_definition
+);
+static const struct mysql_system_table_definition *find_mysql_system_table_definition(
+    const char *schema_name,
+    const char *table_name
+);
+static int execute_mysql_system_table_query(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct mysql_system_table_definition *definition,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int build_mysql_system_table_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *out_rows
+);
+static int append_mysql_system_table_system_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+);
+static int append_mysql_innodb_table_stats_builtin_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_mysql_innodb_table_stats_builtin_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *schema_name,
+    const char *table_name,
+    const char *row_count
+);
+static int append_mysql_system_table_catalog_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+);
+static int append_mysql_system_table_catalog_schema(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_mysql_system_table_catalog_table(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_mysql_innodb_table_stats_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int mysql_system_current_timestamp(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+);
+static bool selected_schema_is_mysql_system_schema(const struct mylite_db *database);
+static bool schema_name_is_mysql_system_schema(const char *schema_name);
 static int resolve_information_schema_query(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -15613,6 +15817,15 @@ static int append_information_schema_columns_system_table_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct information_schema_table_definition *definition
+);
+static int append_information_schema_columns_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_columns_mysql_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
 );
 static int append_information_schema_columns_extensions_system_rows(
     struct mylite_db *database,
@@ -48332,6 +48545,7 @@ static int execute_select_statement(
 ) {
     const char *argument_count_error_function = NULL;
     bool is_information_schema_query = false;
+    bool is_mysql_system_table_query = false;
     bool projected_statement_handled = false;
     int rc = MYLITE_OK;
 
@@ -48354,6 +48568,23 @@ static int execute_select_statement(
     }
     if (is_information_schema_query) {
         return execute_information_schema_select_statement(
+            database,
+            context,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
+    rc = select_statement_targets_mysql_system_table(
+        database,
+        statement,
+        &is_mysql_system_table_query
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_mysql_system_table_query) {
+        return execute_mysql_system_table_select_statement(
             database,
             context,
             statement,
@@ -49902,6 +50133,500 @@ static int select_statement_targets_information_schema(
     }
 
     return MYLITE_OK;
+}
+
+static int execute_mysql_system_table_select_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    struct information_schema_query query = {0};
+    const struct mysql_system_table_definition *definition = NULL;
+    int rc = resolve_mysql_system_table_query(database, statement, &query, &definition);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_mysql_system_table_query(
+            database,
+            context,
+            statement,
+            &query,
+            definition,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
+    information_schema_query_deinit(&query);
+    return rc;
+}
+
+static int select_statement_targets_mysql_system_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U && find_mysql_system_table_definition(parts[0], parts[1]) != NULL) {
+        *out_matches = true;
+        return MYLITE_OK;
+    }
+    if (part_count == 1U && selected_schema_is_mysql_system_schema(database) &&
+        find_mysql_system_table_definition(database->session.selected_schema, parts[0]) != NULL) {
+        *out_matches = true;
+    }
+
+    return MYLITE_OK;
+}
+
+static int resolve_mysql_system_table_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct information_schema_query *out_query,
+    const struct mysql_system_table_definition **out_definition
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_definition == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_query = (struct information_schema_query){0};
+    *out_definition = NULL;
+    if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(
+            database,
+            "mysql system table SELECT supports only non-distinct metadata queries"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = mysql_system_table_resolve_source(database, from_clause, out_query, out_definition);
+    while (rc == MYLITE_OK && optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(
+                database,
+                "mysql system table SELECT supports only WHERE, ORDER BY, and LIMIT"
+            );
+            rc = MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_plan_projection(database, select_list, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_plan_where(database, where_clause, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        out_query->limit = (struct planned_select_limit){
+            .has_limit = false,
+            .row_count = 0,
+            .has_offset = false,
+            .offset = 0,
+        };
+        rc = information_schema_plan_order(database, order_clause, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_plan_limit(database, limit_clause, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+
+    information_schema_query_deinit(out_query);
+    *out_definition = NULL;
+    return rc;
+}
+
+static int mysql_system_table_resolve_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct information_schema_query *out_query,
+    const struct mysql_system_table_definition **out_definition
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mysql_system_table_definition *definition = NULL;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(
+            database,
+            "mysql system table SELECT requires a supported mysql table"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U) {
+        definition = find_mysql_system_table_definition(parts[0], parts[1]);
+    } else if (part_count == 1U && selected_schema_is_mysql_system_schema(database)) {
+        definition =
+            find_mysql_system_table_definition(database->session.selected_schema, parts[0]);
+    }
+    if (definition == NULL) {
+        set_unsupported_error(
+            database,
+            "mysql system table SELECT requires a supported mysql table"
+        );
+        return MYLITE_ERROR;
+    }
+    if (from_table_index_hint_list_node(from_clause) != NULL) {
+        set_unsupported_error(database, "mysql system table SELECT does not support index hints");
+        return MYLITE_ERROR;
+    }
+    out_query->definition = &definition->query_definition;
+    *out_definition = definition;
+    if (from_table_alias_node(from_clause) != NULL) {
+        rc = copy_identifier_text(
+            from_table_alias_node(from_clause),
+            out_query->alias,
+            sizeof(out_query->alias),
+            database
+        );
+        if (rc == MYLITE_OK) {
+            out_query->has_alias = true;
+        }
+    }
+    return rc;
+}
+
+static const struct mysql_system_table_definition *find_mysql_system_table_definition(
+    const char *schema_name,
+    const char *table_name
+) {
+    if (!schema_name_is_mysql_system_schema(schema_name) || table_name == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U;
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        if (strcmp(table_name, mysql_system_table_definitions[index].query_definition.name) == 0) {
+            return &mysql_system_table_definitions[index];
+        }
+    }
+    return NULL;
+}
+
+static int execute_mysql_system_table_query(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct mysql_system_table_definition *definition,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    struct information_schema_row_set rows = {0};
+    mylite_result *result = NULL;
+    size_t read_row_count = 0U;
+    int rc = build_mysql_system_table_rows(database, context, definition, &rows);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_append_result_columns(database, result, query);
+    }
+    if (rc == MYLITE_OK && query->is_count_star) {
+        rc = information_schema_append_count_result(
+            database,
+            statement,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = information_schema_append_result_rows(
+            database,
+            statement,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
+    }
+    information_schema_row_set_deinit(&rows);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    if (apply_sql_select_limit && !query->limit.has_limit) {
+        apply_sql_select_limit_to_result(database, result);
+    }
+    return finish_successful_result(database, result, out_result);
+}
+
+static int build_mysql_system_table_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *out_rows
+) {
+    int rc = MYLITE_OK;
+
+    *out_rows = (struct information_schema_row_set){.definition = &definition->query_definition};
+    rc = append_mysql_system_table_system_rows(database, context, definition, out_rows);
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_system_table_catalog_rows(database, definition, out_rows);
+    }
+    if (rc != MYLITE_OK) {
+        information_schema_row_set_deinit(out_rows);
+    }
+    return rc;
+}
+
+static int append_mysql_system_table_system_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+) {
+    (void)context;
+
+    if (strcmp(definition->schema_name, "mysql") == 0 &&
+        strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
+        return append_mysql_innodb_table_stats_builtin_rows(database, rows);
+    }
+
+    set_runtime_error(database, "invalid mysql system table");
+    return MYLITE_ERROR;
+}
+
+static int append_mysql_innodb_table_stats_builtin_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = append_mysql_innodb_table_stats_builtin_row(database, rows, "mysql", "component", "0");
+
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_innodb_table_stats_builtin_row(database, rows, "sys", "sys_config", "6");
+    }
+    return rc;
+}
+
+static int append_mysql_innodb_table_stats_builtin_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *schema_name,
+    const char *table_name,
+    const char *row_count
+) {
+    char last_update[datetime_text_length + 1U];
+    int rc = mysql_system_current_timestamp(database, last_update, sizeof(last_update));
+
+    if (rows->definition->column_count != mysql_innodb_table_stats_column_count) {
+        set_runtime_error(database, "invalid mysql.innodb_table_stats columns");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[mysql_innodb_table_stats_column_count] = {
+            schema_name,
+            table_name,
+            last_update,
+            row_count,
+            "1",
+            "0",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_mysql_system_table_catalog_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+) {
+    struct mysql_system_table_catalog_context context = {
+        .database = database,
+        .rows = rows,
+        .definition = definition,
+        .schema = NULL,
+    };
+
+    return mylite_catalog_for_each_schema(
+        database,
+        append_mysql_system_table_catalog_schema,
+        &context
+    );
+}
+
+static int append_mysql_system_table_catalog_schema(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct mysql_system_table_catalog_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->definition == NULL) {
+        return MYLITE_MISUSE;
+    }
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_mysql_system_table_catalog_table,
+        context
+    );
+}
+
+static int append_mysql_system_table_catalog_table(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct mysql_system_table_catalog_context *context = user_data;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->definition == NULL || context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+    if (strcmp(context->definition->schema_name, "mysql") == 0 &&
+        strcmp(context->definition->query_definition.name, "innodb_table_stats") == 0) {
+        return append_mysql_innodb_table_stats_base_row(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+
+    set_runtime_error(context->database, "invalid mysql system table catalog row");
+    return MYLITE_ERROR;
+}
+
+static int append_mysql_innodb_table_stats_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    char last_update[datetime_text_length + 1U];
+    char row_count_text[integer_text_capacity];
+    char other_index_size_text[integer_text_capacity];
+    int64_t row_count = 0;
+    int64_t other_index_size = 0;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != mysql_innodb_table_stats_column_count) {
+        set_runtime_error(database, "invalid mysql.innodb_table_stats columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mysql_system_current_timestamp(database, last_update, sizeof(last_update));
+    if (rc == MYLITE_OK) {
+        rc = read_show_table_status_row_count(database, table, &row_count);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (rc != MYLITE_OK) {
+            set_runtime_error(database, "failed to read mysql.innodb_table_stats rows");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_count_nonprimary_indexes(
+            database,
+            table->table_id,
+            &other_index_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            row_count,
+            row_count_text,
+            sizeof(row_count_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            other_index_size,
+            other_index_size_text,
+            sizeof(other_index_size_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[mysql_innodb_table_stats_column_count] = {
+            schema->name,
+            table->name,
+            last_update,
+            row_count_text,
+            "1",
+            other_index_size_text,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int mysql_system_current_timestamp(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+) {
+    return format_session_timestamp_epoch_text(
+        database,
+        current_wall_clock_epoch(),
+        buffer,
+        buffer_size
+    );
 }
 
 static int resolve_information_schema_query(
@@ -52351,6 +53076,9 @@ static int append_information_schema_columns_system_rows(
             &information_schema_table_definitions[table_index]
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_columns_mysql_system_rows(database, rows);
+    }
     return rc;
 }
 
@@ -52386,6 +53114,76 @@ static int append_information_schema_columns_system_table_rows(
             "",
             "",
             "select",
+            "",
+            "",
+            NULL,
+        };
+
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)column_index + 1,
+            ordinal_text,
+            sizeof(ordinal_text)
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+    return rc;
+}
+
+static int append_information_schema_columns_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t table_index = 0U;
+         rc == MYLITE_OK && table_index < sizeof(mysql_system_table_definitions) /
+                                              sizeof(mysql_system_table_definitions[0]);
+         ++table_index) {
+        rc = append_information_schema_columns_mysql_system_table_rows(
+            database,
+            rows,
+            &mysql_system_table_definitions[table_index]
+        );
+    }
+    return rc;
+}
+
+static int append_information_schema_columns_mysql_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < definition->query_definition.column_count;
+         ++column_index) {
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[column_index];
+        char ordinal_text[integer_text_capacity];
+        const char *values[information_schema_columns_column_count] = {
+            "def",
+            definition->schema_name,
+            definition->query_definition.name,
+            column->name,
+            ordinal_text,
+            column->column_default,
+            column->is_nullable,
+            column->data_type,
+            column->character_maximum_length,
+            column->character_octet_length,
+            column->numeric_precision,
+            column->numeric_scale,
+            column->datetime_precision,
+            column->character_set_name,
+            column->collation_name,
+            column->column_type,
+            definition->column_keys[column_index],
+            definition->column_extras[column_index],
+            definition->column_privileges[column_index],
             "",
             "",
             NULL,
@@ -138200,6 +138998,18 @@ static bool selected_schema_is_information_schema(const struct mylite_db *databa
 
 static bool schema_name_is_information_schema(const char *schema_name) {
     return text_equals_ascii_case_insensitive(schema_name, "information_schema");
+}
+
+static bool selected_schema_is_mysql_system_schema(const struct mylite_db *database) {
+    if (database == NULL || !database->session.has_selected_schema) {
+        return false;
+    }
+
+    return schema_name_is_mysql_system_schema(database->session.selected_schema);
+}
+
+static bool schema_name_is_mysql_system_schema(const char *schema_name) {
+    return schema_name != NULL && strcmp(schema_name, "mysql") == 0;
 }
 
 static int require_selected_schema_for_unqualified_table_name(

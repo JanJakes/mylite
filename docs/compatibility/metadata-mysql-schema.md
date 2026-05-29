@@ -6,11 +6,12 @@ The `mysql` schema name is exposed in the limited built-in schema catalog and
 can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `mysql` table names are exposed as metadata-only rows through
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
-`SHOW TABLE STATUS`, but the tables remain non-queryable and unsupported unless
-listed otherwise below. MyLite rejects schema, table, index, rename, truncate,
-and single-table DML writes targeting `mysql` with `3552 / HY000` system-schema
-diagnostics as a stricter embedded-design decision; MySQL 8.4.9 permits some
-`root` temporary-table writes in `mysql`.
+`SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
+listed otherwise below; the current exception is limited read-only
+`SELECT` access to `mysql.innodb_table_stats`. MyLite rejects schema, table,
+index, rename, truncate, and single-table DML writes targeting `mysql` with
+`3552 / HY000` system-schema diagnostics as a stricter embedded-design
+decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 
 | Table | Status | Notes |
 | --- | --- | --- |
@@ -75,7 +76,7 @@ diagnostics as a stricter embedded-design decision; MySQL 8.4.9 permits some
 | `mysql.slave_relay_log_info` | ❌ | Replication metadata repository table for relay log metadata |
 | `mysql.slave_worker_info` | ❌ | Replication metadata repository table for worker metadata |
 | `mysql.innodb_index_stats` | ❌ | Optimizer table for InnoDB persistent index statistics |
-| `mysql.innodb_table_stats` | ❌ | Optimizer table for InnoDB persistent table statistics |
+| `mysql.innodb_table_stats` | 🟡 | Limited read-only synthetic optimizer table for InnoDB persistent table statistics: direct `SELECT` and unqualified reads after `USE mysql`, stable built-in rows for `mysql.component` and `sys.sys_config`, descriptor-backed rows for persistent base tables, exact row counts, deterministic clustered-index placeholder size, non-primary descriptor index counts, and matching `INFORMATION_SCHEMA.COLUMNS` metadata; no writable persistent statistics, `mysql.innodb_index_stats`, `ANALYZE TABLE` side effects, statistics reload, histograms, optimizer behavior, physical page counts, privilege filtering, or complete data-dictionary tables |
 | `mysql.server_cost` | ❌ | Table shape and diagnostics |
 | `mysql.engine_cost` | ❌ | Table shape and diagnostics |
 | `mysql.audit_log_filter` | ❌ | Table shape and diagnostics |

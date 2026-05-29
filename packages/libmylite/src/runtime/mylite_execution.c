@@ -543,6 +543,7 @@ enum {
     information_schema_profiling_column_count = 18,
     information_schema_resource_groups_column_count = 5,
     information_schema_st_geometry_columns_column_count = 7,
+    information_schema_st_spatial_reference_systems_column_count = 6,
     information_schema_st_units_of_measure_column_count = 4,
     information_schema_st_geometry_columns_schema_column = 1,
     information_schema_st_geometry_columns_table_column = 2,
@@ -4472,6 +4473,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES = 74,
     INFORMATION_SCHEMA_TABLE_FILES = 75,
     INFORMATION_SCHEMA_TABLE_INNODB_METRICS = 76,
+    INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS = 77,
 };
 
 struct information_schema_column_definition {
@@ -8333,6 +8335,71 @@ static const struct information_schema_column_definition
 };
 
 static const struct information_schema_column_definition
+    information_schema_st_spatial_reference_systems_columns[] = {
+        {"SRS_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "80",
+         "240",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(80)"},
+        {"SRS_ID", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+        {"ORGANIZATION",
+         NULL,
+         "YES",
+         "varchar",
+         "256",
+         "768",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(256)"},
+        {"ORGANIZATION_COORDSYS_ID",
+         NULL,
+         "YES",
+         "int",
+         NULL,
+         NULL,
+         "10",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"DEFINITION",
+         NULL,
+         "NO",
+         "varchar",
+         "4096",
+         "12288",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(4096)"},
+        {"DESCRIPTION",
+         NULL,
+         "YES",
+         "varchar",
+         "2048",
+         "6144",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(2048)"},
+};
+
+static const struct information_schema_column_definition
     information_schema_st_units_of_measure_columns[] = {
         {"UNIT_NAME",
          NULL,
@@ -12109,6 +12176,10 @@ static const struct information_schema_table_definition information_schema_table
      "ST_GEOMETRY_COLUMNS",
      information_schema_st_geometry_columns_columns,
      information_schema_st_geometry_columns_column_count},
+    {INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS,
+     "ST_SPATIAL_REFERENCE_SYSTEMS",
+     information_schema_st_spatial_reference_systems_columns,
+     information_schema_st_spatial_reference_systems_column_count},
     {INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE,
      "ST_UNITS_OF_MEASURE",
      information_schema_st_units_of_measure_columns,
@@ -49997,6 +50068,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
     case INFORMATION_SCHEMA_TABLE_ST_GEOMETRY_COLUMNS:
+    case INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_ROLE_COLUMN_GRANTS:
@@ -50072,6 +50144,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_INNODB_CACHED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_INNODB_METRICS:
     case INFORMATION_SCHEMA_TABLE_INNODB_TEMP_TABLE_INFO:
+    case INFORMATION_SCHEMA_TABLE_ST_SPATIAL_REFERENCE_SYSTEMS:
     case INFORMATION_SCHEMA_TABLE_ST_UNITS_OF_MEASURE:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_COLUMN_STATISTICS:

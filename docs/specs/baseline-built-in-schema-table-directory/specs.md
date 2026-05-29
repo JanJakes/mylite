@@ -145,6 +145,10 @@ MySQL-observed table-status values for row counts, average row length,
 continue to use the generic placeholder status values from this directory
 baseline until separately specified.
 
+The `baseline-mysql-component-table` slice refines `mysql.component` with
+MySQL-observed `AUTO_INCREMENT`, `DATA_FREE`, comment, create-options, and
+primary-key metadata while keeping the table read-only and empty.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

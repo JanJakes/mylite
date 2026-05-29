@@ -2,10 +2,12 @@
 
 This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
-`DESC` can introspect `mysql.innodb_table_stats` and
-`mysql.innodb_index_stats`. The tables are already limited read-only synthetic
-system tables in MyLite; this feature reuses the same owned column metadata
-rather than adding physical system tables.
+`DESC` can introspect supported mysql system tables. The original slice covered
+`mysql.innodb_table_stats` and `mysql.innodb_index_stats`; the separate
+`baseline-mysql-component-table` slice extends the same metadata path to
+`mysql.component`. The tables are limited read-only synthetic system tables in
+MyLite; these features reuse owned column metadata rather than adding physical
+system tables.
 
 ## Compatibility Authority
 
@@ -19,8 +21,8 @@ rather than adding physical system tables.
 MySQL documents that `SHOW COLUMNS` reports column metadata for tables and
 views, accepts `FULL`, `LIKE`, and `WHERE`, and that `DESCRIBE` provides a
 similar table-column introspection surface. Runtime checks against MySQL 8.4.9
-confirm that the two InnoDB persistent-statistics tables use ordinary
-`SHOW COLUMNS` result shapes.
+confirm that supported mysql system tables use ordinary `SHOW COLUMNS` result
+shapes.
 
 ## Supported Behavior
 
@@ -29,12 +31,16 @@ The supported targets are:
 ```sql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_table_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_index_stats
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.component
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
 DESCRIBE mysql.innodb_table_stats
 DESCRIBE mysql.innodb_index_stats
+DESCRIBE mysql.component
 DESC mysql.innodb_table_stats
 DESC mysql.innodb_index_stats
+DESC mysql.component
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -43,6 +49,7 @@ Unqualified forms are supported after `USE mysql`:
 USE mysql;
 SHOW COLUMNS FROM innodb_table_stats;
 SHOW FULL COLUMNS FROM innodb_index_stats;
+SHOW COLUMNS FROM component;
 DESCRIBE innodb_table_stats;
 ```
 
@@ -76,6 +83,11 @@ descriptor-backed `SHOW COLUMNS`.
 | `stat_value` | `bigint unsigned` | `NO` | `` | `NULL` | `` |
 | `sample_size` | `bigint unsigned` | `YES` | `` | `NULL` | `` |
 | `stat_description` | `varchar(1024)` | `NO` | `` | `NULL` | `` |
+
+`SHOW COLUMNS FROM mysql.component` returns three rows specified by
+`baseline-mysql-component-table`: `component_id int unsigned NOT NULL
+auto_increment PRIMARY KEY`, `component_group_id int unsigned NOT NULL`, and
+`component_urn text NOT NULL`.
 
 `SHOW FULL COLUMNS` adds `Collation`, `Privileges`, and `Comment`. Runtime
 evidence shows `utf8mb3_bin` for the nonbinary `varchar` columns, SQL `NULL` for
@@ -114,7 +126,7 @@ value includes both `DEFAULT_GENERATED` and `on update CURRENT_TIMESTAMP`.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_columns_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_columns_expectations.sh
 git diff --check
 cmake --workflow --preset check

@@ -5,6 +5,8 @@ surface so `INFORMATION_SCHEMA.STATISTICS` exposes index rows for
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The rows describe
 the synthetic tables' primary keys and align with the already-supported
 `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` output for the same tables.
+The separate `baseline-mysql-component-table` slice extends the same metadata
+path to the single `PRIMARY(component_id)` row for `mysql.component`.
 
 ## Compatibility Authority
 
@@ -71,6 +73,8 @@ descriptor-owned statistics rows for user tables.
   this slice.
 - The existing descriptor-backed `INFORMATION_SCHEMA.STATISTICS` rows for
   persistent user tables are unchanged.
+- `mysql.component` primary-key metadata is specified and tested by
+  `baseline-mysql-component-table`.
 - Writes to `mysql` system tables remain rejected by the existing built-in
   schema write-protection rules.
 
@@ -125,7 +129,7 @@ innodb_index_stats	stat_name	6
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_information_schema_mysql_system_statistics_test
-ctest --preset dev -R '^libmylite\.runtime\.(information_schema_mysql_system_statistics|mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(information_schema_mysql_system_statistics|mysql_component_table|mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_information_schema_mysql_system_statistics_expectations.sh
 git diff --check
 cmake --workflow --preset check

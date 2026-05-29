@@ -2,9 +2,11 @@
 
 This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` can introspect
-`mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The tables remain
-read-only synthetic system tables; this feature exposes their primary-key shape
-without creating physical system tables.
+`mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The separate
+`baseline-mysql-component-table` slice extends the same path to
+`mysql.component`. The tables remain read-only synthetic system tables; these
+features expose their primary-key shape without creating physical system
+tables.
 
 ## Compatibility Authority
 
@@ -27,8 +29,10 @@ The supported targets are:
 ```sql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_table_stats
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_index_stats
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.component
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} component {FROM | IN} mysql
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -37,6 +41,7 @@ Unqualified forms are supported after `USE mysql`:
 USE mysql;
 SHOW INDEX FROM innodb_table_stats;
 SHOW KEYS FROM innodb_index_stats;
+SHOW INDEX FROM component;
 ```
 
 The existing limited `SHOW INDEX WHERE` evaluator applies to the generated
@@ -61,6 +66,9 @@ same supported operators and literal restrictions as descriptor-backed
 | `innodb_index_stats` | `0` | `PRIMARY` | `2` | `table_name` | `A` | `2` | `NULL` | `NULL` | `` | `BTREE` | `` | `` | `YES` | `NULL` |
 | `innodb_index_stats` | `0` | `PRIMARY` | `3` | `index_name` | `A` | `2` | `NULL` | `NULL` | `` | `BTREE` | `` | `` | `YES` | `NULL` |
 | `innodb_index_stats` | `0` | `PRIMARY` | `4` | `stat_name` | `A` | `6` | `NULL` | `NULL` | `` | `BTREE` | `` | `` | `YES` | `NULL` |
+
+`SHOW INDEX FROM mysql.component` returns the single `PRIMARY(component_id)`
+row specified by `baseline-mysql-component-table`, with `Cardinality = 0`.
 
 `Cardinality` values are deterministic MyLite-owned placeholders matching the
 fresh MySQL 8.4.9 runtime evidence for the built-in statistics rows. They are
@@ -95,7 +103,7 @@ rows to the synthetic statistics tables.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_index_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_index_empty_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_index|mysql_component_table|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_index_empty_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_index_expectations.sh
 git diff --check
 cmake --workflow --preset check

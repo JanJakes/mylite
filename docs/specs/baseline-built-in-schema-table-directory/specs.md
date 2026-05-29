@@ -138,6 +138,13 @@ storage-engine statistics are placeholders unless a later feature implements
 the actual system table. This keeps the directory useful without pretending to
 own live server internals.
 
+The `baseline-mysql-system-stats-table-status` slice refines the supported
+`mysql.innodb_table_stats` and `mysql.innodb_index_stats` rows with
+MySQL-observed table-status values for row counts, average row length,
+`DATA_FREE`, and non-`NULL` update-time shape. Other built-in directory rows
+continue to use the generic placeholder status values from this directory
+baseline until separately specified.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,
@@ -177,7 +184,9 @@ the directory row.
 time for built-in directory rows that MySQL reports with a server-created
 timestamp. This gives callers a non-`NULL` timestamp shape without creating a
 durable catalog timestamp or depending on host-server startup time.
-`Update_time` and `Check_time` remain SQL `NULL`.
+`Update_time` and `Check_time` remain SQL `NULL` except where later slices
+document a non-`NULL` built-in-table status shape, such as the supported
+`mysql.innodb_table_stats` and `mysql.innodb_index_stats` rows.
 
 Existing `LIKE` and admitted `WHERE` filters apply to the synthetic rows. The
 filter uses the displayed status values, not SQLite metadata.

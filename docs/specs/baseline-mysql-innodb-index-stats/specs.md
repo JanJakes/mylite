@@ -119,7 +119,8 @@ Supported:
 - `INFORMATION_SCHEMA.COLUMNS` metadata rows for the eight
   `mysql.innodb_index_stats` columns;
 - existing `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
-  `SHOW TABLE STATUS` directory rows;
+  `SHOW TABLE STATUS` directory rows, with table-status field parity refined
+  by `baseline-mysql-system-stats-table-status`;
 - existing `mysql` schema write protection for all currently supported
   mutating statements.
 
@@ -248,6 +249,10 @@ Add a MySQL expectation script and focused C runtime test covering:
 - `last_update` stays independent from `SET timestamp`;
 - successful-read warning count and `ROW_COUNT()`;
 - unknown-column diagnostics and preserved `mysql` write protection.
+
+The separate `baseline-mysql-system-stats-table-status` slice refines the
+`INFORMATION_SCHEMA.TABLES` and `SHOW TABLE STATUS` directory metadata for this
+supported synthetic table.
 
 Verification before commit:
 

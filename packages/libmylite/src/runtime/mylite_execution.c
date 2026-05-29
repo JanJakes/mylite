@@ -15955,6 +15955,12 @@ static int append_information_schema_builtin_table_row(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
+static int load_builtin_table_status_values(
+    struct mylite_db *database,
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name,
+    struct table_status_values *status
+);
 static const struct builtin_schema_table_directory *find_builtin_schema_table_directory(
     const char *schema_name
 );
@@ -15978,7 +15984,15 @@ static const char *builtin_schema_table_rows(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
+static const char *builtin_schema_table_average_row_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
 static const char *builtin_schema_table_data_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static const char *builtin_schema_table_data_free(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -15991,6 +16005,14 @@ static const char *builtin_schema_table_create_options(
     const char *table_name
 );
 static const char *builtin_schema_table_comment(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_has_update_time(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_stats(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -53296,7 +53318,7 @@ static int append_information_schema_builtin_table_row(
 ) {
     struct table_status_values status = {0};
     const char *table_type = builtin_schema_table_type(directory, table_name);
-    int rc = format_builtin_table_status_timestamp(database, &status);
+    int rc = load_builtin_table_status_values(database, directory, table_name, &status);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -53311,14 +53333,14 @@ static int append_information_schema_builtin_table_row(
         builtin_schema_table_version(directory, table_name),
         builtin_schema_table_row_format(directory, table_name),
         builtin_schema_table_rows(directory, table_name),
-        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        builtin_schema_table_average_row_length(directory, table_name),
         builtin_schema_table_data_length(directory, table_name),
         table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
         "0",
-        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        builtin_schema_table_data_free(directory, table_name),
         NULL,
         status.create_time,
-        NULL,
+        status.update_time,
         NULL,
         builtin_schema_table_collation(directory, table_name),
         NULL,
@@ -53327,6 +53349,25 @@ static int append_information_schema_builtin_table_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int load_builtin_table_status_values(
+    struct mylite_db *database,
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name,
+    struct table_status_values *status
+) {
+    int rc = format_builtin_table_status_timestamp(database, status);
+
+    if (rc == MYLITE_OK && builtin_schema_table_has_update_time(directory, table_name)) {
+        memcpy(
+            status->update_time_text,
+            status->create_time_text,
+            sizeof(status->update_time_text)
+        );
+        status->update_time = status->update_time_text;
+    }
+    return rc;
 }
 
 static const struct builtin_schema_table_directory *find_builtin_schema_table_directory(
@@ -53436,6 +53477,12 @@ static const char *builtin_schema_table_rows(
         return NULL;
     }
     if (strcmp(directory->schema_name, "mysql") == 0) {
+        if (strcmp(table_name, "innodb_index_stats") == 0) {
+            return "6";
+        }
+        if (strcmp(table_name, "innodb_table_stats") == 0) {
+            return "2";
+        }
         if (strcmp(table_name, "user") == 0) {
             return "5";
         }
@@ -53449,6 +53496,21 @@ static const char *builtin_schema_table_rows(
     }
     if (strcmp(directory->schema_name, "sys") == 0 && strcmp(table_name, "sys_config") == 0) {
         return "6";
+    }
+    return "0";
+}
+
+static const char *builtin_schema_table_average_row_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0) {
+        return NULL;
+    }
+    if (builtin_schema_table_is_mysql_stats(directory, table_name)) {
+        return strcmp(table_name, "innodb_index_stats") == 0 ? "2730" : "8192";
     }
     return "0";
 }
@@ -53471,6 +53533,18 @@ static const char *builtin_schema_table_data_length(
         return "0";
     }
     return "16384";
+}
+
+static const char *builtin_schema_table_data_free(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0) {
+        return NULL;
+    }
+    return builtin_schema_table_is_mysql_stats(directory, table_name) ? "4194304" : "0";
 }
 
 static const char *builtin_schema_table_collation(
@@ -53558,6 +53632,23 @@ static const char *builtin_schema_table_comment(
         }
     }
     return "";
+}
+
+static bool builtin_schema_table_has_update_time(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return builtin_schema_table_is_mysql_stats(directory, table_name);
+}
+
+static bool builtin_schema_table_is_mysql_stats(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 &&
+           (strcmp(table_name, "innodb_index_stats") == 0 ||
+            strcmp(table_name, "innodb_table_stats") == 0);
 }
 
 static int append_information_schema_tables_base_row(
@@ -184058,7 +184149,7 @@ static int append_show_builtin_table_status(
         return MYLITE_OK;
     }
 
-    rc = format_builtin_table_status_timestamp(context->database, &status);
+    rc = load_builtin_table_status_values(context->database, directory, table_name, &status);
     const char *table_type = builtin_schema_table_type(directory, table_name);
     const char *values[show_table_status_result_column_count] = {
         table_name,
@@ -184066,14 +184157,14 @@ static int append_show_builtin_table_status(
         builtin_schema_table_version(directory, table_name),
         builtin_schema_table_row_format(directory, table_name),
         builtin_schema_table_rows(directory, table_name),
-        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        builtin_schema_table_average_row_length(directory, table_name),
         builtin_schema_table_data_length(directory, table_name),
         table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
         "0",
-        table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
+        builtin_schema_table_data_free(directory, table_name),
         NULL,
         status.create_time,
-        NULL,
+        status.update_time,
         NULL,
         builtin_schema_table_collation(directory, table_name),
         NULL,

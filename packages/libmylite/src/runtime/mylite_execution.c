@@ -17119,6 +17119,35 @@ static int execute_show_columns_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int resolve_show_columns_mysql_system_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    const struct mysql_system_table_definition **out_definition,
+    bool *out_mysql_system_target
+);
+static int copy_show_columns_target_schema_and_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    char *schema_name,
+    char *table_name,
+    bool *out_has_target
+);
+static bool mysql_system_table_directory_contains(const char *table_name);
+static int execute_show_columns_mysql_system_table_statement(
+    struct mylite_db *database,
+    const struct show_columns_filter_nodes *nodes,
+    const struct mysql_system_table_definition *definition,
+    bool full,
+    mylite_result **out_result
+);
+static int append_show_columns_mysql_system_table_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition,
+    bool full
+);
 static int load_show_columns_key_metadata(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
@@ -63537,9 +63566,11 @@ static int execute_show_columns_statement(
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
+    const struct mysql_system_table_definition *mysql_system_definition = NULL;
     struct primary_key_info primary_key = primary_key_info_init();
     size_t column_count = 0U;
     bool missing_schema = false;
+    bool mysql_system_target = false;
     struct show_like_filter filter = {
         .has_pattern = false,
         .pattern = NULL,
@@ -63551,6 +63582,30 @@ static int execute_show_columns_statement(
     int rc = MYLITE_OK;
 
     rc = resolve_show_columns_filter_nodes(database, statement, &nodes);
+    if (rc == MYLITE_OK) {
+        rc = resolve_show_columns_mysql_system_table(
+            database,
+            (struct show_columns_target_nodes){
+                .table = nodes.table,
+                .schema = nodes.schema,
+            },
+            &mysql_system_definition,
+            &mysql_system_target
+        );
+    }
+    if (rc == MYLITE_OK && mysql_system_definition != NULL) {
+        return execute_show_columns_mysql_system_table_statement(
+            database,
+            &nodes,
+            mysql_system_definition,
+            full,
+            out_result
+        );
+    }
+    if (rc == MYLITE_OK && mysql_system_target) {
+        set_unsupported_error(database, "SHOW COLUMNS supports selected mysql system tables");
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = resolve_show_columns_table_name(
             database,
@@ -63630,6 +63685,251 @@ static int execute_show_columns_statement(
     loaded_index_infos_deinit(&indexes, &context.index_count);
     free(columns);
     return finish_successful_result(database, result, out_result);
+}
+
+static int resolve_show_columns_mysql_system_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    const struct mysql_system_table_definition **out_definition,
+    bool *out_mysql_system_target
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_target = false;
+    int rc = MYLITE_OK;
+
+    if (out_definition == NULL || out_mysql_system_target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_definition = NULL;
+    *out_mysql_system_target = false;
+
+    rc = copy_show_columns_target_schema_and_table(
+        database,
+        nodes,
+        schema_name,
+        table_name,
+        &has_target
+    );
+    if (rc != MYLITE_OK || !has_target || !schema_name_is_mysql_system_schema(schema_name)) {
+        return rc;
+    }
+
+    *out_mysql_system_target = true;
+    if (mylite_catalog_name_is_reserved(table_name)) {
+        set_reserved_name_error(database, "table", table_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_definition = find_mysql_system_table_definition(schema_name, table_name);
+    if (*out_definition != NULL || mysql_system_table_directory_contains(table_name)) {
+        return MYLITE_OK;
+    }
+
+    set_table_does_not_exist_error(database, schema_name, table_name);
+    return MYLITE_ERROR;
+}
+
+static int copy_show_columns_target_schema_and_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    char *schema_name,
+    char *table_name,
+    bool *out_has_target
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (schema_name == NULL || table_name == NULL || out_has_target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_has_target = false;
+    memset(schema_name, 0, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    memset(table_name, 0, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+
+    if (nodes.schema != NULL) {
+        rc = copy_identifier_text(
+            nodes.schema,
+            schema_name,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY,
+            database
+        );
+        if (rc == MYLITE_OK) {
+            rc = copy_show_columns_explicit_table_name(
+                database,
+                nodes.table,
+                table_name,
+                MYLITE_CATALOG_IDENTIFIER_CAPACITY
+            );
+        }
+        if (rc == MYLITE_OK) {
+            *out_has_target = true;
+        }
+        return rc;
+    }
+
+    rc = collect_identifier_parts(
+        nodes.table,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U) {
+        if (database == NULL || !database->session.has_selected_schema) {
+            return MYLITE_OK;
+        }
+        memcpy(schema_name, database->session.selected_schema, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        memcpy(table_name, parts[0], MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        *out_has_target = true;
+        return MYLITE_OK;
+    }
+    if (part_count == 2U) {
+        memcpy(schema_name, parts[0], MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        memcpy(table_name, parts[1], MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        *out_has_target = true;
+        return MYLITE_OK;
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static bool mysql_system_table_directory_contains(const char *table_name) {
+    if (table_name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U;
+         index < sizeof(builtin_mysql_table_names) / sizeof(builtin_mysql_table_names[0]);
+         ++index) {
+        if (strcmp(table_name, builtin_mysql_table_names[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int execute_show_columns_mysql_system_table_statement(
+    struct mylite_db *database,
+    const struct show_columns_filter_nodes *nodes,
+    const struct mysql_system_table_definition *definition,
+    bool full,
+    mylite_result **out_result
+) {
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (nodes == NULL || definition == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = make_show_like_filter(database, nodes->like, &filter);
+    if (rc == MYLITE_OK) {
+        rc = validate_show_columns_where_clause(database, nodes->where, full);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_columns_result_columns(database, result, full);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_columns_mysql_system_table_rows(
+            database,
+            result,
+            &filter,
+            nodes->where,
+            definition,
+            full
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (
+            rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+        ) {
+            set_runtime_error(database, "failed to build SHOW COLUMNS result");
+        }
+    }
+    show_like_filter_deinit(&filter);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_show_columns_mysql_system_table_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition,
+    bool full
+) {
+    int rc = MYLITE_OK;
+
+    if (result == NULL || definition == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < definition->query_definition.column_count;
+         ++column_index) {
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[column_index];
+        const char *values[show_full_columns_result_column_count] = {0};
+        bool where_matches = true;
+
+        if (!show_like_filter_matches(filter, column->name, false)) {
+            continue;
+        }
+
+        values[0] = column->name;
+        values[1] = column->column_type;
+        if (full) {
+            values[2] = column->collation_name;
+            values[3] = column->is_nullable;
+            values[4] = definition->column_keys[column_index];
+            values[show_full_columns_default_column] = column->column_default;
+            values[show_full_columns_extra_column] = definition->column_extras[column_index];
+            values[show_full_columns_privileges_column] =
+                definition->column_privileges[column_index];
+            values[show_full_columns_comment_column] = "";
+        } else {
+            values[2] = column->is_nullable;
+            values[3] = definition->column_keys[column_index];
+            values[4] = column->column_default;
+            values[show_columns_extra_column] = definition->column_extras[column_index];
+        }
+
+        if (where_clause != NULL) {
+            rc = show_columns_where_clause_matches(
+                database,
+                where_clause,
+                values,
+                full,
+                &where_matches
+            );
+        }
+        if (rc == MYLITE_OK && where_matches) {
+            rc = mylite_result_append_text_row(result, values);
+        }
+    }
+    return rc;
 }
 
 static int load_show_columns_key_metadata(

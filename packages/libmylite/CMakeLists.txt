@@ -1694,6 +1694,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_mysql_innodb_table_stats_test)
 
+  add_executable(mylite_runtime_mysql_system_show_columns_test
+    tests/runtime_mysql_system_show_columns_test.c
+  )
+  target_link_libraries(mylite_runtime_mysql_system_show_columns_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_mysql_system_show_columns_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_mysql_system_show_columns_test)
+
   add_executable(mylite_runtime_information_schema_innodb_session_temp_tablespaces_test
     tests/runtime_information_schema_innodb_session_temp_tablespaces_test.c
   )
@@ -5084,6 +5095,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.mysql_innodb_table_stats
     COMMAND mylite_runtime_mysql_innodb_table_stats_test
+  )
+  add_test(
+    NAME libmylite.runtime.mysql_system_show_columns
+    COMMAND mylite_runtime_mysql_system_show_columns_test
   )
   add_test(
     NAME libmylite.runtime.information_schema_innodb_session_temp_tablespaces

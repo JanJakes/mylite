@@ -133,8 +133,8 @@ Out of scope:
 - exact InnoDB sampling behavior, physical page counts, physical tablespace
   identifiers, table partitions, subpartitions, temporary tables, views,
   privilege filtering, or complete data-dictionary tables;
-- `SHOW COLUMNS FROM mysql.innodb_index_stats` and broader `mysql`
-  system-table shape support beyond `INFORMATION_SCHEMA.COLUMNS`.
+- broader `mysql` system-table shape support beyond the separately specified
+  `SHOW COLUMNS` / `DESCRIBE` metadata for this table.
 
 ## Ownership Boundary
 

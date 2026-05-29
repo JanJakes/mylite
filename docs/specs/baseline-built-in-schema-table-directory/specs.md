@@ -154,6 +154,11 @@ reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
 primary-key metadata while keeping loadable-function execution, persistence,
 and writes out of scope.
 
+The `baseline-mysql-servers-table` slice refines `mysql.servers` with direct
+empty reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
+primary-key metadata while keeping server-definition DDL, FEDERATED
+connections, persistence, and writes out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

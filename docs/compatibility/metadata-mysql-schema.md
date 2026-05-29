@@ -8,8 +8,9 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
-`SELECT` access to empty `mysql.component` and `mysql.func` plus
-`mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
+`SELECT` access to empty `mysql.component`, `mysql.func`, and
+`mysql.servers` plus `mysql.innodb_table_stats` and
+`mysql.innodb_index_stats`, along with
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
 `SHOW TABLE STATUS` status fields, and `INFORMATION_SCHEMA.STATISTICS` /
@@ -93,7 +94,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.firewall_membership` | ❌ | Enterprise Firewall table for group profile memberships |
 | `mysql.firewall_users` | ❌ | Enterprise Firewall table for account profiles |
 | `mysql.firewall_whitelist` | ❌ | Deprecated Enterprise Firewall allowlist table |
-| `mysql.servers` | ❌ | FEDERATED storage engine server definition table |
+| `mysql.servers` | 🟡 | Limited read-only empty FEDERATED server-definition table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no server-definition rows, `CREATE SERVER` / `ALTER SERVER` / `DROP SERVER`, FEDERATED storage-engine connections, persisted server definitions, privilege filtering, or writable system table |
 | `mysql.innodb_dynamic_metadata` | ❌ | Table shape and diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

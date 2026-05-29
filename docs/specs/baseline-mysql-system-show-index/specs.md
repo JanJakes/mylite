@@ -3,8 +3,9 @@
 This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` can introspect
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The separate
-`baseline-mysql-component-table` and `baseline-mysql-func-table` slices extend
-the same path to `mysql.component` and `mysql.func`. The tables remain
+`baseline-mysql-component-table`, `baseline-mysql-func-table`, and
+`baseline-mysql-servers-table` slices extend the same path to
+`mysql.component`, `mysql.func`, and `mysql.servers`. The tables remain
 read-only synthetic system tables; these features expose their primary-key
 shape without creating physical system tables.
 
@@ -31,10 +32,12 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_table_stats
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_index_stats
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.component
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.func
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.servers
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} component {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} func {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} servers {FROM | IN} mysql
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -45,6 +48,7 @@ SHOW INDEX FROM innodb_table_stats;
 SHOW KEYS FROM innodb_index_stats;
 SHOW INDEX FROM component;
 SHOW INDEX FROM func;
+SHOW INDEX FROM servers;
 ```
 
 The existing limited `SHOW INDEX WHERE` evaluator applies to the generated
@@ -75,6 +79,9 @@ row specified by `baseline-mysql-component-table`, with `Cardinality = 0`.
 
 `SHOW INDEX FROM mysql.func` returns the single `PRIMARY(name)` row specified
 by `baseline-mysql-func-table`, with `Cardinality = 0`.
+
+`SHOW INDEX FROM mysql.servers` returns the single `PRIMARY(Server_name)` row
+specified by `baseline-mysql-servers-table`, with `Cardinality = 0`.
 
 `Cardinality` values are deterministic MyLite-owned placeholders matching the
 fresh MySQL 8.4.9 runtime evidence for the built-in statistics rows. They are
@@ -109,7 +116,7 @@ rows to the synthetic statistics tables.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_index_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_index|mysql_func_table|mysql_component_table|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_index_empty_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_index|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats|show_index_empty_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_index_expectations.sh
 git diff --check
 cmake --workflow --preset check

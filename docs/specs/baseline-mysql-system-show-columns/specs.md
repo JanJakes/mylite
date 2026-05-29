@@ -4,8 +4,9 @@ This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
 `DESC` can introspect supported mysql system tables. The original slice covered
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`; the separate
-`baseline-mysql-component-table` and `baseline-mysql-func-table` slices extend
-the same metadata path to `mysql.component` and `mysql.func`. The tables are
+`baseline-mysql-component-table`, `baseline-mysql-func-table`, and
+`baseline-mysql-servers-table` slices extend the same metadata path to
+`mysql.component`, `mysql.func`, and `mysql.servers`. The tables are
 limited read-only synthetic system tables in MyLite; these features reuse owned
 column metadata rather than adding physical system tables.
 
@@ -33,18 +34,22 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_table_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_index_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.component
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.func
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.servers
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} func {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} servers {FROM | IN} mysql
 DESCRIBE mysql.innodb_table_stats
 DESCRIBE mysql.innodb_index_stats
 DESCRIBE mysql.component
 DESCRIBE mysql.func
+DESCRIBE mysql.servers
 DESC mysql.innodb_table_stats
 DESC mysql.innodb_index_stats
 DESC mysql.component
 DESC mysql.func
+DESC mysql.servers
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -55,7 +60,9 @@ SHOW COLUMNS FROM innodb_table_stats;
 SHOW FULL COLUMNS FROM innodb_index_stats;
 SHOW COLUMNS FROM component;
 SHOW COLUMNS FROM func;
+SHOW COLUMNS FROM servers;
 DESCRIBE innodb_table_stats;
+DESC servers;
 ```
 
 `LIKE` filters and the existing limited `SHOW COLUMNS WHERE` evaluator apply to
@@ -99,6 +106,14 @@ auto_increment PRIMARY KEY`, `component_group_id int unsigned NOT NULL`, and
 `ret tinyint NOT NULL DEFAULT 0`, `dl char(128) NOT NULL DEFAULT ''`, and
 `type enum('function','aggregate') NOT NULL`.
 
+`SHOW COLUMNS FROM mysql.servers` returns nine rows specified by
+`baseline-mysql-servers-table`: `Server_name char(64) NOT NULL DEFAULT ''
+PRIMARY KEY`, `Host char(255) NOT NULL DEFAULT ''`, `Db char(64) NOT NULL
+DEFAULT ''`, `Username char(64) NOT NULL DEFAULT ''`, `Password char(64) NOT
+NULL DEFAULT ''`, `Port int NOT NULL DEFAULT 0`, `Socket char(64) NOT NULL
+DEFAULT ''`, `Wrapper char(64) NOT NULL DEFAULT ''`, and `Owner char(64) NOT
+NULL DEFAULT ''`.
+
 `SHOW FULL COLUMNS` adds `Collation`, `Privileges`, and `Comment`. Runtime
 evidence shows `utf8mb3_bin` for the nonbinary `varchar` columns, SQL `NULL` for
 numeric and timestamp column collations, `select,insert,update,references` for
@@ -136,7 +151,7 @@ value includes both `DEFAULT_GENERATED` and `on update CURRENT_TIMESTAMP`.
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_mysql_system_show_columns_test
-ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_func_table|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(mysql_system_show_columns|mysql_servers_table|mysql_func_table|mysql_component_table|mysql_innodb_table_stats|mysql_innodb_index_stats|show_columns_introspection)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_mysql_system_show_columns_expectations.sh
 git diff --check
 cmake --workflow --preset check

@@ -570,6 +570,7 @@ enum {
     information_schema_view_table_usage_column_count = 6,
     mysql_component_column_count = 3,
     mysql_func_column_count = 4,
+    mysql_servers_column_count = 9,
     mysql_innodb_index_stats_column_count = 8,
     mysql_innodb_table_stats_column_count = 6,
     information_schema_tables_index_length_column = 11,
@@ -4486,6 +4487,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS = 78,
     INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT = 79,
     INFORMATION_SCHEMA_TABLE_MYSQL_FUNC = 80,
+    INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS = 81,
 };
 
 struct information_schema_column_definition {
@@ -12366,6 +12368,142 @@ static const char *const mysql_func_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_servers_columns[] = {
+    {"Server_name",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Host",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"Db",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Username",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Password",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Port", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"Socket",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Wrapper",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Owner",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+};
+
+static const char *const mysql_servers_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_servers_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_servers_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_innodb_index_stats_columns[] = {
     {"database_name",
      NULL,
@@ -12603,6 +12741,14 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_func_column_keys,
      mysql_func_column_extras,
      mysql_func_column_privileges},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS,
+      "servers",
+      mysql_servers_columns,
+      mysql_servers_column_count},
+     mysql_servers_column_keys,
+     mysql_servers_column_extras,
+     mysql_servers_column_privileges},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_INNODB_INDEXES,
       "innodb_index_stats",
@@ -16130,6 +16276,10 @@ static bool builtin_schema_table_is_mysql_component(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_func(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_servers(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -50946,7 +51096,8 @@ static bool mysql_system_table_definition_has_no_rows(
 ) {
     return definition != NULL && strcmp(definition->schema_name, "mysql") == 0 &&
            (strcmp(definition->query_definition.name, "component") == 0 ||
-            strcmp(definition->query_definition.name, "func") == 0);
+            strcmp(definition->query_definition.name, "func") == 0 ||
+            strcmp(definition->query_definition.name, "servers") == 0);
 }
 
 static int append_mysql_innodb_index_stats_builtin_rows(
@@ -52072,6 +52223,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
         return MYLITE_OK;
     }
 
@@ -52146,6 +52298,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -53679,7 +53832,8 @@ static const char *builtin_schema_table_data_free(
     }
     return builtin_schema_table_is_mysql_stats(directory, table_name) ||
                    builtin_schema_table_is_mysql_component(directory, table_name) ||
-                   builtin_schema_table_is_mysql_func(directory, table_name)
+                   builtin_schema_table_is_mysql_func(directory, table_name) ||
+                   builtin_schema_table_is_mysql_servers(directory, table_name)
                ? "4194304"
                : "0";
 }
@@ -53768,6 +53922,9 @@ static const char *builtin_schema_table_comment(
         if (strcmp(table_name, "func") == 0) {
             return "User defined functions";
         }
+        if (strcmp(table_name, "servers") == 0) {
+            return "MySQL Foreign Servers table";
+        }
         if (strcmp(table_name, "user") == 0) {
             return "Users and global privileges";
         }
@@ -53815,6 +53972,14 @@ static bool builtin_schema_table_is_mysql_func(
 ) {
     return directory != NULL && table_name != NULL &&
            strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "func") == 0;
+}
+
+static bool builtin_schema_table_is_mysql_servers(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "servers") == 0;
 }
 
 static int append_information_schema_tables_base_row(

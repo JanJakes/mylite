@@ -10,6 +10,8 @@ The separate `baseline-mysql-component-table` slice extends the same metadata
 path to the single `PRIMARY(component_id)` constraint for `mysql.component`.
 The `baseline-mysql-func-table` slice extends it to the single `PRIMARY(name)`
 constraint for `mysql.func`.
+The `baseline-mysql-servers-table` slice extends it to the single
+`PRIMARY(Server_name)` constraint for `mysql.servers`.
 
 ## Compatibility Authority
 
@@ -96,6 +98,8 @@ No parser changes are required.
   `baseline-mysql-component-table`.
 - `mysql.func` primary-key metadata is specified and tested by
   `baseline-mysql-func-table`.
+- `mysql.servers` primary-key metadata is specified and tested by
+  `baseline-mysql-servers-table`.
 - Writes to `mysql` system tables remain rejected by the existing built-in
   schema write-protection rules.
 
@@ -160,7 +164,7 @@ def	mysql	PRIMARY	innodb_table_stats	NULL	NULL
 
 ```sh
 cmake --build --preset dev --target mylite_runtime_information_schema_mysql_system_constraints_test
-ctest --preset dev -R '^libmylite\.runtime\.(information_schema_mysql_system_constraints|mysql_func_table|mysql_component_table|information_schema_mysql_system_statistics|mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats)$' --output-on-failure
+ctest --preset dev -R '^libmylite\.runtime\.(information_schema_mysql_system_constraints|mysql_servers_table|mysql_func_table|mysql_component_table|information_schema_mysql_system_statistics|mysql_system_show_index|mysql_system_show_columns|mysql_innodb_table_stats|mysql_innodb_index_stats)$' --output-on-failure
 packages/libmylite/tests/mysql_baseline_information_schema_mysql_system_constraints_expectations.sh
 git diff --check
 cmake --workflow --preset check

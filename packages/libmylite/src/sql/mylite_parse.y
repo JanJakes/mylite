@@ -1444,11 +1444,21 @@ show_index_filter_opt(A) ::= WHERE(W) predicate(P). {
     A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
-show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
+show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_databases_filter_opt(F). {
+    A = mylite_sql_parser_make_show_databases_statement(state, S, D, F);
 }
-show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
+show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_databases_filter_opt(F). {
+    A = mylite_sql_parser_make_show_databases_statement(state, S, D, F);
+}
+
+show_databases_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_databases_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
+}
+show_databases_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_variables_statement(A) ::= SHOW(S) show_variables_scope_opt(O) VARIABLES(V)

@@ -704,6 +704,7 @@ static int test_schema_if_exists_noops_and_diagnostics(void) {
 }
 
 static int test_schema_diagnostics_and_unsupported_syntax(void) {
+    static const char *const show_app[] = {"app"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -885,14 +886,12 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
             .message_part = "syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_show_schema_statement(
         database,
         "SHOW DATABASES WHERE `Database` = 'app'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
+        show_app,
+        sizeof(show_app) / sizeof(show_app[0]),
+        "show databases where app"
     );
     failures += execute_error(
         database,

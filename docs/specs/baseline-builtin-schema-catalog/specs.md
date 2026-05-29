@@ -28,10 +28,11 @@ This slice does not implement the table catalogs inside `mysql`,
 `performance_schema`, or `sys`. The later
 `baseline-built-in-schema-table-directory` slice adds metadata-only table
 directory rows for built-in schemas, but unsupported system tables remain
-non-queryable. This slice also does not expand `SHOW DATABASES WHERE`,
-privilege filtering, full account semantics, complete charset/collation
-catalogs, table-status statistics, constraint metadata, or complex
-`INFORMATION_SCHEMA` joins.
+non-queryable. This slice also does not expand privilege filtering, full account
+semantics, complete charset/collation catalogs, table-status statistics,
+constraint metadata, or complex `INFORMATION_SCHEMA` joins. A later
+`baseline-show-databases-where` slice covers limited `SHOW DATABASES WHERE`
+filtering over the displayed `Database` column.
 
 ## Compatibility Authority
 
@@ -67,9 +68,9 @@ cmd ::= USE ident.
 table_factor ::= qualified_name.
 ```
 
-`SHOW DATABASES WHERE ...` remains unsupported in this slice even though MySQL
-accepts a `WHERE` form. That is reserved for the broader SHOW filtering work so
-this feature can focus on the catalog rows and schema resolution boundary.
+`SHOW DATABASES WHERE ...` remains outside this historical slice even though
+MySQL accepts a `WHERE` form. The later `baseline-show-databases-where` slice
+covers limited displayed-column filtering.
 
 ## Semantics
 
@@ -188,8 +189,8 @@ Supported diagnostics:
 - protected `information_schema` writes: existing `1044 / 42000` access denied.
 - protected `mysql`, `performance_schema`, and `sys` writes:
   `3552 / HY000`, `Access to system schema '<schema>' is rejected.`
-- unsupported `SHOW DATABASES WHERE`: existing syntax/unsupported parser
-  behavior.
+- `SHOW DATABASES WHERE`: supported only by the later
+  `baseline-show-databases-where` slice.
 - unknown metadata tables under `information_schema`: existing
   `1109 / 42S02` behavior.
 - selected `mysql` / `performance_schema` / `sys` unqualified table reads:

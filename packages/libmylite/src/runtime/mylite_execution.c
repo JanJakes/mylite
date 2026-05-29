@@ -16561,6 +16561,15 @@ static int append_information_schema_table_constraints_check_row(
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_check_constraint_info *check_constraint
 );
+static int append_information_schema_table_constraints_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_table_constraints_mysql_system_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+);
 static int append_information_schema_table_constraints_extensions_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -16580,6 +16589,15 @@ static int append_information_schema_table_constraints_extensions_foreign_key_ro
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
+);
+static int append_information_schema_table_constraints_extensions_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_table_constraints_extensions_mysql_system_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
 );
 static int append_information_schema_check_constraints_base_rows(
     struct mylite_db *database,
@@ -16612,6 +16630,15 @@ static int append_information_schema_key_column_usage_foreign_key_row(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
+);
+static int append_information_schema_key_column_usage_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_key_column_usage_mysql_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
 );
 static int append_information_schema_referential_constraints_base_rows(
     struct mylite_db *database,
@@ -51835,6 +51862,15 @@ static int append_information_schema_system_rows(
         return append_information_schema_st_units_of_measure_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_PARTITIONS:
         return append_information_schema_partitions_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
+        return append_information_schema_table_constraints_mysql_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS_EXTENSIONS:
+        return append_information_schema_table_constraints_extensions_mysql_system_rows(
+            database,
+            rows
+        );
+    case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
+        return append_information_schema_key_column_usage_mysql_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
         return append_information_schema_statistics_mysql_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
@@ -51875,9 +51911,6 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_ROLE_COLUMN_GRANTS:
     case INFORMATION_SCHEMA_TABLE_ROLE_ROUTINE_GRANTS:
     case INFORMATION_SCHEMA_TABLE_ROLE_TABLE_GRANTS:
-    case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
-    case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS_EXTENSIONS:
-    case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
@@ -57452,6 +57485,61 @@ static int append_information_schema_table_constraints_check_row(
     return append_information_schema_row(database, rows, values);
 }
 
+static int append_information_schema_table_constraints_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        rc = append_information_schema_table_constraints_mysql_system_table_row(
+            database,
+            rows,
+            &mysql_system_table_definitions[index]
+        );
+    }
+
+    return rc;
+}
+
+static int append_information_schema_table_constraints_mysql_system_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+) {
+    bool has_primary_key = false;
+
+    if (definition == NULL || definition->column_keys == NULL) {
+        return MYLITE_OK;
+    }
+
+    for (size_t column_index = 0U; column_index < definition->query_definition.column_count;
+         ++column_index) {
+        if (strcmp(definition->column_keys[column_index], "PRI") == 0) {
+            has_primary_key = true;
+            break;
+        }
+    }
+    if (!has_primary_key) {
+        return MYLITE_OK;
+    }
+
+    const char *values[information_schema_table_constraints_column_count] = {
+        "def",
+        definition->schema_name,
+        "PRIMARY",
+        definition->schema_name,
+        definition->query_definition.name,
+        "PRIMARY KEY",
+        "YES",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
 static int append_information_schema_table_constraints_extensions_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -57545,6 +57633,60 @@ static int append_information_schema_table_constraints_extensions_foreign_key_ro
         schema->name,
         foreign_key->foreign_key.name,
         table->name,
+        NULL,
+        NULL,
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_table_constraints_extensions_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        rc = append_information_schema_table_constraints_extensions_mysql_system_table_row(
+            database,
+            rows,
+            &mysql_system_table_definitions[index]
+        );
+    }
+
+    return rc;
+}
+
+static int append_information_schema_table_constraints_extensions_mysql_system_table_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+) {
+    bool has_primary_key = false;
+
+    if (definition == NULL || definition->column_keys == NULL) {
+        return MYLITE_OK;
+    }
+
+    for (size_t column_index = 0U; column_index < definition->query_definition.column_count;
+         ++column_index) {
+        if (strcmp(definition->column_keys[column_index], "PRI") == 0) {
+            has_primary_key = true;
+            break;
+        }
+    }
+    if (!has_primary_key) {
+        return MYLITE_OK;
+    }
+
+    const char *values[information_schema_table_constraints_extensions_column_count] = {
+        "def",
+        definition->schema_name,
+        "PRIMARY",
+        definition->query_definition.name,
         NULL,
         NULL,
     };
@@ -57742,6 +57884,79 @@ static int append_information_schema_key_column_usage_foreign_key_row(
                 sizeof(referenced_ordinal_text)
             );
         }
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+
+    return rc;
+}
+
+static int append_information_schema_key_column_usage_mysql_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        rc = append_information_schema_key_column_usage_mysql_system_table_rows(
+            database,
+            rows,
+            &mysql_system_table_definitions[index]
+        );
+    }
+
+    return rc;
+}
+
+static int append_information_schema_key_column_usage_mysql_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mysql_system_table_definition *definition
+) {
+    size_t sequence = 0U;
+    int rc = MYLITE_OK;
+
+    if (definition == NULL || definition->column_keys == NULL) {
+        return MYLITE_OK;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < definition->query_definition.column_count;
+         ++column_index) {
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[column_index];
+        char sequence_text[integer_text_capacity];
+
+        if (strcmp(definition->column_keys[column_index], "PRI") != 0) {
+            continue;
+        }
+
+        ++sequence;
+        const char *values[information_schema_key_column_usage_column_count] = {
+            "def",
+            definition->schema_name,
+            "PRIMARY",
+            "def",
+            definition->schema_name,
+            definition->query_definition.name,
+            column->name,
+            sequence_text,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+        };
+
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)sequence,
+            sequence_text,
+            sizeof(sequence_text)
+        );
         if (rc == MYLITE_OK) {
             rc = append_information_schema_row(database, rows, values);
         }

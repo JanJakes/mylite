@@ -17644,6 +17644,13 @@ static int select_statement_targets_mysql_data_dictionary_table(
     size_t table_name_size,
     bool *out_matches
 );
+static int select_statement_targets_absent_mysql_enterprise_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char *out_table_name,
+    size_t table_name_size,
+    bool *out_matches
+);
 static int select_statement_targets_mysql_system_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -17666,6 +17673,7 @@ static const struct mysql_system_table_definition *find_mysql_system_table_defin
     const char *table_name
 );
 static bool mysql_data_dictionary_table_is_hidden(const char *table_name);
+static bool mysql_enterprise_table_is_target_absent(const char *table_name);
 static int execute_mysql_system_table_query(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -51077,12 +51085,15 @@ static int execute_select_statement(
     const char *argument_count_error_function = NULL;
     bool is_information_schema_query = false;
     bool is_mysql_data_dictionary_table_query = false;
+    bool is_absent_mysql_enterprise_table_query = false;
     bool is_mysql_system_table_query = false;
     bool projected_statement_handled = false;
     char mysql_data_dictionary_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char absent_mysql_enterprise_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
     memset(mysql_data_dictionary_table_name, 0, sizeof(mysql_data_dictionary_table_name));
+    memset(absent_mysql_enterprise_table_name, 0, sizeof(absent_mysql_enterprise_table_name));
     argument_count_error_function = select_statement_argument_count_error_function(statement);
     if (argument_count_error_function != NULL) {
         set_native_function_parameter_count_error(database, argument_count_error_function);
@@ -51121,6 +51132,20 @@ static int execute_select_statement(
     }
     if (is_mysql_data_dictionary_table_query) {
         set_mysql_data_dictionary_table_access_error(database, mysql_data_dictionary_table_name);
+        return MYLITE_ERROR;
+    }
+    rc = select_statement_targets_absent_mysql_enterprise_table(
+        database,
+        statement,
+        absent_mysql_enterprise_table_name,
+        sizeof(absent_mysql_enterprise_table_name),
+        &is_absent_mysql_enterprise_table_query
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_absent_mysql_enterprise_table_query) {
+        set_table_does_not_exist_error(database, "mysql", absent_mysql_enterprise_table_name);
         return MYLITE_ERROR;
     }
     rc = select_statement_targets_mysql_system_table(
@@ -52766,6 +52791,63 @@ static int select_statement_targets_mysql_data_dictionary_table(
     return MYLITE_OK;
 }
 
+static int select_statement_targets_absent_mysql_enterprise_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char *out_table_name,
+    size_t table_name_size,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *schema_name = NULL;
+    const char *table_name = NULL;
+    size_t part_count = 0U;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (out_table_name == NULL || table_name_size == 0U || out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_table_name[0] = '\0';
+    *out_matches = false;
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U) {
+        schema_name = parts[0];
+        table_name = parts[1];
+    } else if (part_count == 1U && selected_schema_is_mysql_system_schema(database)) {
+        schema_name = database->session.selected_schema;
+        table_name = parts[0];
+    } else {
+        return MYLITE_OK;
+    }
+    if (!schema_name_is_mysql_system_schema(schema_name) ||
+        !mysql_enterprise_table_is_target_absent(table_name)) {
+        return MYLITE_OK;
+    }
+
+    *out_matches = true;
+    written = snprintf(out_table_name, table_name_size, "%s", table_name);
+    if (written < 0 || (size_t)written >= table_name_size) {
+        set_runtime_error(database, "failed to format absent mysql Enterprise table name");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
 static int select_statement_targets_mysql_system_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -53000,6 +53082,29 @@ static bool mysql_data_dictionary_table_is_hidden(const char *table_name) {
     for (size_t index = 0U; index < sizeof(hidden_table_names) / sizeof(hidden_table_names[0]);
          ++index) {
         if (strcmp(table_name, hidden_table_names[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool mysql_enterprise_table_is_target_absent(const char *table_name) {
+    static const char *const absent_table_names[] = {
+        "audit_log_filter",
+        "audit_log_user",
+        "firewall_group_allowlist",
+        "firewall_groups",
+        "firewall_membership",
+        "firewall_users",
+        "firewall_whitelist",
+    };
+
+    if (table_name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(absent_table_names) / sizeof(absent_table_names[0]);
+         ++index) {
+        if (strcmp(table_name, absent_table_names[index]) == 0) {
             return true;
         }
     }

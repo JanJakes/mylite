@@ -12,7 +12,7 @@ listed otherwise below; the current exceptions are limited read-only
 connection-control registry rows in `mysql.plugin`, default optimizer cost
 rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
 `mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and empty
-placeholder `mysql.time_zone*` reads plus
+placeholder `mysql.time_zone*` and `mysql.ndb_binlog_index` reads plus
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
 MySQL-shaped `3554 / HY000` diagnostics for hidden data dictionary table
 access attempts, and
@@ -85,7 +85,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.time_zone_transition` | 🟡 | Limited read-only empty placeholder time-zone transition table with MySQL 8.4.9-shaped columns, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded transition rows, daylight-saving conversion, privilege filtering, or writable system table |
 | `mysql.time_zone_transition_type` | 🟡 | Limited read-only empty placeholder time-zone transition type table with MySQL 8.4.9-shaped columns, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded transition-type rows, named-zone offset/abbreviation resolution, privilege filtering, or writable system table |
 | `mysql.gtid_executed` | 🟡 | Limited read-only empty GTID persistence table with MySQL 8.4.9-shaped columns, column comments, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no GTID rows, binary logging, GTID mode or persistence, GTID table compression, replication state, reset-side effects, privilege filtering, or writable system table |
-| `mysql.ndb_binlog_index` | ❌ | NDB Cluster replication binary log information table |
+| `mysql.ndb_binlog_index` | 🟡 | Limited read-only empty NDB Cluster replication binary-log index table with MySQL 8.4.9-shaped columns, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no NDB Cluster integration, NDB binary-log injector rows, binary logging, replication epoch mapping, failover metadata, privilege filtering, or writable system table |
 | `mysql.slave_master_info` | ❌ | Table shape and diagnostics |
 | `mysql.slave_relay_log_info` | ❌ | Replication metadata repository table for relay log metadata |
 | `mysql.slave_worker_info` | ❌ | Replication metadata repository table for worker metadata |

@@ -575,6 +575,7 @@ enum {
     mysql_gtid_executed_column_count = 4,
     mysql_general_log_column_count = 6,
     mysql_slow_log_column_count = 12,
+    mysql_ndb_binlog_index_column_count = 12,
     mysql_plugin_column_count = 2,
     mysql_server_cost_column_count = 5,
     mysql_servers_column_count = 9,
@@ -4506,6 +4507,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME = 90,
     INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION = 91,
     INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE = 92,
+    INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX = 93,
 };
 
 struct information_schema_column_definition {
@@ -12637,6 +12639,110 @@ static const char *const mysql_slow_log_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_ndb_binlog_index_columns[] = {
+    {"Position", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+    {"File",
+     NULL,
+     "NO",
+     "varchar",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "latin1",
+     "latin1_swedish_ci",
+     "varchar(255)"},
+    {"epoch", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+    {"inserts", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"updates", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"deletes", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"schemaops", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"orig_server_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"orig_epoch",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"gci", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"next_position",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"next_file",
+     NULL,
+     "NO",
+     "varchar",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "latin1",
+     "latin1_swedish_ci",
+     "varchar(255)"},
+};
+
+static const char *const mysql_ndb_binlog_index_column_keys[] = {
+    "",
+    "",
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "PRI",
+    "PRI",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_ndb_binlog_index_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_ndb_binlog_index_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_plugin_columns[] = {
     {"name",
      "",
@@ -13479,6 +13585,18 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_slow_log_column_keys,
      mysql_slow_log_column_extras,
      mysql_slow_log_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX,
+      "ndb_binlog_index",
+      mysql_ndb_binlog_index_columns,
+      mysql_ndb_binlog_index_column_count},
+     mysql_ndb_binlog_index_column_keys,
+     mysql_ndb_binlog_index_column_extras,
+     mysql_ndb_binlog_index_column_privileges,
      NULL,
      NULL,
      0U,
@@ -17148,6 +17266,10 @@ static bool builtin_schema_table_is_mysql_func(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_gtid_executed(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_ndb_binlog_index(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -52121,6 +52243,7 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "func") == 0 ||
             strcmp(definition->query_definition.name, "general_log") == 0 ||
             strcmp(definition->query_definition.name, "gtid_executed") == 0 ||
+            strcmp(definition->query_definition.name, "ndb_binlog_index") == 0 ||
             strcmp(definition->query_definition.name, "servers") == 0 ||
             strcmp(definition->query_definition.name, "slow_log") == 0 ||
             strcmp(definition->query_definition.name, "time_zone") == 0 ||
@@ -53448,6 +53571,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
@@ -53534,6 +53658,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
@@ -55137,6 +55262,7 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_component(directory, table_name) ||
                    builtin_schema_table_is_mysql_func(directory, table_name) ||
                    builtin_schema_table_is_mysql_gtid_executed(directory, table_name) ||
+                   builtin_schema_table_is_mysql_ndb_binlog_index(directory, table_name) ||
                    builtin_schema_table_is_mysql_plugin(directory, table_name) ||
                    builtin_schema_table_is_mysql_servers(directory, table_name) ||
                    builtin_schema_table_is_mysql_time_zone(directory, table_name)
@@ -55316,6 +55442,15 @@ static bool builtin_schema_table_is_mysql_gtid_executed(
 ) {
     return directory != NULL && table_name != NULL &&
            strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "gtid_executed") == 0;
+}
+
+static bool builtin_schema_table_is_mysql_ndb_binlog_index(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 &&
+           strcmp(table_name, "ndb_binlog_index") == 0;
 }
 
 static bool builtin_schema_table_is_mysql_plugin(

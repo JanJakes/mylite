@@ -52976,6 +52976,7 @@ static bool mysql_data_dictionary_table_is_hidden(const char *table_name) {
         "index_stats",
         "indexes",
         "innodb_ddl_log",
+        "innodb_dynamic_metadata",
         "parameter_type_elements",
         "parameters",
         "resource_groups",
@@ -209185,8 +209186,10 @@ static void set_mysql_data_dictionary_table_access_error(
     const char *table_name
 ) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
-    const char *table_kind =
-        strcmp(table_name, "innodb_ddl_log") == 0 ? "system" : "data dictionary";
+    const char *table_kind = strcmp(table_name, "innodb_ddl_log") == 0 ||
+                                     strcmp(table_name, "innodb_dynamic_metadata") == 0
+                                 ? "system"
+                                 : "data dictionary";
     int written = snprintf(
         message,
         sizeof(message),

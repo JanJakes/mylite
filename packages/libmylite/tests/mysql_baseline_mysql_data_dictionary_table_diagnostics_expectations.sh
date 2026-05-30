@@ -110,6 +110,13 @@ expect_error \
     "SELECT COUNT(*) FROM mysql.innodb_ddl_log;"
 
 expect_error \
+    "mysql.innodb_dynamic_metadata direct read" \
+    3554 \
+    HY000 \
+    "Access to system table 'mysql.innodb_dynamic_metadata' is rejected." \
+    "SELECT COUNT(*) FROM mysql.innodb_dynamic_metadata;"
+
+expect_error \
     "mysql.catalogs show columns" \
     3554 \
     HY000 \
@@ -134,11 +141,23 @@ expect_error \
     "Access to system table 'mysql.innodb_ddl_log' is rejected." \
     "SHOW COLUMNS FROM mysql.innodb_ddl_log;"
 expect_error \
+    "mysql.innodb_dynamic_metadata show index" \
+    3554 \
+    HY000 \
+    "Access to system table 'mysql.innodb_dynamic_metadata' is rejected." \
+    "SHOW INDEX FROM mysql.innodb_dynamic_metadata;"
+expect_error \
     "mysql.schemata unqualified direct read" \
     3554 \
     HY000 \
     "Access to data dictionary table 'mysql.schemata' is rejected." \
     "USE mysql; SELECT COUNT(*) FROM schemata;"
+expect_error \
+    "mysql.innodb_dynamic_metadata unqualified direct read" \
+    3554 \
+    HY000 \
+    "Access to system table 'mysql.innodb_dynamic_metadata' is rejected." \
+    "USE mysql; SELECT COUNT(*) FROM innodb_dynamic_metadata;"
 
 expect_output \
     "hidden dictionary tables are absent from INFORMATION_SCHEMA.TABLES" \
@@ -146,11 +165,17 @@ expect_output \
     "SELECT COUNT(*)
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql'
-        AND TABLE_NAME IN ('catalogs','schemata','tables','innodb_ddl_log');"
+        AND TABLE_NAME IN ('catalogs','schemata','tables','innodb_ddl_log',
+                           'innodb_dynamic_metadata');"
 expect_output \
     "hidden dictionary tables are absent from SHOW FULL TABLES" \
     "" \
     "SHOW FULL TABLES FROM mysql
-      WHERE Tables_in_mysql IN ('catalogs','schemata','tables','innodb_ddl_log');"
+      WHERE Tables_in_mysql IN ('catalogs','schemata','tables','innodb_ddl_log',
+                                'innodb_dynamic_metadata');"
+expect_output \
+    "mysql.innodb_dynamic_metadata is absent from SHOW TABLE STATUS" \
+    "" \
+    "SHOW TABLE STATUS FROM mysql LIKE 'innodb_dynamic_metadata';"
 
 printf '%s\n' "mysql_baseline_mysql_data_dictionary_table_diagnostics: ok"

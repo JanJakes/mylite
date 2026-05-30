@@ -15,8 +15,8 @@ rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
 placeholder `mysql.time_zone*`, `mysql.ndb_binlog_index`, and `mysql.slave_*`
 replication metadata table reads plus `mysql.innodb_table_stats` and
 `mysql.innodb_index_stats`, along with
-MySQL-shaped `3554 / HY000` diagnostics for hidden data dictionary table
-access attempts, and
+MySQL-shaped `3554 / HY000` diagnostics for hidden data dictionary/system
+table access attempts, and
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
 `SHOW TABLE STATUS` status fields, and `INFORMATION_SCHEMA.STATISTICS` /
@@ -102,6 +102,6 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.firewall_users` | ❌ | Enterprise Firewall table for account profiles |
 | `mysql.firewall_whitelist` | ❌ | Deprecated Enterprise Firewall allowlist table |
 | `mysql.servers` | 🟡 | Limited read-only empty FEDERATED server-definition table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no server-definition rows, `CREATE SERVER` / `ALTER SERVER` / `DROP SERVER`, FEDERATED storage-engine connections, persisted server definitions, privilege filtering, or writable system table |
-| `mysql.innodb_dynamic_metadata` | ❌ | Table shape and diagnostics |
+| `mysql.innodb_dynamic_metadata` | 🟡 | Hidden InnoDB system table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-observed `3554 / HY000` system-table wording; absent from `SHOW TABLES`, `INFORMATION_SCHEMA.TABLES`, and `SHOW TABLE STATUS`; no InnoDB fast-changing metadata persistence, auto-increment counter history, index tree corruption flags, or data dictionary buffer-table state |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

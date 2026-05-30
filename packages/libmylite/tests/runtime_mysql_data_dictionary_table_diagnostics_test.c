@@ -16,6 +16,7 @@ enum {
     message_buffer_capacity = 160,
     mysql_error_data_dictionary_access = 3554,
     show_full_tables_column_count = 2,
+    show_table_status_column_count = 18,
 };
 
 struct expected_query {
@@ -73,6 +74,7 @@ static int test_mysql_data_dictionary_table_diagnostics(void) {
         {"index_stats", "data dictionary"},
         {"indexes", "data dictionary"},
         {"innodb_ddl_log", "system"},
+        {"innodb_dynamic_metadata", "system"},
         {"parameter_type_elements", "data dictionary"},
         {"parameters", "data dictionary"},
         {"resource_groups", "data dictionary"},
@@ -94,6 +96,26 @@ static int test_mysql_data_dictionary_table_diagnostics(void) {
     static const char *const show_full_tables_columns[show_full_tables_column_count] = {
         "Tables_in_mysql (schemata)",
         "Table_type",
+    };
+    static const char *const show_table_status_columns[show_table_status_column_count] = {
+        "Name",
+        "Engine",
+        "Version",
+        "Row_format",
+        "Rows",
+        "Avg_row_length",
+        "Data_length",
+        "Max_data_length",
+        "Index_length",
+        "Data_free",
+        "Auto_increment",
+        "Create_time",
+        "Update_time",
+        "Check_time",
+        "Collation",
+        "Checksum",
+        "Create_options",
+        "Comment",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -134,6 +156,15 @@ static int test_mysql_data_dictionary_table_diagnostics(void) {
     }
 
     failures += expect_statement_ok(database, "USE mysql");
+    failures += expect_error(
+        database,
+        "SELECT COUNT(*) FROM innodb_dynamic_metadata",
+        (struct expected_sql_error){
+            .code = mysql_error_data_dictionary_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system table 'mysql.innodb_dynamic_metadata' is rejected.",
+        }
+    );
     failures += expect_error(
         database,
         "SELECT COUNT(*) FROM schemata",
@@ -180,11 +211,21 @@ static int test_mysql_data_dictionary_table_diagnostics(void) {
             .message_part = "Access to system table 'mysql.innodb_ddl_log' is rejected.",
         }
     );
+    failures += expect_error(
+        database,
+        "SHOW INDEX FROM mysql.innodb_dynamic_metadata",
+        (struct expected_sql_error){
+            .code = mysql_error_data_dictionary_access,
+            .sqlstate = "HY000",
+            .message_part = "Access to system table 'mysql.innodb_dynamic_metadata' is rejected.",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'mysql' "
-                   "AND TABLE_NAME IN ('catalogs','schemata','tables','innodb_ddl_log')",
+                   "AND TABLE_NAME IN ('catalogs','schemata','tables','innodb_ddl_log',"
+                   "'innodb_dynamic_metadata')",
             .column_names = count_columns,
             .column_count = sizeof(count_columns) / sizeof(count_columns[0]),
             .values = count_zero,
@@ -201,6 +242,17 @@ static int test_mysql_data_dictionary_table_diagnostics(void) {
             .values = NULL,
             .row_count = 0U,
             .context = "hidden dictionary tables absent from show full tables",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW TABLE STATUS FROM mysql LIKE 'innodb_dynamic_metadata'",
+            .column_names = show_table_status_columns,
+            .column_count = show_table_status_column_count,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "mysql.innodb_dynamic_metadata absent from show table status",
         }
     );
 

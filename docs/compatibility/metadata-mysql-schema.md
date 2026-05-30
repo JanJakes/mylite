@@ -14,6 +14,8 @@ rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
 `mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and empty
 placeholder `mysql.time_zone*` reads plus
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
+MySQL-shaped `3554 / HY000` diagnostics for hidden data dictionary table
+access attempts, and
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
 `SHOW TABLE STATUS` status fields, and `INFORMATION_SCHEMA.STATISTICS` /
@@ -27,37 +29,37 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 
 | Table | Status | Notes |
 | --- | --- | --- |
-| `mysql.catalogs` | ❌ | Dictionary table: catalog metadata |
-| `mysql.character_sets` | ❌ | Dictionary table: character set metadata |
-| `mysql.check_constraints` | ❌ | Dictionary table: CHECK constraint metadata |
-| `mysql.collations` | ❌ | Dictionary table: collation metadata |
-| `mysql.column_statistics` | ❌ | Dictionary table: histogram statistics |
-| `mysql.column_type_elements` | ❌ | Dictionary table: ENUM/SET and other column type elements |
-| `mysql.columns` | ❌ | Dictionary table: table column metadata |
-| `mysql.dd_properties` | ❌ | Dictionary table: dictionary version and upgrade metadata |
-| `mysql.events` | ❌ | Dictionary table: Event Scheduler metadata |
-| `mysql.foreign_keys` | ❌ | Dictionary table: foreign key metadata |
-| `mysql.foreign_key_column_usage` | ❌ | Dictionary table: foreign key column mappings |
-| `mysql.index_column_usage` | ❌ | Dictionary table: index column usage |
-| `mysql.index_partitions` | ❌ | Dictionary table: index partition metadata |
-| `mysql.index_stats` | ❌ | Dictionary table: dynamic index statistics |
-| `mysql.indexes` | ❌ | Dictionary table: index metadata |
-| `mysql.innodb_ddl_log` | ❌ | Dictionary table: crash-safe DDL logs |
-| `mysql.parameter_type_elements` | ❌ | Dictionary table: routine parameter and return type elements |
-| `mysql.parameters` | ❌ | Table shape and diagnostics |
-| `mysql.resource_groups` | ❌ | Dictionary table: resource group metadata |
-| `mysql.routines` | ❌ | Dictionary table: stored procedure and function metadata |
-| `mysql.schemata` | ❌ | Dictionary table: schema metadata |
-| `mysql.st_spatial_reference_systems` | ❌ | Dictionary table: spatial reference systems |
-| `mysql.table_partition_values` | ❌ | Dictionary table: partition values |
-| `mysql.table_partitions` | ❌ | Dictionary table: table partition metadata |
-| `mysql.table_stats` | ❌ | Dictionary table: dynamic table statistics |
-| `mysql.tables` | ❌ | Dictionary table: table metadata |
-| `mysql.tablespace_files` | ❌ | Dictionary table: tablespace files |
-| `mysql.tablespaces` | ❌ | Dictionary table: active tablespaces |
-| `mysql.triggers` | ❌ | Dictionary table: trigger metadata |
-| `mysql.view_routine_usage` | ❌ | Dictionary table: view-to-routine dependencies |
-| `mysql.view_table_usage` | ❌ | Dictionary table: view-to-table dependencies |
+| `mysql.catalogs` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from `SHOW TABLES`, `INFORMATION_SCHEMA.TABLES`, and `SHOW TABLE STATUS`; no queryable base rows or debug dictionary access |
+| `mysql.character_sets` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.CHARACTER_SETS` for supported public metadata |
+| `mysql.check_constraints` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` for supported public metadata |
+| `mysql.collations` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.COLLATIONS` for supported public metadata |
+| `mysql.column_statistics` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.COLUMN_STATISTICS` for supported public metadata |
+| `mysql.column_type_elements` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no queryable base rows or complete type-element dictionary |
+| `mysql.columns` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.COLUMNS` for supported public metadata |
+| `mysql.dd_properties` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no dictionary-version storage or upgrade metadata |
+| `mysql.events` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.EVENTS` for supported public metadata |
+| `mysql.foreign_keys` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use public constraint metadata surfaces instead |
+| `mysql.foreign_key_column_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` for supported public metadata |
+| `mysql.index_column_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.STATISTICS` for supported public metadata |
+| `mysql.index_partitions` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no partition dictionary base rows |
+| `mysql.index_stats` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no dynamic dictionary statistics base rows |
+| `mysql.indexes` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.STATISTICS` for supported public metadata |
+| `mysql.innodb_ddl_log` | 🟡 | Hidden system table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-observed `3554 / HY000` system-table wording; absent from directory metadata; no crash-safe DDL log storage |
+| `mysql.parameter_type_elements` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no routine parameter type-element dictionary |
+| `mysql.parameters` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.PARAMETERS` for supported public metadata |
+| `mysql.resource_groups` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.RESOURCE_GROUPS` for supported public metadata |
+| `mysql.routines` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.ROUTINES` for supported public metadata |
+| `mysql.schemata` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.SCHEMATA` for supported public metadata |
+| `mysql.st_spatial_reference_systems` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` for supported public metadata |
+| `mysql.table_partition_values` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no partition-value dictionary base rows |
+| `mysql.table_partitions` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use public partition metadata surfaces where supported |
+| `mysql.table_stats` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; no dynamic dictionary table-statistics base rows |
+| `mysql.tables` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.TABLES` for supported public metadata |
+| `mysql.tablespace_files` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use public tablespace/file metadata surfaces where supported |
+| `mysql.tablespaces` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use public tablespace metadata surfaces where supported |
+| `mysql.triggers` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.TRIGGERS` for supported public metadata |
+| `mysql.view_routine_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` for supported public metadata |
+| `mysql.view_table_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` for supported public metadata |
 | `mysql.user` | ❌ | Table shape and diagnostics |
 | `mysql.global_grants` | ❌ | Grant table: dynamic global privilege assignments |
 | `mysql.db` | ❌ | Grant table: database-level privileges |

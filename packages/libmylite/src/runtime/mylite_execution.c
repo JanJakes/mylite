@@ -165,6 +165,7 @@ enum {
     mysql_error_default_val_generated = 3773,
     mysql_error_database_does_not_exist = 3503,
     mysql_error_system_schema_access = 3552,
+    mysql_error_data_dictionary_access = 3554,
     mysql_error_primary_key_index_invisible = 3522,
     mysql_error_spatial_column_cannot_be_null = 3673,
     mysql_warning_spatial_index_no_srid = 3674,
@@ -16640,6 +16641,13 @@ static int execute_mysql_system_table_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int select_statement_targets_mysql_data_dictionary_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char *out_table_name,
+    size_t table_name_size,
+    bool *out_matches
+);
 static int select_statement_targets_mysql_system_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -16661,6 +16669,7 @@ static const struct mysql_system_table_definition *find_mysql_system_table_defin
     const char *schema_name,
     const char *table_name
 );
+static bool mysql_data_dictionary_table_is_hidden(const char *table_name);
 static int execute_mysql_system_table_query(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -37688,6 +37697,10 @@ static void set_json_null_member_name_error(struct mylite_db *database);
 static void set_no_database_error(struct mylite_db *database);
 static void set_database_access_denied_error(struct mylite_db *database, const char *schema_name);
 static void set_system_schema_access_error(struct mylite_db *database, const char *schema_name);
+static void set_mysql_data_dictionary_table_access_error(
+    struct mylite_db *database,
+    const char *table_name
+);
 static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
 static int append_database_exists_note(struct mylite_db *database, const char *schema_name);
 static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
@@ -50055,10 +50068,13 @@ static int execute_select_statement(
 ) {
     const char *argument_count_error_function = NULL;
     bool is_information_schema_query = false;
+    bool is_mysql_data_dictionary_table_query = false;
     bool is_mysql_system_table_query = false;
     bool projected_statement_handled = false;
+    char mysql_data_dictionary_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
+    memset(mysql_data_dictionary_table_name, 0, sizeof(mysql_data_dictionary_table_name));
     argument_count_error_function = select_statement_argument_count_error_function(statement);
     if (argument_count_error_function != NULL) {
         set_native_function_parameter_count_error(database, argument_count_error_function);
@@ -50084,6 +50100,20 @@ static int execute_select_statement(
             apply_sql_select_limit,
             out_result
         );
+    }
+    rc = select_statement_targets_mysql_data_dictionary_table(
+        database,
+        statement,
+        mysql_data_dictionary_table_name,
+        sizeof(mysql_data_dictionary_table_name),
+        &is_mysql_data_dictionary_table_query
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_mysql_data_dictionary_table_query) {
+        set_mysql_data_dictionary_table_access_error(database, mysql_data_dictionary_table_name);
+        return MYLITE_ERROR;
     }
     rc = select_statement_targets_mysql_system_table(
         database,
@@ -51671,6 +51701,63 @@ static int execute_mysql_system_table_select_statement(
     return rc;
 }
 
+static int select_statement_targets_mysql_data_dictionary_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char *out_table_name,
+    size_t table_name_size,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *schema_name = NULL;
+    const char *table_name = NULL;
+    size_t part_count = 0U;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (out_table_name == NULL || table_name_size == 0U || out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_table_name[0] = '\0';
+    *out_matches = false;
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U) {
+        schema_name = parts[0];
+        table_name = parts[1];
+    } else if (part_count == 1U && selected_schema_is_mysql_system_schema(database)) {
+        schema_name = database->session.selected_schema;
+        table_name = parts[0];
+    } else {
+        return MYLITE_OK;
+    }
+    if (!schema_name_is_mysql_system_schema(schema_name) ||
+        !mysql_data_dictionary_table_is_hidden(table_name)) {
+        return MYLITE_OK;
+    }
+
+    *out_matches = true;
+    written = snprintf(out_table_name, table_name_size, "%s", table_name);
+    if (written < 0 || (size_t)written >= table_name_size) {
+        set_runtime_error(database, "failed to format mysql data dictionary table name");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
 static int select_statement_targets_mysql_system_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -51861,6 +51948,53 @@ static const struct mysql_system_table_definition *find_mysql_system_table_defin
         }
     }
     return NULL;
+}
+
+static bool mysql_data_dictionary_table_is_hidden(const char *table_name) {
+    static const char *const hidden_table_names[] = {
+        "catalogs",
+        "character_sets",
+        "check_constraints",
+        "collations",
+        "column_statistics",
+        "column_type_elements",
+        "columns",
+        "dd_properties",
+        "events",
+        "foreign_keys",
+        "foreign_key_column_usage",
+        "index_column_usage",
+        "index_partitions",
+        "index_stats",
+        "indexes",
+        "innodb_ddl_log",
+        "parameter_type_elements",
+        "parameters",
+        "resource_groups",
+        "routines",
+        "schemata",
+        "st_spatial_reference_systems",
+        "table_partition_values",
+        "table_partitions",
+        "table_stats",
+        "tables",
+        "tablespace_files",
+        "tablespaces",
+        "triggers",
+        "view_routine_usage",
+        "view_table_usage",
+    };
+
+    if (table_name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(hidden_table_names) / sizeof(hidden_table_names[0]);
+         ++index) {
+        if (strcmp(table_name, hidden_table_names[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int execute_mysql_system_table_query(
@@ -65679,6 +65813,10 @@ static int resolve_show_columns_mysql_system_table(
         set_reserved_name_error(database, "table", table_name);
         return MYLITE_ERROR;
     }
+    if (mysql_data_dictionary_table_is_hidden(table_name)) {
+        set_mysql_data_dictionary_table_access_error(database, table_name);
+        return MYLITE_ERROR;
+    }
 
     *out_definition = find_mysql_system_table_definition(schema_name, table_name);
     if (*out_definition != NULL || mysql_system_table_directory_contains(table_name)) {
@@ -66383,6 +66521,10 @@ static int resolve_show_index_mysql_system_table(
     *out_mysql_system_target = true;
     if (mylite_catalog_name_is_reserved(table_name)) {
         set_reserved_name_error(database, "table", table_name);
+        return MYLITE_ERROR;
+    }
+    if (mysql_data_dictionary_table_is_hidden(table_name)) {
+        set_mysql_data_dictionary_table_access_error(database, table_name);
         return MYLITE_ERROR;
     }
 
@@ -207949,6 +208091,32 @@ static void set_system_schema_access_error(struct mylite_db *database, const cha
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_system_schema_access,
+        "HY000",
+        message
+    );
+}
+
+static void set_mysql_data_dictionary_table_access_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *table_kind =
+        strcmp(table_name, "innodb_ddl_log") == 0 ? "system" : "data dictionary";
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Access to %s table 'mysql.%s' is rejected.",
+        table_kind,
+        table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_dictionary_access,
         "HY000",
         message
     );

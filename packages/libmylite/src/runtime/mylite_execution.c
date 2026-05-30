@@ -575,6 +575,10 @@ enum {
     mysql_gtid_executed_column_count = 4,
     mysql_general_log_column_count = 6,
     mysql_slow_log_column_count = 12,
+    mysql_help_category_column_count = 4,
+    mysql_help_keyword_column_count = 2,
+    mysql_help_relation_column_count = 2,
+    mysql_help_topic_column_count = 6,
     mysql_ndb_binlog_index_column_count = 12,
     mysql_plugin_column_count = 2,
     mysql_slave_master_info_column_count = 33,
@@ -4514,6 +4518,10 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_MASTER_INFO = 94,
     INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_RELAY_LOG_INFO = 95,
     INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_WORKER_INFO = 96,
+    INFORMATION_SCHEMA_TABLE_MYSQL_HELP_CATEGORY = 97,
+    INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD = 98,
+    INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION = 99,
+    INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC = 100,
 };
 
 struct information_schema_column_definition {
@@ -4545,6 +4553,12 @@ struct information_schema_table_definition {
     size_t column_count;
 };
 
+struct mysql_system_table_unique_index_definition {
+    const char *name;
+    size_t column_index;
+    const char *cardinality;
+};
+
 struct mysql_system_table_definition {
     const char *schema_name;
     struct information_schema_table_definition query_definition;
@@ -4555,6 +4569,8 @@ struct mysql_system_table_definition {
     const size_t *primary_key_column_indexes;
     size_t primary_key_column_count;
     const char *const *column_generation_expressions;
+    const struct mysql_system_table_unique_index_definition *unique_indexes;
+    size_t unique_index_count;
 };
 
 struct information_schema_files_row {
@@ -12645,6 +12661,239 @@ static const char *const mysql_slow_log_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_help_category_columns[] = {
+    {"help_category_id",
+     NULL,
+     "NO",
+     "smallint",
+     NULL,
+     NULL,
+     "5",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "smallint unsigned"},
+    {"name",
+     NULL,
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"parent_category_id",
+     NULL,
+     "YES",
+     "smallint",
+     NULL,
+     NULL,
+     "5",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "smallint unsigned"},
+    {"url",
+     NULL,
+     "NO",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "text"},
+};
+
+static const char *const mysql_help_category_column_keys[] = {
+    "PRI",
+    "UNI",
+    "",
+    "",
+};
+
+static const char *const mysql_help_category_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_help_category_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mysql_system_table_unique_index_definition
+    mysql_help_category_unique_indexes[] = {
+        {"name", 1U, "53"},
+};
+
+static const struct information_schema_column_definition mysql_help_keyword_columns[] = {
+    {"help_keyword_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"name",
+     NULL,
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+};
+
+static const char *const mysql_help_keyword_column_keys[] = {
+    "PRI",
+    "UNI",
+};
+
+static const char *const mysql_help_keyword_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const mysql_help_keyword_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mysql_system_table_unique_index_definition mysql_help_keyword_unique_indexes[] =
+    {
+        {"name", 1U, "551"},
+};
+
+static const struct information_schema_column_definition mysql_help_relation_columns[] = {
+    {"help_topic_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"help_keyword_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const char *const mysql_help_relation_column_keys[] = {
+    "PRI",
+    "PRI",
+};
+
+static const char *const mysql_help_relation_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const mysql_help_relation_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t mysql_help_relation_primary_key_column_indexes[] = {
+    1U,
+    0U,
+};
+
+static const struct information_schema_column_definition mysql_help_topic_columns[] = {
+    {"help_topic_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"name",
+     NULL,
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"help_category_id",
+     NULL,
+     "NO",
+     "smallint",
+     NULL,
+     NULL,
+     "5",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "smallint unsigned"},
+    {"description",
+     NULL,
+     "NO",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "text"},
+    {"example",
+     NULL,
+     "NO",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "text"},
+    {"url",
+     NULL,
+     "NO",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "text"},
+};
+
+static const char *const mysql_help_topic_column_keys[] = {
+    "PRI",
+    "UNI",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_help_topic_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_help_topic_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mysql_system_table_unique_index_definition mysql_help_topic_unique_indexes[] = {
+    {"name", 1U, "596"},
+};
+
 static const struct information_schema_column_definition mysql_ndb_binlog_index_columns[] = {
     {"Position", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
     {"File",
@@ -14370,7 +14619,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST,
       "engine_cost",
@@ -14383,7 +14634,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_engine_cost_primary_key_column_indexes,
      sizeof(mysql_engine_cost_primary_key_column_indexes) /
          sizeof(mysql_engine_cost_primary_key_column_indexes[0]),
-     mysql_engine_cost_column_generation_expressions},
+     mysql_engine_cost_column_generation_expressions,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_FUNC, "func", mysql_func_columns, mysql_func_column_count},
      mysql_func_column_keys,
@@ -14392,7 +14645,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED,
       "gtid_executed",
@@ -14405,7 +14660,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_gtid_executed_primary_key_column_indexes,
      sizeof(mysql_gtid_executed_primary_key_column_indexes) /
          sizeof(mysql_gtid_executed_primary_key_column_indexes[0]),
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG,
       "general_log",
@@ -14417,7 +14674,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG,
       "slow_log",
@@ -14429,7 +14688,66 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_HELP_CATEGORY,
+      "help_category",
+      mysql_help_category_columns,
+      mysql_help_category_column_count},
+     mysql_help_category_column_keys,
+     mysql_help_category_column_extras,
+     mysql_help_category_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     mysql_help_category_unique_indexes,
+     sizeof(mysql_help_category_unique_indexes) / sizeof(mysql_help_category_unique_indexes[0])},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD,
+      "help_keyword",
+      mysql_help_keyword_columns,
+      mysql_help_keyword_column_count},
+     mysql_help_keyword_column_keys,
+     mysql_help_keyword_column_extras,
+     mysql_help_keyword_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     mysql_help_keyword_unique_indexes,
+     sizeof(mysql_help_keyword_unique_indexes) / sizeof(mysql_help_keyword_unique_indexes[0])},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION,
+      "help_relation",
+      mysql_help_relation_columns,
+      mysql_help_relation_column_count},
+     mysql_help_relation_column_keys,
+     mysql_help_relation_column_extras,
+     mysql_help_relation_column_privileges,
+     NULL,
+     mysql_help_relation_primary_key_column_indexes,
+     sizeof(mysql_help_relation_primary_key_column_indexes) /
+         sizeof(mysql_help_relation_primary_key_column_indexes[0]),
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC,
+      "help_topic",
+      mysql_help_topic_columns,
+      mysql_help_topic_column_count},
+     mysql_help_topic_column_keys,
+     mysql_help_topic_column_extras,
+     mysql_help_topic_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     mysql_help_topic_unique_indexes,
+     sizeof(mysql_help_topic_unique_indexes) / sizeof(mysql_help_topic_unique_indexes[0])},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX,
       "ndb_binlog_index",
@@ -14441,7 +14759,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_MASTER_INFO,
       "slave_master_info",
@@ -14453,7 +14773,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_slave_master_info_column_comments,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_RELAY_LOG_INFO,
       "slave_relay_log_info",
@@ -14465,7 +14787,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_slave_relay_log_info_column_comments,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_WORKER_INFO,
       "slave_worker_info",
@@ -14478,7 +14802,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_slave_worker_info_primary_key_column_indexes,
      sizeof(mysql_slave_worker_info_primary_key_column_indexes) /
          sizeof(mysql_slave_worker_info_primary_key_column_indexes[0]),
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN,
       "plugin",
@@ -14490,7 +14816,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST,
       "server_cost",
@@ -14502,7 +14830,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     mysql_server_cost_column_generation_expressions},
+     mysql_server_cost_column_generation_expressions,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS,
       "servers",
@@ -14514,7 +14844,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE,
       "time_zone",
@@ -14526,7 +14858,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_LEAP_SECOND,
       "time_zone_leap_second",
@@ -14538,7 +14872,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME,
       "time_zone_name",
@@ -14550,7 +14886,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION,
       "time_zone_transition",
@@ -14562,7 +14900,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE,
       "time_zone_transition_type",
@@ -14575,7 +14915,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_INNODB_INDEXES,
       "innodb_index_stats",
@@ -14587,7 +14929,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS,
       "innodb_table_stats",
@@ -14599,7 +14943,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U,
-     NULL},
+     NULL,
+     NULL,
+     0U},
 };
 
 static const struct builtin_schema_descriptor builtin_schema_descriptors[] = {
@@ -18110,6 +18456,10 @@ static const char *builtin_schema_table_data_length(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
+static const char *builtin_schema_table_index_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
 static const char *builtin_schema_table_data_free(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
@@ -18152,6 +18502,10 @@ static bool builtin_schema_table_is_mysql_func(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_gtid_executed(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_help(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -35853,6 +36207,24 @@ static int append_show_index_mysql_system_table_rows(
     const struct mylite_sql_ast_node *where_clause,
     const struct mysql_system_table_definition *definition
 );
+static int append_show_index_mysql_system_table_primary_key_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition
+);
+static int append_show_index_mysql_system_table_unique_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition
+);
+static int append_show_index_mysql_system_table_row_if_matches(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *const values[show_index_result_column_count]
+);
 static const char *mysql_system_table_primary_key_cardinality(
     const struct mysql_system_table_definition *definition,
     size_t sequence
@@ -53231,6 +53603,10 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "func") == 0 ||
             strcmp(definition->query_definition.name, "general_log") == 0 ||
             strcmp(definition->query_definition.name, "gtid_executed") == 0 ||
+            strcmp(definition->query_definition.name, "help_category") == 0 ||
+            strcmp(definition->query_definition.name, "help_keyword") == 0 ||
+            strcmp(definition->query_definition.name, "help_relation") == 0 ||
+            strcmp(definition->query_definition.name, "help_topic") == 0 ||
             strcmp(definition->query_definition.name, "ndb_binlog_index") == 0 ||
             strcmp(definition->query_definition.name, "servers") == 0 ||
             strcmp(definition->query_definition.name, "slave_master_info") == 0 ||
@@ -54562,6 +54938,10 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_CATEGORY:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
@@ -54652,6 +55032,10 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_CATEGORY:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
@@ -55988,7 +56372,7 @@ static int append_information_schema_builtin_table_row(
         builtin_schema_table_average_row_length(directory, table_name),
         builtin_schema_table_data_length(directory, table_name),
         table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
-        "0",
+        builtin_schema_table_index_length(directory, table_name),
         builtin_schema_table_data_free(directory, table_name),
         builtin_schema_table_auto_increment(directory, table_name),
         status.create_time,
@@ -56153,6 +56537,10 @@ static const char *builtin_mysql_table_rows(const char *table_name) {
         {"db", "2"},
         {"engine_cost", "2"},
         {"general_log", "2"},
+        {"help_category", "53"},
+        {"help_keyword", "1142"},
+        {"help_relation", "1608"},
+        {"help_topic", "902"},
         {"innodb_index_stats", "6"},
         {"innodb_table_stats", "2"},
         {"plugin", "2"},
@@ -56192,6 +56580,18 @@ static const char *builtin_schema_table_average_row_length(
     }
     if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
         return "8192";
+    }
+    if (builtin_schema_table_is_mysql_help(directory, table_name)) {
+        if (strcmp(table_name, "help_category") == 0) {
+            return "309";
+        }
+        if (strcmp(table_name, "help_keyword") == 0) {
+            return "114";
+        }
+        if (strcmp(table_name, "help_relation") == 0) {
+            return "50";
+        }
+        return "1761";
     }
     if (builtin_schema_table_is_mysql_time_zone(directory, table_name)) {
         if (strcmp(table_name, "time_zone") == 0) {
@@ -56238,11 +56638,47 @@ static const char *builtin_schema_table_data_length(
             return "475136";
         }
     }
+    if (builtin_schema_table_is_mysql_help(directory, table_name)) {
+        if (strcmp(table_name, "help_category") == 0) {
+            return "16384";
+        }
+        if (strcmp(table_name, "help_keyword") == 0) {
+            return "131072";
+        }
+        if (strcmp(table_name, "help_relation") == 0) {
+            return "81920";
+        }
+        return "1589248";
+    }
     if (strcmp(directory->schema_name, "performance_schema") == 0 ||
         strcmp(directory->schema_name, "information_schema") == 0) {
         return "0";
     }
     return "16384";
+}
+
+static const char *builtin_schema_table_index_length(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    const char *table_type = builtin_schema_table_type(directory, table_name);
+
+    if (table_type == NULL) {
+        return NULL;
+    }
+    if (!builtin_schema_table_is_mysql_help(directory, table_name)) {
+        return "0";
+    }
+    if (strcmp(table_name, "help_category") == 0) {
+        return "16384";
+    }
+    if (strcmp(table_name, "help_keyword") == 0) {
+        return "147456";
+    }
+    if (strcmp(table_name, "help_topic") == 0) {
+        return "98304";
+    }
+    return "0";
 }
 
 static const char *builtin_schema_table_data_free(
@@ -56259,6 +56695,7 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_component(directory, table_name) ||
                    builtin_schema_table_is_mysql_func(directory, table_name) ||
                    builtin_schema_table_is_mysql_gtid_executed(directory, table_name) ||
+                   builtin_schema_table_is_mysql_help(directory, table_name) ||
                    builtin_schema_table_is_mysql_ndb_binlog_index(directory, table_name) ||
                    builtin_schema_table_is_mysql_plugin(directory, table_name) ||
                    builtin_schema_table_is_mysql_replication_metadata(directory, table_name) ||
@@ -56371,6 +56808,10 @@ static const char *builtin_mysql_table_comment(const char *table_name) {
         {"db", "Database privileges"},
         {"func", "User defined functions"},
         {"general_log", "General log"},
+        {"help_category", "help categories"},
+        {"help_keyword", "help keywords"},
+        {"help_relation", "keyword-topic relation"},
+        {"help_topic", "help topics"},
         {"plugin", "MySQL plugins"},
         {"servers", "MySQL Foreign Servers table"},
         {"slave_master_info", "Master Information"},
@@ -56443,6 +56884,16 @@ static bool builtin_schema_table_is_mysql_gtid_executed(
 ) {
     return directory != NULL && table_name != NULL &&
            strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "gtid_executed") == 0;
+}
+
+static bool builtin_schema_table_is_mysql_help(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 &&
+           (strcmp(table_name, "help_category") == 0 || strcmp(table_name, "help_keyword") == 0 ||
+            strcmp(table_name, "help_relation") == 0 || strcmp(table_name, "help_topic") == 0);
 }
 
 static bool builtin_schema_table_is_mysql_ndb_binlog_index(
@@ -60444,24 +60895,41 @@ static int append_information_schema_table_constraints_mysql_system_table_row(
     struct information_schema_row_set *rows,
     const struct mysql_system_table_definition *definition
 ) {
+    int rc = MYLITE_OK;
+
     if (definition == NULL || definition->column_keys == NULL) {
         return MYLITE_OK;
     }
-    if (mysql_system_table_primary_key_column_count(definition) == 0U) {
-        return MYLITE_OK;
+    if (mysql_system_table_primary_key_column_count(definition) > 0U) {
+        const char *values[information_schema_table_constraints_column_count] = {
+            "def",
+            definition->schema_name,
+            "PRIMARY",
+            definition->schema_name,
+            definition->query_definition.name,
+            "PRIMARY KEY",
+            "YES",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
+        const struct mysql_system_table_unique_index_definition *unique_index =
+            &definition->unique_indexes[index];
+        const char *values[information_schema_table_constraints_column_count] = {
+            "def",
+            definition->schema_name,
+            unique_index->name,
+            definition->schema_name,
+            definition->query_definition.name,
+            "UNIQUE",
+            "YES",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
     }
 
-    const char *values[information_schema_table_constraints_column_count] = {
-        "def",
-        definition->schema_name,
-        "PRIMARY",
-        definition->schema_name,
-        definition->query_definition.name,
-        "PRIMARY KEY",
-        "YES",
-    };
-
-    return append_information_schema_row(database, rows, values);
+    return rc;
 }
 
 static int append_information_schema_table_constraints_extensions_base_rows(
@@ -60589,23 +61057,39 @@ static int append_information_schema_table_constraints_extensions_mysql_system_t
     struct information_schema_row_set *rows,
     const struct mysql_system_table_definition *definition
 ) {
+    int rc = MYLITE_OK;
+
     if (definition == NULL || definition->column_keys == NULL) {
         return MYLITE_OK;
     }
-    if (mysql_system_table_primary_key_column_count(definition) == 0U) {
-        return MYLITE_OK;
+    if (mysql_system_table_primary_key_column_count(definition) > 0U) {
+        const char *values[information_schema_table_constraints_extensions_column_count] = {
+            "def",
+            definition->schema_name,
+            "PRIMARY",
+            definition->query_definition.name,
+            NULL,
+            NULL,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
+        const struct mysql_system_table_unique_index_definition *unique_index =
+            &definition->unique_indexes[index];
+        const char *values[information_schema_table_constraints_extensions_column_count] = {
+            "def",
+            definition->schema_name,
+            unique_index->name,
+            definition->query_definition.name,
+            NULL,
+            NULL,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
     }
 
-    const char *values[information_schema_table_constraints_extensions_column_count] = {
-        "def",
-        definition->schema_name,
-        "PRIMARY",
-        definition->query_definition.name,
-        NULL,
-        NULL,
-    };
-
-    return append_information_schema_row(database, rows, values);
+    return rc;
 }
 
 static int append_information_schema_check_constraints_base_rows(
@@ -60874,6 +61358,38 @@ static int append_information_schema_key_column_usage_mysql_system_table_rows(
             rc = append_information_schema_row(database, rows, values);
         }
     }
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
+        const struct mysql_system_table_unique_index_definition *unique_index =
+            &definition->unique_indexes[index];
+        char sequence_text[integer_text_capacity];
+
+        if (unique_index->column_index >= definition->query_definition.column_count) {
+            set_runtime_error(database, "invalid mysql system table unique key");
+            return MYLITE_ERROR;
+        }
+
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[unique_index->column_index];
+        const char *values[information_schema_key_column_usage_column_count] = {
+            "def",
+            definition->schema_name,
+            unique_index->name,
+            "def",
+            definition->schema_name,
+            definition->query_definition.name,
+            column->name,
+            sequence_text,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+        };
+
+        rc = information_schema_format_i64(database, 1, sequence_text, sizeof(sequence_text));
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
 
     return rc;
 }
@@ -61009,6 +61525,44 @@ static int append_information_schema_statistics_mysql_system_table_rows(
             sequence_text,
             sizeof(sequence_text)
         );
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
+        const struct mysql_system_table_unique_index_definition *unique_index =
+            &definition->unique_indexes[index];
+        char sequence_text[integer_text_capacity];
+
+        if (unique_index->column_index >= definition->query_definition.column_count) {
+            set_runtime_error(database, "invalid mysql system table unique index");
+            return MYLITE_ERROR;
+        }
+
+        const struct information_schema_column_definition *column =
+            &definition->query_definition.columns[unique_index->column_index];
+        const char *values[information_schema_statistics_column_count] = {
+            "def",
+            definition->schema_name,
+            definition->query_definition.name,
+            "0",
+            definition->schema_name,
+            unique_index->name,
+            sequence_text,
+            column->name,
+            "A",
+            unique_index->cardinality,
+            NULL,
+            NULL,
+            "",
+            "BTREE",
+            "",
+            "",
+            "YES",
+            NULL,
+        };
+
+        rc = information_schema_format_i64(database, 1, sequence_text, sizeof(sequence_text));
         if (rc == MYLITE_OK) {
             rc = append_information_schema_row(database, rows, values);
         }
@@ -67774,19 +68328,42 @@ static int append_show_index_mysql_system_table_rows(
     const struct mylite_sql_ast_node *where_clause,
     const struct mysql_system_table_definition *definition
 ) {
-    int rc = MYLITE_OK;
-    size_t primary_key_column_count = mysql_system_table_primary_key_column_count(definition);
-
     if (result == NULL || definition == NULL) {
         return MYLITE_MISUSE;
     }
+
+    int rc = append_show_index_mysql_system_table_primary_key_rows(
+        database,
+        result,
+        where_clause,
+        definition
+    );
+    if (rc == MYLITE_OK) {
+        rc = append_show_index_mysql_system_table_unique_rows(
+            database,
+            result,
+            where_clause,
+            definition
+        );
+    }
+
+    return rc;
+}
+
+static int append_show_index_mysql_system_table_primary_key_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition
+) {
+    int rc = MYLITE_OK;
+    size_t primary_key_column_count = mysql_system_table_primary_key_column_count(definition);
 
     for (size_t key_index = 0U; rc == MYLITE_OK && key_index < primary_key_column_count;
          ++key_index) {
         const struct information_schema_column_definition *column =
             mysql_system_table_primary_key_column(definition, key_index);
         char sequence_text[integer_text_capacity];
-        bool where_matches = true;
 
         if (column == NULL) {
             set_runtime_error(database, "invalid mysql system table primary key");
@@ -67818,14 +68395,84 @@ static int append_show_index_mysql_system_table_rows(
                 NULL,
             };
 
-            if (where_clause != NULL) {
-                rc =
-                    show_index_where_clause_matches(database, where_clause, values, &where_matches);
-            }
-            if (rc == MYLITE_OK && where_matches) {
-                rc = mylite_result_append_text_row(result, values);
-            }
+            rc = append_show_index_mysql_system_table_row_if_matches(
+                database,
+                result,
+                where_clause,
+                values
+            );
         }
+    }
+
+    return rc;
+}
+
+static int append_show_index_mysql_system_table_unique_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mysql_system_table_definition *definition
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
+        const struct mysql_system_table_unique_index_definition *unique_index =
+            &definition->unique_indexes[index];
+        char sequence_text[integer_text_capacity];
+
+        if (unique_index->column_index >= definition->query_definition.column_count) {
+            set_runtime_error(database, "invalid mysql system table unique index");
+            return MYLITE_ERROR;
+        }
+
+        rc = information_schema_format_i64(database, 1, sequence_text, sizeof(sequence_text));
+        if (rc == MYLITE_OK) {
+            const struct information_schema_column_definition *column =
+                &definition->query_definition.columns[unique_index->column_index];
+            const char *values[show_index_result_column_count] = {
+                definition->query_definition.name,
+                "0",
+                unique_index->name,
+                sequence_text,
+                column->name,
+                "A",
+                unique_index->cardinality,
+                NULL,
+                NULL,
+                "",
+                "BTREE",
+                "",
+                "",
+                "YES",
+                NULL,
+            };
+
+            rc = append_show_index_mysql_system_table_row_if_matches(
+                database,
+                result,
+                where_clause,
+                values
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int append_show_index_mysql_system_table_row_if_matches(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *const values[show_index_result_column_count]
+) {
+    bool where_matches = true;
+    int rc = MYLITE_OK;
+
+    if (where_clause != NULL) {
+        rc = show_index_where_clause_matches(database, where_clause, values, &where_matches);
+    }
+    if (rc == MYLITE_OK && where_matches) {
+        rc = mylite_result_append_text_row(result, values);
     }
 
     return rc;
@@ -67837,7 +68484,7 @@ static const char *mysql_system_table_primary_key_cardinality(
 ) {
     enum {
         mysql_innodb_index_stats_stat_name_sequence = 4,
-        mysql_time_zone_second_key_part_sequence = 2,
+        mysql_second_key_part_sequence = 2,
     };
 
     if (definition == NULL) {
@@ -67861,6 +68508,18 @@ static const char *mysql_system_table_primary_key_cardinality(
     if (strcmp(definition->query_definition.name, "server_cost") == 0) {
         return "6";
     }
+    if (strcmp(definition->query_definition.name, "help_category") == 0) {
+        return "53";
+    }
+    if (strcmp(definition->query_definition.name, "help_keyword") == 0) {
+        return "551";
+    }
+    if (strcmp(definition->query_definition.name, "help_relation") == 0) {
+        return sequence >= mysql_second_key_part_sequence ? "2258" : "1393";
+    }
+    if (strcmp(definition->query_definition.name, "help_topic") == 0) {
+        return "596";
+    }
     if (strcmp(definition->query_definition.name, "time_zone") == 0) {
         return "1457";
     }
@@ -67871,10 +68530,10 @@ static const char *mysql_system_table_primary_key_cardinality(
         return "1712";
     }
     if (strcmp(definition->query_definition.name, "time_zone_transition") == 0) {
-        return sequence >= mysql_time_zone_second_key_part_sequence ? "119074" : "1252";
+        return sequence >= mysql_second_key_part_sequence ? "119074" : "1252";
     }
     if (strcmp(definition->query_definition.name, "time_zone_transition_type") == 0) {
-        return sequence >= mysql_time_zone_second_key_part_sequence ? "10529" : "1954";
+        return sequence >= mysql_second_key_part_sequence ? "10529" : "1954";
     }
     return "0";
 }
@@ -187055,7 +187714,7 @@ static int append_show_builtin_table_status(
         builtin_schema_table_average_row_length(directory, table_name),
         builtin_schema_table_data_length(directory, table_name),
         table_type == NULL || strcmp(table_type, "VIEW") == 0 ? NULL : "0",
-        "0",
+        builtin_schema_table_index_length(directory, table_name),
         builtin_schema_table_data_free(directory, table_name),
         builtin_schema_table_auto_increment(directory, table_name),
         status.create_time,

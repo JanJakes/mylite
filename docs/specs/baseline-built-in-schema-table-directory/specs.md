@@ -184,6 +184,12 @@ options, table comments, column metadata, and no-index/no-constraint metadata
 while keeping log-row storage, log writing, log routing, rotation, and writes
 out of scope.
 
+The `baseline-mysql-help-tables` slice refines the four `mysql.help_*` tables
+with direct empty placeholder reads plus MySQL-observed InnoDB status fields,
+comments, column metadata, primary-key metadata, and unique `name` metadata
+where present while keeping bundled help content, HELP statement execution,
+help-table initialization, upgrades, and writes out of scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

@@ -12,9 +12,9 @@ listed otherwise below; the current exceptions are limited read-only
 connection-control registry rows in `mysql.plugin`, default optimizer cost
 rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
 `mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and empty
-placeholder `mysql.time_zone*`, `mysql.ndb_binlog_index`, and `mysql.slave_*`
-replication metadata table reads plus `mysql.innodb_table_stats` and
-`mysql.innodb_index_stats`, along with
+placeholder `mysql.help_*`, `mysql.time_zone*`, `mysql.ndb_binlog_index`, and
+`mysql.slave_*` replication metadata table reads plus
+`mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
 MySQL-shaped `3554 / HY000` diagnostics for hidden data dictionary/system
 table access attempts, and
 ordinary `1146 / 42S02` table-not-found diagnostics for target-build absent
@@ -23,8 +23,9 @@ Enterprise Audit and Enterprise Firewall `mysql` tables,
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
 `SHOW TABLE STATUS` status fields, and `INFORMATION_SCHEMA.STATISTICS` /
 `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` /
-`TABLE_CONSTRAINTS_EXTENSIONS` primary-key shape metadata or zero-row no-index
-metadata for those supported tables. MyLite rejects schema, table, index,
+`TABLE_CONSTRAINTS_EXTENSIONS` primary-key and supported unique-key shape
+metadata or zero-row no-index metadata for those supported tables. MyLite
+rejects schema, table, index,
 rename, truncate, and
 single-table DML writes targeting `mysql` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
@@ -78,10 +79,10 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.plugin` | 🟡 | Limited read-only plugin registry table with the target MySQL 8.4.9 connection-control plugin rows, MySQL-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no plugin loading, plugin lifecycle, mutable plugin registry, expanded `SHOW PLUGINS` / `INFORMATION_SCHEMA.PLUGINS` inventory, privilege filtering, or writable system table |
 | `mysql.general_log` | 🟡 | Limited read-only empty CSV general-query-log table with MySQL 8.4.9-shaped columns, no index/constraint metadata rows, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` empty results, and `SHOW TABLE STATUS`; no log-row storage, logging side effects, log output routing, log rotation, DDL on log tables, privilege filtering, or writable system table |
 | `mysql.slow_log` | 🟡 | Limited read-only empty CSV slow-query-log table with MySQL 8.4.9-shaped columns, no index/constraint metadata rows, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` empty results, and `SHOW TABLE STATUS`; no slow-query logging, log-row storage, log output routing, log rotation, DDL on log tables, privilege filtering, or writable system table |
-| `mysql.help_category` | ❌ | HELP category table |
-| `mysql.help_keyword` | ❌ | HELP keyword table |
-| `mysql.help_relation` | ❌ | HELP relation table |
-| `mysql.help_topic` | ❌ | HELP topic table |
+| `mysql.help_category` | 🟡 | Limited read-only empty server-side HELP category placeholder with MySQL 8.4.9-shaped columns, primary-key and unique `name` metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no bundled help content, HELP statement execution, help-table initialization or upgrade, privilege filtering, or writable system table |
+| `mysql.help_keyword` | 🟡 | Limited read-only empty server-side HELP keyword placeholder with MySQL 8.4.9-shaped columns, primary-key and unique `name` metadata, matching information-schema and SHOW metadata, and table-status fields; no bundled help content, keyword search semantics, HELP statement execution, help-table initialization or upgrade, privilege filtering, or writable system table |
+| `mysql.help_relation` | 🟡 | Limited read-only empty server-side HELP keyword-topic relation placeholder with MySQL 8.4.9-shaped columns, composite primary-key metadata in MySQL-observed key order, matching information-schema and SHOW metadata, and table-status fields; no bundled help relation rows, HELP statement execution, help-table initialization or upgrade, privilege filtering, or writable system table |
+| `mysql.help_topic` | 🟡 | Limited read-only empty server-side HELP topic placeholder with MySQL 8.4.9-shaped columns, primary-key and unique `name` metadata, matching information-schema and SHOW metadata, and table-status fields; no bundled manual/help topic text, HELP statement execution, help-table initialization or upgrade, privilege filtering, or writable system table |
 | `mysql.time_zone` | 🟡 | Limited read-only empty placeholder time-zone ID and leap-second usage table with MySQL 8.4.9-shaped columns, auto-increment primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded time-zone rows, `mysql_tzinfo_to_sql` import, named-zone conversion, leap-second behavior, privilege filtering, or writable system table |
 | `mysql.time_zone_leap_second` | 🟡 | Limited read-only empty placeholder leap-second transition table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded leap-second rows, leap-second adjustment, privilege filtering, or writable system table |
 | `mysql.time_zone_name` | 🟡 | Limited read-only empty placeholder time-zone name mapping table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded named-zone rows, named time-zone lookup beyond current fixed support, privilege filtering, or writable system table |

@@ -64,7 +64,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.triggers` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.TRIGGERS` for supported public metadata |
 | `mysql.view_routine_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` for supported public metadata |
 | `mysql.view_table_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` for supported public metadata |
-| `mysql.user` | ❌ | Table shape and diagnostics |
+| `mysql.user` | 🟡 | Limited read-only empty account/grant table placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(Host, User)` metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no persisted accounts, authentication plugin lifecycle, password hashing, roles, grant-table reload, account-management DDL, privilege filtering, privilege enforcement, or writable system table |
 | `mysql.global_grants` | ❌ | Grant table: dynamic global privilege assignments |
 | `mysql.db` | ❌ | Grant table: database-level privileges |
 | `mysql.tables_priv` | ❌ | Grant table: table-level privileges |

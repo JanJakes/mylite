@@ -190,6 +190,12 @@ comments, column metadata, primary-key metadata, and unique `name` metadata
 where present while keeping bundled help content, HELP statement execution,
 help-table initialization, upgrades, and writes out of scope.
 
+The `baseline-mysql-user-table` slice refines `mysql.user` with direct empty
+placeholder reads plus MySQL-observed InnoDB status fields, comments, column
+metadata, and composite primary-key metadata while keeping account storage,
+authentication, roles, grant reload, privilege filtering, privilege
+enforcement, account-management DDL, and writes out of scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

@@ -277,7 +277,7 @@ static int test_mysql_system_show_index(void) {
     failures += expect_row_count_status(database, "row count after mysql system show index");
     failures += expect_error(
         database,
-        "SHOW INDEX FROM mysql.user",
+        "SHOW INDEX FROM mysql.db",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

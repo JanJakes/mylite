@@ -574,6 +574,7 @@ enum {
     mysql_func_column_count = 4,
     mysql_gtid_executed_column_count = 4,
     mysql_general_log_column_count = 6,
+    mysql_user_column_count = 51,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4522,6 +4523,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD = 98,
     INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION = 99,
     INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC = 100,
+    INFORMATION_SCHEMA_TABLE_MYSQL_USER = 101,
 };
 
 struct information_schema_column_definition {
@@ -12329,6 +12331,574 @@ static const struct information_schema_table_definition information_schema_table
      information_schema_view_table_usage_column_count},
 };
 
+static const struct information_schema_column_definition mysql_user_columns[] = {
+    {"Host",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"User", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"Select_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Insert_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Update_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Delete_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Drop_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Reload_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Shutdown_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Process_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"File_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Grant_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"References_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Index_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Alter_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Show_db_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Super_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_tmp_table_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Lock_tables_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Execute_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Repl_slave_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Repl_client_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_view_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Show_view_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_routine_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Alter_routine_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_user_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Event_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Trigger_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_tablespace_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"ssl_type",
+     "",
+     "NO",
+     "enum",
+     "9",
+     "27",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('','ANY','X509','SPECIFIED')"},
+    {"ssl_cipher", NULL, "NO", "blob", "65535", "65535", NULL, NULL, NULL, NULL, NULL, "blob"},
+    {"x509_issuer", NULL, "NO", "blob", "65535", "65535", NULL, NULL, NULL, NULL, NULL, "blob"},
+    {"x509_subject", NULL, "NO", "blob", "65535", "65535", NULL, NULL, NULL, NULL, NULL, "blob"},
+    {"max_questions", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"max_updates", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"max_connections", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"max_user_connections",
+     "0",
+     "NO",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int unsigned"},
+    {"plugin",
+     "caching_sha2_password",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "char(64)"},
+    {"authentication_string",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "text"},
+    {"password_expired",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"password_last_changed",
+     NULL,
+     "YES",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+    {"password_lifetime",
+     NULL,
+     "YES",
+     "smallint",
+     NULL,
+     NULL,
+     "5",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "smallint unsigned"},
+    {"account_locked",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_role_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Drop_role_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Password_reuse_history",
+     NULL,
+     "YES",
+     "smallint",
+     NULL,
+     NULL,
+     "5",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "smallint unsigned"},
+    {"Password_reuse_time",
+     NULL,
+     "YES",
+     "smallint",
+     NULL,
+     NULL,
+     "5",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "smallint unsigned"},
+    {"Password_require_current",
+     NULL,
+     "YES",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"User_attributes", NULL, "YES", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+};
+
+static const char *const mysql_user_column_keys[] = {
+    "PRI", "PRI", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "",    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "",    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const mysql_user_column_extras[] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const mysql_user_column_privileges[] = {
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -14608,6 +15178,17 @@ static const char *const mysql_innodb_table_stats_column_privileges[] = {
 };
 
 static const struct mysql_system_table_definition mysql_system_table_definitions[] = {
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_USER, "user", mysql_user_columns, mysql_user_column_count},
+     mysql_user_column_keys,
+     mysql_user_column_extras,
+     mysql_user_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT,
       "component",
@@ -18452,6 +19033,8 @@ static const char *builtin_schema_table_average_row_length(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
+static const char *builtin_schema_mysql_help_average_row_length(const char *table_name);
+static const char *builtin_schema_mysql_time_zone_average_row_length(const char *table_name);
 static const char *builtin_schema_table_data_length(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
@@ -36229,6 +36812,10 @@ static const char *mysql_system_table_primary_key_cardinality(
     const struct mysql_system_table_definition *definition,
     size_t sequence
 );
+static const char *mysql_system_table_primary_key_cardinality_for_name(
+    const char *table_name,
+    size_t sequence
+);
 static int validate_show_index_where_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause
@@ -53617,7 +54204,8 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "time_zone_leap_second") == 0 ||
             strcmp(definition->query_definition.name, "time_zone_name") == 0 ||
             strcmp(definition->query_definition.name, "time_zone_transition") == 0 ||
-            strcmp(definition->query_definition.name, "time_zone_transition_type") == 0);
+            strcmp(definition->query_definition.name, "time_zone_transition_type") == 0 ||
+            strcmp(definition->query_definition.name, "user") == 0);
 }
 
 static bool mysql_system_table_definition_has_catalog_rows(
@@ -54955,6 +55543,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME:
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION:
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
         return MYLITE_OK;
     }
 
@@ -55049,6 +55638,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME:
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION:
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -56581,32 +57171,43 @@ static const char *builtin_schema_table_average_row_length(
     if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
         return "8192";
     }
+    if (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "user") == 0) {
+        return "3276";
+    }
     if (builtin_schema_table_is_mysql_help(directory, table_name)) {
-        if (strcmp(table_name, "help_category") == 0) {
-            return "309";
-        }
-        if (strcmp(table_name, "help_keyword") == 0) {
-            return "114";
-        }
-        if (strcmp(table_name, "help_relation") == 0) {
-            return "50";
-        }
-        return "1761";
+        return builtin_schema_mysql_help_average_row_length(table_name);
     }
     if (builtin_schema_table_is_mysql_time_zone(directory, table_name)) {
-        if (strcmp(table_name, "time_zone") == 0) {
-            return "45";
-        }
-        if (strcmp(table_name, "time_zone_name") == 0) {
-            return "113";
-        }
-        if (strcmp(table_name, "time_zone_transition") == 0) {
-            return "39";
-        }
-        if (strcmp(table_name, "time_zone_transition_type") == 0) {
-            return "48";
-        }
-        return "0";
+        return builtin_schema_mysql_time_zone_average_row_length(table_name);
+    }
+    return "0";
+}
+
+static const char *builtin_schema_mysql_help_average_row_length(const char *table_name) {
+    if (strcmp(table_name, "help_category") == 0) {
+        return "309";
+    }
+    if (strcmp(table_name, "help_keyword") == 0) {
+        return "114";
+    }
+    if (strcmp(table_name, "help_relation") == 0) {
+        return "50";
+    }
+    return "1761";
+}
+
+static const char *builtin_schema_mysql_time_zone_average_row_length(const char *table_name) {
+    if (strcmp(table_name, "time_zone") == 0) {
+        return "45";
+    }
+    if (strcmp(table_name, "time_zone_name") == 0) {
+        return "113";
+    }
+    if (strcmp(table_name, "time_zone_transition") == 0) {
+        return "39";
+    }
+    if (strcmp(table_name, "time_zone_transition_type") == 0) {
+        return "48";
     }
     return "0";
 }
@@ -56700,7 +57301,8 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_plugin(directory, table_name) ||
                    builtin_schema_table_is_mysql_replication_metadata(directory, table_name) ||
                    builtin_schema_table_is_mysql_servers(directory, table_name) ||
-                   builtin_schema_table_is_mysql_time_zone(directory, table_name)
+                   builtin_schema_table_is_mysql_time_zone(directory, table_name) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "user") == 0)
                ? "4194304"
                : "0";
 }
@@ -68482,58 +69084,56 @@ static const char *mysql_system_table_primary_key_cardinality(
     const struct mysql_system_table_definition *definition,
     size_t sequence
 ) {
+    if (definition == NULL) {
+        return "0";
+    }
+    return mysql_system_table_primary_key_cardinality_for_name(
+        definition->query_definition.name,
+        sequence
+    );
+}
+
+static const char *mysql_system_table_primary_key_cardinality_for_name(
+    const char *table_name,
+    size_t sequence
+) {
     enum {
+        mysql_primary_key_no_sequence_split = 0,
         mysql_innodb_index_stats_stat_name_sequence = 4,
         mysql_second_key_part_sequence = 2,
     };
 
-    if (definition == NULL) {
-        return "0";
-    }
-    if (strcmp(definition->query_definition.name, "engine_cost") == 0) {
-        return "2";
-    }
-    if (strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
-        return "2";
-    }
-    if (strcmp(definition->query_definition.name, "innodb_index_stats") == 0) {
-        if (sequence >= mysql_innodb_index_stats_stat_name_sequence) {
-            return "6";
+    static const struct mysql_system_table_primary_key_cardinality_value {
+        const char *table_name;
+        size_t split_sequence;
+        const char *first_cardinality;
+        const char *split_cardinality;
+    } cardinalities[] = {
+        {"engine_cost", mysql_primary_key_no_sequence_split, "2", "2"},
+        {"innodb_table_stats", mysql_primary_key_no_sequence_split, "2", "2"},
+        {"innodb_index_stats", mysql_innodb_index_stats_stat_name_sequence, "2", "6"},
+        {"plugin", mysql_primary_key_no_sequence_split, "1", "1"},
+        {"server_cost", mysql_primary_key_no_sequence_split, "6", "6"},
+        {"help_category", mysql_primary_key_no_sequence_split, "53", "53"},
+        {"help_keyword", mysql_primary_key_no_sequence_split, "551", "551"},
+        {"help_relation", mysql_second_key_part_sequence, "1393", "2258"},
+        {"help_topic", mysql_primary_key_no_sequence_split, "596", "596"},
+        {"time_zone", mysql_primary_key_no_sequence_split, "1457", "1457"},
+        {"time_zone_leap_second", mysql_primary_key_no_sequence_split, "0", "0"},
+        {"time_zone_name", mysql_primary_key_no_sequence_split, "1712", "1712"},
+        {"time_zone_transition", mysql_second_key_part_sequence, "1252", "119074"},
+        {"time_zone_transition_type", mysql_second_key_part_sequence, "1954", "10529"},
+        {"user", mysql_second_key_part_sequence, "2", "5"},
+    };
+
+    for (size_t index = 0U; index < sizeof(cardinalities) / sizeof(cardinalities[0]); ++index) {
+        if (strcmp(table_name, cardinalities[index].table_name) == 0) {
+            if (cardinalities[index].split_sequence != mysql_primary_key_no_sequence_split &&
+                sequence >= cardinalities[index].split_sequence) {
+                return cardinalities[index].split_cardinality;
+            }
+            return cardinalities[index].first_cardinality;
         }
-        return "2";
-    }
-    if (strcmp(definition->query_definition.name, "plugin") == 0) {
-        return "1";
-    }
-    if (strcmp(definition->query_definition.name, "server_cost") == 0) {
-        return "6";
-    }
-    if (strcmp(definition->query_definition.name, "help_category") == 0) {
-        return "53";
-    }
-    if (strcmp(definition->query_definition.name, "help_keyword") == 0) {
-        return "551";
-    }
-    if (strcmp(definition->query_definition.name, "help_relation") == 0) {
-        return sequence >= mysql_second_key_part_sequence ? "2258" : "1393";
-    }
-    if (strcmp(definition->query_definition.name, "help_topic") == 0) {
-        return "596";
-    }
-    if (strcmp(definition->query_definition.name, "time_zone") == 0) {
-        return "1457";
-    }
-    if (strcmp(definition->query_definition.name, "time_zone_leap_second") == 0) {
-        return "0";
-    }
-    if (strcmp(definition->query_definition.name, "time_zone_name") == 0) {
-        return "1712";
-    }
-    if (strcmp(definition->query_definition.name, "time_zone_transition") == 0) {
-        return sequence >= mysql_second_key_part_sequence ? "119074" : "1252";
-    }
-    if (strcmp(definition->query_definition.name, "time_zone_transition_type") == 0) {
-        return sequence >= mysql_second_key_part_sequence ? "10529" : "1954";
     }
     return "0";
 }

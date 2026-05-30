@@ -6,13 +6,13 @@ surface so `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` can introspect
 `baseline-mysql-component-table`, `baseline-mysql-func-table`,
 `baseline-mysql-plugin-table`, `baseline-mysql-cost-tables`,
 `baseline-mysql-servers-table`, `baseline-mysql-gtid-executed-table`, and
-`baseline-mysql-log-tables`
+`baseline-mysql-log-tables`, and `baseline-mysql-time-zone-tables`
 slices extend the same path to `mysql.component`, `mysql.func`,
 `mysql.plugin`, `mysql.server_cost`, `mysql.engine_cost`, `mysql.servers`,
-`mysql.gtid_executed`, `mysql.general_log`, and `mysql.slow_log`. The tables
-remain read-only synthetic system tables; these features expose their
-primary-key shape or MySQL-observed no-index shape without creating physical
-system tables.
+`mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and the
+`mysql.time_zone*` table family. The tables remain read-only synthetic system
+tables; these features expose their primary-key shape or MySQL-observed
+no-index shape without creating physical system tables.
 
 ## Compatibility Authority
 
@@ -44,6 +44,11 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.servers
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.gtid_executed
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.general_log
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.slow_log
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.time_zone
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.time_zone_leap_second
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.time_zone_name
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.time_zone_transition
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.time_zone_transition_type
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} component {FROM | IN} mysql
@@ -55,6 +60,11 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} servers {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} gtid_executed {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} general_log {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} slow_log {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} time_zone {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} time_zone_leap_second {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} time_zone_name {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} time_zone_transition {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} time_zone_transition_type {FROM | IN} mysql
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -72,6 +82,8 @@ SHOW INDEX FROM servers;
 SHOW INDEX FROM gtid_executed;
 SHOW INDEX FROM general_log;
 SHOW INDEX FROM slow_log;
+SHOW INDEX FROM time_zone;
+SHOW INDEX FROM time_zone_transition_type;
 ```
 
 The existing limited `SHOW INDEX WHERE` evaluator applies to the generated
@@ -125,6 +137,12 @@ order intentionally differs from the table's column order.
 `SHOW INDEX FROM mysql.general_log` and `SHOW INDEX FROM mysql.slow_log`
 return zero rows with the ordinary MySQL 8.4.9 `SHOW INDEX` column labels, as
 specified by `baseline-mysql-log-tables`.
+
+`SHOW INDEX` for the `mysql.time_zone*` table family returns the primary-key
+rows specified by `baseline-mysql-time-zone-tables`: single-column primary
+keys for `time_zone`, `time_zone_leap_second`, and `time_zone_name`, and
+two-part primary keys for `time_zone_transition` and
+`time_zone_transition_type`, with MySQL-observed cardinality placeholders.
 
 `Cardinality` values are deterministic MyLite-owned placeholders matching the
 fresh MySQL 8.4.9 runtime evidence for the built-in statistics rows. They are

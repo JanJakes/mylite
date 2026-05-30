@@ -12,6 +12,11 @@ metadata path to `mysql.server_cost` and `mysql.engine_cost`, with their own
 MySQL-observed row counts, average row lengths, `DATA_FREE`, and `NULL`
 `UPDATE_TIME` shape.
 
+The later `baseline-mysql-time-zone-tables` slice applies the same
+table-status path to the five `mysql.time_zone*` tables with MySQL-observed
+status estimates, `DATA_FREE`, comments, and `NULL` `UPDATE_TIME` shape while
+leaving loaded time-zone rows out of scope.
+
 ## Compatibility Authority
 
 - MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.TABLES`:

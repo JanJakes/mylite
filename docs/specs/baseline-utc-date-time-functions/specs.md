@@ -106,7 +106,7 @@ Deferred:
 - assigning UTC functions to integer, decimal, approximate, string, binary
   string, `BIT`, `YEAR`, `ENUM`, `SET`, `JSON`, or incompatible temporal
   descriptor families;
-- named time-zone tables, daylight-saving rules, fractional seconds, temporal
+- loaded named-zone rows, daylight-saving rules, fractional seconds, temporal
   arithmetic, casts, triggers, cascades, privilege semantics, and protocol-grade
   temporal metadata.
 

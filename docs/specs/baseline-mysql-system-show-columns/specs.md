@@ -7,12 +7,13 @@ surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
 `baseline-mysql-component-table`, `baseline-mysql-func-table`,
 `baseline-mysql-plugin-table`, `baseline-mysql-cost-tables`,
 `baseline-mysql-servers-table`, `baseline-mysql-gtid-executed-table`, and
-`baseline-mysql-log-tables`
+`baseline-mysql-log-tables`, and `baseline-mysql-time-zone-tables`
 slices extend the same metadata path to `mysql.component`, `mysql.func`,
 `mysql.plugin`, `mysql.server_cost`, `mysql.engine_cost`, `mysql.servers`,
-`mysql.gtid_executed`, `mysql.general_log`, and `mysql.slow_log`. The tables
-are limited read-only synthetic system tables in MyLite; these features reuse
-owned column metadata rather than adding physical system tables.
+`mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and the
+`mysql.time_zone*` table family. The tables are limited read-only synthetic
+system tables in MyLite; these features reuse owned column metadata rather
+than adding physical system tables.
 
 ## Compatibility Authority
 
@@ -45,6 +46,11 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.servers
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.gtid_executed
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.general_log
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.slow_log
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.time_zone
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.time_zone_leap_second
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.time_zone_name
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.time_zone_transition
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.time_zone_transition_type
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
@@ -56,6 +62,11 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} servers {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} gtid_executed {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} general_log {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} slow_log {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} time_zone {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} time_zone_leap_second {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} time_zone_name {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} time_zone_transition {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} time_zone_transition_type {FROM | IN} mysql
 DESCRIBE mysql.innodb_table_stats
 DESCRIBE mysql.innodb_index_stats
 DESCRIBE mysql.component
@@ -67,6 +78,11 @@ DESCRIBE mysql.servers
 DESCRIBE mysql.gtid_executed
 DESCRIBE mysql.general_log
 DESCRIBE mysql.slow_log
+DESCRIBE mysql.time_zone
+DESCRIBE mysql.time_zone_leap_second
+DESCRIBE mysql.time_zone_name
+DESCRIBE mysql.time_zone_transition
+DESCRIBE mysql.time_zone_transition_type
 DESC mysql.innodb_table_stats
 DESC mysql.innodb_index_stats
 DESC mysql.component
@@ -78,6 +94,11 @@ DESC mysql.servers
 DESC mysql.gtid_executed
 DESC mysql.general_log
 DESC mysql.slow_log
+DESC mysql.time_zone
+DESC mysql.time_zone_leap_second
+DESC mysql.time_zone_name
+DESC mysql.time_zone_transition
+DESC mysql.time_zone_transition_type
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -95,6 +116,8 @@ SHOW COLUMNS FROM servers;
 SHOW COLUMNS FROM gtid_executed;
 SHOW COLUMNS FROM general_log;
 SHOW COLUMNS FROM slow_log;
+SHOW COLUMNS FROM time_zone;
+SHOW COLUMNS FROM time_zone_name;
 DESCRIBE innodb_table_stats;
 DESCRIBE plugin;
 DESCRIBE server_cost;
@@ -189,6 +212,13 @@ int NOT NULL`, `rows_examined int NOT NULL`, `db varchar(512) NOT NULL`,
 `last_insert_id int NOT NULL`, `insert_id int NOT NULL`, `server_id int
 unsigned NOT NULL`, `sql_text mediumblob NOT NULL`, and `thread_id bigint
 unsigned NOT NULL`.
+
+The `baseline-mysql-time-zone-tables` slice specifies `SHOW COLUMNS` metadata
+for `mysql.time_zone`, `mysql.time_zone_leap_second`, `mysql.time_zone_name`,
+`mysql.time_zone_transition`, and `mysql.time_zone_transition_type`, including
+their MySQL-observed integer, `bigint`, `tinyint unsigned`, `char`, and
+`enum('Y','N')` column types, primary-key markers, defaults, and
+`auto_increment` metadata for `time_zone.Time_zone_id`.
 
 `SHOW FULL COLUMNS` adds `Collation`, `Privileges`, and `Comment`. For the
 original optimizer-statistics rows, runtime evidence shows `utf8mb3_bin` for

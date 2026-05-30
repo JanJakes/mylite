@@ -156,8 +156,9 @@ This feature must not implement:
 
 - mutable global `time_zone`, persisted variables, startup options, privilege
   checks, or server-wide state shared between embedded handles;
-- named time zones other than the fixed `UTC` alias, time-zone tables,
-  daylight-saving rules, leap seconds, or `mysql.time_zone*` metadata rows;
+- named time zones other than the fixed `UTC` alias, loaded time-zone table
+  rows, daylight-saving rules, leap seconds, or named-zone conversion from the
+  `mysql.time_zone*` placeholder metadata rows;
 - `SYSTEM` as host-local wall-clock behavior other than MyLite's fixed embedded
   UTC baseline;
 - `CONVERT_TZ()`, `UTC_DATE()`, `UTC_TIME()`, `UTC_TIMESTAMP()`, temporal
@@ -377,5 +378,5 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`
 - `docs/compatibility/runtime-session-sql-modes.md`
 
-Do not claim full time-zone tables, global mutation, named-zone support beyond
-`UTC`, or TIMESTAMP storage/retrieval conversion.
+Do not claim loaded time-zone table rows, global mutation, named-zone support
+beyond `UTC`, leap-second behavior, or TIMESTAMP storage/retrieval conversion.

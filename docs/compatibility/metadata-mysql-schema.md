@@ -11,7 +11,8 @@ listed otherwise below; the current exceptions are limited read-only
 `SELECT` access to empty `mysql.component` and `mysql.func`, the limited
 connection-control registry rows in `mysql.plugin`, default optimizer cost
 rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
-`mysql.gtid_executed`, `mysql.general_log`, and `mysql.slow_log` plus
+`mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and empty
+placeholder `mysql.time_zone*` reads plus
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
@@ -76,11 +77,11 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.help_keyword` | ❌ | HELP keyword table |
 | `mysql.help_relation` | ❌ | HELP relation table |
 | `mysql.help_topic` | ❌ | HELP topic table |
-| `mysql.time_zone` | ❌ | Time zone ID and leap-second usage table |
-| `mysql.time_zone_leap_second` | ❌ | Leap-second transition table |
-| `mysql.time_zone_name` | ❌ | Time zone name mapping table |
-| `mysql.time_zone_transition` | ❌ | Time zone transition table |
-| `mysql.time_zone_transition_type` | ❌ | Time zone transition type table |
+| `mysql.time_zone` | 🟡 | Limited read-only empty placeholder time-zone ID and leap-second usage table with MySQL 8.4.9-shaped columns, auto-increment primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded time-zone rows, `mysql_tzinfo_to_sql` import, named-zone conversion, leap-second behavior, privilege filtering, or writable system table |
+| `mysql.time_zone_leap_second` | 🟡 | Limited read-only empty placeholder leap-second transition table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded leap-second rows, leap-second adjustment, privilege filtering, or writable system table |
+| `mysql.time_zone_name` | 🟡 | Limited read-only empty placeholder time-zone name mapping table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded named-zone rows, named time-zone lookup beyond current fixed support, privilege filtering, or writable system table |
+| `mysql.time_zone_transition` | 🟡 | Limited read-only empty placeholder time-zone transition table with MySQL 8.4.9-shaped columns, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded transition rows, daylight-saving conversion, privilege filtering, or writable system table |
+| `mysql.time_zone_transition_type` | 🟡 | Limited read-only empty placeholder time-zone transition type table with MySQL 8.4.9-shaped columns, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loaded transition-type rows, named-zone offset/abbreviation resolution, privilege filtering, or writable system table |
 | `mysql.gtid_executed` | 🟡 | Limited read-only empty GTID persistence table with MySQL 8.4.9-shaped columns, column comments, composite primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no GTID rows, binary logging, GTID mode or persistence, GTID table compression, replication state, reset-side effects, privilege filtering, or writable system table |
 | `mysql.ndb_binlog_index` | ❌ | NDB Cluster replication binary log information table |
 | `mysql.slave_master_info` | ❌ | Table shape and diagnostics |

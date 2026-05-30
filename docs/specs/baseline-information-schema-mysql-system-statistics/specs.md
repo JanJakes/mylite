@@ -21,6 +21,8 @@ The `baseline-mysql-gtid-executed-table` slice extends it to the composite
 `mysql.gtid_executed`.
 The `baseline-mysql-log-tables` slice verifies that supported no-index
 `mysql.general_log` and `mysql.slow_log` tables return zero statistics rows.
+The `baseline-mysql-time-zone-tables` slice extends it to primary-key rows for
+the five `mysql.time_zone*` tables.
 
 ## Compatibility Authority
 
@@ -101,6 +103,8 @@ descriptor-owned statistics rows for user tables.
   `baseline-mysql-gtid-executed-table`.
 - `mysql.general_log` and `mysql.slow_log` no-index metadata is specified and
   tested by `baseline-mysql-log-tables`.
+- `mysql.time_zone*` primary-key metadata is specified and tested by
+  `baseline-mysql-time-zone-tables`.
 - Writes to `mysql` system tables remain rejected by the existing built-in
   schema write-protection rules.
 

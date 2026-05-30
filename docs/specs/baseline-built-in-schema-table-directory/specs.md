@@ -184,6 +184,12 @@ options, table comments, column metadata, and no-index/no-constraint metadata
 while keeping log-row storage, log writing, log routing, rotation, and writes
 out of scope.
 
+The `baseline-mysql-time-zone-tables` slice refines the five
+`mysql.time_zone*` tables with direct empty placeholder reads plus
+MySQL-observed InnoDB status fields, comments, column metadata, and
+primary-key metadata while keeping zoneinfo row loading, named time-zone
+conversion, leap-second handling, and writes out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

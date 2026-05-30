@@ -101,7 +101,7 @@ Deferred:
 - statement-level non-determinism observable through `SLEEP()` or other
   long-running expression evaluation, because those expression forms are
   outside the current MyLite slice;
-- named time-zone tables, daylight-saving rules, fractional seconds, temporal
+- loaded named-zone rows, daylight-saving rules, fractional seconds, temporal
   arithmetic, casts, triggers, cascades, privilege semantics, and protocol-grade
   temporal metadata.
 

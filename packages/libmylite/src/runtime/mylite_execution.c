@@ -4500,6 +4500,11 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN = 85,
     INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST = 86,
     INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST = 87,
+    INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE = 88,
+    INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_LEAP_SECOND = 89,
+    INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME = 90,
+    INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION = 91,
+    INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE = 92,
 };
 
 struct information_schema_column_definition {
@@ -12988,6 +12993,200 @@ static const char *const mysql_servers_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_time_zone_columns[] = {
+    {"Time_zone_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"Use_leap_seconds",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('Y','N')"},
+};
+
+static const char *const mysql_time_zone_column_keys[] = {
+    "PRI",
+    "",
+};
+
+static const char *const mysql_time_zone_column_extras[] = {
+    "auto_increment",
+    "",
+};
+
+static const char *const mysql_time_zone_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition mysql_time_zone_leap_second_columns[] = {
+    {"Transition_time", NULL, "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+    {"Correction", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+};
+
+static const char *const mysql_time_zone_leap_second_column_keys[] = {
+    "PRI",
+    "",
+};
+
+static const char *const mysql_time_zone_leap_second_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const mysql_time_zone_leap_second_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition mysql_time_zone_name_columns[] = {
+    {"Name",
+     NULL,
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Time_zone_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const char *const mysql_time_zone_name_column_keys[] = {
+    "PRI",
+    "",
+};
+
+static const char *const mysql_time_zone_name_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const mysql_time_zone_name_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition mysql_time_zone_transition_columns[] = {
+    {"Time_zone_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"Transition_time", NULL, "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+    {"Transition_type_id",
+     NULL,
+     "NO",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int unsigned"},
+};
+
+static const char *const mysql_time_zone_transition_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+};
+
+static const char *const mysql_time_zone_transition_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_time_zone_transition_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition mysql_time_zone_transition_type_columns[] =
+    {
+        {"Time_zone_id",
+         NULL,
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         "10",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"Transition_type_id",
+         NULL,
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         "10",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"Offset", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+        {"Is_DST",
+         "0",
+         "NO",
+         "tinyint",
+         NULL,
+         NULL,
+         "3",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "tinyint unsigned"},
+        {"Abbreviation",
+         "",
+         "NO",
+         "char",
+         "8",
+         "24",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "char(8)"},
+};
+
+static const char *const mysql_time_zone_transition_type_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_time_zone_transition_type_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_time_zone_transition_type_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_innodb_index_stats_columns[] = {
     {"database_name",
      NULL,
@@ -13315,6 +13514,67 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_servers_column_keys,
      mysql_servers_column_extras,
      mysql_servers_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE,
+      "time_zone",
+      mysql_time_zone_columns,
+      sizeof(mysql_time_zone_columns) / sizeof(mysql_time_zone_columns[0])},
+     mysql_time_zone_column_keys,
+     mysql_time_zone_column_extras,
+     mysql_time_zone_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_LEAP_SECOND,
+      "time_zone_leap_second",
+      mysql_time_zone_leap_second_columns,
+      sizeof(mysql_time_zone_leap_second_columns) / sizeof(mysql_time_zone_leap_second_columns[0])},
+     mysql_time_zone_leap_second_column_keys,
+     mysql_time_zone_leap_second_column_extras,
+     mysql_time_zone_leap_second_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME,
+      "time_zone_name",
+      mysql_time_zone_name_columns,
+      sizeof(mysql_time_zone_name_columns) / sizeof(mysql_time_zone_name_columns[0])},
+     mysql_time_zone_name_column_keys,
+     mysql_time_zone_name_column_extras,
+     mysql_time_zone_name_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION,
+      "time_zone_transition",
+      mysql_time_zone_transition_columns,
+      sizeof(mysql_time_zone_transition_columns) / sizeof(mysql_time_zone_transition_columns[0])},
+     mysql_time_zone_transition_column_keys,
+     mysql_time_zone_transition_column_extras,
+     mysql_time_zone_transition_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE,
+      "time_zone_transition_type",
+      mysql_time_zone_transition_type_columns,
+      sizeof(mysql_time_zone_transition_type_columns) /
+          sizeof(mysql_time_zone_transition_type_columns[0])},
+     mysql_time_zone_transition_type_column_keys,
+     mysql_time_zone_transition_type_column_extras,
+     mysql_time_zone_transition_type_column_privileges,
      NULL,
      NULL,
      0U,
@@ -16828,6 +17088,7 @@ static const char *builtin_schema_table_rows(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
+static const char *builtin_mysql_table_rows(const char *table_name);
 static const char *builtin_schema_table_average_row_length(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
@@ -16856,6 +17117,7 @@ static const char *builtin_schema_table_comment(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
+static const char *builtin_mysql_table_comment(const char *table_name);
 static bool builtin_schema_table_has_update_time(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
@@ -16885,6 +17147,10 @@ static bool builtin_schema_table_is_mysql_plugin(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_servers(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_time_zone(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -51718,7 +51984,12 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "general_log") == 0 ||
             strcmp(definition->query_definition.name, "gtid_executed") == 0 ||
             strcmp(definition->query_definition.name, "servers") == 0 ||
-            strcmp(definition->query_definition.name, "slow_log") == 0);
+            strcmp(definition->query_definition.name, "slow_log") == 0 ||
+            strcmp(definition->query_definition.name, "time_zone") == 0 ||
+            strcmp(definition->query_definition.name, "time_zone_leap_second") == 0 ||
+            strcmp(definition->query_definition.name, "time_zone_name") == 0 ||
+            strcmp(definition->query_definition.name, "time_zone_transition") == 0 ||
+            strcmp(definition->query_definition.name, "time_zone_transition_type") == 0);
 }
 
 static bool mysql_system_table_definition_has_catalog_rows(
@@ -53043,6 +53314,11 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_LEAP_SECOND:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
         return MYLITE_OK;
     }
 
@@ -53124,6 +53400,11 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_LEAP_SECOND:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_NAME:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -54588,29 +54869,10 @@ static const char *builtin_schema_table_rows(
         return NULL;
     }
     if (strcmp(directory->schema_name, "mysql") == 0) {
-        if (strcmp(table_name, "engine_cost") == 0) {
-            return "2";
-        }
-        if (strcmp(table_name, "innodb_index_stats") == 0) {
-            return "6";
-        }
-        if (strcmp(table_name, "innodb_table_stats") == 0) {
-            return "2";
-        }
-        if (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0) {
-            return "2";
-        }
-        if (strcmp(table_name, "plugin") == 0) {
-            return "2";
-        }
-        if (strcmp(table_name, "server_cost") == 0) {
-            return "6";
-        }
-        if (strcmp(table_name, "user") == 0) {
-            return "5";
-        }
-        if (strcmp(table_name, "db") == 0 || strcmp(table_name, "tables_priv") == 0) {
-            return "2";
+        const char *rows = builtin_mysql_table_rows(table_name);
+
+        if (rows != NULL) {
+            return rows;
         }
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
@@ -54621,6 +54883,36 @@ static const char *builtin_schema_table_rows(
         return "6";
     }
     return "0";
+}
+
+static const char *builtin_mysql_table_rows(const char *table_name) {
+    static const struct mysql_table_row_count {
+        const char *table_name;
+        const char *rows;
+    } row_counts[] = {
+        {"db", "2"},
+        {"engine_cost", "2"},
+        {"general_log", "2"},
+        {"innodb_index_stats", "6"},
+        {"innodb_table_stats", "2"},
+        {"plugin", "2"},
+        {"server_cost", "6"},
+        {"slow_log", "2"},
+        {"tables_priv", "2"},
+        {"time_zone", "1815"},
+        {"time_zone_leap_second", "0"},
+        {"time_zone_name", "2311"},
+        {"time_zone_transition", "119074"},
+        {"time_zone_transition_type", "9871"},
+        {"user", "5"},
+    };
+
+    for (size_t index = 0U; index < sizeof(row_counts) / sizeof(row_counts[0]); ++index) {
+        if (strcmp(table_name, row_counts[index].table_name) == 0) {
+            return row_counts[index].rows;
+        }
+    }
+    return NULL;
 }
 
 static const char *builtin_schema_table_average_row_length(
@@ -54641,6 +54933,21 @@ static const char *builtin_schema_table_average_row_length(
     if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
         return "8192";
     }
+    if (builtin_schema_table_is_mysql_time_zone(directory, table_name)) {
+        if (strcmp(table_name, "time_zone") == 0) {
+            return "45";
+        }
+        if (strcmp(table_name, "time_zone_name") == 0) {
+            return "113";
+        }
+        if (strcmp(table_name, "time_zone_transition") == 0) {
+            return "39";
+        }
+        if (strcmp(table_name, "time_zone_transition_type") == 0) {
+            return "48";
+        }
+        return "0";
+    }
     return "0";
 }
 
@@ -54656,6 +54963,20 @@ static const char *builtin_schema_table_data_length(
     if (strcmp(directory->schema_name, "mysql") == 0 &&
         (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0)) {
         return "0";
+    }
+    if (builtin_schema_table_is_mysql_time_zone(directory, table_name)) {
+        if (strcmp(table_name, "time_zone") == 0) {
+            return "81920";
+        }
+        if (strcmp(table_name, "time_zone_name") == 0) {
+            return "262144";
+        }
+        if (strcmp(table_name, "time_zone_transition") == 0) {
+            return "4734976";
+        }
+        if (strcmp(table_name, "time_zone_transition_type") == 0) {
+            return "475136";
+        }
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 ||
         strcmp(directory->schema_name, "information_schema") == 0) {
@@ -54679,7 +55000,8 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_func(directory, table_name) ||
                    builtin_schema_table_is_mysql_gtid_executed(directory, table_name) ||
                    builtin_schema_table_is_mysql_plugin(directory, table_name) ||
-                   builtin_schema_table_is_mysql_servers(directory, table_name)
+                   builtin_schema_table_is_mysql_servers(directory, table_name) ||
+                   builtin_schema_table_is_mysql_time_zone(directory, table_name)
                ? "4194304"
                : "0";
 }
@@ -54688,7 +55010,13 @@ static const char *builtin_schema_table_auto_increment(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 ) {
-    return builtin_schema_table_is_mysql_component(directory, table_name) ? "1" : NULL;
+    if (builtin_schema_table_is_mysql_component(directory, table_name)) {
+        return "1";
+    }
+    return builtin_schema_table_is_mysql_time_zone(directory, table_name) &&
+                   strcmp(table_name, "time_zone") == 0
+               ? "1796"
+               : NULL;
 }
 
 static const char *builtin_schema_table_collation(
@@ -54762,38 +55090,43 @@ static const char *builtin_schema_table_comment(
         return "VIEW";
     }
     if (strcmp(directory->schema_name, "mysql") == 0) {
-        if (strcmp(table_name, "component") == 0) {
-            return "Components";
-        }
-        if (strcmp(table_name, "func") == 0) {
-            return "User defined functions";
-        }
-        if (strcmp(table_name, "general_log") == 0) {
-            return "General log";
-        }
-        if (strcmp(table_name, "plugin") == 0) {
-            return "MySQL plugins";
-        }
-        if (strcmp(table_name, "servers") == 0) {
-            return "MySQL Foreign Servers table";
-        }
-        if (strcmp(table_name, "slow_log") == 0) {
-            return "Slow log";
-        }
-        if (strcmp(table_name, "user") == 0) {
-            return "Users and global privileges";
-        }
-        if (strcmp(table_name, "db") == 0) {
-            return "Database privileges";
-        }
-        if (strcmp(table_name, "tables_priv") == 0) {
-            return "Table privileges";
-        }
-        if (strcmp(table_name, "columns_priv") == 0) {
-            return "Column privileges";
+        const char *comment = builtin_mysql_table_comment(table_name);
+
+        if (comment != NULL) {
+            return comment;
         }
     }
     return "";
+}
+
+static const char *builtin_mysql_table_comment(const char *table_name) {
+    static const struct mysql_table_comment {
+        const char *table_name;
+        const char *comment;
+    } comments[] = {
+        {"columns_priv", "Column privileges"},
+        {"component", "Components"},
+        {"db", "Database privileges"},
+        {"func", "User defined functions"},
+        {"general_log", "General log"},
+        {"plugin", "MySQL plugins"},
+        {"servers", "MySQL Foreign Servers table"},
+        {"slow_log", "Slow log"},
+        {"tables_priv", "Table privileges"},
+        {"time_zone", "Time zones"},
+        {"time_zone_leap_second", "Leap seconds information for time zones"},
+        {"time_zone_name", "Time zone names"},
+        {"time_zone_transition", "Time zone transitions"},
+        {"time_zone_transition_type", "Time zone transition types"},
+        {"user", "Users and global privileges"},
+    };
+
+    for (size_t index = 0U; index < sizeof(comments) / sizeof(comments[0]); ++index) {
+        if (strcmp(table_name, comments[index].table_name) == 0) {
+            return comments[index].comment;
+        }
+    }
+    return NULL;
 }
 
 static bool builtin_schema_table_has_update_time(
@@ -54861,6 +55194,19 @@ static bool builtin_schema_table_is_mysql_servers(
 ) {
     return directory != NULL && table_name != NULL &&
            strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "servers") == 0;
+}
+
+static bool builtin_schema_table_is_mysql_time_zone(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 &&
+           (strcmp(table_name, "time_zone") == 0 ||
+            strcmp(table_name, "time_zone_leap_second") == 0 ||
+            strcmp(table_name, "time_zone_name") == 0 ||
+            strcmp(table_name, "time_zone_transition") == 0 ||
+            strcmp(table_name, "time_zone_transition_type") == 0);
 }
 
 static int append_information_schema_tables_base_row(
@@ -66157,7 +66503,10 @@ static const char *mysql_system_table_primary_key_cardinality(
     const struct mysql_system_table_definition *definition,
     size_t sequence
 ) {
-    enum { mysql_innodb_index_stats_stat_name_sequence = 4 };
+    enum {
+        mysql_innodb_index_stats_stat_name_sequence = 4,
+        mysql_time_zone_second_key_part_sequence = 2,
+    };
 
     if (definition == NULL) {
         return "0";
@@ -66179,6 +66528,21 @@ static const char *mysql_system_table_primary_key_cardinality(
     }
     if (strcmp(definition->query_definition.name, "server_cost") == 0) {
         return "6";
+    }
+    if (strcmp(definition->query_definition.name, "time_zone") == 0) {
+        return "1457";
+    }
+    if (strcmp(definition->query_definition.name, "time_zone_leap_second") == 0) {
+        return "0";
+    }
+    if (strcmp(definition->query_definition.name, "time_zone_name") == 0) {
+        return "1712";
+    }
+    if (strcmp(definition->query_definition.name, "time_zone_transition") == 0) {
+        return sequence >= mysql_time_zone_second_key_part_sequence ? "119074" : "1252";
+    }
+    if (strcmp(definition->query_definition.name, "time_zone_transition_type") == 0) {
+        return sequence >= mysql_time_zone_second_key_part_sequence ? "10529" : "1954";
     }
     return "0";
 }

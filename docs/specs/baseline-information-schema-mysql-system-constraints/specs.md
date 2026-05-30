@@ -23,6 +23,8 @@ The `baseline-mysql-gtid-executed-table` slice extends it to the composite
 The `baseline-mysql-log-tables` slice verifies that supported no-constraint
 `mysql.general_log` and `mysql.slow_log` tables return zero rows from these
 constraint catalogs.
+The `baseline-mysql-time-zone-tables` slice extends it to primary-key rows for
+the five `mysql.time_zone*` tables.
 
 ## Compatibility Authority
 
@@ -119,6 +121,8 @@ No parser changes are required.
   `baseline-mysql-gtid-executed-table`.
 - `mysql.general_log` and `mysql.slow_log` no-constraint metadata is specified
   and tested by `baseline-mysql-log-tables`.
+- `mysql.time_zone*` primary-key metadata is specified and tested by
+  `baseline-mysql-time-zone-tables`.
 - Writes to `mysql` system tables remain rejected by the existing built-in
   schema write-protection rules.
 

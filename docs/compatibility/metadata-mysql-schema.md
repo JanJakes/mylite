@@ -9,7 +9,8 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
 `SELECT` access to empty `mysql.user`, `mysql.global_grants`, `mysql.db`,
-`mysql.tables_priv`, `mysql.component`, and `mysql.func`, the limited
+`mysql.tables_priv`, `mysql.columns_priv`, `mysql.component`, and
+`mysql.func`, the limited
 connection-control registry rows in `mysql.plugin`, default optimizer cost
 rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
 `mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and empty
@@ -69,7 +70,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.global_grants` | 🟡 | Limited read-only empty dynamic global grants placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(USER, HOST, PRIV)` metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no dynamic privilege storage, grant reload, account-management DDL, `SHOW GRANTS` expansion, privilege filtering, privilege enforcement, or writable system table |
 | `mysql.db` | 🟡 | Limited read-only empty database-level grant table placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(Host, User, Db)` metadata, nonunique `User` secondary-index metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no database-level grant storage, grant reload, account-management DDL, `SHOW GRANTS` expansion, privilege filtering, privilege enforcement, or writable system table |
 | `mysql.tables_priv` | 🟡 | Limited read-only empty table-level grant table placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(Host, User, Db, Table_name)` metadata, nonunique `Grantor` secondary-index metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no table-level grant storage, column-level grant storage, grant reload, account-management DDL, `SHOW GRANTS` expansion, privilege filtering, privilege enforcement, or writable system table |
-| `mysql.columns_priv` | ❌ | Grant table: column-level privileges |
+| `mysql.columns_priv` | 🟡 | Limited read-only empty column-level grant table placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(Host, User, Db, Table_name, Column_name)` metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no column-level grant storage, grant reload, account-management DDL, `SHOW GRANTS` expansion, privilege filtering, privilege enforcement, or writable system table |
 | `mysql.procs_priv` | ❌ | Grant table: routine privileges |
 | `mysql.proxies_priv` | ❌ | Grant table: proxy-user privileges |
 | `mysql.default_roles` | ❌ | Grant table: default role activation |

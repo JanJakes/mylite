@@ -578,6 +578,7 @@ enum {
     mysql_global_grants_column_count = 4,
     mysql_db_column_count = 22,
     mysql_tables_priv_column_count = 8,
+    mysql_columns_priv_column_count = 7,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4530,6 +4531,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_GLOBAL_GRANTS = 102,
     INFORMATION_SCHEMA_TABLE_MYSQL_DB = 103,
     INFORMATION_SCHEMA_TABLE_MYSQL_TABLES_PRIV = 104,
+    INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV = 105,
 };
 
 struct information_schema_column_definition {
@@ -13368,6 +13370,109 @@ static const struct mysql_system_table_secondary_index_definition
         {"Grantor", 4U, "2", "1", false},
 };
 
+static const struct information_schema_column_definition mysql_columns_priv_columns[] = {
+    {"Host",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"Db", "", "NO", "char", "64", "192", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(64)"},
+    {"User", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"Table_name",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "char(64)"},
+    {"Column_name",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "char(64)"},
+    {"Timestamp",
+     "CURRENT_TIMESTAMP",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+    {"Column_priv",
+     "",
+     "NO",
+     "set",
+     "31",
+     "93",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "set('Select','Insert','Update','References')"},
+};
+
+static const char *const mysql_columns_priv_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "PRI",
+    "PRI",
+    "",
+    "",
+};
+
+static const char *const mysql_columns_priv_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    "",
+};
+
+static const char *const mysql_columns_priv_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t mysql_columns_priv_primary_key_column_indexes[] = {
+    0U,
+    2U,
+    1U,
+    3U,
+    4U,
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -15699,6 +15804,21 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      mysql_tables_priv_secondary_indexes,
      sizeof(mysql_tables_priv_secondary_indexes) / sizeof(mysql_tables_priv_secondary_indexes[0])},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV,
+      "columns_priv",
+      mysql_columns_priv_columns,
+      mysql_columns_priv_column_count},
+     mysql_columns_priv_column_keys,
+     mysql_columns_priv_column_extras,
+     mysql_columns_priv_column_privileges,
+     NULL,
+     mysql_columns_priv_primary_key_column_indexes,
+     sizeof(mysql_columns_priv_primary_key_column_indexes) /
+         sizeof(mysql_columns_priv_primary_key_column_indexes[0]),
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT,
       "component",
@@ -54699,6 +54819,7 @@ static bool mysql_system_table_definition_has_no_rows(
 ) {
     return definition != NULL && strcmp(definition->schema_name, "mysql") == 0 &&
            (strcmp(definition->query_definition.name, "component") == 0 ||
+            strcmp(definition->query_definition.name, "columns_priv") == 0 ||
             strcmp(definition->query_definition.name, "db") == 0 ||
             strcmp(definition->query_definition.name, "func") == 0 ||
             strcmp(definition->query_definition.name, "general_log") == 0 ||
@@ -56047,6 +56168,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
@@ -56145,6 +56267,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
@@ -57837,6 +57960,8 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_replication_metadata(directory, table_name) ||
                    builtin_schema_table_is_mysql_servers(directory, table_name) ||
                    builtin_schema_table_is_mysql_time_zone(directory, table_name) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "columns_priv") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     (strcmp(table_name, "db") == 0 || strcmp(table_name, "tables_priv") == 0)) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&

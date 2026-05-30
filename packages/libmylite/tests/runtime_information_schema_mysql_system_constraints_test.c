@@ -219,12 +219,12 @@ static int test_information_schema_mysql_system_constraints(void) {
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE "
-                   "TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'columns_priv'",
+                   "TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'procs_priv'",
             .column_names = count_column,
             .column_count = sizeof(count_column) / sizeof(count_column[0]),
             .values = count_zero,
             .row_count = 1U,
-            .context = "unsupported mysql columns_priv table constraints omitted",
+            .context = "unsupported mysql procs_priv table constraints omitted",
         }
     );
     failures += expect_row_count_status(database, "row count after mysql system constraints");

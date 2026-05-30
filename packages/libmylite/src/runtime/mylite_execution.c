@@ -573,6 +573,7 @@ enum {
     mysql_gtid_executed_column_count = 4,
     mysql_general_log_column_count = 6,
     mysql_slow_log_column_count = 12,
+    mysql_plugin_column_count = 2,
     mysql_servers_column_count = 9,
     mysql_innodb_index_stats_column_count = 8,
     mysql_innodb_table_stats_column_count = 6,
@@ -4494,6 +4495,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED = 82,
     INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG = 83,
     INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG = 84,
+    INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN = 85,
 };
 
 struct information_schema_column_definition {
@@ -12624,6 +12626,48 @@ static const char *const mysql_slow_log_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_plugin_columns[] = {
+    {"name",
+     "",
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"dl",
+     "",
+     "NO",
+     "varchar",
+     "128",
+     "384",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(128)"},
+};
+
+static const char *const mysql_plugin_column_keys[] = {
+    "PRI",
+    "",
+};
+
+static const char *const mysql_plugin_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const mysql_plugin_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_servers_columns[] = {
     {"Server_name",
      "",
@@ -13034,6 +13078,17 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_slow_log_column_keys,
      mysql_slow_log_column_extras,
      mysql_slow_log_column_privileges,
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN,
+      "plugin",
+      mysql_plugin_columns,
+      mysql_plugin_column_count},
+     mysql_plugin_column_keys,
+     mysql_plugin_column_extras,
+     mysql_plugin_column_privileges,
      NULL,
      NULL,
      0U},
@@ -16152,6 +16207,13 @@ static int append_mysql_system_table_system_rows(
 static bool mysql_system_table_definition_has_no_rows(
     const struct mysql_system_table_definition *definition
 );
+static bool mysql_system_table_definition_has_catalog_rows(
+    const struct mysql_system_table_definition *definition
+);
+static int append_mysql_plugin_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_mysql_innodb_index_stats_builtin_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -16585,6 +16647,10 @@ static bool builtin_schema_table_is_mysql_func(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_gtid_executed(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_plugin(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -51363,11 +51429,12 @@ static int build_mysql_system_table_rows(
     struct information_schema_row_set *out_rows
 ) {
     bool has_no_rows = mysql_system_table_definition_has_no_rows(definition);
+    bool has_catalog_rows = mysql_system_table_definition_has_catalog_rows(definition);
     int rc = MYLITE_OK;
 
     *out_rows = (struct information_schema_row_set){.definition = &definition->query_definition};
     rc = append_mysql_system_table_system_rows(database, context, definition, out_rows);
-    if (rc == MYLITE_OK && !has_no_rows) {
+    if (rc == MYLITE_OK && !has_no_rows && has_catalog_rows) {
         rc = append_mysql_system_table_catalog_rows(database, definition, out_rows);
     }
     if (rc != MYLITE_OK) {
@@ -51395,6 +51462,10 @@ static int append_mysql_system_table_system_rows(
         strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
         return append_mysql_innodb_table_stats_builtin_rows(database, rows);
     }
+    if (strcmp(definition->schema_name, "mysql") == 0 &&
+        strcmp(definition->query_definition.name, "plugin") == 0) {
+        return append_mysql_plugin_system_rows(database, rows);
+    }
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
@@ -51410,6 +51481,37 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "gtid_executed") == 0 ||
             strcmp(definition->query_definition.name, "servers") == 0 ||
             strcmp(definition->query_definition.name, "slow_log") == 0);
+}
+
+static bool mysql_system_table_definition_has_catalog_rows(
+    const struct mysql_system_table_definition *definition
+) {
+    return definition != NULL && strcmp(definition->schema_name, "mysql") == 0 &&
+           (strcmp(definition->query_definition.name, "innodb_index_stats") == 0 ||
+            strcmp(definition->query_definition.name, "innodb_table_stats") == 0);
+}
+
+static int append_mysql_plugin_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    static const char *const plugin_rows[][mysql_plugin_column_count] = {
+        {"CONNECTION_CONTROL", "connection_control.so"},
+        {"CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS", "connection_control.so"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != mysql_plugin_column_count) {
+        set_runtime_error(database, "invalid mysql.plugin columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(plugin_rows) / sizeof(plugin_rows[0]);
+         ++row_index) {
+        rc = append_information_schema_row(database, rows, plugin_rows[row_index]);
+    }
+    return rc;
 }
 
 static const char *mysql_system_table_column_comment(
@@ -52599,6 +52701,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
         return MYLITE_OK;
@@ -52677,6 +52780,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
         return MYLITE_OK;
@@ -54152,6 +54256,9 @@ static const char *builtin_schema_table_rows(
         if (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0) {
             return "2";
         }
+        if (strcmp(table_name, "plugin") == 0) {
+            return "2";
+        }
         if (strcmp(table_name, "user") == 0) {
             return "5";
         }
@@ -54180,6 +54287,9 @@ static const char *builtin_schema_table_average_row_length(
     }
     if (builtin_schema_table_is_mysql_stats(directory, table_name)) {
         return strcmp(table_name, "innodb_index_stats") == 0 ? "2730" : "8192";
+    }
+    if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
+        return "8192";
     }
     return "0";
 }
@@ -54217,6 +54327,7 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_component(directory, table_name) ||
                    builtin_schema_table_is_mysql_func(directory, table_name) ||
                    builtin_schema_table_is_mysql_gtid_executed(directory, table_name) ||
+                   builtin_schema_table_is_mysql_plugin(directory, table_name) ||
                    builtin_schema_table_is_mysql_servers(directory, table_name)
                ? "4194304"
                : "0";
@@ -54309,6 +54420,9 @@ static const char *builtin_schema_table_comment(
         if (strcmp(table_name, "general_log") == 0) {
             return "General log";
         }
+        if (strcmp(table_name, "plugin") == 0) {
+            return "MySQL plugins";
+        }
         if (strcmp(table_name, "servers") == 0) {
             return "MySQL Foreign Servers table";
         }
@@ -54335,7 +54449,8 @@ static bool builtin_schema_table_has_update_time(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 ) {
-    return builtin_schema_table_is_mysql_stats(directory, table_name);
+    return builtin_schema_table_is_mysql_stats(directory, table_name) ||
+           builtin_schema_table_is_mysql_plugin(directory, table_name);
 }
 
 static bool builtin_schema_table_is_mysql_stats(
@@ -54370,6 +54485,14 @@ static bool builtin_schema_table_is_mysql_gtid_executed(
 ) {
     return directory != NULL && table_name != NULL &&
            strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "gtid_executed") == 0;
+}
+
+static bool builtin_schema_table_is_mysql_plugin(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "plugin") == 0;
 }
 
 static bool builtin_schema_table_is_mysql_servers(
@@ -65687,6 +65810,9 @@ static const char *mysql_system_table_primary_key_cardinality(
             return "6";
         }
         return "2";
+    }
+    if (strcmp(definition->query_definition.name, "plugin") == 0) {
+        return "1";
     }
     return "0";
 }

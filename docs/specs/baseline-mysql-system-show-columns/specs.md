@@ -5,10 +5,11 @@ surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
 `DESC` can introspect supported mysql system tables. The original slice covered
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`; the separate
 `baseline-mysql-component-table`, `baseline-mysql-func-table`,
+`baseline-mysql-plugin-table`,
 `baseline-mysql-servers-table`, `baseline-mysql-gtid-executed-table`, and
 `baseline-mysql-log-tables`
 slices extend the same metadata path to `mysql.component`, `mysql.func`,
-`mysql.servers`, `mysql.gtid_executed`, `mysql.general_log`, and
+`mysql.plugin`, `mysql.servers`, `mysql.gtid_executed`, `mysql.general_log`, and
 `mysql.slow_log`. The tables are limited read-only synthetic system tables in
 MyLite; these features reuse owned column metadata rather than adding physical
 system tables.
@@ -37,6 +38,7 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_table_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_index_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.component
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.func
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.plugin
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.servers
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.gtid_executed
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.general_log
@@ -45,6 +47,7 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} func {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} plugin {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} servers {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} gtid_executed {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} general_log {FROM | IN} mysql
@@ -53,6 +56,7 @@ DESCRIBE mysql.innodb_table_stats
 DESCRIBE mysql.innodb_index_stats
 DESCRIBE mysql.component
 DESCRIBE mysql.func
+DESCRIBE mysql.plugin
 DESCRIBE mysql.servers
 DESCRIBE mysql.gtid_executed
 DESCRIBE mysql.general_log
@@ -61,6 +65,7 @@ DESC mysql.innodb_table_stats
 DESC mysql.innodb_index_stats
 DESC mysql.component
 DESC mysql.func
+DESC mysql.plugin
 DESC mysql.servers
 DESC mysql.gtid_executed
 DESC mysql.general_log
@@ -75,11 +80,13 @@ SHOW COLUMNS FROM innodb_table_stats;
 SHOW FULL COLUMNS FROM innodb_index_stats;
 SHOW COLUMNS FROM component;
 SHOW COLUMNS FROM func;
+SHOW COLUMNS FROM plugin;
 SHOW COLUMNS FROM servers;
 SHOW COLUMNS FROM gtid_executed;
 SHOW COLUMNS FROM general_log;
 SHOW COLUMNS FROM slow_log;
 DESCRIBE innodb_table_stats;
+DESCRIBE plugin;
 DESCRIBE gtid_executed;
 DESC servers;
 ```
@@ -124,6 +131,10 @@ auto_increment PRIMARY KEY`, `component_group_id int unsigned NOT NULL`, and
 `baseline-mysql-func-table`: `name char(64) NOT NULL DEFAULT '' PRIMARY KEY`,
 `ret tinyint NOT NULL DEFAULT 0`, `dl char(128) NOT NULL DEFAULT ''`, and
 `type enum('function','aggregate') NOT NULL`.
+
+`SHOW COLUMNS FROM mysql.plugin` returns two rows specified by
+`baseline-mysql-plugin-table`: `name varchar(64) NOT NULL DEFAULT '' PRIMARY
+KEY` and `dl varchar(128) NOT NULL DEFAULT ''`.
 
 `SHOW COLUMNS FROM mysql.servers` returns nine rows specified by
 `baseline-mysql-servers-table`: `Server_name char(64) NOT NULL DEFAULT ''

@@ -10,6 +10,8 @@ The separate `baseline-mysql-component-table` slice extends the same metadata
 path to the single `PRIMARY(component_id)` constraint for `mysql.component`.
 The `baseline-mysql-func-table` slice extends it to the single `PRIMARY(name)`
 constraint for `mysql.func`.
+The `baseline-mysql-plugin-table` slice extends it to the single
+`PRIMARY(name)` constraint for `mysql.plugin`.
 The `baseline-mysql-servers-table` slice extends it to the single
 `PRIMARY(Server_name)` constraint for `mysql.servers`.
 The `baseline-mysql-gtid-executed-table` slice extends it to the composite
@@ -104,6 +106,8 @@ No parser changes are required.
   `baseline-mysql-component-table`.
 - `mysql.func` primary-key metadata is specified and tested by
   `baseline-mysql-func-table`.
+- `mysql.plugin` primary-key metadata is specified and tested by
+  `baseline-mysql-plugin-table`.
 - `mysql.servers` primary-key metadata is specified and tested by
   `baseline-mysql-servers-table`.
 - `mysql.gtid_executed` primary-key metadata is specified and tested by

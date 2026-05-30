@@ -167,8 +167,8 @@ without introducing durable server-startup state.
   persisted `mysql.func` rows, function invocation, or startup loading.
 - Writes to `mysql.func` remain blocked by the built-in schema write guard
   before catalog mutation.
-- Other object-information system tables, including `mysql.plugin`, remain
-  unsupported until separately specified.
+- Other object-information system tables are governed by their own specs; this
+  slice does not add plugin metadata.
 - `SHOW CREATE TABLE mysql.func` remains out of scope for this slice.
 - Privilege filtering is not implemented.
 - No physical `mysql.func` table, SQLite virtual table, or SQLite fork patch is

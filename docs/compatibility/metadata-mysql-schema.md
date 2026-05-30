@@ -8,7 +8,8 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
-`SELECT` access to empty `mysql.component`, `mysql.func`, `mysql.servers`,
+`SELECT` access to empty `mysql.component` and `mysql.func`, the limited
+connection-control registry rows in `mysql.plugin`, empty `mysql.servers`,
 `mysql.gtid_executed`, `mysql.general_log`, and `mysql.slow_log` plus
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
@@ -67,7 +68,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.password_history` | ❌ | Grant table: password history |
 | `mysql.component` | 🟡 | Limited read-only empty component registry table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no installed component rows, component DDL, component loading, persisted component services, privilege filtering, or writable system table |
 | `mysql.func` | 🟡 | Limited read-only empty loadable-function registry table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loadable-function rows, loadable-function DDL, function loading, persisted `mysql.func` rows, privilege filtering, or writable system table |
-| `mysql.plugin` | ❌ | Registry: server-side plugins installed with INSTALL PLUGIN |
+| `mysql.plugin` | 🟡 | Limited read-only plugin registry table with the target MySQL 8.4.9 connection-control plugin rows, MySQL-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no plugin loading, plugin lifecycle, mutable plugin registry, expanded `SHOW PLUGINS` / `INFORMATION_SCHEMA.PLUGINS` inventory, privilege filtering, or writable system table |
 | `mysql.general_log` | 🟡 | Limited read-only empty CSV general-query-log table with MySQL 8.4.9-shaped columns, no index/constraint metadata rows, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` empty results, and `SHOW TABLE STATUS`; no log-row storage, logging side effects, log output routing, log rotation, DDL on log tables, privilege filtering, or writable system table |
 | `mysql.slow_log` | 🟡 | Limited read-only empty CSV slow-query-log table with MySQL 8.4.9-shaped columns, no index/constraint metadata rows, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` empty results, and `SHOW TABLE STATUS`; no slow-query logging, log-row storage, log output routing, log rotation, DDL on log tables, privilege filtering, or writable system table |
 | `mysql.help_category` | ❌ | HELP category table |

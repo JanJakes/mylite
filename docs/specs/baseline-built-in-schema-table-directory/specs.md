@@ -154,6 +154,12 @@ reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
 primary-key metadata while keeping loadable-function execution, persistence,
 and writes out of scope.
 
+The `baseline-mysql-plugin-table` slice refines `mysql.plugin` with direct
+connection-control plugin registry rows plus MySQL-observed row count,
+`DATA_FREE`, comment, create-options, non-`NULL` update-time shape, and
+primary-key metadata while keeping plugin loading, lifecycle, mutable plugin
+registry state, and writes out of scope.
+
 The `baseline-mysql-servers-table` slice refines `mysql.servers` with direct
 empty reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
 primary-key metadata while keeping server-definition DDL, FEDERATED

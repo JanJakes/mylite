@@ -4,10 +4,11 @@ This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` can introspect
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The separate
 `baseline-mysql-component-table`, `baseline-mysql-func-table`,
+`baseline-mysql-plugin-table`,
 `baseline-mysql-servers-table`, `baseline-mysql-gtid-executed-table`, and
 `baseline-mysql-log-tables`
 slices extend the same path to `mysql.component`, `mysql.func`,
-`mysql.servers`, `mysql.gtid_executed`, `mysql.general_log`, and
+`mysql.plugin`, `mysql.servers`, `mysql.gtid_executed`, `mysql.general_log`, and
 `mysql.slow_log`. The tables remain read-only synthetic system tables; these
 features expose their primary-key shape or MySQL-observed no-index shape
 without creating physical system tables.
@@ -35,6 +36,7 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_table_stats
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.innodb_index_stats
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.component
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.func
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.plugin
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.servers
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.gtid_executed
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.general_log
@@ -43,6 +45,7 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} component {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} func {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} plugin {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} servers {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} gtid_executed {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} general_log {FROM | IN} mysql
@@ -57,6 +60,7 @@ SHOW INDEX FROM innodb_table_stats;
 SHOW KEYS FROM innodb_index_stats;
 SHOW INDEX FROM component;
 SHOW INDEX FROM func;
+SHOW INDEX FROM plugin;
 SHOW INDEX FROM servers;
 SHOW INDEX FROM gtid_executed;
 SHOW INDEX FROM general_log;
@@ -91,6 +95,9 @@ row specified by `baseline-mysql-component-table`, with `Cardinality = 0`.
 
 `SHOW INDEX FROM mysql.func` returns the single `PRIMARY(name)` row specified
 by `baseline-mysql-func-table`, with `Cardinality = 0`.
+
+`SHOW INDEX FROM mysql.plugin` returns the single `PRIMARY(name)` row specified
+by `baseline-mysql-plugin-table`, with `Cardinality = 1`.
 
 `SHOW INDEX FROM mysql.servers` returns the single `PRIMARY(Server_name)` row
 specified by `baseline-mysql-servers-table`, with `Cardinality = 0`.

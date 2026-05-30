@@ -579,6 +579,7 @@ enum {
     mysql_db_column_count = 22,
     mysql_tables_priv_column_count = 8,
     mysql_columns_priv_column_count = 7,
+    mysql_procs_priv_column_count = 8,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4532,6 +4533,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_DB = 103,
     INFORMATION_SCHEMA_TABLE_MYSQL_TABLES_PRIV = 104,
     INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV = 105,
+    INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV = 106,
 };
 
 struct information_schema_column_definition {
@@ -13473,6 +13475,129 @@ static const size_t mysql_columns_priv_primary_key_column_indexes[] = {
     4U,
 };
 
+static const struct information_schema_column_definition mysql_procs_priv_columns[] = {
+    {"Host",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"Db", "", "NO", "char", "64", "192", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(64)"},
+    {"User", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"Routine_name",
+     "",
+     "NO",
+     "char",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(64)"},
+    {"Routine_type",
+     NULL,
+     "NO",
+     "enum",
+     "9",
+     "27",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "enum('FUNCTION','PROCEDURE')"},
+    {"Grantor",
+     "",
+     "NO",
+     "varchar",
+     "288",
+     "864",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(288)"},
+    {"Proc_priv",
+     "",
+     "NO",
+     "set",
+     "27",
+     "81",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "set('Execute','Alter Routine','Grant')"},
+    {"Timestamp",
+     "CURRENT_TIMESTAMP",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+};
+
+static const char *const mysql_procs_priv_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "PRI",
+    "PRI",
+    "MUL",
+    "",
+    "",
+};
+
+static const char *const mysql_procs_priv_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+};
+
+static const char *const mysql_procs_priv_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t mysql_procs_priv_primary_key_column_indexes[] = {
+    0U,
+    2U,
+    1U,
+    3U,
+    4U,
+};
+
+static const struct mysql_system_table_secondary_index_definition
+    mysql_procs_priv_secondary_indexes[] = {
+        {"Grantor", 5U, "0", "1", false},
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -15819,6 +15944,21 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      NULL,
      0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV,
+      "procs_priv",
+      mysql_procs_priv_columns,
+      mysql_procs_priv_column_count},
+     mysql_procs_priv_column_keys,
+     mysql_procs_priv_column_extras,
+     mysql_procs_priv_column_privileges,
+     NULL,
+     mysql_procs_priv_primary_key_column_indexes,
+     sizeof(mysql_procs_priv_primary_key_column_indexes) /
+         sizeof(mysql_procs_priv_primary_key_column_indexes[0]),
+     NULL,
+     mysql_procs_priv_secondary_indexes,
+     sizeof(mysql_procs_priv_secondary_indexes) / sizeof(mysql_procs_priv_secondary_indexes[0])},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT,
       "component",
@@ -54830,6 +54970,7 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "help_relation") == 0 ||
             strcmp(definition->query_definition.name, "help_topic") == 0 ||
             strcmp(definition->query_definition.name, "ndb_binlog_index") == 0 ||
+            strcmp(definition->query_definition.name, "procs_priv") == 0 ||
             strcmp(definition->query_definition.name, "servers") == 0 ||
             strcmp(definition->query_definition.name, "slave_master_info") == 0 ||
             strcmp(definition->query_definition.name, "slave_relay_log_info") == 0 ||
@@ -56171,6 +56312,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_MASTER_INFO:
@@ -56270,6 +56412,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_MASTER_INFO:
@@ -57924,7 +58067,8 @@ static const char *builtin_schema_table_index_length(
     }
     if (!builtin_schema_table_is_mysql_help(directory, table_name)) {
         return strcmp(directory->schema_name, "mysql") == 0 &&
-                       (strcmp(table_name, "db") == 0 || strcmp(table_name, "tables_priv") == 0)
+                       (strcmp(table_name, "db") == 0 || strcmp(table_name, "procs_priv") == 0 ||
+                        strcmp(table_name, "tables_priv") == 0)
                    ? "16384"
                    : "0";
     }
@@ -57962,6 +58106,8 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_time_zone(directory, table_name) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "columns_priv") == 0) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "procs_priv") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     (strcmp(table_name, "db") == 0 || strcmp(table_name, "tables_priv") == 0)) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
@@ -58080,6 +58226,7 @@ static const char *builtin_mysql_table_comment(const char *table_name) {
         {"help_relation", "keyword-topic relation"},
         {"help_topic", "help topics"},
         {"plugin", "MySQL plugins"},
+        {"procs_priv", "Procedure privileges"},
         {"servers", "MySQL Foreign Servers table"},
         {"slave_master_info", "Master Information"},
         {"slave_relay_log_info", "Relay Log Information"},

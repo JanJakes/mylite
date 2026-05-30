@@ -222,6 +222,13 @@ comments, column metadata, and composite primary-key metadata while keeping
 column-level grant storage, grant reload, privilege filtering, privilege
 enforcement, account-management DDL, and writes out of scope.
 
+The `baseline-mysql-procs-priv-table` slice refines `mysql.procs_priv` with
+direct empty placeholder reads plus MySQL-observed InnoDB status fields,
+comments, column metadata, composite primary-key metadata, and the nonunique
+`Grantor` secondary index while keeping routine-level grant storage, grant
+reload, privilege filtering, privilege enforcement, account-management DDL,
+and writes out of scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

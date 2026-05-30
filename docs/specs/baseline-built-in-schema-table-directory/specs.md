@@ -209,6 +209,13 @@ index while keeping database-level grant storage, grant reload, privilege
 filtering, privilege enforcement, account-management DDL, and writes out of
 scope.
 
+The `baseline-mysql-tables-priv-table` slice refines `mysql.tables_priv` with
+direct empty placeholder reads plus MySQL-observed InnoDB status fields,
+comments, column metadata, composite primary-key metadata, and the nonunique
+`Grantor` secondary index while keeping table-level grant storage, grant
+reload, privilege filtering, privilege enforcement, account-management DDL,
+and writes out of scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

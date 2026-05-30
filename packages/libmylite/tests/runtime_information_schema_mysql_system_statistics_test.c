@@ -238,12 +238,12 @@ static int test_information_schema_mysql_system_statistics(void) {
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = "
-                   "'mysql' AND TABLE_NAME = 'tables_priv'",
+                   "'mysql' AND TABLE_NAME = 'columns_priv'",
             .column_names = count_column,
             .column_count = sizeof(count_column) / sizeof(count_column[0]),
             .values = count_zero,
             .row_count = 1U,
-            .context = "unsupported mysql tables_priv statistics omitted",
+            .context = "unsupported mysql columns_priv statistics omitted",
         }
     );
     failures += expect_row_count_status(database, "row count after mysql system statistics");

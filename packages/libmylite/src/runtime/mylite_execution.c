@@ -18330,6 +18330,10 @@ static int resolve_show_columns_mysql_system_table(
     const struct mysql_system_table_definition **out_definition,
     bool *out_mysql_system_target
 );
+static int reject_unknown_show_columns_information_schema_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes
+);
 static int copy_show_columns_target_schema_and_table(
     struct mylite_db *database,
     struct show_columns_target_nodes nodes,
@@ -65700,6 +65704,15 @@ static int execute_show_columns_statement(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
+        rc = reject_unknown_show_columns_information_schema_table(
+            database,
+            (struct show_columns_target_nodes){
+                .table = nodes.table,
+                .schema = nodes.schema,
+            }
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = resolve_show_columns_table_name(
             database,
             (struct show_columns_target_nodes){
@@ -65824,6 +65837,36 @@ static int resolve_show_columns_mysql_system_table(
     }
 
     set_table_does_not_exist_error(database, schema_name, table_name);
+    return MYLITE_ERROR;
+}
+
+static int reject_unknown_show_columns_information_schema_table(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_target = false;
+    int rc = copy_show_columns_target_schema_and_table(
+        database,
+        nodes,
+        schema_name,
+        table_name,
+        &has_target
+    );
+
+    if (rc != MYLITE_OK || !has_target || !schema_name_is_information_schema(schema_name)) {
+        return rc;
+    }
+    if (mylite_catalog_name_is_reserved(table_name)) {
+        set_reserved_name_error(database, "table", table_name);
+        return MYLITE_ERROR;
+    }
+    if (find_information_schema_table_definition(table_name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    set_unknown_information_schema_table_error(database, table_name);
     return MYLITE_ERROR;
 }
 

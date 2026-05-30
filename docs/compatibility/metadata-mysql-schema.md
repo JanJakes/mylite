@@ -8,7 +8,8 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
-`SELECT` access to empty `mysql.component` and `mysql.func`, the limited
+`SELECT` access to empty `mysql.user`, `mysql.global_grants`,
+`mysql.component`, and `mysql.func`, the limited
 connection-control registry rows in `mysql.plugin`, default optimizer cost
 rows in `mysql.server_cost` and `mysql.engine_cost`, empty `mysql.servers`,
 `mysql.gtid_executed`, `mysql.general_log`, `mysql.slow_log`, and empty
@@ -65,7 +66,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.view_routine_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` for supported public metadata |
 | `mysql.view_table_usage` | 🟡 | Hidden data dictionary table: direct `SELECT`, `SHOW COLUMNS` / `DESCRIBE`, and `SHOW INDEX` reject with MySQL-shaped `3554 / HY000`; absent from directory metadata; use `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` for supported public metadata |
 | `mysql.user` | 🟡 | Limited read-only empty account/grant table placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(Host, User)` metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no persisted accounts, authentication plugin lifecycle, password hashing, roles, grant-table reload, account-management DDL, privilege filtering, privilege enforcement, or writable system table |
-| `mysql.global_grants` | ❌ | Grant table: dynamic global privilege assignments |
+| `mysql.global_grants` | 🟡 | Limited read-only empty dynamic global grants placeholder with MySQL 8.4.9-shaped columns, composite `PRIMARY(USER, HOST, PRIV)` metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no dynamic privilege storage, grant reload, account-management DDL, `SHOW GRANTS` expansion, privilege filtering, privilege enforcement, or writable system table |
 | `mysql.db` | ❌ | Grant table: database-level privileges |
 | `mysql.tables_priv` | ❌ | Grant table: table-level privileges |
 | `mysql.columns_priv` | ❌ | Grant table: column-level privileges |

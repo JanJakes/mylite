@@ -196,6 +196,12 @@ metadata, and composite primary-key metadata while keeping account storage,
 authentication, roles, grant reload, privilege filtering, privilege
 enforcement, account-management DDL, and writes out of scope.
 
+The `baseline-mysql-global-grants-table` slice refines `mysql.global_grants`
+with direct empty placeholder reads plus MySQL-observed InnoDB status fields,
+comments, column metadata, and composite primary-key metadata while keeping
+dynamic privilege storage, grant reload, privilege filtering, privilege
+enforcement, account-management DDL, and writes out of scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

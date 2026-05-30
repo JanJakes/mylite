@@ -575,6 +575,7 @@ enum {
     mysql_gtid_executed_column_count = 4,
     mysql_general_log_column_count = 6,
     mysql_user_column_count = 51,
+    mysql_global_grants_column_count = 4,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4524,6 +4525,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION = 99,
     INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC = 100,
     INFORMATION_SCHEMA_TABLE_MYSQL_USER = 101,
+    INFORMATION_SCHEMA_TABLE_MYSQL_GLOBAL_GRANTS = 102,
 };
 
 struct information_schema_column_definition {
@@ -12899,6 +12901,67 @@ static const char *const mysql_user_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_global_grants_columns[] = {
+    {"USER", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"HOST",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"PRIV",
+     "",
+     "NO",
+     "char",
+     "32",
+     "96",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "char(32)"},
+    {"WITH_GRANT_OPTION",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+};
+
+static const char *const mysql_global_grants_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "",
+};
+
+static const char *const mysql_global_grants_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_global_grants_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -15183,6 +15246,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_user_column_keys,
      mysql_user_column_extras,
      mysql_user_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_GLOBAL_GRANTS,
+      "global_grants",
+      mysql_global_grants_columns,
+      mysql_global_grants_column_count},
+     mysql_global_grants_column_keys,
+     mysql_global_grants_column_extras,
+     mysql_global_grants_column_privileges,
      NULL,
      NULL,
      0U,
@@ -54189,6 +54266,7 @@ static bool mysql_system_table_definition_has_no_rows(
            (strcmp(definition->query_definition.name, "component") == 0 ||
             strcmp(definition->query_definition.name, "func") == 0 ||
             strcmp(definition->query_definition.name, "general_log") == 0 ||
+            strcmp(definition->query_definition.name, "global_grants") == 0 ||
             strcmp(definition->query_definition.name, "gtid_executed") == 0 ||
             strcmp(definition->query_definition.name, "help_category") == 0 ||
             strcmp(definition->query_definition.name, "help_keyword") == 0 ||
@@ -55525,6 +55603,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_GLOBAL_GRANTS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_CATEGORY:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD:
@@ -55620,6 +55699,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_GLOBAL_GRANTS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_CATEGORY:
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD:
@@ -57127,6 +57207,7 @@ static const char *builtin_mysql_table_rows(const char *table_name) {
         {"db", "2"},
         {"engine_cost", "2"},
         {"general_log", "2"},
+        {"global_grants", "103"},
         {"help_category", "53"},
         {"help_keyword", "1142"},
         {"help_relation", "1608"},
@@ -57170,6 +57251,9 @@ static const char *builtin_schema_table_average_row_length(
     }
     if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
         return "8192";
+    }
+    if (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "global_grants") == 0) {
+        return "795";
     }
     if (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "user") == 0) {
         return "3276";
@@ -57224,6 +57308,9 @@ static const char *builtin_schema_table_data_length(
     if (strcmp(directory->schema_name, "mysql") == 0 &&
         (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0)) {
         return "0";
+    }
+    if (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "global_grants") == 0) {
+        return "81920";
     }
     if (builtin_schema_table_is_mysql_time_zone(directory, table_name)) {
         if (strcmp(table_name, "time_zone") == 0) {
@@ -57302,6 +57389,8 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_replication_metadata(directory, table_name) ||
                    builtin_schema_table_is_mysql_servers(directory, table_name) ||
                    builtin_schema_table_is_mysql_time_zone(directory, table_name) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "global_grants") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "user") == 0)
                ? "4194304"
                : "0";
@@ -57410,6 +57499,7 @@ static const char *builtin_mysql_table_comment(const char *table_name) {
         {"db", "Database privileges"},
         {"func", "User defined functions"},
         {"general_log", "General log"},
+        {"global_grants", "Extended global grants"},
         {"help_category", "help categories"},
         {"help_keyword", "help keywords"},
         {"help_relation", "keyword-topic relation"},
@@ -69101,6 +69191,7 @@ static const char *mysql_system_table_primary_key_cardinality_for_name(
         mysql_primary_key_no_sequence_split = 0,
         mysql_innodb_index_stats_stat_name_sequence = 4,
         mysql_second_key_part_sequence = 2,
+        mysql_third_key_part_sequence = 3,
     };
 
     static const struct mysql_system_table_primary_key_cardinality_value {
@@ -69110,6 +69201,7 @@ static const char *mysql_system_table_primary_key_cardinality_for_name(
         const char *split_cardinality;
     } cardinalities[] = {
         {"engine_cost", mysql_primary_key_no_sequence_split, "2", "2"},
+        {"global_grants", mysql_third_key_part_sequence, "1", "103"},
         {"innodb_table_stats", mysql_primary_key_no_sequence_split, "2", "2"},
         {"innodb_index_stats", mysql_innodb_index_stats_stat_name_sequence, "2", "6"},
         {"plugin", mysql_primary_key_no_sequence_split, "1", "1"},

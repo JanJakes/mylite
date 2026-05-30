@@ -7,6 +7,11 @@ to be synthetic metadata rows, but their `INFORMATION_SCHEMA.TABLES` and
 `SHOW TABLE STATUS` status fields now match the stable MySQL 8.4.9 values
 observed for a fresh target runtime.
 
+The later `baseline-mysql-cost-tables` slice applies the same table-status
+metadata path to `mysql.server_cost` and `mysql.engine_cost`, with their own
+MySQL-observed row counts, average row lengths, `DATA_FREE`, and `NULL`
+`UPDATE_TIME` shape.
+
 ## Compatibility Authority
 
 - MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.TABLES`:

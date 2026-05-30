@@ -5,14 +5,14 @@ surface so `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW FIELDS`, `DESCRIBE`, and
 `DESC` can introspect supported mysql system tables. The original slice covered
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`; the separate
 `baseline-mysql-component-table`, `baseline-mysql-func-table`,
-`baseline-mysql-plugin-table`,
+`baseline-mysql-plugin-table`, `baseline-mysql-cost-tables`,
 `baseline-mysql-servers-table`, `baseline-mysql-gtid-executed-table`, and
 `baseline-mysql-log-tables`
 slices extend the same metadata path to `mysql.component`, `mysql.func`,
-`mysql.plugin`, `mysql.servers`, `mysql.gtid_executed`, `mysql.general_log`, and
-`mysql.slow_log`. The tables are limited read-only synthetic system tables in
-MyLite; these features reuse owned column metadata rather than adding physical
-system tables.
+`mysql.plugin`, `mysql.server_cost`, `mysql.engine_cost`, `mysql.servers`,
+`mysql.gtid_executed`, `mysql.general_log`, and `mysql.slow_log`. The tables
+are limited read-only synthetic system tables in MyLite; these features reuse
+owned column metadata rather than adding physical system tables.
 
 ## Compatibility Authority
 
@@ -39,6 +39,8 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.innodb_index_stats
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.component
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.func
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.plugin
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.server_cost
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.engine_cost
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.servers
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.gtid_executed
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} mysql.general_log
@@ -48,6 +50,8 @@ SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} component {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} func {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} plugin {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} server_cost {FROM | IN} mysql
+SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} engine_cost {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} servers {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} gtid_executed {FROM | IN} mysql
 SHOW [FULL] {COLUMNS | FIELDS} {FROM | IN} general_log {FROM | IN} mysql
@@ -57,6 +61,8 @@ DESCRIBE mysql.innodb_index_stats
 DESCRIBE mysql.component
 DESCRIBE mysql.func
 DESCRIBE mysql.plugin
+DESCRIBE mysql.server_cost
+DESCRIBE mysql.engine_cost
 DESCRIBE mysql.servers
 DESCRIBE mysql.gtid_executed
 DESCRIBE mysql.general_log
@@ -66,6 +72,8 @@ DESC mysql.innodb_index_stats
 DESC mysql.component
 DESC mysql.func
 DESC mysql.plugin
+DESC mysql.server_cost
+DESC mysql.engine_cost
 DESC mysql.servers
 DESC mysql.gtid_executed
 DESC mysql.general_log
@@ -81,12 +89,15 @@ SHOW FULL COLUMNS FROM innodb_index_stats;
 SHOW COLUMNS FROM component;
 SHOW COLUMNS FROM func;
 SHOW COLUMNS FROM plugin;
+SHOW COLUMNS FROM server_cost;
+SHOW COLUMNS FROM engine_cost;
 SHOW COLUMNS FROM servers;
 SHOW COLUMNS FROM gtid_executed;
 SHOW COLUMNS FROM general_log;
 SHOW COLUMNS FROM slow_log;
 DESCRIBE innodb_table_stats;
 DESCRIBE plugin;
+DESCRIBE server_cost;
 DESCRIBE gtid_executed;
 DESC servers;
 ```
@@ -135,6 +146,19 @@ auto_increment PRIMARY KEY`, `component_group_id int unsigned NOT NULL`, and
 `SHOW COLUMNS FROM mysql.plugin` returns two rows specified by
 `baseline-mysql-plugin-table`: `name varchar(64) NOT NULL DEFAULT '' PRIMARY
 KEY` and `dl varchar(128) NOT NULL DEFAULT ''`.
+
+`SHOW COLUMNS FROM mysql.server_cost` returns five rows specified by
+`baseline-mysql-cost-tables`: `cost_name varchar(64) NOT NULL PRIMARY KEY`,
+`cost_value float NULL`, `last_update timestamp NOT NULL DEFAULT
+CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`, `comment varchar(1024) NULL`,
+and generated `default_value float`.
+
+`SHOW COLUMNS FROM mysql.engine_cost` returns seven rows specified by
+`baseline-mysql-cost-tables`: `engine_name varchar(64) NOT NULL PRIMARY KEY`,
+`device_type int NOT NULL PRIMARY KEY`, `cost_name varchar(64) NOT NULL
+PRIMARY KEY`, `cost_value float NULL`, `last_update timestamp NOT NULL DEFAULT
+CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`, `comment varchar(1024) NULL`,
+and generated `default_value float`.
 
 `SHOW COLUMNS FROM mysql.servers` returns nine rows specified by
 `baseline-mysql-servers-table`: `Server_name char(64) NOT NULL DEFAULT ''

@@ -12,6 +12,9 @@ The `baseline-mysql-func-table` slice extends it to the single `PRIMARY(name)`
 constraint for `mysql.func`.
 The `baseline-mysql-plugin-table` slice extends it to the single
 `PRIMARY(name)` constraint for `mysql.plugin`.
+The `baseline-mysql-cost-tables` slice extends it to
+`PRIMARY(cost_name)` for `mysql.server_cost` and
+`PRIMARY(cost_name, engine_name, device_type)` for `mysql.engine_cost`.
 The `baseline-mysql-servers-table` slice extends it to the single
 `PRIMARY(Server_name)` constraint for `mysql.servers`.
 The `baseline-mysql-gtid-executed-table` slice extends it to the composite
@@ -108,6 +111,8 @@ No parser changes are required.
   `baseline-mysql-func-table`.
 - `mysql.plugin` primary-key metadata is specified and tested by
   `baseline-mysql-plugin-table`.
+- `mysql.server_cost` and `mysql.engine_cost` primary-key metadata is
+  specified and tested by `baseline-mysql-cost-tables`.
 - `mysql.servers` primary-key metadata is specified and tested by
   `baseline-mysql-servers-table`.
 - `mysql.gtid_executed` primary-key metadata is specified and tested by

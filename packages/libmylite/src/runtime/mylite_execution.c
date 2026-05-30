@@ -569,11 +569,13 @@ enum {
     information_schema_view_routine_usage_column_count = 6,
     information_schema_view_table_usage_column_count = 6,
     mysql_component_column_count = 3,
+    mysql_engine_cost_column_count = 7,
     mysql_func_column_count = 4,
     mysql_gtid_executed_column_count = 4,
     mysql_general_log_column_count = 6,
     mysql_slow_log_column_count = 12,
     mysql_plugin_column_count = 2,
+    mysql_server_cost_column_count = 5,
     mysql_servers_column_count = 9,
     mysql_innodb_index_stats_column_count = 8,
     mysql_innodb_table_stats_column_count = 6,
@@ -4496,6 +4498,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG = 83,
     INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG = 84,
     INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN = 85,
+    INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST = 86,
+    INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST = 87,
 };
 
 struct information_schema_column_definition {
@@ -4536,6 +4540,7 @@ struct mysql_system_table_definition {
     const char *const *column_comments;
     const size_t *primary_key_column_indexes;
     size_t primary_key_column_count;
+    const char *const *column_generation_expressions;
 };
 
 struct information_schema_files_row {
@@ -12668,6 +12673,185 @@ static const char *const mysql_plugin_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_engine_cost_columns[] = {
+    {"engine_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"device_type", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"cost_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"cost_value", NULL, "YES", "float", NULL, NULL, "12", NULL, NULL, NULL, NULL, "float"},
+    {"last_update",
+     "CURRENT_TIMESTAMP",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+    {"comment",
+     NULL,
+     "YES",
+     "varchar",
+     "1024",
+     "3072",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(1024)"},
+    {"default_value", NULL, "YES", "float", NULL, NULL, "12", NULL, NULL, NULL, NULL, "float"},
+};
+
+static const char *const mysql_engine_cost_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_engine_cost_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    "",
+    "VIRTUAL GENERATED",
+};
+
+static const char *const mysql_engine_cost_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const char *const mysql_engine_cost_column_generation_expressions[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ("(case `cost_name` when _utf8mb4\\'io_block_read_cost\\' then 1.0 when "
+     "_utf8mb4\\'memory_block_read_cost\\' then 0.25 else NULL end)"),
+};
+
+static const size_t mysql_engine_cost_primary_key_column_indexes[] = {
+    2U,
+    0U,
+    1U,
+};
+
+static const struct information_schema_column_definition mysql_server_cost_columns[] = {
+    {"cost_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"cost_value", NULL, "YES", "float", NULL, NULL, "12", NULL, NULL, NULL, NULL, "float"},
+    {"last_update",
+     "CURRENT_TIMESTAMP",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+    {"comment",
+     NULL,
+     "YES",
+     "varchar",
+     "1024",
+     "3072",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(1024)"},
+    {"default_value", NULL, "YES", "float", NULL, NULL, "12", NULL, NULL, NULL, NULL, "float"},
+};
+
+static const char *const mysql_server_cost_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_server_cost_column_extras[] = {
+    "",
+    "",
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    "",
+    "VIRTUAL GENERATED",
+};
+
+static const char *const mysql_server_cost_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const char *const mysql_server_cost_column_generation_expressions[] = {
+    "",
+    "",
+    "",
+    "",
+    ("(case `cost_name` when _utf8mb4\\'disk_temptable_create_cost\\' then 20.0 "
+     "when _utf8mb4\\'disk_temptable_row_cost\\' then 0.5 when "
+     "_utf8mb4\\'key_compare_cost\\' then 0.05 when "
+     "_utf8mb4\\'memory_temptable_create_cost\\' then 1.0 when "
+     "_utf8mb4\\'memory_temptable_row_cost\\' then 0.1 when "
+     "_utf8mb4\\'row_evaluate_cost\\' then 0.1 else NULL end)"),
+};
+
 static const struct information_schema_column_definition mysql_servers_columns[] = {
     {"Server_name",
      "",
@@ -13038,7 +13222,21 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_component_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST,
+      "engine_cost",
+      mysql_engine_cost_columns,
+      mysql_engine_cost_column_count},
+     mysql_engine_cost_column_keys,
+     mysql_engine_cost_column_extras,
+     mysql_engine_cost_column_privileges,
+     NULL,
+     mysql_engine_cost_primary_key_column_indexes,
+     sizeof(mysql_engine_cost_primary_key_column_indexes) /
+         sizeof(mysql_engine_cost_primary_key_column_indexes[0]),
+     mysql_engine_cost_column_generation_expressions},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_FUNC, "func", mysql_func_columns, mysql_func_column_count},
      mysql_func_column_keys,
@@ -13046,7 +13244,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_func_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED,
       "gtid_executed",
@@ -13058,7 +13257,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_gtid_executed_column_comments,
      mysql_gtid_executed_primary_key_column_indexes,
      sizeof(mysql_gtid_executed_primary_key_column_indexes) /
-         sizeof(mysql_gtid_executed_primary_key_column_indexes[0])},
+         sizeof(mysql_gtid_executed_primary_key_column_indexes[0]),
+     NULL},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG,
       "general_log",
@@ -13069,7 +13269,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_general_log_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG,
       "slow_log",
@@ -13080,7 +13281,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_slow_log_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN,
       "plugin",
@@ -13091,7 +13293,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_plugin_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST,
+      "server_cost",
+      mysql_server_cost_columns,
+      mysql_server_cost_column_count},
+     mysql_server_cost_column_keys,
+     mysql_server_cost_column_extras,
+     mysql_server_cost_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     mysql_server_cost_column_generation_expressions},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS,
       "servers",
@@ -13102,7 +13317,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_servers_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_INNODB_INDEXES,
       "innodb_index_stats",
@@ -13113,7 +13329,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_innodb_index_stats_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_INNODB_TABLESTATS,
       "innodb_table_stats",
@@ -13124,7 +13341,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_innodb_table_stats_column_privileges,
      NULL,
      NULL,
-     0U},
+     0U,
+     NULL},
 };
 
 static const struct builtin_schema_descriptor builtin_schema_descriptors[] = {
@@ -16210,7 +16428,15 @@ static bool mysql_system_table_definition_has_no_rows(
 static bool mysql_system_table_definition_has_catalog_rows(
     const struct mysql_system_table_definition *definition
 );
+static int append_mysql_engine_cost_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_mysql_plugin_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_mysql_server_cost_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -16635,6 +16861,10 @@ static bool builtin_schema_table_has_update_time(
     const char *table_name
 );
 static bool builtin_schema_table_is_mysql_stats(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+);
+static bool builtin_schema_table_is_mysql_cost(
     const struct builtin_schema_table_directory *directory,
     const char *table_name
 );
@@ -51455,6 +51685,10 @@ static int append_mysql_system_table_system_rows(
         return MYLITE_OK;
     }
     if (strcmp(definition->schema_name, "mysql") == 0 &&
+        strcmp(definition->query_definition.name, "engine_cost") == 0) {
+        return append_mysql_engine_cost_system_rows(database, rows);
+    }
+    if (strcmp(definition->schema_name, "mysql") == 0 &&
         strcmp(definition->query_definition.name, "innodb_index_stats") == 0) {
         return append_mysql_innodb_index_stats_builtin_rows(database, rows);
     }
@@ -51465,6 +51699,10 @@ static int append_mysql_system_table_system_rows(
     if (strcmp(definition->schema_name, "mysql") == 0 &&
         strcmp(definition->query_definition.name, "plugin") == 0) {
         return append_mysql_plugin_system_rows(database, rows);
+    }
+    if (strcmp(definition->schema_name, "mysql") == 0 &&
+        strcmp(definition->query_definition.name, "server_cost") == 0) {
+        return append_mysql_server_cost_system_rows(database, rows);
     }
 
     set_runtime_error(database, "invalid mysql system table");
@@ -51491,6 +51729,50 @@ static bool mysql_system_table_definition_has_catalog_rows(
             strcmp(definition->query_definition.name, "innodb_table_stats") == 0);
 }
 
+static int append_mysql_engine_cost_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct mysql_engine_cost_row {
+        const char *engine_name;
+        const char *device_type;
+        const char *cost_name;
+        const char *cost_value;
+        const char *comment;
+        const char *default_value;
+    };
+    static const struct mysql_engine_cost_row cost_rows[] = {
+        {"default", "0", "io_block_read_cost", NULL, NULL, "1"},
+        {"default", "0", "memory_block_read_cost", NULL, NULL, "0.25"},
+    };
+    char last_update[datetime_text_length + 1U];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != mysql_engine_cost_column_count) {
+        set_runtime_error(database, "invalid mysql.engine_cost columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mysql_system_current_timestamp(database, last_update, sizeof(last_update));
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(cost_rows) / sizeof(cost_rows[0]);
+         ++row_index) {
+        const struct mysql_engine_cost_row *cost_row = &cost_rows[row_index];
+        const char *values[mysql_engine_cost_column_count] = {
+            cost_row->engine_name,
+            cost_row->device_type,
+            cost_row->cost_name,
+            cost_row->cost_value,
+            last_update,
+            cost_row->comment,
+            cost_row->default_value,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
 static int append_mysql_plugin_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -51514,6 +51796,50 @@ static int append_mysql_plugin_system_rows(
     return rc;
 }
 
+static int append_mysql_server_cost_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct mysql_server_cost_row {
+        const char *cost_name;
+        const char *cost_value;
+        const char *comment;
+        const char *default_value;
+    };
+    static const struct mysql_server_cost_row cost_rows[] = {
+        {"disk_temptable_create_cost", NULL, NULL, "20"},
+        {"disk_temptable_row_cost", NULL, NULL, "0.5"},
+        {"key_compare_cost", NULL, NULL, "0.05"},
+        {"memory_temptable_create_cost", NULL, NULL, "1"},
+        {"memory_temptable_row_cost", NULL, NULL, "0.1"},
+        {"row_evaluate_cost", NULL, NULL, "0.1"},
+    };
+    char last_update[datetime_text_length + 1U];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != mysql_server_cost_column_count) {
+        set_runtime_error(database, "invalid mysql.server_cost columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mysql_system_current_timestamp(database, last_update, sizeof(last_update));
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(cost_rows) / sizeof(cost_rows[0]);
+         ++row_index) {
+        const struct mysql_server_cost_row *cost_row = &cost_rows[row_index];
+        const char *values[mysql_server_cost_column_count] = {
+            cost_row->cost_name,
+            cost_row->cost_value,
+            last_update,
+            cost_row->comment,
+            cost_row->default_value,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
 static const char *mysql_system_table_column_comment(
     const struct mysql_system_table_definition *definition,
     size_t column_index
@@ -51523,6 +51849,17 @@ static const char *mysql_system_table_column_comment(
         return "";
     }
     return definition->column_comments[column_index];
+}
+
+static const char *mysql_system_table_column_generation_expression(
+    const struct mysql_system_table_definition *definition,
+    size_t column_index
+) {
+    if (definition == NULL || definition->column_generation_expressions == NULL ||
+        column_index >= definition->query_definition.column_count) {
+        return "";
+    }
+    return definition->column_generation_expressions[column_index];
 }
 
 static size_t mysql_system_table_primary_key_column_count(
@@ -52698,10 +53035,12 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
         return MYLITE_OK;
@@ -52777,10 +53116,12 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
         return MYLITE_OK;
@@ -54247,6 +54588,9 @@ static const char *builtin_schema_table_rows(
         return NULL;
     }
     if (strcmp(directory->schema_name, "mysql") == 0) {
+        if (strcmp(table_name, "engine_cost") == 0) {
+            return "2";
+        }
         if (strcmp(table_name, "innodb_index_stats") == 0) {
             return "6";
         }
@@ -54258,6 +54602,9 @@ static const char *builtin_schema_table_rows(
         }
         if (strcmp(table_name, "plugin") == 0) {
             return "2";
+        }
+        if (strcmp(table_name, "server_cost") == 0) {
+            return "6";
         }
         if (strcmp(table_name, "user") == 0) {
             return "5";
@@ -54287,6 +54634,9 @@ static const char *builtin_schema_table_average_row_length(
     }
     if (builtin_schema_table_is_mysql_stats(directory, table_name)) {
         return strcmp(table_name, "innodb_index_stats") == 0 ? "2730" : "8192";
+    }
+    if (builtin_schema_table_is_mysql_cost(directory, table_name)) {
+        return strcmp(table_name, "server_cost") == 0 ? "2730" : "8192";
     }
     if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
         return "8192";
@@ -54324,6 +54674,7 @@ static const char *builtin_schema_table_data_free(
         return NULL;
     }
     return builtin_schema_table_is_mysql_stats(directory, table_name) ||
+                   builtin_schema_table_is_mysql_cost(directory, table_name) ||
                    builtin_schema_table_is_mysql_component(directory, table_name) ||
                    builtin_schema_table_is_mysql_func(directory, table_name) ||
                    builtin_schema_table_is_mysql_gtid_executed(directory, table_name) ||
@@ -54461,6 +54812,15 @@ static bool builtin_schema_table_is_mysql_stats(
            strcmp(directory->schema_name, "mysql") == 0 &&
            (strcmp(table_name, "innodb_index_stats") == 0 ||
             strcmp(table_name, "innodb_table_stats") == 0);
+}
+
+static bool builtin_schema_table_is_mysql_cost(
+    const struct builtin_schema_table_directory *directory,
+    const char *table_name
+) {
+    return directory != NULL && table_name != NULL &&
+           strcmp(directory->schema_name, "mysql") == 0 &&
+           (strcmp(table_name, "engine_cost") == 0 || strcmp(table_name, "server_cost") == 0);
 }
 
 static bool builtin_schema_table_is_mysql_component(
@@ -55126,7 +55486,7 @@ static int append_information_schema_columns_mysql_system_table_rows(
             definition->column_extras[column_index],
             definition->column_privileges[column_index],
             mysql_system_table_column_comment(definition, column_index),
-            "",
+            mysql_system_table_column_generation_expression(definition, column_index),
             NULL,
         };
 
@@ -65802,6 +66162,9 @@ static const char *mysql_system_table_primary_key_cardinality(
     if (definition == NULL) {
         return "0";
     }
+    if (strcmp(definition->query_definition.name, "engine_cost") == 0) {
+        return "2";
+    }
     if (strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
         return "2";
     }
@@ -65813,6 +66176,9 @@ static const char *mysql_system_table_primary_key_cardinality(
     }
     if (strcmp(definition->query_definition.name, "plugin") == 0) {
         return "1";
+    }
+    if (strcmp(definition->query_definition.name, "server_cost") == 0) {
+        return "6";
     }
     return "0";
 }

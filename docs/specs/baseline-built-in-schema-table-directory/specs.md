@@ -160,6 +160,12 @@ connection-control plugin registry rows plus MySQL-observed row count,
 primary-key metadata while keeping plugin loading, lifecycle, mutable plugin
 registry state, and writes out of scope.
 
+The `baseline-mysql-cost-tables` slice refines `mysql.server_cost` and
+`mysql.engine_cost` with direct optimizer cost-default rows plus MySQL-observed
+row counts, `DATA_FREE`, create-options, generated-column metadata,
+primary-key metadata, and table-status fields while keeping mutable cost
+overrides, optimizer cost reload, and writes out of scope.
+
 The `baseline-mysql-servers-table` slice refines `mysql.servers` with direct
 empty reads plus MySQL-observed `DATA_FREE`, comment, create-options, and
 primary-key metadata while keeping server-definition DDL, FEDERATED

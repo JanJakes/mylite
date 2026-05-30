@@ -202,6 +202,13 @@ comments, column metadata, and composite primary-key metadata while keeping
 dynamic privilege storage, grant reload, privilege filtering, privilege
 enforcement, account-management DDL, and writes out of scope.
 
+The `baseline-mysql-db-table` slice refines `mysql.db` with direct empty
+placeholder reads plus MySQL-observed InnoDB status fields, comments, column
+metadata, composite primary-key metadata, and the nonunique `User` secondary
+index while keeping database-level grant storage, grant reload, privilege
+filtering, privilege enforcement, account-management DDL, and writes out of
+scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

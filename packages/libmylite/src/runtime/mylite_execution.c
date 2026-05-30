@@ -576,6 +576,7 @@ enum {
     mysql_general_log_column_count = 6,
     mysql_user_column_count = 51,
     mysql_global_grants_column_count = 4,
+    mysql_db_column_count = 22,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4526,6 +4527,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC = 100,
     INFORMATION_SCHEMA_TABLE_MYSQL_USER = 101,
     INFORMATION_SCHEMA_TABLE_MYSQL_GLOBAL_GRANTS = 102,
+    INFORMATION_SCHEMA_TABLE_MYSQL_DB = 103,
 };
 
 struct information_schema_column_definition {
@@ -4557,10 +4559,12 @@ struct information_schema_table_definition {
     size_t column_count;
 };
 
-struct mysql_system_table_unique_index_definition {
+struct mysql_system_table_secondary_index_definition {
     const char *name;
     size_t column_index;
     const char *cardinality;
+    const char *non_unique;
+    bool is_unique;
 };
 
 struct mysql_system_table_definition {
@@ -4573,8 +4577,8 @@ struct mysql_system_table_definition {
     const size_t *primary_key_column_indexes;
     size_t primary_key_column_count;
     const char *const *column_generation_expressions;
-    const struct mysql_system_table_unique_index_definition *unique_indexes;
-    size_t unique_index_count;
+    const struct mysql_system_table_secondary_index_definition *secondary_indexes;
+    size_t secondary_index_count;
 };
 
 struct information_schema_files_row {
@@ -12962,6 +12966,283 @@ static const char *const mysql_global_grants_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition mysql_db_columns[] = {
+    {"Host",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"Db", "", "NO", "char", "64", "192", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(64)"},
+    {"User", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"Select_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Insert_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Update_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Delete_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Drop_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Grant_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"References_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Index_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Alter_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_tmp_table_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Lock_tables_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_view_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Show_view_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Create_routine_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Alter_routine_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Execute_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Event_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+    {"Trigger_priv",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+};
+
+static const char *const mysql_db_column_keys[] = {
+    "PRI", "PRI", "PRI", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const mysql_db_column_extras[] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const mysql_db_column_privileges[] = {
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+};
+
+static const size_t mysql_db_primary_key_column_indexes[] = {
+    0U,
+    2U,
+    1U,
+};
+
+static const struct mysql_system_table_secondary_index_definition mysql_db_secondary_indexes[] = {
+    {"User", 2U, "2", "1", false},
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -13366,9 +13647,9 @@ static const char *const mysql_help_category_column_privileges[] = {
     "select,insert,update,references",
 };
 
-static const struct mysql_system_table_unique_index_definition
-    mysql_help_category_unique_indexes[] = {
-        {"name", 1U, "53"},
+static const struct mysql_system_table_secondary_index_definition
+    mysql_help_category_secondary_indexes[] = {
+        {"name", 1U, "53", "0", true},
 };
 
 static const struct information_schema_column_definition mysql_help_keyword_columns[] = {
@@ -13402,9 +13683,9 @@ static const char *const mysql_help_keyword_column_privileges[] = {
     "select,insert,update,references",
 };
 
-static const struct mysql_system_table_unique_index_definition mysql_help_keyword_unique_indexes[] =
-    {
-        {"name", 1U, "551"},
+static const struct mysql_system_table_secondary_index_definition
+    mysql_help_keyword_secondary_indexes[] = {
+        {"name", 1U, "551", "0", true},
 };
 
 static const struct information_schema_column_definition mysql_help_relation_columns[] = {
@@ -13523,8 +13804,9 @@ static const char *const mysql_help_topic_column_privileges[] = {
     "select,insert,update,references",
 };
 
-static const struct mysql_system_table_unique_index_definition mysql_help_topic_unique_indexes[] = {
-    {"name", 1U, "596"},
+static const struct mysql_system_table_secondary_index_definition
+    mysql_help_topic_secondary_indexes[] = {
+        {"name", 1U, "596", "0", true},
 };
 
 static const struct information_schema_column_definition mysql_ndb_binlog_index_columns[] = {
@@ -15267,6 +15549,17 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_DB, "db", mysql_db_columns, mysql_db_column_count},
+     mysql_db_column_keys,
+     mysql_db_column_extras,
+     mysql_db_column_privileges,
+     NULL,
+     mysql_db_primary_key_column_indexes,
+     sizeof(mysql_db_primary_key_column_indexes) / sizeof(mysql_db_primary_key_column_indexes[0]),
+     NULL,
+     mysql_db_secondary_indexes,
+     sizeof(mysql_db_secondary_indexes) / sizeof(mysql_db_secondary_indexes[0])},
+    {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT,
       "component",
       mysql_component_columns,
@@ -15361,8 +15654,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U,
      NULL,
-     mysql_help_category_unique_indexes,
-     sizeof(mysql_help_category_unique_indexes) / sizeof(mysql_help_category_unique_indexes[0])},
+     mysql_help_category_secondary_indexes,
+     sizeof(mysql_help_category_secondary_indexes) /
+         sizeof(mysql_help_category_secondary_indexes[0])},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_HELP_KEYWORD,
       "help_keyword",
@@ -15375,8 +15669,9 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U,
      NULL,
-     mysql_help_keyword_unique_indexes,
-     sizeof(mysql_help_keyword_unique_indexes) / sizeof(mysql_help_keyword_unique_indexes[0])},
+     mysql_help_keyword_secondary_indexes,
+     sizeof(mysql_help_keyword_secondary_indexes) /
+         sizeof(mysql_help_keyword_secondary_indexes[0])},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_HELP_RELATION,
       "help_relation",
@@ -15404,8 +15699,8 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U,
      NULL,
-     mysql_help_topic_unique_indexes,
-     sizeof(mysql_help_topic_unique_indexes) / sizeof(mysql_help_topic_unique_indexes[0])},
+     mysql_help_topic_secondary_indexes,
+     sizeof(mysql_help_topic_secondary_indexes) / sizeof(mysql_help_topic_secondary_indexes[0])},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX,
       "ndb_binlog_index",
@@ -36873,7 +37168,7 @@ static int append_show_index_mysql_system_table_primary_key_rows(
     const struct mylite_sql_ast_node *where_clause,
     const struct mysql_system_table_definition *definition
 );
-static int append_show_index_mysql_system_table_unique_rows(
+static int append_show_index_mysql_system_table_secondary_rows(
     struct mylite_db *database,
     mylite_result *result,
     const struct mylite_sql_ast_node *where_clause,
@@ -54264,6 +54559,7 @@ static bool mysql_system_table_definition_has_no_rows(
 ) {
     return definition != NULL && strcmp(definition->schema_name, "mysql") == 0 &&
            (strcmp(definition->query_definition.name, "component") == 0 ||
+            strcmp(definition->query_definition.name, "db") == 0 ||
             strcmp(definition->query_definition.name, "func") == 0 ||
             strcmp(definition->query_definition.name, "general_log") == 0 ||
             strcmp(definition->query_definition.name, "global_grants") == 0 ||
@@ -55600,6 +55896,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_DB:
     case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
@@ -55696,6 +55993,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_DB:
     case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
@@ -57252,6 +57550,9 @@ static const char *builtin_schema_table_average_row_length(
     if (builtin_schema_table_is_mysql_plugin(directory, table_name)) {
         return "8192";
     }
+    if (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "db") == 0) {
+        return "8192";
+    }
     if (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "global_grants") == 0) {
         return "795";
     }
@@ -57355,7 +57656,9 @@ static const char *builtin_schema_table_index_length(
         return NULL;
     }
     if (!builtin_schema_table_is_mysql_help(directory, table_name)) {
-        return "0";
+        return strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "db") == 0
+                   ? "16384"
+                   : "0";
     }
     if (strcmp(table_name, "help_category") == 0) {
         return "16384";
@@ -57389,6 +57692,8 @@ static const char *builtin_schema_table_data_free(
                    builtin_schema_table_is_mysql_replication_metadata(directory, table_name) ||
                    builtin_schema_table_is_mysql_servers(directory, table_name) ||
                    builtin_schema_table_is_mysql_time_zone(directory, table_name) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "db") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "global_grants") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 && strcmp(table_name, "user") == 0)
@@ -61605,13 +61910,17 @@ static int append_information_schema_table_constraints_mysql_system_table_row(
 
         rc = append_information_schema_row(database, rows, values);
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
-        const struct mysql_system_table_unique_index_definition *unique_index =
-            &definition->unique_indexes[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->secondary_index_count; ++index) {
+        const struct mysql_system_table_secondary_index_definition *secondary_index =
+            &definition->secondary_indexes[index];
+
+        if (!secondary_index->is_unique) {
+            continue;
+        }
         const char *values[information_schema_table_constraints_column_count] = {
             "def",
             definition->schema_name,
-            unique_index->name,
+            secondary_index->name,
             definition->schema_name,
             definition->query_definition.name,
             "UNIQUE",
@@ -61766,13 +62075,13 @@ static int append_information_schema_table_constraints_extensions_mysql_system_t
 
         rc = append_information_schema_row(database, rows, values);
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
-        const struct mysql_system_table_unique_index_definition *unique_index =
-            &definition->unique_indexes[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->secondary_index_count; ++index) {
+        const struct mysql_system_table_secondary_index_definition *secondary_index =
+            &definition->secondary_indexes[index];
         const char *values[information_schema_table_constraints_extensions_column_count] = {
             "def",
             definition->schema_name,
-            unique_index->name,
+            secondary_index->name,
             definition->query_definition.name,
             NULL,
             NULL,
@@ -62050,22 +62359,25 @@ static int append_information_schema_key_column_usage_mysql_system_table_rows(
             rc = append_information_schema_row(database, rows, values);
         }
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
-        const struct mysql_system_table_unique_index_definition *unique_index =
-            &definition->unique_indexes[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->secondary_index_count; ++index) {
+        const struct mysql_system_table_secondary_index_definition *secondary_index =
+            &definition->secondary_indexes[index];
         char sequence_text[integer_text_capacity];
 
-        if (unique_index->column_index >= definition->query_definition.column_count) {
+        if (!secondary_index->is_unique) {
+            continue;
+        }
+        if (secondary_index->column_index >= definition->query_definition.column_count) {
             set_runtime_error(database, "invalid mysql system table unique key");
             return MYLITE_ERROR;
         }
 
         const struct information_schema_column_definition *column =
-            &definition->query_definition.columns[unique_index->column_index];
+            &definition->query_definition.columns[secondary_index->column_index];
         const char *values[information_schema_key_column_usage_column_count] = {
             "def",
             definition->schema_name,
-            unique_index->name,
+            secondary_index->name,
             "def",
             definition->schema_name,
             definition->query_definition.name,
@@ -62221,29 +62533,29 @@ static int append_information_schema_statistics_mysql_system_table_rows(
             rc = append_information_schema_row(database, rows, values);
         }
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
-        const struct mysql_system_table_unique_index_definition *unique_index =
-            &definition->unique_indexes[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->secondary_index_count; ++index) {
+        const struct mysql_system_table_secondary_index_definition *secondary_index =
+            &definition->secondary_indexes[index];
         char sequence_text[integer_text_capacity];
 
-        if (unique_index->column_index >= definition->query_definition.column_count) {
-            set_runtime_error(database, "invalid mysql system table unique index");
+        if (secondary_index->column_index >= definition->query_definition.column_count) {
+            set_runtime_error(database, "invalid mysql system table secondary index");
             return MYLITE_ERROR;
         }
 
         const struct information_schema_column_definition *column =
-            &definition->query_definition.columns[unique_index->column_index];
+            &definition->query_definition.columns[secondary_index->column_index];
         const char *values[information_schema_statistics_column_count] = {
             "def",
             definition->schema_name,
             definition->query_definition.name,
-            "0",
+            secondary_index->non_unique,
             definition->schema_name,
-            unique_index->name,
+            secondary_index->name,
             sequence_text,
             column->name,
             "A",
-            unique_index->cardinality,
+            secondary_index->cardinality,
             NULL,
             NULL,
             "",
@@ -69031,7 +69343,7 @@ static int append_show_index_mysql_system_table_rows(
         definition
     );
     if (rc == MYLITE_OK) {
-        rc = append_show_index_mysql_system_table_unique_rows(
+        rc = append_show_index_mysql_system_table_secondary_rows(
             database,
             result,
             where_clause,
@@ -69099,7 +69411,7 @@ static int append_show_index_mysql_system_table_primary_key_rows(
     return rc;
 }
 
-static int append_show_index_mysql_system_table_unique_rows(
+static int append_show_index_mysql_system_table_secondary_rows(
     struct mylite_db *database,
     mylite_result *result,
     const struct mylite_sql_ast_node *where_clause,
@@ -69107,28 +69419,28 @@ static int append_show_index_mysql_system_table_unique_rows(
 ) {
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U; rc == MYLITE_OK && index < definition->unique_index_count; ++index) {
-        const struct mysql_system_table_unique_index_definition *unique_index =
-            &definition->unique_indexes[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < definition->secondary_index_count; ++index) {
+        const struct mysql_system_table_secondary_index_definition *secondary_index =
+            &definition->secondary_indexes[index];
         char sequence_text[integer_text_capacity];
 
-        if (unique_index->column_index >= definition->query_definition.column_count) {
-            set_runtime_error(database, "invalid mysql system table unique index");
+        if (secondary_index->column_index >= definition->query_definition.column_count) {
+            set_runtime_error(database, "invalid mysql system table secondary index");
             return MYLITE_ERROR;
         }
 
         rc = information_schema_format_i64(database, 1, sequence_text, sizeof(sequence_text));
         if (rc == MYLITE_OK) {
             const struct information_schema_column_definition *column =
-                &definition->query_definition.columns[unique_index->column_index];
+                &definition->query_definition.columns[secondary_index->column_index];
             const char *values[show_index_result_column_count] = {
                 definition->query_definition.name,
-                "0",
-                unique_index->name,
+                secondary_index->non_unique,
+                secondary_index->name,
                 sequence_text,
                 column->name,
                 "A",
-                unique_index->cardinality,
+                secondary_index->cardinality,
                 NULL,
                 NULL,
                 "",
@@ -69200,6 +69512,7 @@ static const char *mysql_system_table_primary_key_cardinality_for_name(
         const char *first_cardinality;
         const char *split_cardinality;
     } cardinalities[] = {
+        {"db", mysql_second_key_part_sequence, "1", "2"},
         {"engine_cost", mysql_primary_key_no_sequence_split, "2", "2"},
         {"global_grants", mysql_third_key_part_sequence, "1", "103"},
         {"innodb_table_stats", mysql_primary_key_no_sequence_split, "2", "2"},

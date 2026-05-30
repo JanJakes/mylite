@@ -9,14 +9,15 @@ can be selected with `USE mysql`. The MySQL 8.4.9 target runtime's built-in
 `SHOW TABLE STATUS`. The tables remain non-queryable and unsupported unless
 listed otherwise below; the current exceptions are limited read-only
 `SELECT` access to empty `mysql.component`, `mysql.func`, `mysql.servers`,
-and `mysql.gtid_executed` plus `mysql.innodb_table_stats` and
-`mysql.innodb_index_stats`, along with
+`mysql.gtid_executed`, `mysql.general_log`, and `mysql.slow_log` plus
+`mysql.innodb_table_stats` and `mysql.innodb_index_stats`, along with
 `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` /
 `SHOW INDEXES` / `SHOW KEYS`, MySQL-observed `INFORMATION_SCHEMA.TABLES` /
 `SHOW TABLE STATUS` status fields, and `INFORMATION_SCHEMA.STATISTICS` /
 `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` /
-`TABLE_CONSTRAINTS_EXTENSIONS` primary-key shape metadata for those supported
-tables. MyLite rejects schema, table, index, rename, truncate, and
+`TABLE_CONSTRAINTS_EXTENSIONS` primary-key shape metadata or zero-row no-index
+metadata for those supported tables. MyLite rejects schema, table, index,
+rename, truncate, and
 single-table DML writes targeting `mysql` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
 decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
@@ -67,8 +68,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `mysql`.
 | `mysql.component` | 🟡 | Limited read-only empty component registry table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no installed component rows, component DDL, component loading, persisted component services, privilege filtering, or writable system table |
 | `mysql.func` | 🟡 | Limited read-only empty loadable-function registry table with MySQL 8.4.9-shaped columns, primary-key metadata, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, and `SHOW TABLE STATUS`; no loadable-function rows, loadable-function DDL, function loading, persisted `mysql.func` rows, privilege filtering, or writable system table |
 | `mysql.plugin` | ❌ | Registry: server-side plugins installed with INSTALL PLUGIN |
-| `mysql.general_log` | ❌ | CSV log table for the general query log; limited `@@sql_log_off` scalar reads do not create or write this table |
-| `mysql.slow_log` | ❌ | CSV log table for the slow query log |
+| `mysql.general_log` | 🟡 | Limited read-only empty CSV general-query-log table with MySQL 8.4.9-shaped columns, no index/constraint metadata rows, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` empty results, and `SHOW TABLE STATUS`; no log-row storage, logging side effects, log output routing, log rotation, DDL on log tables, privilege filtering, or writable system table |
+| `mysql.slow_log` | 🟡 | Limited read-only empty CSV slow-query-log table with MySQL 8.4.9-shaped columns, no index/constraint metadata rows, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` rows, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` empty results, and `SHOW TABLE STATUS`; no slow-query logging, log-row storage, log output routing, log rotation, DDL on log tables, privilege filtering, or writable system table |
 | `mysql.help_category` | ❌ | HELP category table |
 | `mysql.help_keyword` | ❌ | HELP keyword table |
 | `mysql.help_relation` | ❌ | HELP relation table |

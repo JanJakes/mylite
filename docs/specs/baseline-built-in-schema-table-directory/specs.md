@@ -165,6 +165,13 @@ create-options, empty comment, column comments, and composite primary-key
 metadata while keeping GTID persistence, compression, binary logging,
 replication state, and writes out of scope.
 
+The `baseline-mysql-log-tables` slice refines `mysql.general_log` and
+`mysql.slow_log` with direct empty reads plus MySQL-observed CSV engine status,
+`Rows = 2` status estimates, zero data/index/free lengths, empty create
+options, table comments, column metadata, and no-index/no-constraint metadata
+while keeping log-row storage, log writing, log routing, rotation, and writes
+out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

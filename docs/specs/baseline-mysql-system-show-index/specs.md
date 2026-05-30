@@ -3,12 +3,14 @@
 This slice extends the supported `mysql` schema optimizer-statistics metadata
 surface so `SHOW INDEX`, `SHOW INDEXES`, and `SHOW KEYS` can introspect
 `mysql.innodb_table_stats` and `mysql.innodb_index_stats`. The separate
-`baseline-mysql-component-table`, `baseline-mysql-func-table`, and
-`baseline-mysql-servers-table`, and `baseline-mysql-gtid-executed-table`
+`baseline-mysql-component-table`, `baseline-mysql-func-table`,
+`baseline-mysql-servers-table`, `baseline-mysql-gtid-executed-table`, and
+`baseline-mysql-log-tables`
 slices extend the same path to `mysql.component`, `mysql.func`,
-`mysql.servers`, and `mysql.gtid_executed`. The tables remain
-read-only synthetic system tables; these features expose their primary-key
-shape without creating physical system tables.
+`mysql.servers`, `mysql.gtid_executed`, `mysql.general_log`, and
+`mysql.slow_log`. The tables remain read-only synthetic system tables; these
+features expose their primary-key shape or MySQL-observed no-index shape
+without creating physical system tables.
 
 ## Compatibility Authority
 
@@ -35,12 +37,16 @@ SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.component
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.func
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.servers
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.gtid_executed
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.general_log
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} mysql.slow_log
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_table_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} innodb_index_stats {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} component {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} func {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} servers {FROM | IN} mysql
 SHOW {INDEX | INDEXES | KEYS} {FROM | IN} gtid_executed {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} general_log {FROM | IN} mysql
+SHOW {INDEX | INDEXES | KEYS} {FROM | IN} slow_log {FROM | IN} mysql
 ```
 
 Unqualified forms are supported after `USE mysql`:
@@ -53,6 +59,8 @@ SHOW INDEX FROM component;
 SHOW INDEX FROM func;
 SHOW INDEX FROM servers;
 SHOW INDEX FROM gtid_executed;
+SHOW INDEX FROM general_log;
+SHOW INDEX FROM slow_log;
 ```
 
 The existing limited `SHOW INDEX WHERE` evaluator applies to the generated
@@ -91,6 +99,10 @@ specified by `baseline-mysql-servers-table`, with `Cardinality = 0`.
 `PRIMARY(source_uuid, gtid_tag, interval_start)` rows specified by
 `baseline-mysql-gtid-executed-table`, with `Cardinality = 0`. The primary-key
 order intentionally differs from the table's column order.
+
+`SHOW INDEX FROM mysql.general_log` and `SHOW INDEX FROM mysql.slow_log`
+return zero rows with the ordinary MySQL 8.4.9 `SHOW INDEX` column labels, as
+specified by `baseline-mysql-log-tables`.
 
 `Cardinality` values are deterministic MyLite-owned placeholders matching the
 fresh MySQL 8.4.9 runtime evidence for the built-in statistics rows. They are

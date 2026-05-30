@@ -15,6 +15,9 @@ The `baseline-mysql-servers-table` slice extends it to the single
 The `baseline-mysql-gtid-executed-table` slice extends it to the composite
 `PRIMARY(source_uuid, gtid_tag, interval_start)` constraint for
 `mysql.gtid_executed`.
+The `baseline-mysql-log-tables` slice verifies that supported no-constraint
+`mysql.general_log` and `mysql.slow_log` tables return zero rows from these
+constraint catalogs.
 
 ## Compatibility Authority
 
@@ -105,6 +108,8 @@ No parser changes are required.
   `baseline-mysql-servers-table`.
 - `mysql.gtid_executed` primary-key metadata is specified and tested by
   `baseline-mysql-gtid-executed-table`.
+- `mysql.general_log` and `mysql.slow_log` no-constraint metadata is specified
+  and tested by `baseline-mysql-log-tables`.
 - Writes to `mysql` system tables remain rejected by the existing built-in
   schema write-protection rules.
 

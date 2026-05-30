@@ -39,8 +39,8 @@ general-query-log suppression baseline: `@@sql_log_off`.
    - Update `docs/compatibility/runtime-system-variables.md`.
    - Update `docs/compatibility/metadata-mysql-schema.md`.
    - Do not claim mutable `sql_log_off` state, `SET`, general query log files,
-     `mysql.general_log`, slow query logging, privileges, `SHOW VARIABLES`,
-     or Performance Schema variable tables.
+     log-row writes to `mysql.general_log`, slow query logging, privileges,
+     `SHOW VARIABLES`, or Performance Schema variable tables.
 
 6. Verification
    - Run focused CTest entries for parser, runtime system variables, and table
@@ -51,7 +51,8 @@ general-query-log suppression baseline: `@@sql_log_off`.
 ## Non-Goals
 
 - Do not implement `SET`, startup options, persisted variables, mutable
-  global/session state, general query log files, `mysql.general_log`, slow
-  query logging, privileges, `SHOW VARIABLES`, Performance Schema variable
-  tables, table-backed evaluation, aliases, clauses, arbitrary expressions,
-  SQLite SQL, catalog mutations, or SQLite fork patches.
+  global/session state, general query log files, log-row writes to
+  `mysql.general_log`, slow query logging, privileges, `SHOW VARIABLES`,
+  Performance Schema variable tables, table-backed evaluation, aliases,
+  clauses, arbitrary expressions, SQLite SQL, catalog mutations, or SQLite fork
+  patches.

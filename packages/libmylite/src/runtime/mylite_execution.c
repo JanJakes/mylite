@@ -571,6 +571,8 @@ enum {
     mysql_component_column_count = 3,
     mysql_func_column_count = 4,
     mysql_gtid_executed_column_count = 4,
+    mysql_general_log_column_count = 6,
+    mysql_slow_log_column_count = 12,
     mysql_servers_column_count = 9,
     mysql_innodb_index_stats_column_count = 8,
     mysql_innodb_table_stats_column_count = 6,
@@ -4490,6 +4492,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_FUNC = 80,
     INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS = 81,
     INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED = 82,
+    INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG = 83,
+    INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG = 84,
 };
 
 struct information_schema_column_definition {
@@ -12436,6 +12440,190 @@ static const size_t mysql_gtid_executed_primary_key_column_indexes[] = {
     1U,
 };
 
+static const struct information_schema_column_definition mysql_general_log_columns[] = {
+    {"event_time",
+     "CURRENT_TIMESTAMP(6)",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "6",
+     NULL,
+     NULL,
+     "timestamp(6)"},
+    {"user_host",
+     NULL,
+     "NO",
+     "mediumtext",
+     "16777215",
+     "16777215",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "mediumtext"},
+    {"thread_id", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+    {"server_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"command_type",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"argument",
+     NULL,
+     "NO",
+     "mediumblob",
+     "16777215",
+     "16777215",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "mediumblob"},
+};
+
+static const char *const mysql_general_log_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_general_log_column_extras[] = {
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(6)",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_general_log_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition mysql_slow_log_columns[] = {
+    {"start_time",
+     "CURRENT_TIMESTAMP(6)",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "6",
+     NULL,
+     NULL,
+     "timestamp(6)"},
+    {"user_host",
+     NULL,
+     "NO",
+     "mediumtext",
+     "16777215",
+     "16777215",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "mediumtext"},
+    {"query_time", NULL, "NO", "time", NULL, NULL, NULL, NULL, "6", NULL, NULL, "time(6)"},
+    {"lock_time", NULL, "NO", "time", NULL, NULL, NULL, NULL, "6", NULL, NULL, "time(6)"},
+    {"rows_sent", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"rows_examined", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"db",
+     NULL,
+     "NO",
+     "varchar",
+     "512",
+     "1536",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(512)"},
+    {"last_insert_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"insert_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"server_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"sql_text",
+     NULL,
+     "NO",
+     "mediumblob",
+     "16777215",
+     "16777215",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "mediumblob"},
+    {"thread_id", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+};
+
+static const char *const mysql_slow_log_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_slow_log_column_extras[] = {
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(6)",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_slow_log_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_servers_columns[] = {
     {"Server_name",
      "",
@@ -12827,6 +13015,28 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_gtid_executed_primary_key_column_indexes,
      sizeof(mysql_gtid_executed_primary_key_column_indexes) /
          sizeof(mysql_gtid_executed_primary_key_column_indexes[0])},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG,
+      "general_log",
+      mysql_general_log_columns,
+      mysql_general_log_column_count},
+     mysql_general_log_column_keys,
+     mysql_general_log_column_extras,
+     mysql_general_log_column_privileges,
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG,
+      "slow_log",
+      mysql_slow_log_columns,
+      mysql_slow_log_column_count},
+     mysql_slow_log_column_keys,
+     mysql_slow_log_column_extras,
+     mysql_slow_log_column_privileges,
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS,
       "servers",
@@ -51196,8 +51406,10 @@ static bool mysql_system_table_definition_has_no_rows(
     return definition != NULL && strcmp(definition->schema_name, "mysql") == 0 &&
            (strcmp(definition->query_definition.name, "component") == 0 ||
             strcmp(definition->query_definition.name, "func") == 0 ||
+            strcmp(definition->query_definition.name, "general_log") == 0 ||
             strcmp(definition->query_definition.name, "gtid_executed") == 0 ||
-            strcmp(definition->query_definition.name, "servers") == 0);
+            strcmp(definition->query_definition.name, "servers") == 0 ||
+            strcmp(definition->query_definition.name, "slow_log") == 0);
 }
 
 static const char *mysql_system_table_column_comment(
@@ -52385,8 +52597,10 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
         return MYLITE_OK;
     }
 
@@ -52461,8 +52675,10 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_GENERAL_LOG:
     case INFORMATION_SCHEMA_TABLE_MYSQL_GTID_EXECUTED:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_SLOW_LOG:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -53933,6 +54149,9 @@ static const char *builtin_schema_table_rows(
         if (strcmp(table_name, "innodb_table_stats") == 0) {
             return "2";
         }
+        if (strcmp(table_name, "general_log") == 0 || strcmp(table_name, "slow_log") == 0) {
+            return "2";
+        }
         if (strcmp(table_name, "user") == 0) {
             return "5";
         }
@@ -54087,8 +54306,14 @@ static const char *builtin_schema_table_comment(
         if (strcmp(table_name, "func") == 0) {
             return "User defined functions";
         }
+        if (strcmp(table_name, "general_log") == 0) {
+            return "General log";
+        }
         if (strcmp(table_name, "servers") == 0) {
             return "MySQL Foreign Servers table";
+        }
+        if (strcmp(table_name, "slow_log") == 0) {
+            return "Slow log";
         }
         if (strcmp(table_name, "user") == 0) {
             return "Users and global privileges";

@@ -10,9 +10,9 @@ It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 paths. MySQL exposes `sql_log_off` as mutable global and session state that
 controls whether the current session suppresses general query log writes when
 the general query log itself is enabled. MyLite does not implement mutable
-system-variable assignment, general query log files, `mysql.general_log`, or
-logging side effects in the baseline yet, so this slice exposes only the
-default disabled scalar value.
+system-variable assignment, general query log files, log-row writes to
+`mysql.general_log`, or logging side effects in the baseline yet, so this slice
+exposes only the default disabled scalar value.
 
 This is not general query logging support. It does not implement
 `SET sql_log_off`, mutable global/session state, log file or log-table writes,
@@ -113,9 +113,9 @@ This feature must not implement:
 
 - `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
   global/session `sql_log_off` state;
-- general query log enabling, log output routing, log file writes,
-  `mysql.general_log`, slow query log behavior, log redaction, or restricted
-  variable privilege checks;
+- general query log enabling, log output routing, log file writes, log-row
+  writes to `mysql.general_log`, slow query log behavior, log redaction, or
+  restricted variable privilege checks;
 - variables other than `sql_log_off`;
 - changed descriptor-backed DDL, DML, or `SELECT` execution;
 - `SHOW VARIABLES` or Performance Schema variable tables;
@@ -263,8 +263,8 @@ Update:
 - `docs/compatibility/metadata-mysql-schema.md`
 
 Do not claim mutable global/session state, `SET`, general query log files,
-`mysql.general_log`, slow query logging, privileges, `SHOW VARIABLES`, or
-Performance Schema variable tables.
+log-row writes to `mysql.general_log`, slow query logging, privileges,
+`SHOW VARIABLES`, or Performance Schema variable tables.
 
 ## Verification
 

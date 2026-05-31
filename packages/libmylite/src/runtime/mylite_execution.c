@@ -588,6 +588,7 @@ enum {
     sys_sys_config_column_count = 4,
     sys_version_column_count = 2,
     sys_innodb_lock_waits_column_count = 30,
+    sys_latest_file_io_column_count = 5,
     sys_ps_check_lost_instrumentation_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
@@ -4593,6 +4594,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION = 128,
     INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS = 129,
     INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS = 130,
+    INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO = 131,
+    INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO = 132,
 };
 
 struct information_schema_column_definition {
@@ -14856,6 +14859,147 @@ static const char *const
 };
 
 static const struct information_schema_column_definition
+    sys_latest_file_io_columns[sys_latest_file_io_column_count] = {
+        {"thread",
+         NULL,
+         "YES",
+         "varchar",
+         "317",
+         "1268",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(317)"},
+        {"file",
+         NULL,
+         "YES",
+         "varchar",
+         "512",
+         "2048",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(512)"},
+        {"latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"operation",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"requested",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_latest_file_io_columns[sys_latest_file_io_column_count] = {
+        {"thread",
+         NULL,
+         "YES",
+         "varchar",
+         "317",
+         "1268",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(317)"},
+        {"file",
+         NULL,
+         "YES",
+         "varchar",
+         "512",
+         "2048",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(512)"},
+        {"latency",
+         NULL,
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"operation",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"requested", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+};
+
+static const char *const sys_latest_file_io_column_keys[sys_latest_file_io_column_count] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_latest_file_io_column_extras[sys_latest_file_io_column_count] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_latest_file_io_column_privileges[sys_latest_file_io_column_count] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_ps_check_lost_instrumentation_columns[] = {
         {"variable_name",
          NULL,
@@ -17285,6 +17429,84 @@ static const char sys_x_innodb_lock_waits_show_create_qualified_view_sql[] =
 #undef SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION
 #undef SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION
 
+#define SYS_LATEST_FILE_IO_VIEW_COLUMNS "(`thread`,`file`,`latency`,`operation`,`requested`)"
+
+#define SYS_LATEST_FILE_IO_SELECT_PREFIX                                                           \
+    "select if((`processlist`.`ID` is null),concat(substring_index("                               \
+    "`performance_schema`.`threads`.`NAME`,'/',-(1)),':',"                                         \
+    "`performance_schema`.`events_waits_history_long`.`THREAD_ID`),convert(concat("                \
+    "`processlist`.`USER`,'@',`processlist`.`HOST`,':',`processlist`.`ID`) using utf8mb4)) AS "    \
+    "`thread`,"
+
+#define SYS_LATEST_FILE_IO_SELECT_SUFFIX                                                           \
+    " AS `operation`,format_bytes(`performance_schema`.`events_waits_history_long`."               \
+    "`NUMBER_OF_BYTES`) AS `requested` from ((`performance_schema`.`events_waits_history_long` "   \
+    "join "                                                                                        \
+    "`performance_schema`.`threads` on((`performance_schema`.`events_waits_history_long`."         \
+    "`THREAD_ID` = `performance_schema`.`threads`.`THREAD_ID`))) left join "                       \
+    "`information_schema`.`PROCESSLIST` `processlist` on((`performance_schema`.`threads`."         \
+    "`PROCESSLIST_ID` = `processlist`.`ID`))) where (("                                            \
+    "`performance_schema`.`events_waits_history_long`.`OBJECT_NAME` is not null) and ("            \
+    "`performance_schema`.`events_waits_history_long`.`EVENT_NAME` like 'wait/io/file/%')) order " \
+    "by "                                                                                          \
+    "`performance_schema`.`events_waits_history_long`.`TIMER_START`"
+
+#define SYS_X_LATEST_FILE_IO_SELECT_SUFFIX                                                         \
+    " AS `operation`,`performance_schema`.`events_waits_history_long`.`NUMBER_OF_BYTES` AS "       \
+    "`requested` from ((`performance_schema`.`events_waits_history_long` join "                    \
+    "`performance_schema`.`threads` on((`performance_schema`.`events_waits_history_long`."         \
+    "`THREAD_ID` = `performance_schema`.`threads`.`THREAD_ID`))) left join "                       \
+    "`information_schema`.`PROCESSLIST` `processlist` on((`performance_schema`.`threads`."         \
+    "`PROCESSLIST_ID` = `processlist`.`ID`))) where (("                                            \
+    "`performance_schema`.`events_waits_history_long`.`OBJECT_NAME` is not null) and ("            \
+    "`performance_schema`.`events_waits_history_long`.`EVENT_NAME` like 'wait/io/file/%')) order " \
+    "by "                                                                                          \
+    "`performance_schema`.`events_waits_history_long`.`TIMER_START`"
+
+#define SYS_LATEST_FILE_IO_VIEW_DEFINITION                                                         \
+    SYS_LATEST_FILE_IO_SELECT_PREFIX                                                               \
+    "`sys`.`format_path`(`performance_schema`.`events_waits_history_long`.`OBJECT_NAME`) AS "      \
+    "`file`,format_pico_time(`performance_schema`.`events_waits_history_long`.`TIMER_WAIT`) AS "   \
+    "`latency`,`performance_schema`.`events_waits_history_long`.`"                                 \
+    "OPERATION`" SYS_LATEST_FILE_IO_SELECT_SUFFIX
+
+#define SYS_X_LATEST_FILE_IO_VIEW_DEFINITION                                                       \
+    SYS_LATEST_FILE_IO_SELECT_PREFIX                                                               \
+    "`performance_schema`.`events_waits_history_long`.`OBJECT_NAME` AS `file`,"                    \
+    "`performance_schema`.`events_waits_history_long`.`TIMER_WAIT` AS `latency`,"                  \
+    "`performance_schema`.`events_waits_history_long`.`"                                           \
+    "OPERATION`" SYS_X_LATEST_FILE_IO_SELECT_SUFFIX
+
+static const char sys_latest_file_io_view_definition[] = SYS_LATEST_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_latest_file_io_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS " AS " SYS_LATEST_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_latest_file_io_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_LATEST_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_x_latest_file_io_view_definition[] = SYS_X_LATEST_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_x_latest_file_io_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_X_LATEST_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_x_latest_file_io_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_X_LATEST_FILE_IO_VIEW_DEFINITION;
+
+#undef SYS_LATEST_FILE_IO_VIEW_COLUMNS
+#undef SYS_LATEST_FILE_IO_SELECT_PREFIX
+#undef SYS_LATEST_FILE_IO_SELECT_SUFFIX
+#undef SYS_X_LATEST_FILE_IO_SELECT_SUFFIX
+#undef SYS_LATEST_FILE_IO_VIEW_DEFINITION
+#undef SYS_X_LATEST_FILE_IO_VIEW_DEFINITION
+
 #define SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS "(`variable_name`,`variable_value`)"
 
 #define SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION                                          \
@@ -17917,6 +18139,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_innodb_lock_waits_view_definition,
      sys_innodb_lock_waits_show_create_view_sql,
      sys_innodb_lock_waits_show_create_qualified_view_sql},
+    {"latest_file_io",
+     sys_latest_file_io_view_definition,
+     sys_latest_file_io_show_create_view_sql,
+     sys_latest_file_io_show_create_qualified_view_sql},
     {"ps_check_lost_instrumentation",
      sys_ps_check_lost_instrumentation_view_definition,
      sys_ps_check_lost_instrumentation_show_create_view_sql,
@@ -17965,6 +18191,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_innodb_lock_waits_view_definition,
      sys_x_innodb_lock_waits_show_create_view_sql,
      sys_x_innodb_lock_waits_show_create_qualified_view_sql},
+    {"x$latest_file_io",
+     sys_x_latest_file_io_view_definition,
+     sys_x_latest_file_io_show_create_view_sql,
+     sys_x_latest_file_io_show_create_qualified_view_sql},
     {"x$schema_index_statistics",
      sys_x_schema_index_statistics_view_definition,
      sys_x_schema_index_statistics_show_create_view_sql,
@@ -20792,6 +21022,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO,
+      "latest_file_io",
+      sys_latest_file_io_columns,
+      sys_latest_file_io_column_count},
+     sys_latest_file_io_column_keys,
+     sys_latest_file_io_column_extras,
+     sys_latest_file_io_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION,
       "ps_check_lost_instrumentation",
       sys_ps_check_lost_instrumentation_columns,
@@ -20953,6 +21197,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_innodb_lock_waits_column_keys,
      sys_innodb_lock_waits_column_extras,
      sys_innodb_lock_waits_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO,
+      "x$latest_file_io",
+      sys_x_latest_file_io_columns,
+      sys_latest_file_io_column_count},
+     sys_latest_file_io_column_keys,
+     sys_latest_file_io_column_extras,
+     sys_latest_file_io_column_privileges,
      NULL,
      NULL,
      0U,
@@ -24161,6 +24419,10 @@ static int append_sys_version_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_innodb_lock_waits_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_latest_file_io_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -60051,6 +60313,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "latest_file_io") == 0) {
+        return append_sys_latest_file_io_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "ps_check_lost_instrumentation") == 0) {
         return append_sys_ps_check_lost_instrumentation_system_rows(database, rows);
     }
@@ -60086,6 +60351,9 @@ static int append_sys_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$latest_file_io") == 0) {
+        return append_sys_latest_file_io_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$schema_index_statistics") == 0) {
         return append_sys_schema_index_statistics_system_rows(database, rows, false);
@@ -60325,6 +60593,17 @@ static int append_sys_innodb_lock_waits_system_rows(
 ) {
     if (rows->definition->column_count != sys_innodb_lock_waits_column_count) {
         set_runtime_error(database, "invalid sys.innodb_lock_waits columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_latest_file_io_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_latest_file_io_column_count) {
+        set_runtime_error(database, "invalid sys.latest_file_io columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -63194,6 +63473,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -63206,6 +63486,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
@@ -63326,6 +63607,10 @@ static int append_information_schema_view_table_usage_system_rows(
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
         {"innodb_lock_waits", "sys", "sys_config"},
+        {"latest_file_io", "information_schema", "PROCESSLIST"},
+        {"latest_file_io", "performance_schema", "events_waits_history_long"},
+        {"latest_file_io", "performance_schema", "global_variables"},
+        {"latest_file_io", "performance_schema", "threads"},
         {"ps_check_lost_instrumentation", "performance_schema", "global_status"},
         {"schema_auto_increment_columns", "information_schema", "COLUMNS"},
         {"schema_auto_increment_columns", "information_schema", "TABLES"},
@@ -63355,6 +63640,9 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"x$innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"x$innodb_lock_waits", "performance_schema", "data_locks"},
+        {"x$latest_file_io", "information_schema", "PROCESSLIST"},
+        {"x$latest_file_io", "performance_schema", "events_waits_history_long"},
+        {"x$latest_file_io", "performance_schema", "threads"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
@@ -63409,6 +63697,7 @@ static int append_information_schema_view_routine_usage_system_rows(
     static const struct builtin_view_routine_dependency_row dependency_rows[] = {
         {"innodb_lock_waits", "format_statement"},
         {"innodb_lock_waits", "quote_identifier"},
+        {"latest_file_io", "format_path"},
         {"schema_table_lock_waits", "format_statement"},
         {"schema_table_lock_waits", "ps_thread_account"},
         {"x$innodb_lock_waits", "quote_identifier"},
@@ -63540,6 +63829,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -63552,6 +63842,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:

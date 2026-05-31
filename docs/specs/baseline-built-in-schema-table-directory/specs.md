@@ -297,6 +297,14 @@ row-lock wait collection, Performance Schema data-lock rows, sys
 helper-function execution, privilege/definer enforcement, and broader sys view
 execution out of scope.
 
+The `baseline-sys-latest-file-io-views` slice refines `sys.latest_file_io` and
+`sys.x$latest_file_io` with direct read-only empty placeholder rows plus
+MySQL-observed view status fields, column metadata, view definition metadata,
+dependencies on the referenced `INFORMATION_SCHEMA` and `performance_schema`
+objects, and a routine dependency row on `sys.format_path`. It keeps
+Performance Schema file-I/O wait collection, sys helper-function execution,
+privilege/definer enforcement, and broader sys view execution out of scope.
+
 The `baseline-sys-schema-auto-increment-columns-view` slice refines
 `sys.schema_auto_increment_columns` with direct read-only descriptor-backed
 rows plus MySQL-observed view status fields, column metadata, view definition

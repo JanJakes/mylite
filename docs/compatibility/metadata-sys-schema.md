@@ -27,6 +27,8 @@ descriptor table inventory with zero wait counters, plus limited read-only
 `sys.schema_table_statistics_with_buffer` /
 `sys.x$schema_table_statistics_with_buffer` synthetic table-statistics views
 with zero wait and buffer counters, plus limited read-only empty
+`sys.innodb_lock_waits` / `sys.x$innodb_lock_waits` synthetic InnoDB row-lock
+wait placeholders, plus limited read-only empty
 `sys.schema_tables_with_full_table_scans` /
 `sys.x$schema_tables_with_full_table_scans` synthetic full-table-scan
 placeholders, plus a limited read-only empty
@@ -60,8 +62,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$innodb_buffer_stats_by_schema` | ❌ | View shape and diagnostics |
 | `sys.innodb_buffer_stats_by_table` | ❌ | View shape and diagnostics |
 | `sys.x$innodb_buffer_stats_by_table` | ❌ | View shape and diagnostics |
-| `sys.innodb_lock_waits` | ❌ | View shape and diagnostics |
-| `sys.x$innodb_lock_waits` | ❌ | View shape and diagnostics |
+| `sys.innodb_lock_waits` | 🟡 | Limited read-only empty formatted InnoDB row-lock wait view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `INFORMATION_SCHEMA.INNODB_TRX`, `performance_schema.data_lock_waits`, `performance_schema.data_locks`, and `sys.sys_config`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependencies on `sys.format_statement` and `sys.quote_identifier`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no live InnoDB lock-wait collection, Performance Schema data-lock rows, sys helper-function execution, `KILL` behavior, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$innodb_lock_waits` | 🟡 | Limited read-only empty raw InnoDB row-lock wait view with the same metadata and unsupported behavior as `sys.innodb_lock_waits`, except `waiting_query` and `blocking_query` expose raw `varchar(1024)` metadata and its dependencies omit `sys.sys_config` and `sys.format_statement` |
 | `sys.io_by_thread_by_latency` | ❌ | View shape and diagnostics |
 | `sys.x$io_by_thread_by_latency` | ❌ | View shape and diagnostics |
 | `sys.io_global_by_file_by_bytes` | ❌ | View shape and diagnostics |

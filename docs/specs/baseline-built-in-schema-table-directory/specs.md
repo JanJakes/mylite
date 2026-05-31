@@ -287,6 +287,16 @@ Performance Schema lost-instrumentation counters, positive status rows,
 physical sys views, privilege/definer enforcement, and broader sys view
 execution out of scope.
 
+The `baseline-sys-innodb-lock-waits-views` slice refines
+`sys.innodb_lock_waits` and `sys.x$innodb_lock_waits` with direct read-only
+empty placeholder rows plus MySQL-observed view status fields, column
+metadata, view definition metadata, dependencies on the referenced
+`INFORMATION_SCHEMA`, `performance_schema`, and `sys` objects, and routine
+dependency rows on the referenced sys helper functions. It keeps live InnoDB
+row-lock wait collection, Performance Schema data-lock rows, sys
+helper-function execution, privilege/definer enforcement, and broader sys view
+execution out of scope.
+
 The `baseline-sys-schema-auto-increment-columns-view` slice refines
 `sys.schema_auto_increment_columns` with direct read-only descriptor-backed
 rows plus MySQL-observed view status fields, column metadata, view definition

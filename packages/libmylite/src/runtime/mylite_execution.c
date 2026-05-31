@@ -587,6 +587,7 @@ enum {
     mysql_password_history_column_count = 4,
     sys_sys_config_column_count = 4,
     sys_version_column_count = 2,
+    sys_innodb_lock_waits_column_count = 30,
     sys_ps_check_lost_instrumentation_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
@@ -4590,6 +4591,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 126,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES = 127,
     INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION = 128,
+    INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS = 129,
+    INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS = 130,
 };
 
 struct information_schema_column_definition {
@@ -14184,6 +14187,675 @@ static const char *const sys_version_column_privileges[] = {
 };
 
 static const struct information_schema_column_definition
+    sys_innodb_lock_waits_columns[sys_innodb_lock_waits_column_count] = {
+        {"wait_started",
+         NULL,
+         "YES",
+         "datetime",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "0",
+         NULL,
+         NULL,
+         "datetime"},
+        {"wait_age", NULL, "YES", "time", NULL, NULL, NULL, NULL, "0", NULL, NULL, "time"},
+        {"wait_age_secs", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"locked_table",
+         NULL,
+         "YES",
+         "mediumtext",
+         "16777215",
+         "16777215",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "mediumtext"},
+        {"locked_table_schema",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_table_name",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_table_partition",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_table_subpartition",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_index",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_type",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"waiting_trx_id",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_trx_started",
+         "0000-00-00 00:00:00",
+         "NO",
+         "datetime",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "0",
+         NULL,
+         NULL,
+         "datetime"},
+        {"waiting_trx_age", NULL, "YES", "time", NULL, NULL, NULL, NULL, "0", NULL, NULL, "time"},
+        {"waiting_trx_rows_locked",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_trx_rows_modified",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_pid",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_query",
+         NULL,
+         "YES",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "longtext"},
+        {"waiting_lock_id",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"waiting_lock_mode",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"blocking_trx_id",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"blocking_pid",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"blocking_query",
+         NULL,
+         "YES",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "longtext"},
+        {"blocking_lock_id",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"blocking_lock_mode",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"blocking_trx_started",
+         "0000-00-00 00:00:00",
+         "NO",
+         "datetime",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "0",
+         NULL,
+         NULL,
+         "datetime"},
+        {"blocking_trx_age", NULL, "YES", "time", NULL, NULL, NULL, NULL, "0", NULL, NULL, "time"},
+        {"blocking_trx_rows_locked",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"blocking_trx_rows_modified",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"sql_kill_blocking_query",
+         "",
+         "NO",
+         "varchar",
+         "33",
+         "132",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(33)"},
+        {"sql_kill_blocking_connection",
+         "",
+         "NO",
+         "varchar",
+         "27",
+         "108",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(27)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_innodb_lock_waits_columns[sys_innodb_lock_waits_column_count] = {
+        {"wait_started",
+         NULL,
+         "YES",
+         "datetime",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "0",
+         NULL,
+         NULL,
+         "datetime"},
+        {"wait_age", NULL, "YES", "time", NULL, NULL, NULL, NULL, "0", NULL, NULL, "time"},
+        {"wait_age_secs", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"locked_table",
+         NULL,
+         "YES",
+         "mediumtext",
+         "16777215",
+         "16777215",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "mediumtext"},
+        {"locked_table_schema",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_table_name",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_table_partition",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_table_subpartition",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_index",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"locked_type",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"waiting_trx_id",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_trx_started",
+         "0000-00-00 00:00:00",
+         "NO",
+         "datetime",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "0",
+         NULL,
+         NULL,
+         "datetime"},
+        {"waiting_trx_age", NULL, "YES", "time", NULL, NULL, NULL, NULL, "0", NULL, NULL, "time"},
+        {"waiting_trx_rows_locked",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_trx_rows_modified",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_pid",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"waiting_query",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "3072",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(1024)"},
+        {"waiting_lock_id",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"waiting_lock_mode",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"blocking_trx_id",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"blocking_pid",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"blocking_query",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "3072",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(1024)"},
+        {"blocking_lock_id",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"blocking_lock_mode",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(32)"},
+        {"blocking_trx_started",
+         "0000-00-00 00:00:00",
+         "NO",
+         "datetime",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "0",
+         NULL,
+         NULL,
+         "datetime"},
+        {"blocking_trx_age", NULL, "YES", "time", NULL, NULL, NULL, NULL, "0", NULL, NULL, "time"},
+        {"blocking_trx_rows_locked",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"blocking_trx_rows_modified",
+         "0",
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"sql_kill_blocking_query",
+         "",
+         "NO",
+         "varchar",
+         "33",
+         "132",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(33)"},
+        {"sql_kill_blocking_connection",
+         "",
+         "NO",
+         "varchar",
+         "27",
+         "108",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(27)"},
+};
+
+static const char *const sys_innodb_lock_waits_column_keys[sys_innodb_lock_waits_column_count] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const sys_innodb_lock_waits_column_extras[sys_innodb_lock_waits_column_count] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const
+    sys_innodb_lock_waits_column_privileges[sys_innodb_lock_waits_column_count] = {
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+        "select,insert,update,references", "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_ps_check_lost_instrumentation_columns[] = {
         {"variable_name",
          NULL,
@@ -16527,6 +17199,92 @@ static const char sys_version_show_create_qualified_view_sql[] =
     "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
     "`sys_version`,version() AS `mysql_version`";
 
+#define SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS                                                         \
+    "(`wait_started`,`wait_age`,`wait_age_secs`,`locked_table`,`locked_table_schema`,"             \
+    "`locked_table_name`,`locked_table_partition`,`locked_table_subpartition`,`locked_index`,"     \
+    "`locked_type`,`waiting_trx_id`,`waiting_trx_started`,`waiting_trx_age`,"                      \
+    "`waiting_trx_rows_locked`,`waiting_trx_rows_modified`,`waiting_pid`,`waiting_query`,"         \
+    "`waiting_lock_id`,`waiting_lock_mode`,`blocking_trx_id`,`blocking_pid`,`blocking_query`,"     \
+    "`blocking_lock_id`,`blocking_lock_mode`,`blocking_trx_started`,`blocking_trx_age`,"           \
+    "`blocking_trx_rows_locked`,`blocking_trx_rows_modified`,`sql_kill_blocking_query`,"           \
+    "`sql_kill_blocking_connection`)"
+
+#define SYS_INNODB_LOCK_WAITS_SELECT_PREFIX                                                        \
+    "select `r`.`trx_wait_started` AS `wait_started`,timediff(now(),"                              \
+    "`r`.`trx_wait_started`) AS `wait_age`,timestampdiff(SECOND,`r`.`trx_wait_started`,now()) "    \
+    "AS `wait_age_secs`,concat(`sys`.`quote_identifier`(`rl`.`OBJECT_SCHEMA`),'.',"                \
+    "`sys`.`quote_identifier`(`rl`.`OBJECT_NAME`)) AS `locked_table`,`rl`.`OBJECT_SCHEMA` AS "     \
+    "`locked_table_schema`,`rl`.`OBJECT_NAME` AS `locked_table_name`,`rl`.`PARTITION_NAME` AS "    \
+    "`locked_table_partition`,`rl`.`SUBPARTITION_NAME` AS `locked_table_subpartition`,"            \
+    "`rl`.`INDEX_NAME` AS `locked_index`,`rl`.`LOCK_TYPE` AS `locked_type`,`r`.`trx_id` AS "       \
+    "`waiting_trx_id`,`r`.`trx_started` AS `waiting_trx_started`,timediff(now(),"                  \
+    "`r`.`trx_started`) AS `waiting_trx_age`,`r`.`trx_rows_locked` AS "                            \
+    "`waiting_trx_rows_locked`,`r`.`trx_rows_modified` AS `waiting_trx_rows_modified`,"            \
+    "`r`.`trx_mysql_thread_id` AS `waiting_pid`,"
+
+#define SYS_INNODB_LOCK_WAITS_SELECT_BRIDGE                                                        \
+    " AS `waiting_query`,`rl`.`ENGINE_LOCK_ID` AS `waiting_lock_id`,`rl`.`LOCK_MODE` AS "          \
+    "`waiting_lock_mode`,`b`.`trx_id` AS `blocking_trx_id`,`b`.`trx_mysql_thread_id` AS "          \
+    "`blocking_pid`,"
+
+#define SYS_INNODB_LOCK_WAITS_SELECT_SUFFIX                                                        \
+    " AS `blocking_query`,`bl`.`ENGINE_LOCK_ID` AS `blocking_lock_id`,`bl`.`LOCK_MODE` AS "        \
+    "`blocking_lock_mode`,`b`.`trx_started` AS `blocking_trx_started`,timediff(now(),"             \
+    "`b`.`trx_started`) AS `blocking_trx_age`,`b`.`trx_rows_locked` AS "                           \
+    "`blocking_trx_rows_locked`,`b`.`trx_rows_modified` AS `blocking_trx_rows_modified`,"          \
+    "concat('KILL QUERY ',`b`.`trx_mysql_thread_id`) AS `sql_kill_blocking_query`,"                \
+    "concat('KILL ',`b`.`trx_mysql_thread_id`) AS `sql_kill_blocking_connection` from "            \
+    "((((`performance_schema`.`data_lock_waits` `w` join `information_schema`.`INNODB_TRX` "       \
+    "`b` on((`b`.`trx_id` = cast(`w`.`BLOCKING_ENGINE_TRANSACTION_ID` as char charset "            \
+    "utf8mb4)))) join `information_schema`.`INNODB_TRX` `r` on((`r`.`trx_id` = cast("              \
+    "`w`.`REQUESTING_ENGINE_TRANSACTION_ID` as char charset utf8mb4)))) join "                     \
+    "`performance_schema`.`data_locks` `bl` on(((`bl`.`ENGINE_LOCK_ID` = "                         \
+    "`w`.`BLOCKING_ENGINE_LOCK_ID`) and (`bl`.`ENGINE` = `w`.`ENGINE`)))) join "                   \
+    "`performance_schema`.`data_locks` `rl` on(((`rl`.`ENGINE_LOCK_ID` = "                         \
+    "`w`.`REQUESTING_ENGINE_LOCK_ID`) and (`rl`.`ENGINE` = `w`.`ENGINE`)))) order by "             \
+    "`r`.`trx_wait_started`"
+
+#define SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION                                                      \
+    SYS_INNODB_LOCK_WAITS_SELECT_PREFIX                                                            \
+    "`sys`.`format_statement`(`r`.`trx_query`)" SYS_INNODB_LOCK_WAITS_SELECT_BRIDGE                \
+    "`sys`.`format_statement`(`b`.`trx_query`)" SYS_INNODB_LOCK_WAITS_SELECT_SUFFIX
+
+#define SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION                                                    \
+    SYS_INNODB_LOCK_WAITS_SELECT_PREFIX "`r`.`trx_query`" SYS_INNODB_LOCK_WAITS_SELECT_BRIDGE      \
+                                        "`b`.`trx_query`" SYS_INNODB_LOCK_WAITS_SELECT_SUFFIX
+
+static const char sys_innodb_lock_waits_view_definition[] = SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_innodb_lock_waits_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_innodb_lock_waits_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_x_innodb_lock_waits_view_definition[] =
+    SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_x_innodb_lock_waits_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_x_innodb_lock_waits_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION;
+
+#undef SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
+#undef SYS_INNODB_LOCK_WAITS_SELECT_PREFIX
+#undef SYS_INNODB_LOCK_WAITS_SELECT_BRIDGE
+#undef SYS_INNODB_LOCK_WAITS_SELECT_SUFFIX
+#undef SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION
+#undef SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION
+
 #define SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS "(`variable_name`,`variable_value`)"
 
 #define SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION                                          \
@@ -17155,6 +17913,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_version_view_definition,
      sys_version_show_create_view_sql,
      sys_version_show_create_qualified_view_sql},
+    {"innodb_lock_waits",
+     sys_innodb_lock_waits_view_definition,
+     sys_innodb_lock_waits_show_create_view_sql,
+     sys_innodb_lock_waits_show_create_qualified_view_sql},
     {"ps_check_lost_instrumentation",
      sys_ps_check_lost_instrumentation_view_definition,
      sys_ps_check_lost_instrumentation_show_create_view_sql,
@@ -17199,6 +17961,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
      sys_x_schema_flattened_keys_show_create_qualified_view_sql},
+    {"x$innodb_lock_waits",
+     sys_x_innodb_lock_waits_view_definition,
+     sys_x_innodb_lock_waits_show_create_view_sql,
+     sys_x_innodb_lock_waits_show_create_qualified_view_sql},
     {"x$schema_index_statistics",
      sys_x_schema_index_statistics_view_definition,
      sys_x_schema_index_statistics_show_create_view_sql,
@@ -20012,6 +20778,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS,
+      "innodb_lock_waits",
+      sys_innodb_lock_waits_columns,
+      sys_innodb_lock_waits_column_count},
+     sys_innodb_lock_waits_column_keys,
+     sys_innodb_lock_waits_column_extras,
+     sys_innodb_lock_waits_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION,
       "ps_check_lost_instrumentation",
       sys_ps_check_lost_instrumentation_columns,
@@ -20159,6 +20939,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_x_schema_flattened_keys_column_keys,
      sys_x_schema_flattened_keys_column_extras,
      sys_x_schema_flattened_keys_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS,
+      "x$innodb_lock_waits",
+      sys_x_innodb_lock_waits_columns,
+      sys_innodb_lock_waits_column_count},
+     sys_innodb_lock_waits_column_keys,
+     sys_innodb_lock_waits_column_extras,
+     sys_innodb_lock_waits_column_privileges,
      NULL,
      NULL,
      0U,
@@ -23363,6 +24157,10 @@ static int append_sys_sys_config_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_version_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_innodb_lock_waits_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -59250,6 +60048,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "version") == 0) {
         return append_sys_version_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
+        return append_sys_innodb_lock_waits_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "ps_check_lost_instrumentation") == 0) {
         return append_sys_ps_check_lost_instrumentation_system_rows(database, rows);
     }
@@ -59282,6 +60083,9 @@ static int append_sys_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$innodb_lock_waits") == 0) {
+        return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$schema_index_statistics") == 0) {
         return append_sys_schema_index_statistics_system_rows(database, rows, false);
@@ -59513,6 +60317,17 @@ static int append_sys_version_system_rows(
     }
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_sys_innodb_lock_waits_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_innodb_lock_waits_column_count) {
+        set_runtime_error(database, "invalid sys.innodb_lock_waits columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int append_sys_ps_check_lost_instrumentation_system_rows(
@@ -62378,6 +63193,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -62389,6 +63205,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
@@ -62505,6 +63322,10 @@ static int append_information_schema_view_table_usage_system_rows(
         const char *table_name;
     };
     static const struct builtin_view_dependency_row dependency_rows[] = {
+        {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
+        {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
+        {"innodb_lock_waits", "performance_schema", "data_locks"},
+        {"innodb_lock_waits", "sys", "sys_config"},
         {"ps_check_lost_instrumentation", "performance_schema", "global_status"},
         {"schema_auto_increment_columns", "information_schema", "COLUMNS"},
         {"schema_auto_increment_columns", "information_schema", "TABLES"},
@@ -62531,6 +63352,9 @@ static int append_information_schema_view_table_usage_system_rows(
          "table_io_waits_summary_by_index_usage"},
         {"schema_unused_indexes", "information_schema", "STATISTICS"},
         {"schema_unused_indexes", "performance_schema", "table_io_waits_summary_by_index_usage"},
+        {"x$innodb_lock_waits", "information_schema", "INNODB_TRX"},
+        {"x$innodb_lock_waits", "performance_schema", "data_lock_waits"},
+        {"x$innodb_lock_waits", "performance_schema", "data_locks"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
@@ -62583,8 +63407,11 @@ static int append_information_schema_view_routine_usage_system_rows(
         const char *routine_name;
     };
     static const struct builtin_view_routine_dependency_row dependency_rows[] = {
+        {"innodb_lock_waits", "format_statement"},
+        {"innodb_lock_waits", "quote_identifier"},
         {"schema_table_lock_waits", "format_statement"},
         {"schema_table_lock_waits", "ps_thread_account"},
+        {"x$innodb_lock_waits", "quote_identifier"},
         {"x$schema_table_lock_waits", "ps_thread_account"},
     };
     int rc = MYLITE_OK;
@@ -62712,6 +63539,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -62723,6 +63551,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:

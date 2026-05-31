@@ -586,6 +586,7 @@ enum {
     mysql_role_edges_column_count = 5,
     mysql_password_history_column_count = 4,
     sys_sys_config_column_count = 4,
+    sys_version_column_count = 2,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4550,6 +4551,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES = 109,
     INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY = 110,
     INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG = 111,
+    INFORMATION_SCHEMA_TABLE_SYS_VERSION = 112,
 };
 
 struct information_schema_column_definition {
@@ -14038,6 +14040,48 @@ static const struct sys_sys_config_trigger_definition sys_sys_config_triggers[] 
     {"sys_config_update_set_user", "UPDATE"},
 };
 
+static const struct information_schema_column_definition sys_version_columns[] = {
+    {"sys_version",
+     "",
+     "NO",
+     "varchar",
+     "5",
+     "20",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(5)"},
+    {"mysql_version",
+     "",
+     "NO",
+     "varchar",
+     "5",
+     "15",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(5)"},
+};
+
+static const char *const sys_version_column_keys[] = {
+    "",
+    "",
+};
+
+static const char *const sys_version_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const sys_version_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -16808,6 +16852,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_sys_config_column_keys,
      sys_sys_config_column_extras,
      sys_sys_config_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_VERSION,
+      "version",
+      sys_version_columns,
+      sys_version_column_count},
+     sys_version_column_keys,
+     sys_version_column_extras,
+     sys_version_column_privileges,
      NULL,
      NULL,
      0U,
@@ -19928,6 +19986,10 @@ static int append_mysql_server_cost_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_sys_config_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_version_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -55505,6 +55567,10 @@ static int append_mysql_system_table_system_rows(
         strcmp(definition->query_definition.name, "sys_config") == 0) {
         return append_sys_sys_config_system_rows(database, rows);
     }
+    if (strcmp(definition->schema_name, "sys") == 0 &&
+        strcmp(definition->query_definition.name, "version") == 0) {
+        return append_sys_version_system_rows(database, rows);
+    }
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
@@ -55703,6 +55769,23 @@ static int append_sys_sys_config_system_rows(
         rc = append_information_schema_row(database, rows, values);
     }
     return rc;
+}
+
+static int append_sys_version_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[sys_version_column_count] = {
+        "2.1.3",
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+    };
+
+    if (rows->definition->column_count != sys_version_column_count) {
+        set_runtime_error(database, "invalid sys.version columns");
+        return MYLITE_ERROR;
+    }
+
+    return append_information_schema_row(database, rows, values);
 }
 
 static const char *mysql_system_table_column_comment(
@@ -56950,6 +57033,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
+    case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
         return append_information_schema_triggers_system_rows(database, rows);
@@ -57106,6 +57190,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
+    case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -58749,7 +58834,7 @@ static const char *builtin_schema_table_index_length(
 ) {
     const char *table_type = builtin_schema_table_type(directory, table_name);
 
-    if (table_type == NULL) {
+    if (table_type == NULL || strcmp(table_type, "VIEW") == 0) {
         return NULL;
     }
     if (!builtin_schema_table_is_mysql_help(directory, table_name)) {

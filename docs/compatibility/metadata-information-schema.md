@@ -35,6 +35,13 @@ The `baseline-sys-sys-config-triggers` slice extends
 `sys.sys_config` triggers. It does not add trigger execution, trigger DDL, or
 user-created trigger descriptors.
 
+The `baseline-sys-version-view` slice extends `INFORMATION_SCHEMA.COLUMNS`,
+`TABLES`, `STATISTICS`, `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, and
+`TABLE_CONSTRAINTS_EXTENSIONS` with MySQL-shaped metadata for the supported
+synthetic `sys.version` view. It does not add `SHOW CREATE VIEW` metadata,
+persisted view descriptors, privilege filtering, or the broader sys view
+catalog.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `INFORMATION_SCHEMA.ADMINISTRABLE_ROLE_AUTHORIZATIONS` | 🟡 | Queryable empty synthetic administrable-role metadata view with MySQL 8.4.9-shaped columns and matching system metadata; no role graph, active-role state, grant descriptors, default or mandatory roles, privilege filtering, or enforcement |

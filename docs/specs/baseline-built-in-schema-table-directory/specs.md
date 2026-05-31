@@ -271,6 +271,12 @@ sys triggers, sys functions, sys procedures, sys views, Performance
 Schema-backed values, privilege filtering, and persisted sys table storage out
 of scope.
 
+The `baseline-sys-version-view` slice refines `sys.version` with a direct
+read-only synthetic version row plus MySQL-observed view status fields, column
+metadata, and empty index/constraint metadata while keeping `SHOW CREATE VIEW`,
+persisted view descriptors, privilege/definer behavior, broader sys views, and
+sys helper functions out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

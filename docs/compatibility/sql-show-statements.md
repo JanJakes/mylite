@@ -58,6 +58,13 @@ The `baseline-sys-sys-config-table` slice extends the `SHOW COLUMNS` /
 `sys.sys_config`. Other `sys` objects remain metadata-directory rows only until
 their own slices document support.
 
+The `baseline-sys-version-view` slice extends the `SHOW COLUMNS` /
+`SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX` / `SHOW INDEXES` /
+`SHOW KEYS`, and `SHOW TABLE STATUS` rows above with MySQL-shaped metadata for
+the supported synthetic `sys.version` view. `SHOW CREATE VIEW sys.version`
+remains unsupported until persisted or synthetic view-definition descriptors
+are added for sys schema views.
+
 The `baseline-sys-sys-config-triggers` slice extends `SHOW TRIGGERS` and
 `SHOW FULL TRIGGERS` with metadata-only rows for the two built-in
 `sys.sys_config` triggers. Trigger execution, trigger DDL, `SHOW CREATE

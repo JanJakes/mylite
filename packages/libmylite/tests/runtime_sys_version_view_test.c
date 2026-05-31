@@ -1,6 +1,5 @@
 #include <mylite/mylite.h>
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +13,7 @@
 
 enum {
     test_path_capacity = 1024,
-    sys_config_column_count = 4,
+    version_column_count = 2,
     show_columns_column_count = 6,
     show_full_columns_column_count = 9,
     show_index_column_count = 15,
@@ -40,7 +39,7 @@ struct expected_query {
 
 static const char expected_datetime_value[] = "<datetime>";
 
-static int test_sys_sys_config_table(void);
+static int test_sys_version_view(void);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_row_count_status(mylite_db *database, const char *context);
@@ -54,11 +53,9 @@ static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_datetime_text(const char *actual, const char *context);
 
-static const char *const sys_config_columns[sys_config_column_count] = {
-    "variable",
-    "value",
-    "set_time",
-    "set_by",
+static const char *const version_columns[version_column_count] = {
+    "sys_version",
+    "mysql_version",
 };
 
 static const char *const show_columns_columns[show_columns_column_count] = {
@@ -152,317 +149,138 @@ static const char *const show_table_status_columns[show_table_status_column_coun
 };
 
 int main(void) {
-    return test_sys_sys_config_table() == 0 ? 0 : 1;
+    return test_sys_version_view() == 0 ? 0 : 1;
 }
 
-static int test_sys_sys_config_table(void) {
+static int test_sys_version_view(void) {
     enum {
-        sys_config_row_count = 6,
-        show_columns_row_count = 4,
-        show_index_row_count = 1,
-        information_schema_table_constraints_column_count = 3,
-        information_schema_key_column_usage_column_count = 7,
-        information_schema_table_constraints_extensions_column_count = 4,
-        information_schema_statistics_column_count = 13,
+        show_columns_row_count = 2,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_six[] = {"6"};
-    static const char *const value_column[] = {"value"};
-    static const char *const statement_truncate_len_value[] = {"64"};
-    static const char *const sys_config_values[] = {
-        "diagnostics.allow_i_s_tables",
-        "OFF",
-        expected_datetime_value,
-        NULL,
-        "diagnostics.include_raw",
-        "OFF",
-        expected_datetime_value,
-        NULL,
-        "ps_thread_trx_info.max_length",
-        "65535",
-        expected_datetime_value,
-        NULL,
-        "statement_performance_analyzer.limit",
-        "100",
-        expected_datetime_value,
-        NULL,
-        "statement_performance_analyzer.view",
-        NULL,
-        expected_datetime_value,
-        NULL,
-        "statement_truncate_len",
-        "64",
-        expected_datetime_value,
-        NULL,
+    static const char *const count_zero[] = {"0"};
+    static const char *const version_values[] = {
+        "2.1.3",
+        "8.4.9",
     };
     static const char *const show_columns_values[] = {
-        "variable",
-        "varchar(128)",
+        "sys_version",
+        "varchar(5)",
         "NO",
-        "PRI",
-        NULL,
         "",
-        "value",
-        "varchar(128)",
-        "YES",
         "",
-        NULL,
         "",
-        "set_time",
-        "timestamp",
-        "YES",
+        "mysql_version",
+        "varchar(5)",
+        "NO",
         "",
-        "CURRENT_TIMESTAMP",
-        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
-        "set_by",
-        "varchar(128)",
-        "YES",
         "",
-        NULL,
         "",
     };
     static const char *const show_full_columns_values[] = {
-        "variable",
-        "varchar(128)",
+        "sys_version",
+        "varchar(5)",
         "utf8mb4_0900_ai_ci",
         "NO",
-        "PRI",
-        NULL,
+        "",
+        "",
         "",
         "select,insert,update,references",
         "",
-        "value",
-        "varchar(128)",
-        "utf8mb4_0900_ai_ci",
-        "YES",
+        "mysql_version",
+        "varchar(5)",
+        "utf8mb3_general_ci",
+        "NO",
         "",
-        NULL,
         "",
-        "select,insert,update,references",
-        "",
-        "set_time",
-        "timestamp",
-        NULL,
-        "YES",
-        "",
-        "CURRENT_TIMESTAMP",
-        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
-        "select,insert,update,references",
-        "",
-        "set_by",
-        "varchar(128)",
-        "utf8mb4_0900_ai_ci",
-        "YES",
-        "",
-        NULL,
         "",
         "select,insert,update,references",
         "",
-    };
-    static const char *const show_index_values[] = {
-        "sys_config",
-        "0",
-        "PRIMARY",
-        "1",
-        sys_config_columns[0],
-        "A",
-        "6",
-        NULL,
-        NULL,
-        "",
-        "BTREE",
-        "",
-        "",
-        "YES",
-        NULL,
     };
     static const char *const information_schema_columns_values[] = {
-        "variable",
+        "sys_version",
         "1",
-        NULL,
+        "",
         "NO",
         "varchar",
-        "128",
-        "512",
+        "5",
+        "20",
         NULL,
         NULL,
         NULL,
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
-        "varchar(128)",
-        "PRI",
+        "varchar(5)",
+        "",
         "",
         "select,insert,update,references",
         "",
         "",
-        "value",
+        "mysql_version",
         "2",
-        NULL,
-        "YES",
+        "",
+        "NO",
         "varchar",
-        "128",
-        "512",
+        "5",
+        "15",
         NULL,
         NULL,
         NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "varchar(128)",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "varchar(5)",
         "",
         "",
         "select,insert,update,references",
         "",
         "",
-        "set_time",
-        "3",
-        "CURRENT_TIMESTAMP",
-        "YES",
-        "timestamp",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        "0",
-        NULL,
-        NULL,
-        "timestamp",
-        "",
-        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
-        "select,insert,update,references",
-        "",
-        "",
-        "set_by",
-        "4",
-        NULL,
-        "YES",
-        "varchar",
-        "128",
-        "512",
-        NULL,
-        NULL,
-        NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "varchar(128)",
-        "",
-        "",
-        "select,insert,update,references",
-        "",
-        "",
-    };
-    static const char *const table_constraints_columns[] = {
-        "CONSTRAINT_NAME",
-        "CONSTRAINT_TYPE",
-        "ENFORCED",
-    };
-    static const char *const table_constraints_values[] = {"PRIMARY", "PRIMARY KEY", "YES"};
-    static const char *const key_column_usage_columns[] = {
-        "CONSTRAINT_NAME",
-        "COLUMN_NAME",
-        "ORDINAL_POSITION",
-        "POSITION_IN_UNIQUE_CONSTRAINT",
-        "REFERENCED_TABLE_SCHEMA",
-        "REFERENCED_TABLE_NAME",
-        "REFERENCED_COLUMN_NAME",
-    };
-    static const char *const key_column_usage_values[] = {
-        "PRIMARY",
-        sys_config_columns[0],
-        "1",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-    };
-    static const char *const table_constraints_extensions_columns[] = {
-        "CONSTRAINT_NAME",
-        "TABLE_NAME",
-        "ENGINE_ATTRIBUTE",
-        "SECONDARY_ENGINE_ATTRIBUTE",
-    };
-    static const char *const table_constraints_extensions_values[] = {
-        "PRIMARY",
-        "sys_config",
-        NULL,
-        NULL,
-    };
-    static const char *const statistics_columns[] = {
-        "INDEX_NAME",
-        "SEQ_IN_INDEX",
-        "COLUMN_NAME",
-        "COLLATION",
-        "CARDINALITY",
-        "SUB_PART",
-        "PACKED",
-        "NULLABLE",
-        "INDEX_TYPE",
-        "COMMENT",
-        "INDEX_COMMENT",
-        "IS_VISIBLE",
-        "EXPRESSION",
-    };
-    static const char *const statistics_values[] = {
-        "PRIMARY",
-        "1",
-        sys_config_columns[0],
-        "A",
-        "6",
-        NULL,
-        NULL,
-        "",
-        "BTREE",
-        "",
-        "",
-        "YES",
-        NULL,
     };
     static const char *const information_schema_tables_values[] = {
-        "sys_config",
-        "BASE TABLE",
-        "InnoDB",
-        "10",
-        "Dynamic",
-        "6",
-        "2730",
-        "16384",
-        "0",
-        "0",
-        "0",
+        "version",
+        "VIEW",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
         NULL,
         expected_datetime_value,
         NULL,
         NULL,
-        "utf8mb4_0900_ai_ci",
         NULL,
-        "",
-        "",
+        NULL,
+        NULL,
+        "VIEW",
     };
     static const char *const show_table_status_values[] = {
-        "sys_config",
-        "InnoDB",
-        "10",
-        "Dynamic",
-        "6",
-        "2730",
-        "16384",
-        "0",
-        "0",
-        "0",
+        "version",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
         NULL,
         expected_datetime_value,
         NULL,
         NULL,
-        "utf8mb4_0900_ai_ci",
         NULL,
-        "",
-        "",
+        NULL,
+        NULL,
+        "VIEW",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "sys-sys-config-table") != 0) {
+    if (make_test_path(path, sizeof(path), "sys-version-view") != 0) {
         return 1;
     }
     remove_related_files(path);
@@ -473,70 +291,69 @@ static int test_sys_sys_config_table(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT variable, value, set_time, set_by FROM sys.sys_config "
-                   "ORDER BY variable",
-            .column_names = sys_config_columns,
-            .column_count = sys_config_column_count,
-            .values = sys_config_values,
-            .row_count = sys_config_row_count,
-            .context = "sys.sys_config direct rows",
-        }
-    );
-    failures += expect_row_count_status(database, "row count after sys.sys_config read");
-    failures += expect_query(
-        database,
-        (struct expected_query){
-            .sql = "SELECT COUNT(*) FROM sys.sys_config",
-            .column_names = count_column,
-            .column_count = sizeof(count_column) / sizeof(count_column[0]),
-            .values = count_six,
+            .sql = "SELECT sys_version, mysql_version FROM sys.version",
+            .column_names = version_columns,
+            .column_count = version_column_count,
+            .values = version_values,
             .row_count = 1U,
-            .context = "sys.sys_config count",
+            .context = "sys.version direct row",
         }
     );
+    failures += expect_row_count_status(database, "row count after sys.version read");
     failures += expect_statement_ok(database, "USE sys");
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT value FROM sys_config WHERE variable = 'statement_truncate_len'",
-            .column_names = value_column,
-            .column_count = sizeof(value_column) / sizeof(value_column[0]),
-            .values = statement_truncate_len_value,
+            .sql = "SELECT * FROM version",
+            .column_names = version_columns,
+            .column_count = version_column_count,
+            .values = version_values,
             .row_count = 1U,
-            .context = "sys.sys_config selected-schema read",
+            .context = "sys.version selected-schema row",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SHOW COLUMNS FROM sys.sys_config",
+            .sql = "SHOW COLUMNS FROM version",
             .column_names = show_columns_columns,
             .column_count = show_columns_column_count,
             .values = show_columns_values,
             .row_count = show_columns_row_count,
-            .context = "sys.sys_config show columns",
+            .context = "sys.version selected-schema show columns",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SHOW FULL COLUMNS FROM sys.sys_config",
+            .sql = "SHOW COLUMNS FROM sys.version",
+            .column_names = show_columns_columns,
+            .column_count = show_columns_column_count,
+            .values = show_columns_values,
+            .row_count = show_columns_row_count,
+            .context = "sys.version show columns",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE sys.version",
+            .column_names = show_columns_columns,
+            .column_count = show_columns_column_count,
+            .values = show_columns_values,
+            .row_count = show_columns_row_count,
+            .context = "sys.version describe",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW FULL COLUMNS FROM sys.version",
             .column_names = show_full_columns_columns,
             .column_count = show_full_columns_column_count,
             .values = show_full_columns_values,
             .row_count = show_columns_row_count,
-            .context = "sys.sys_config show full columns",
-        }
-    );
-    failures += expect_query(
-        database,
-        (struct expected_query){
-            .sql = "SHOW INDEX FROM sys.sys_config WHERE Key_name = 'PRIMARY'",
-            .column_names = show_index_columns,
-            .column_count = show_index_column_count,
-            .values = show_index_values,
-            .row_count = show_index_row_count,
-            .context = "sys.sys_config show index",
+            .context = "sys.version show full columns",
         }
     );
     failures += expect_query(
@@ -548,68 +365,71 @@ static int test_sys_sys_config_table(void) {
                    "CHARACTER_SET_NAME, COLLATION_NAME, COLUMN_TYPE, COLUMN_KEY, "
                    "EXTRA, PRIVILEGES, COLUMN_COMMENT, GENERATION_EXPRESSION "
                    "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'sys' "
-                   "AND TABLE_NAME = 'sys_config' ORDER BY ORDINAL_POSITION",
+                   "AND TABLE_NAME = 'version' ORDER BY ORDINAL_POSITION",
             .column_names = information_schema_columns_columns,
             .column_count = information_schema_columns_column_count,
             .values = information_schema_columns_values,
             .row_count = show_columns_row_count,
-            .context = "sys.sys_config information_schema.columns",
+            .context = "sys.version information_schema.columns",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, ENFORCED "
-                   "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
-                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'sys_config'",
-            .column_names = table_constraints_columns,
-            .column_count = information_schema_table_constraints_column_count,
-            .values = table_constraints_values,
-            .row_count = 1U,
-            .context = "sys.sys_config information_schema.table_constraints",
+            .sql = "SHOW INDEX FROM sys.version",
+            .column_names = show_index_columns,
+            .column_count = show_index_column_count,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "sys.version show index",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION, "
-                   "POSITION_IN_UNIQUE_CONSTRAINT, REFERENCED_TABLE_SCHEMA, "
-                   "REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME "
-                   "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
-                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'sys_config'",
-            .column_names = key_column_usage_columns,
-            .column_count = information_schema_key_column_usage_column_count,
-            .values = key_column_usage_values,
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
+            .column_names = count_column,
+            .column_count = sizeof(count_column) / sizeof(count_column[0]),
+            .values = count_zero,
             .row_count = 1U,
-            .context = "sys.sys_config information_schema.key_column_usage",
+            .context = "sys.version information_schema.statistics count",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT CONSTRAINT_NAME, TABLE_NAME, ENGINE_ATTRIBUTE, "
-                   "SECONDARY_ENGINE_ATTRIBUTE FROM "
-                   "INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS "
-                   "WHERE CONSTRAINT_SCHEMA = 'sys' AND TABLE_NAME = 'sys_config'",
-            .column_names = table_constraints_extensions_columns,
-            .column_count = information_schema_table_constraints_extensions_column_count,
-            .values = table_constraints_extensions_values,
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
+            .column_names = count_column,
+            .column_count = sizeof(count_column) / sizeof(count_column[0]),
+            .values = count_zero,
             .row_count = 1U,
-            .context = "sys.sys_config information_schema.table_constraints_extensions",
+            .context = "sys.version information_schema.table_constraints count",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, "
-                   "CARDINALITY, SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT, "
-                   "INDEX_COMMENT, IS_VISIBLE, EXPRESSION FROM INFORMATION_SCHEMA.STATISTICS "
-                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'sys_config'",
-            .column_names = statistics_columns,
-            .column_count = information_schema_statistics_column_count,
-            .values = statistics_values,
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
+            .column_names = count_column,
+            .column_count = sizeof(count_column) / sizeof(count_column[0]),
+            .values = count_zero,
             .row_count = 1U,
-            .context = "sys.sys_config information_schema.statistics",
+            .context = "sys.version information_schema.key_column_usage count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS "
+                   "WHERE CONSTRAINT_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
+            .column_names = count_column,
+            .column_count = sizeof(count_column) / sizeof(count_column[0]),
+            .values = count_zero,
+            .row_count = 1U,
+            .context = "sys.version information_schema.table_constraints_extensions count",
         }
     );
     failures += expect_query(
@@ -619,23 +439,23 @@ static int test_sys_sys_config_table(void) {
                    "AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
                    "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, "
                    "CHECKSUM, CREATE_OPTIONS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
-                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'sys_config'",
+                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
             .column_names = information_schema_tables_columns,
             .column_count = information_schema_tables_column_count,
             .values = information_schema_tables_values,
             .row_count = 1U,
-            .context = "sys.sys_config information_schema.tables",
+            .context = "sys.version information_schema.tables",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SHOW TABLE STATUS FROM sys LIKE 'sys_config'",
+            .sql = "SHOW TABLE STATUS FROM sys LIKE 'version'",
             .column_names = show_table_status_columns,
             .column_count = show_table_status_column_count,
             .values = show_table_status_values,
             .row_count = 1U,
-            .context = "sys.sys_config show table status",
+            .context = "sys.version show table status",
         }
     );
 
@@ -746,7 +566,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite_runtime_sys_sys_config_table_%d_%s.mylite",
+        "/tmp/mylite_runtime_sys_version_view_%d_%s.mylite",
         current_process_id(),
         name
     );
@@ -848,32 +668,13 @@ static int expect_datetime_text(const char *actual, const char *context) {
         );
         return 1;
     }
-    for (size_t index = 0U; index < datetime_text_length; ++index) {
-        bool is_separator =
-            index == datetime_year_month_separator || index == datetime_month_day_separator ||
-            index == datetime_date_time_separator || index == datetime_hour_minute_separator ||
-            index == datetime_minute_second_separator;
-        char expected_separator = '\0';
-
-        if (!is_separator) {
-            if (actual[index] < '0' || actual[index] > '9') {
-                fprintf(stderr, "%s: expected datetime digit, got [%s]\n", context, actual);
-                return 1;
-            }
-            continue;
-        }
-
-        if (index == datetime_date_time_separator) {
-            expected_separator = ' ';
-        } else if (index < datetime_date_time_separator) {
-            expected_separator = '-';
-        } else {
-            expected_separator = ':';
-        }
-        if (actual[index] != expected_separator) {
-            fprintf(stderr, "%s: expected datetime separator, got [%s]\n", context, actual);
-            return 1;
-        }
+    if (actual[datetime_year_month_separator] != '-' ||
+        actual[datetime_month_day_separator] != '-' ||
+        actual[datetime_date_time_separator] != ' ' ||
+        actual[datetime_hour_minute_separator] != ':' ||
+        actual[datetime_minute_second_separator] != ':') {
+        fprintf(stderr, "%s: expected datetime shape, got [%s]\n", context, actual);
+        return 1;
     }
     return 0;
 }

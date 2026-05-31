@@ -7,9 +7,11 @@ be selected with `USE sys`. The MySQL 8.4.9 target runtime's `sys` table and
 view names are exposed as metadata-only rows through
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`, but the tables and views remain non-queryable and
-unsupported unless listed otherwise below. The current exception is a limited
-read-only `sys.sys_config` synthetic table with MySQL-shaped default rows and
-metadata. MyLite rejects schema, table, index, rename, truncate, and
+unsupported unless listed otherwise below. The current exceptions are a
+limited read-only `sys.sys_config` synthetic table with MySQL-shaped default
+rows and metadata and a limited read-only `sys.version` synthetic view with the
+observed MySQL 8.4.9 version row and metadata. MyLite rejects schema, table,
+index, rename, truncate, and
 single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
 decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
@@ -108,7 +110,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$user_summary_by_statement_latency` | ❌ | View shape and diagnostics |
 | `sys.user_summary_by_statement_type` | ❌ | View shape and diagnostics |
 | `sys.x$user_summary_by_statement_type` | ❌ | View shape and diagnostics |
-| `sys.version` | ❌ | View shape and diagnostics |
+| `sys.version` | 🟡 | Limited read-only synthetic version view returning `sys_version = '2.1.3'` and MyLite's MySQL-compatible server version, with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, empty index/constraint metadata, `INFORMATION_SCHEMA.TABLES`, and `SHOW TABLE STATUS`; no `SHOW CREATE VIEW`, persisted view descriptor, privilege/definer behavior, broader sys views, or sys helper functions |
 | `sys.wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
 | `sys.x$wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
 | `sys.wait_classes_global_by_latency` | ❌ | View shape and diagnostics |

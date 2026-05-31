@@ -587,6 +587,7 @@ enum {
     mysql_password_history_column_count = 4,
     sys_sys_config_column_count = 4,
     sys_version_column_count = 2,
+    sys_ps_check_lost_instrumentation_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
     sys_schema_table_statistics_column_count = 19,
@@ -4588,6 +4589,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 125,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 126,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES = 127,
+    INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION = 128,
 };
 
 struct information_schema_column_definition {
@@ -14181,6 +14183,49 @@ static const char *const sys_version_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition
+    sys_ps_check_lost_instrumentation_columns[] = {
+        {"variable_name",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"variable_value",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1024)"},
+};
+
+static const char *const sys_ps_check_lost_instrumentation_column_keys[] = {
+    "",
+    "",
+};
+
+static const char *const sys_ps_check_lost_instrumentation_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const sys_ps_check_lost_instrumentation_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition sys_schema_auto_increment_columns[] = {
     {"table_schema",
      NULL,
@@ -16482,6 +16527,31 @@ static const char sys_version_show_create_qualified_view_sql[] =
     "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
     "`sys_version`,version() AS `mysql_version`";
 
+#define SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS "(`variable_name`,`variable_value`)"
+
+#define SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION                                          \
+    "select `performance_schema`.`global_status`.`VARIABLE_NAME` AS `variable_name`,"              \
+    "`performance_schema`.`global_status`.`VARIABLE_VALUE` AS `variable_value` from "              \
+    "`performance_schema`.`global_status` where (("                                                \
+    "`performance_schema`.`global_status`.`VARIABLE_NAME` like 'perf%lost') and "                  \
+    "(`performance_schema`.`global_status`.`VARIABLE_VALUE` > 0))"
+
+static const char sys_ps_check_lost_instrumentation_view_definition[] =
+    SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION;
+
+static const char sys_ps_check_lost_instrumentation_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`ps_check_lost_instrumentation` " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS
+    " AS " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION;
+
+static const char sys_ps_check_lost_instrumentation_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`ps_check_lost_instrumentation` " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS
+    " AS " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION;
+
+#undef SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS
+#undef SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION
+
 #define SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS                                             \
     "(`table_schema`,`table_name`,`column_name`,`data_type`,`column_type`,`is_signed`,"            \
     "`is_unsigned`,`max_value`,`auto_increment`,`auto_increment_ratio`)"
@@ -17085,6 +17155,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_version_view_definition,
      sys_version_show_create_view_sql,
      sys_version_show_create_qualified_view_sql},
+    {"ps_check_lost_instrumentation",
+     sys_ps_check_lost_instrumentation_view_definition,
+     sys_ps_check_lost_instrumentation_show_create_view_sql,
+     sys_ps_check_lost_instrumentation_show_create_qualified_view_sql},
     {"schema_auto_increment_columns",
      sys_schema_auto_increment_columns_view_definition,
      sys_schema_auto_increment_columns_show_create_view_sql,
@@ -19931,6 +20005,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_version_column_keys,
      sys_version_column_extras,
      sys_version_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION,
+      "ps_check_lost_instrumentation",
+      sys_ps_check_lost_instrumentation_columns,
+      sys_ps_check_lost_instrumentation_column_count},
+     sys_ps_check_lost_instrumentation_column_keys,
+     sys_ps_check_lost_instrumentation_column_extras,
+     sys_ps_check_lost_instrumentation_column_privileges,
      NULL,
      NULL,
      0U,
@@ -23275,6 +23363,10 @@ static int append_sys_sys_config_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_version_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_ps_check_lost_instrumentation_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -59158,6 +59250,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "version") == 0) {
         return append_sys_version_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "ps_check_lost_instrumentation") == 0) {
+        return append_sys_ps_check_lost_instrumentation_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "schema_auto_increment_columns") == 0) {
         return append_sys_schema_auto_increment_columns_system_rows(database, rows);
     }
@@ -59418,6 +59513,17 @@ static int append_sys_version_system_rows(
     }
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_sys_ps_check_lost_instrumentation_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_ps_check_lost_instrumentation_column_count) {
+        set_runtime_error(database, "invalid sys.ps_check_lost_instrumentation columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 enum sys_schema_auto_increment_columns_column_index {
@@ -62272,6 +62378,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
@@ -62362,7 +62469,8 @@ static int append_information_schema_views_system_rows(
          ++view_index) {
         const struct builtin_sys_view_definition *view = &builtin_sys_view_definitions[view_index];
         const char *is_updatable =
-            strcmp(view->name, "schema_index_statistics") == 0 ||
+            strcmp(view->name, "ps_check_lost_instrumentation") == 0 ||
+                    strcmp(view->name, "schema_index_statistics") == 0 ||
                     strcmp(view->name, "x$schema_index_statistics") == 0 ||
                     strcmp(view->name, "schema_tables_with_full_table_scans") == 0 ||
                     strcmp(view->name, "x$schema_tables_with_full_table_scans") == 0 ||
@@ -62397,6 +62505,7 @@ static int append_information_schema_view_table_usage_system_rows(
         const char *table_name;
     };
     static const struct builtin_view_dependency_row dependency_rows[] = {
+        {"ps_check_lost_instrumentation", "performance_schema", "global_status"},
         {"schema_auto_increment_columns", "information_schema", "COLUMNS"},
         {"schema_auto_increment_columns", "information_schema", "TABLES"},
         {"schema_index_statistics", "performance_schema", "table_io_waits_summary_by_index_usage"},
@@ -62603,6 +62712,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:

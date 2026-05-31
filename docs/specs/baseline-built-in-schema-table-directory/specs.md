@@ -279,6 +279,14 @@ metadata, and empty index/constraint metadata. The follow-up
 metadata while keeping persisted view descriptors, privilege/definer
 enforcement, broader sys views, and sys helper functions out of scope.
 
+The `baseline-sys-ps-check-lost-instrumentation-view` slice refines
+`sys.ps_check_lost_instrumentation` with direct read-only empty placeholder
+rows plus MySQL-observed view status fields, column metadata, view definition
+metadata, and a dependency row on `performance_schema.global_status`. It keeps
+Performance Schema lost-instrumentation counters, positive status rows,
+physical sys views, privilege/definer enforcement, and broader sys view
+execution out of scope.
+
 The `baseline-sys-schema-auto-increment-columns-view` slice refines
 `sys.schema_auto_increment_columns` with direct read-only descriptor-backed
 rows plus MySQL-observed view status fields, column metadata, view definition

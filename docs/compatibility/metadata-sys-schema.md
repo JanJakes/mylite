@@ -69,8 +69,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$innodb_lock_waits` | 🟡 | Limited read-only empty raw InnoDB row-lock wait view with the same metadata and unsupported behavior as `sys.innodb_lock_waits`, except `waiting_query` and `blocking_query` expose raw `varchar(1024)` metadata and its dependencies omit `sys.sys_config` and `sys.format_statement` |
 | `sys.io_by_thread_by_latency` | ❌ | View shape and diagnostics |
 | `sys.x$io_by_thread_by_latency` | ❌ | View shape and diagnostics |
-| `sys.io_global_by_file_by_bytes` | ❌ | View shape and diagnostics |
-| `sys.x$io_global_by_file_by_bytes` | ❌ | View shape and diagnostics |
+| `sys.io_global_by_file_by_bytes` | 🟡 | Limited read-only empty formatted global file-I/O by-file view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.file_summary_by_instance` and `performance_schema.global_variables`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependency on `sys.format_path`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema file-summary collection, live byte/average/write percentage rows, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$io_global_by_file_by_bytes` | 🟡 | Limited read-only empty raw global file-I/O by-file view with the same metadata and unsupported behavior as `sys.io_global_by_file_by_bytes`, except byte totals and averages expose raw numeric metadata and its dependencies omit `performance_schema.global_variables` and `sys.format_path` |
 | `sys.io_global_by_file_by_latency` | ❌ | View shape and diagnostics |
 | `sys.x$io_global_by_file_by_latency` | ❌ | View shape and diagnostics |
 | `sys.io_global_by_wait_by_bytes` | ❌ | View shape and diagnostics |

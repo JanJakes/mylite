@@ -42,10 +42,15 @@ struct column_attribute_positions {
 
 static bool map_lexer_token(
     const struct mylite_sql_parser_state *state,
+    const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
     struct mylite_sql_parser_token_map *out_map
+);
+static bool lexer_token_has_immediate_left_paren(
+    const struct mylite_sql_lexer *lexer,
+    const struct mylite_sql_token *token
 );
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
@@ -53,11 +58,14 @@ static void record_parse_error(
 );
 static bool is_comment_token(enum mylite_sql_token_kind kind);
 static bool map_keyword_token(
+    const struct mylite_sql_parser_state *state,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
+    bool has_immediate_left_paren,
     int *out_parser_token
 );
+static bool token_text_is_count_function_name(const struct mylite_sql_token *token);
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool map_operator_token(
     const struct mylite_sql_parser_state *state,
@@ -193,6 +201,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
         if (!map_lexer_token(
                 &state,
+                &lexer,
                 &token,
                 previous_token_was_dot,
                 previous_parser_token,
@@ -7847,6 +7856,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_values_row(
 
 static bool map_lexer_token(
     const struct mylite_sql_parser_state *state,
+    const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
@@ -7875,9 +7885,11 @@ static bool map_lexer_token(
         break;
     case MYLITE_SQL_TOKEN_KEYWORD:
         if (!map_keyword_token(
+                state,
                 token,
                 previous_token_was_dot,
                 previous_parser_token,
+                lexer_token_has_immediate_left_paren(lexer, token),
                 &parser_token
             )) {
             return false;
@@ -7936,6 +7948,18 @@ static bool map_lexer_token(
     return true;
 }
 
+static bool lexer_token_has_immediate_left_paren(
+    const struct mylite_sql_lexer *lexer,
+    const struct mylite_sql_token *token
+) {
+    if (lexer == NULL || lexer->input == NULL || token == NULL || token->offset > lexer->offset ||
+        token->length != lexer->offset - token->offset || lexer->offset >= lexer->length) {
+        return false;
+    }
+
+    return lexer->input[lexer->offset] == '(';
+}
+
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parse_error error
@@ -7958,9 +7982,11 @@ static bool is_comment_token(enum mylite_sql_token_kind kind) {
 }
 
 static bool map_keyword_token(
+    const struct mylite_sql_parser_state *state,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
+    bool has_immediate_left_paren,
     int *out_parser_token
 ) {
     static const struct {
@@ -8449,6 +8475,12 @@ static bool map_keyword_token(
         return true;
     }
 
+    if (!has_immediate_left_paren && !parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        token_text_is_count_function_name(token)) {
+        *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
+        return true;
+    }
+
     if (previous_token_allows_select_noop_modifier(previous_parser_token)) {
         if (token_text_equals(token, "SQL_BUFFER_RESULT")) {
             *out_parser_token = MYLITE_SQL_PARSE_SQL_BUFFER_RESULT;
@@ -8474,6 +8506,10 @@ static bool map_keyword_token(
 
     *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
     return true;
+}
+
+static bool token_text_is_count_function_name(const struct mylite_sql_token *token) {
+    return token_text_equals(token, "COUNT");
 }
 
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token) {

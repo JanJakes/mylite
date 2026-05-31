@@ -11190,6 +11190,13 @@ static int test_count_star_aggregate(void) {
     failures += expect_span_text(first_expression, "COUNT", "bare count span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT COUNT FROM count;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "count column identifier");
+    failures += expect_span_text(first_expression, "COUNT", "count column span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT COUNT (*) FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COUNT/**/(*) FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

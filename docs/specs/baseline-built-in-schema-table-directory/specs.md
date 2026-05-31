@@ -287,6 +287,15 @@ metadata, and dependency rows on `INFORMATION_SCHEMA.COLUMNS` and
 privilege/definer enforcement, exact InnoDB statistics-cache behavior for every
 empty-table edge case, and broader sys view execution out of scope.
 
+The `baseline-sys-schema-object-overview-view` slice refines
+`sys.schema_object_overview` with direct read-only descriptor-backed summary
+rows plus MySQL-observed view status fields, column metadata, view definition
+metadata, and dependency rows on `INFORMATION_SCHEMA.EVENTS`, `ROUTINES`,
+`STATISTICS`, `TABLES`, and `TRIGGERS`. It keeps physical sys views,
+stored-routine inventory, event inventory, Performance Schema HASH index
+inventory, privilege/definer enforcement, and broader sys view execution out of
+scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

@@ -588,6 +588,8 @@ enum {
     sys_sys_config_column_count = 4,
     sys_version_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
+    sys_schema_object_overview_column_count = 3,
+    sys_schema_object_overview_initial_group_capacity = 8,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4563,6 +4565,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG = 111,
     INFORMATION_SCHEMA_TABLE_SYS_VERSION = 112,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS = 113,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW = 114,
 };
 
 struct information_schema_column_definition {
@@ -4841,6 +4844,21 @@ struct mysql_system_table_catalog_context {
 struct sys_schema_auto_increment_columns_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct sys_schema_object_overview_group {
+    char db[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char object_type[sizeof("INDEX (FULLTEXT)")];
+    uint64_t count;
+};
+
+struct sys_schema_object_overview_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
+    struct sys_schema_object_overview_group *groups;
+    size_t group_count;
+    size_t group_capacity;
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
@@ -14239,6 +14257,52 @@ static const char *const sys_schema_auto_increment_columns_column_privileges[] =
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition sys_schema_object_overview_columns[] = {
+    {"db",
+     "",
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"object_type",
+     NULL,
+     "YES",
+     "varchar",
+     "19",
+     "57",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(19)"},
+    {"count", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+};
+
+static const char *const sys_schema_object_overview_column_keys[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_object_overview_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_object_overview_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const char sys_version_view_definition[] =
     "select '2.1.3' AS `sys_version`,version() AS `mysql_version`";
 
@@ -14308,6 +14372,48 @@ static const char sys_schema_auto_increment_columns_show_create_qualified_view_s
 #undef SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
 #undef SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION
 
+#define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
+
+#define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
+    "select `information_schema`.`routines`.`ROUTINE_SCHEMA` AS `db`,"                             \
+    "`information_schema`.`routines`.`ROUTINE_TYPE` AS `object_type`,count(0) AS `count` "         \
+    "from `information_schema`.`ROUTINES` `routines` group by "                                    \
+    "`information_schema`.`routines`.`ROUTINE_SCHEMA`,"                                            \
+    "`information_schema`.`routines`.`ROUTINE_TYPE` union select "                                 \
+    "`information_schema`.`tables`.`TABLE_SCHEMA` AS `TABLE_SCHEMA`,"                              \
+    "`information_schema`.`tables`.`TABLE_TYPE` AS `TABLE_TYPE`,count(0) AS `COUNT(*)` "           \
+    "from `information_schema`.`TABLES` `tables` group by "                                        \
+    "`information_schema`.`tables`.`TABLE_SCHEMA`,"                                                \
+    "`information_schema`.`tables`.`TABLE_TYPE` union select "                                     \
+    "`information_schema`.`statistics`.`TABLE_SCHEMA` AS `TABLE_SCHEMA`,"                          \
+    "concat('INDEX (',`information_schema`.`statistics`.`INDEX_TYPE`,')') AS "                     \
+    "`CONCAT('INDEX (', INDEX_TYPE, ')')`,count(0) AS `COUNT(*)` from "                            \
+    "`information_schema`.`STATISTICS` `statistics` group by "                                     \
+    "`information_schema`.`statistics`.`TABLE_SCHEMA`,"                                            \
+    "`information_schema`.`statistics`.`INDEX_TYPE` union select "                                 \
+    "`information_schema`.`triggers`.`TRIGGER_SCHEMA` AS `TRIGGER_SCHEMA`,'TRIGGER' AS "           \
+    "`TRIGGER`,count(0) AS `COUNT(*)` from `information_schema`.`TRIGGERS` `triggers` "            \
+    "group by `information_schema`.`triggers`.`TRIGGER_SCHEMA` union select "                      \
+    "`information_schema`.`events`.`EVENT_SCHEMA` AS `EVENT_SCHEMA`,'EVENT' AS `EVENT`,"           \
+    "count(0) AS `COUNT(*)` from `information_schema`.`EVENTS` `events` group by "                 \
+    "`information_schema`.`events`.`EVENT_SCHEMA` order by `db`,`object_type`"
+
+static const char sys_schema_object_overview_view_definition[] =
+    SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION;
+
+static const char sys_schema_object_overview_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_object_overview` " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION;
+
+static const char sys_schema_object_overview_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_object_overview` " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS
+#undef SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION
+
 static const struct builtin_sys_view_definition builtin_sys_view_definitions[] = {
     {"version",
      sys_version_view_definition,
@@ -14317,6 +14423,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_auto_increment_columns_view_definition,
      sys_schema_auto_increment_columns_show_create_view_sql,
      sys_schema_auto_increment_columns_show_create_qualified_view_sql},
+    {"schema_object_overview",
+     sys_schema_object_overview_view_definition,
+     sys_schema_object_overview_show_create_view_sql,
+     sys_schema_object_overview_show_create_qualified_view_sql},
 };
 
 static const struct information_schema_column_definition mysql_component_columns[] = {
@@ -17117,6 +17227,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_auto_increment_columns_column_keys,
      sys_schema_auto_increment_columns_column_extras,
      sys_schema_auto_increment_columns_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW,
+      "schema_object_overview",
+      sys_schema_object_overview_columns,
+      sys_schema_object_overview_column_count},
+     sys_schema_object_overview_column_keys,
+     sys_schema_object_overview_column_extras,
+     sys_schema_object_overview_column_privileges,
      NULL,
      NULL,
      0U,
@@ -20277,7 +20401,51 @@ static void sort_sys_schema_auto_increment_columns_default_order(
     struct information_schema_row_set *rows
 );
 static int compare_sys_schema_auto_increment_columns_rows(char *const *left, char *const *right);
+static int append_sys_schema_object_overview_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int collect_sys_schema_object_overview_builtin_groups(
+    struct sys_schema_object_overview_context *context
+);
+static int collect_sys_schema_object_overview_mysql_system_index_groups(
+    struct sys_schema_object_overview_context *context
+);
+static int append_sys_schema_object_overview_schema_groups(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_sys_schema_object_overview_table_groups(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_sys_schema_object_overview_base_table_index_groups(
+    struct sys_schema_object_overview_context *context,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int increment_sys_schema_object_overview_group(
+    struct sys_schema_object_overview_context *context,
+    const char *schema_name,
+    const char *object_type,
+    uint64_t count
+);
+static int grow_sys_schema_object_overview_groups(
+    struct sys_schema_object_overview_context *context
+);
+static void sort_sys_schema_object_overview_groups(
+    struct sys_schema_object_overview_context *context
+);
+static int compare_sys_schema_object_overview_groups(
+    const struct sys_schema_object_overview_group *left,
+    const struct sys_schema_object_overview_group *right
+);
+static int append_sys_schema_object_overview_group_rows(
+    struct sys_schema_object_overview_context *context
+);
 static int compare_optional_text(const char *left, const char *right);
+static size_t mysql_system_table_primary_key_column_count(
+    const struct mysql_system_table_definition *definition
+);
 static int append_mysql_innodb_index_stats_builtin_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -55904,6 +56072,10 @@ static int append_mysql_system_table_system_rows(
         strcmp(definition->query_definition.name, "schema_auto_increment_columns") == 0) {
         return append_sys_schema_auto_increment_columns_system_rows(database, rows);
     }
+    if (strcmp(definition->schema_name, "sys") == 0 &&
+        strcmp(definition->query_definition.name, "schema_object_overview") == 0) {
+        return append_sys_schema_object_overview_system_rows(database, rows);
+    }
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
@@ -56453,6 +56625,347 @@ static int compare_optional_text(const char *left, const char *right) {
         return -1;
     }
     return strcmp(left, right);
+}
+
+static int append_sys_schema_object_overview_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct sys_schema_object_overview_context context = {
+        .database = database,
+        .rows = rows,
+        .groups = NULL,
+        .group_count = 0U,
+        .group_capacity = 0U,
+        .schema = NULL,
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != sys_schema_object_overview_column_count) {
+        set_runtime_error(database, "invalid sys.schema_object_overview columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = collect_sys_schema_object_overview_builtin_groups(&context);
+    if (rc == MYLITE_OK) {
+        rc = collect_sys_schema_object_overview_mysql_system_index_groups(&context);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_for_each_schema(
+            database,
+            append_sys_schema_object_overview_schema_groups,
+            &context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = increment_sys_schema_object_overview_group(
+            &context,
+            "sys",
+            "TRIGGER",
+            sizeof(sys_sys_config_triggers) / sizeof(sys_sys_config_triggers[0])
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sort_sys_schema_object_overview_groups(&context);
+        rc = append_sys_schema_object_overview_group_rows(&context);
+    }
+
+    free(context.groups);
+    return rc;
+}
+
+static int collect_sys_schema_object_overview_builtin_groups(
+    struct sys_schema_object_overview_context *context
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t directory_index = 0U;
+         rc == MYLITE_OK && directory_index < sizeof(builtin_schema_table_directories) /
+                                                  sizeof(builtin_schema_table_directories[0]);
+         ++directory_index) {
+        const struct builtin_schema_table_directory *directory =
+            &builtin_schema_table_directories[directory_index];
+
+        for (size_t table_index = 0U; rc == MYLITE_OK && table_index < directory->table_count;
+             ++table_index) {
+            const char *table_type =
+                builtin_schema_table_type(directory, directory->table_names[table_index]);
+
+            rc = increment_sys_schema_object_overview_group(
+                context,
+                directory->schema_name,
+                table_type,
+                1U
+            );
+        }
+    }
+    return rc;
+}
+
+static int collect_sys_schema_object_overview_mysql_system_index_groups(
+    struct sys_schema_object_overview_context *context
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        const struct mysql_system_table_definition *definition =
+            &mysql_system_table_definitions[index];
+        size_t count = mysql_system_table_primary_key_column_count(definition);
+
+        if (SIZE_MAX - count < definition->secondary_index_count) {
+            set_runtime_error(context->database, "sys.schema_object_overview count overflow");
+            return MYLITE_ERROR;
+        }
+        count += definition->secondary_index_count;
+        if (count > 0U) {
+            rc = increment_sys_schema_object_overview_group(
+                context,
+                definition->schema_name,
+                "INDEX (BTREE)",
+                (uint64_t)count
+            );
+        }
+    }
+    return rc;
+}
+
+static int append_sys_schema_object_overview_schema_groups(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct sys_schema_object_overview_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (find_builtin_schema_table_directory(schema->name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_sys_schema_object_overview_table_groups,
+        context
+    );
+}
+
+static int append_sys_schema_object_overview_table_groups(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct sys_schema_object_overview_context *context = user_data;
+    int rc = MYLITE_OK;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        rc = increment_sys_schema_object_overview_group(
+            context,
+            context->schema->name,
+            "BASE TABLE",
+            1U
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_sys_schema_object_overview_base_table_index_groups(context, table);
+        }
+    } else if (table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        rc = increment_sys_schema_object_overview_group(context, context->schema->name, "VIEW", 1U);
+    }
+
+    return rc;
+}
+
+static int append_sys_schema_object_overview_base_table_index_groups(
+    struct sys_schema_object_overview_context *context,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            context->database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        char object_type[sizeof("INDEX (FULLTEXT)")];
+        int written = snprintf(
+            object_type,
+            sizeof(object_type),
+            "INDEX (%s)",
+            show_index_index_type_text(&indexes[index])
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(object_type)) {
+            set_runtime_error(context->database, "failed to format sys.schema_object_overview row");
+            rc = MYLITE_ERROR;
+        } else {
+            rc = increment_sys_schema_object_overview_group(
+                context,
+                context->schema->name,
+                object_type,
+                indexes[index].part_count
+            );
+        }
+    }
+
+    free(columns);
+    loaded_index_infos_deinit(&indexes, &index_count);
+    if (rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(context->database)) == MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(context->database);
+        } else {
+            set_runtime_error(context->database, "failed to build sys.schema_object_overview rows");
+        }
+    }
+    return rc;
+}
+
+static int increment_sys_schema_object_overview_group(
+    struct sys_schema_object_overview_context *context,
+    const char *schema_name,
+    const char *object_type,
+    uint64_t count
+) {
+    if (context == NULL || context->database == NULL || schema_name == NULL ||
+        object_type == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (count == 0U) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = 0U; index < context->group_count; ++index) {
+        struct sys_schema_object_overview_group *group = &context->groups[index];
+
+        if (strcmp(group->db, schema_name) == 0 && strcmp(group->object_type, object_type) == 0) {
+            if (UINT64_MAX - group->count < count) {
+                set_runtime_error(context->database, "sys.schema_object_overview count overflow");
+                return MYLITE_ERROR;
+            }
+            group->count += count;
+            return MYLITE_OK;
+        }
+    }
+
+    if (context->group_count == context->group_capacity) {
+        int rc = grow_sys_schema_object_overview_groups(context);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    struct sys_schema_object_overview_group *group = &context->groups[context->group_count++];
+    int db_written = snprintf(group->db, sizeof(group->db), "%s", schema_name);
+    int object_type_written =
+        snprintf(group->object_type, sizeof(group->object_type), "%s", object_type);
+
+    if (db_written < 0 || (size_t)db_written >= sizeof(group->db) || object_type_written < 0 ||
+        (size_t)object_type_written >= sizeof(group->object_type)) {
+        set_runtime_error(context->database, "failed to format sys.schema_object_overview group");
+        --context->group_count;
+        return MYLITE_ERROR;
+    }
+    group->count = count;
+    return MYLITE_OK;
+}
+
+static int grow_sys_schema_object_overview_groups(
+    struct sys_schema_object_overview_context *context
+) {
+    size_t new_capacity = context->group_capacity == 0U
+                              ? sys_schema_object_overview_initial_group_capacity
+                              : context->group_capacity * 2U;
+    struct sys_schema_object_overview_group *groups = NULL;
+
+    if (new_capacity < context->group_capacity ||
+        new_capacity > SIZE_MAX / sizeof(*context->groups)) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    groups = realloc(context->groups, new_capacity * sizeof(*groups));
+    if (groups == NULL) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    context->groups = groups;
+    context->group_capacity = new_capacity;
+    return MYLITE_OK;
+}
+
+static void sort_sys_schema_object_overview_groups(
+    struct sys_schema_object_overview_context *context
+) {
+    if (context == NULL || context->group_count < 2U) {
+        return;
+    }
+
+    for (size_t index = 1U; index < context->group_count; ++index) {
+        struct sys_schema_object_overview_group group = context->groups[index];
+        size_t insert = index;
+
+        while (insert > 0U &&
+               compare_sys_schema_object_overview_groups(&group, &context->groups[insert - 1U]) <
+                   0) {
+            context->groups[insert] = context->groups[insert - 1U];
+            --insert;
+        }
+        context->groups[insert] = group;
+    }
+}
+
+static int compare_sys_schema_object_overview_groups(
+    const struct sys_schema_object_overview_group *left,
+    const struct sys_schema_object_overview_group *right
+) {
+    int db_compare = strcmp(left->db, right->db);
+
+    if (db_compare != 0) {
+        return db_compare;
+    }
+    return strcmp(left->object_type, right->object_type);
+}
+
+static int append_sys_schema_object_overview_group_rows(
+    struct sys_schema_object_overview_context *context
+) {
+    char count_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < context->group_count; ++index) {
+        const struct sys_schema_object_overview_group *group = &context->groups[index];
+        const char *values[sys_schema_object_overview_column_count] = {
+            group->db,
+            group->object_type,
+            count_text,
+        };
+
+        rc = format_uint64(context->database, group->count, count_text, sizeof(count_text));
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(context->database, context->rows, values);
+        }
+    }
+    return rc;
 }
 
 static const char *mysql_system_table_column_comment(
@@ -57704,6 +58217,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
         return append_information_schema_triggers_system_rows(database, rows);
@@ -57800,9 +58314,18 @@ static int append_information_schema_view_table_usage_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
-    static const char *const dependency_table_names[] = {
-        "COLUMNS",
-        "TABLES",
+    struct builtin_view_dependency_row {
+        const char *view_name;
+        const char *table_name;
+    };
+    static const struct builtin_view_dependency_row dependency_rows[] = {
+        {"schema_auto_increment_columns", "COLUMNS"},
+        {"schema_auto_increment_columns", "TABLES"},
+        {"schema_object_overview", "EVENTS"},
+        {"schema_object_overview", "ROUTINES"},
+        {"schema_object_overview", "STATISTICS"},
+        {"schema_object_overview", "TABLES"},
+        {"schema_object_overview", "TRIGGERS"},
     };
     int rc = MYLITE_OK;
 
@@ -57812,16 +58335,16 @@ static int append_information_schema_view_table_usage_system_rows(
     }
 
     for (size_t dependency_index = 0U;
-         rc == MYLITE_OK &&
-         dependency_index < sizeof(dependency_table_names) / sizeof(dependency_table_names[0]);
+         rc == MYLITE_OK && dependency_index < sizeof(dependency_rows) / sizeof(dependency_rows[0]);
          ++dependency_index) {
+        const struct builtin_view_dependency_row *dependency = &dependency_rows[dependency_index];
         const char *values[information_schema_view_table_usage_column_count] = {
             "def",
             "sys",
-            "schema_auto_increment_columns",
+            dependency->view_name,
             "def",
             "information_schema",
-            dependency_table_names[dependency_index],
+            dependency->table_name,
         };
 
         rc = append_information_schema_row(database, rows, values);
@@ -57929,6 +58452,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:

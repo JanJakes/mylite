@@ -165,11 +165,11 @@ expect_output \
 
 expect_output \
     "mysql time zone INFORMATION_SCHEMA.TABLES rows" \
-    "$(printf '%b' 'time_zone\tBASE TABLE\tInnoDB\t10\tDynamic\t1815\t45\t81920\t0\t0\t4194304\t1796\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zones\n' \
+    "$(printf '%b' 'time_zone\tBASE TABLE\tInnoDB\t10\tDynamic\t1457\t56\t81920\t0\t0\t4194304\t1796\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zones\n' \
         'time_zone_leap_second\tBASE TABLE\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tLeap seconds information for time zones\n' \
-        'time_zone_name\tBASE TABLE\tInnoDB\t10\tDynamic\t2311\t113\t262144\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone names\n' \
+        'time_zone_name\tBASE TABLE\tInnoDB\t10\tDynamic\t1712\t153\t262144\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone names\n' \
         'time_zone_transition\tBASE TABLE\tInnoDB\t10\tDynamic\t119074\t39\t4734976\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transitions\n' \
-        'time_zone_transition_type\tBASE TABLE\tInnoDB\t10\tDynamic\t9871\t48\t475136\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transition types')" \
+        'time_zone_transition_type\tBASE TABLE\tInnoDB\t10\tDynamic\t10529\t45\t475136\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transition types')" \
     "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
             AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH,
             DATA_FREE, AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
@@ -181,7 +181,7 @@ expect_output \
 
 expect_show_table_status_row \
     "time_zone" \
-    "$(printf '%b' 'time_zone\tInnoDB\t10\tDynamic\t1815\t45\t81920\t0\t0\t4194304\t1796')" \
+    "$(printf '%b' 'time_zone\tInnoDB\t10\tDynamic\t1457\t56\t81920\t0\t0\t4194304\t1796')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zones')"
 expect_show_table_status_row \
     "time_zone_leap_second" \
@@ -189,7 +189,7 @@ expect_show_table_status_row \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tLeap seconds information for time zones')"
 expect_show_table_status_row \
     "time_zone_name" \
-    "$(printf '%b' 'time_zone_name\tInnoDB\t10\tDynamic\t2311\t113\t262144\t0\t0\t4194304\tNULL')" \
+    "$(printf '%b' 'time_zone_name\tInnoDB\t10\tDynamic\t1712\t153\t262144\t0\t0\t4194304\tNULL')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zone names')"
 expect_show_table_status_row \
     "time_zone_transition" \
@@ -197,7 +197,7 @@ expect_show_table_status_row \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zone transitions')"
 expect_show_table_status_row \
     "time_zone_transition_type" \
-    "$(printf '%b' 'time_zone_transition_type\tInnoDB\t10\tDynamic\t9871\t48\t475136\t0\t0\t4194304\tNULL')" \
+    "$(printf '%b' 'time_zone_transition_type\tInnoDB\t10\tDynamic\t10529\t45\t475136\t0\t0\t4194304\tNULL')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zone transition types')"
 
 expect_output \

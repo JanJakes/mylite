@@ -23,6 +23,13 @@ There are no physical SQLite `information_schema` tables, predicate subqueries,
 explicit `ESCAPE`, arbitrary expressions, joins, privilege filtering, or full
 metadata-lock semantics.
 
+The `baseline-sys-sys-config-table` slice extends the relevant
+`INFORMATION_SCHEMA.COLUMNS`, `TABLES`, `STATISTICS`, `TABLE_CONSTRAINTS`,
+`KEY_COLUMN_USAGE`, and `TABLE_CONSTRAINTS_EXTENSIONS` rows below with
+MySQL-shaped metadata for the supported synthetic `sys.sys_config` table. Other
+`sys` schema objects remain directory-only metadata rows unless their own
+compatibility entries list broader support.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `INFORMATION_SCHEMA.ADMINISTRABLE_ROLE_AUTHORIZATIONS` | 🟡 | Queryable empty synthetic administrable-role metadata view with MySQL 8.4.9-shaped columns and matching system metadata; no role graph, active-role state, grant descriptors, default or mandatory roles, privilege filtering, or enforcement |

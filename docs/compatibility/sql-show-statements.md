@@ -52,4 +52,10 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW VARIABLES` | 🟡 | Limited runtime-owned rows for MyLite's current system-variable registry with MySQL 8.4.9 column labels, optional `GLOBAL`/`SESSION`/`LOCAL` scope, `LIKE 'pattern'` filters, limited `WHERE` predicates over `Variable_name` and `Value`, and session-local readback for the currently mutable variables; no full MySQL variable catalog, arbitrary expressions, warning-producing numeric filter coercions, privileges, persisted variables, Performance Schema variable tables, or mutable global state |
 | `SHOW WARNINGS` | 🟡 | Limited previous-statement diagnostics rows with `Level`, `Code`, and `Message`, plus unsigned decimal `LIMIT` slicing; reports MyLite previous error conditions and stored warning/note records only; missing-schema `DROP DATABASE IF EXISTS` intentionally stores no warning row after reporting a statement warning count; no `WHERE`, `LIKE`, expression filters, `max_error_count`, mutable `sql_notes`, `GET DIAGNOSTICS`, privileges, or full diagnostics-area behavior |
 
+The `baseline-sys-sys-config-table` slice extends the `SHOW COLUMNS` /
+`SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` /
+`SHOW KEYS`, and `SHOW TABLE STATUS` rows above with MySQL-shaped metadata for
+`sys.sys_config`. Other `sys` objects remain metadata-directory rows only until
+their own slices document support.
+
 [Back to compatibility overview](../../COMPATIBILITY.md)

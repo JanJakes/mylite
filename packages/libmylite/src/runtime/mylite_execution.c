@@ -584,6 +584,7 @@ enum {
     mysql_default_roles_column_count = 4,
     mysql_role_edges_column_count = 5,
     mysql_password_history_column_count = 4,
+    sys_sys_config_column_count = 4,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4542,6 +4543,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES = 108,
     INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES = 109,
     INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY = 110,
+    INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG = 111,
 };
 
 struct information_schema_column_definition {
@@ -13942,6 +13944,78 @@ static const size_t mysql_password_history_primary_key_column_indexes[] = {
     2U,
 };
 
+static const struct information_schema_column_definition sys_sys_config_columns[] = {
+    {"variable",
+     NULL,
+     "NO",
+     "varchar",
+     "128",
+     "512",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(128)"},
+    {"value",
+     NULL,
+     "YES",
+     "varchar",
+     "128",
+     "512",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(128)"},
+    {"set_time",
+     "CURRENT_TIMESTAMP",
+     "YES",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "0",
+     NULL,
+     NULL,
+     "timestamp"},
+    {"set_by",
+     NULL,
+     "YES",
+     "varchar",
+     "128",
+     "512",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(128)"},
+};
+
+static const char *const sys_sys_config_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_sys_config_column_extras[] = {
+    "",
+    "",
+    "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    "",
+};
+
+static const char *const sys_sys_config_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -16698,6 +16772,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_innodb_table_stats_column_keys,
      mysql_innodb_table_stats_column_extras,
      mysql_innodb_table_stats_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG,
+      "sys_config",
+      sys_sys_config_columns,
+      sys_sys_config_column_count},
+     sys_sys_config_column_keys,
+     sys_sys_config_column_extras,
+     sys_sys_config_column_privileges,
      NULL,
      NULL,
      0U,
@@ -19814,6 +19902,10 @@ static int append_mysql_plugin_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_mysql_server_cost_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_sys_config_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -55024,7 +55116,7 @@ static int select_statement_targets_mysql_system_table(
         *out_matches = true;
         return MYLITE_OK;
     }
-    if (part_count == 1U && selected_schema_is_mysql_system_schema(database) &&
+    if (part_count == 1U && database != NULL && database->session.has_selected_schema &&
         find_mysql_system_table_definition(database->session.selected_schema, parts[0]) != NULL) {
         *out_matches = true;
     }
@@ -55135,7 +55227,7 @@ static int mysql_system_table_resolve_source(
     }
     if (part_count == 2U) {
         definition = find_mysql_system_table_definition(parts[0], parts[1]);
-    } else if (part_count == 1U && selected_schema_is_mysql_system_schema(database)) {
+    } else if (part_count == 1U && database != NULL && database->session.has_selected_schema) {
         definition =
             find_mysql_system_table_definition(database->session.selected_schema, parts[0]);
     }
@@ -55170,14 +55262,15 @@ static const struct mysql_system_table_definition *find_mysql_system_table_defin
     const char *schema_name,
     const char *table_name
 ) {
-    if (!schema_name_is_mysql_system_schema(schema_name) || table_name == NULL) {
+    if (schema_name == NULL || table_name == NULL) {
         return NULL;
     }
 
     for (size_t index = 0U;
          index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
          ++index) {
-        if (strcmp(table_name, mysql_system_table_definitions[index].query_definition.name) == 0) {
+        if (strcmp(schema_name, mysql_system_table_definitions[index].schema_name) == 0 &&
+            strcmp(table_name, mysql_system_table_definitions[index].query_definition.name) == 0) {
             return &mysql_system_table_definitions[index];
         }
     }
@@ -55362,6 +55455,10 @@ static int append_mysql_system_table_system_rows(
         strcmp(definition->query_definition.name, "server_cost") == 0) {
         return append_mysql_server_cost_system_rows(database, rows);
     }
+    if (strcmp(definition->schema_name, "sys") == 0 &&
+        strcmp(definition->query_definition.name, "sys_config") == 0) {
+        return append_sys_sys_config_system_rows(database, rows);
+    }
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
@@ -55514,6 +55611,47 @@ static int append_mysql_server_cost_system_rows(
             last_update,
             cost_row->comment,
             cost_row->default_value,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_sys_sys_config_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct sys_config_row {
+        const char *variable;
+        const char *value;
+    };
+    static const struct sys_config_row config_rows[] = {
+        {"diagnostics.allow_i_s_tables", "OFF"},
+        {"diagnostics.include_raw", "OFF"},
+        {"ps_thread_trx_info.max_length", "65535"},
+        {"statement_performance_analyzer.limit", "100"},
+        {"statement_performance_analyzer.view", NULL},
+        {"statement_truncate_len", "64"},
+    };
+    char set_time[datetime_text_length + 1U];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != sys_sys_config_column_count) {
+        set_runtime_error(database, "invalid sys.sys_config columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mysql_system_current_timestamp(database, set_time, sizeof(set_time));
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(config_rows) / sizeof(config_rows[0]);
+         ++row_index) {
+        const struct sys_config_row *config_row = &config_rows[row_index];
+        const char *values[sys_sys_config_column_count] = {
+            config_row->variable,
+            config_row->value,
+            set_time,
+            NULL,
         };
 
         rc = append_information_schema_row(database, rows, values);
@@ -56747,6 +56885,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION:
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
+    case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
         return MYLITE_OK;
     }
 
@@ -56851,6 +56990,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION:
     case INFORMATION_SCHEMA_TABLE_MYSQL_TIME_ZONE_TRANSITION_TYPE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
+    case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -58351,11 +58491,11 @@ static const char *builtin_mysql_table_rows(const char *table_name) {
         {"server_cost", "6"},
         {"slow_log", "2"},
         {"tables_priv", "2"},
-        {"time_zone", "1815"},
+        {"time_zone", "1457"},
         {"time_zone_leap_second", "0"},
-        {"time_zone_name", "2311"},
+        {"time_zone_name", "1712"},
         {"time_zone_transition", "119074"},
-        {"time_zone_transition_type", "9871"},
+        {"time_zone_transition_type", "10529"},
         {"user", "5"},
     };
 
@@ -58404,6 +58544,9 @@ static const char *builtin_schema_table_average_row_length(
     if (builtin_schema_table_is_mysql_time_zone(directory, table_name)) {
         return builtin_schema_mysql_time_zone_average_row_length(table_name);
     }
+    if (strcmp(directory->schema_name, "sys") == 0 && strcmp(table_name, "sys_config") == 0) {
+        return "2730";
+    }
     return "0";
 }
 
@@ -58422,16 +58565,16 @@ static const char *builtin_schema_mysql_help_average_row_length(const char *tabl
 
 static const char *builtin_schema_mysql_time_zone_average_row_length(const char *table_name) {
     if (strcmp(table_name, "time_zone") == 0) {
-        return "45";
+        return "56";
     }
     if (strcmp(table_name, "time_zone_name") == 0) {
-        return "113";
+        return "153";
     }
     if (strcmp(table_name, "time_zone_transition") == 0) {
         return "39";
     }
     if (strcmp(table_name, "time_zone_transition_type") == 0) {
-        return "48";
+        return "45";
     }
     return "0";
 }
@@ -69381,8 +69524,17 @@ static int resolve_show_columns_mysql_system_table(
         table_name,
         &has_target
     );
-    if (rc != MYLITE_OK || !has_target || !schema_name_is_mysql_system_schema(schema_name)) {
+    if (rc != MYLITE_OK || !has_target) {
         return rc;
+    }
+
+    *out_definition = find_mysql_system_table_definition(schema_name, table_name);
+    if (*out_definition != NULL) {
+        *out_mysql_system_target = true;
+        return MYLITE_OK;
+    }
+    if (!schema_name_is_mysql_system_schema(schema_name)) {
+        return MYLITE_OK;
     }
 
     *out_mysql_system_target = true;
@@ -69395,8 +69547,7 @@ static int resolve_show_columns_mysql_system_table(
         return MYLITE_ERROR;
     }
 
-    *out_definition = find_mysql_system_table_definition(schema_name, table_name);
-    if (*out_definition != NULL || mysql_system_table_directory_contains(table_name)) {
+    if (mysql_system_table_directory_contains(table_name)) {
         return MYLITE_OK;
     }
 
@@ -70121,8 +70272,17 @@ static int resolve_show_index_mysql_system_table(
         table_name,
         &has_target
     );
-    if (rc != MYLITE_OK || !has_target || !schema_name_is_mysql_system_schema(schema_name)) {
+    if (rc != MYLITE_OK || !has_target) {
         return rc;
+    }
+
+    *out_definition = find_mysql_system_table_definition(schema_name, table_name);
+    if (*out_definition != NULL) {
+        *out_mysql_system_target = true;
+        return MYLITE_OK;
+    }
+    if (!schema_name_is_mysql_system_schema(schema_name)) {
+        return MYLITE_OK;
     }
 
     *out_mysql_system_target = true;
@@ -70135,8 +70295,7 @@ static int resolve_show_index_mysql_system_table(
         return MYLITE_ERROR;
     }
 
-    *out_definition = find_mysql_system_table_definition(schema_name, table_name);
-    if (*out_definition != NULL || mysql_system_table_directory_contains(table_name)) {
+    if (mysql_system_table_directory_contains(table_name)) {
         return MYLITE_OK;
     }
 
@@ -70380,6 +70539,7 @@ static const char *mysql_system_table_primary_key_cardinality_for_name(
         {"innodb_index_stats", mysql_innodb_index_stats_stat_name_sequence, "2", "6"},
         {"plugin", mysql_primary_key_no_sequence_split, "1", "1"},
         {"server_cost", mysql_primary_key_no_sequence_split, "6", "6"},
+        {"sys_config", mysql_primary_key_no_sequence_split, "6", "6"},
         {"help_category", mysql_primary_key_no_sequence_split, "53", "53"},
         {"help_keyword", mysql_primary_key_no_sequence_split, "551", "551"},
         {"help_relation", mysql_second_key_part_sequence, "1393", "2258"},

@@ -202,11 +202,11 @@ target-runtime status shape:
 
 | Table | Rows | Avg row length | Data length | Data free | Auto increment | Comment |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| `time_zone` | `1815` | `45` | `81920` | `4194304` | `1796` | `Time zones` |
+| `time_zone` | `1457` | `56` | `81920` | `4194304` | `1796` | `Time zones` |
 | `time_zone_leap_second` | `0` | `0` | `16384` | `4194304` | `NULL` | `Leap seconds information for time zones` |
-| `time_zone_name` | `2311` | `113` | `262144` | `4194304` | `NULL` | `Time zone names` |
+| `time_zone_name` | `1712` | `153` | `262144` | `4194304` | `NULL` | `Time zone names` |
 | `time_zone_transition` | `119074` | `39` | `4734976` | `4194304` | `NULL` | `Time zone transitions` |
-| `time_zone_transition_type` | `9871` | `48` | `475136` | `4194304` | `NULL` | `Time zone transition types` |
+| `time_zone_transition_type` | `10529` | `45` | `475136` | `4194304` | `NULL` | `Time zone transition types` |
 
 All five rows report `ENGINE = 'InnoDB'`, `VERSION = 10`,
 `ROW_FORMAT = 'Dynamic'`, `MAX_DATA_LENGTH = 0`, `INDEX_LENGTH = 0`,
@@ -299,19 +299,19 @@ columns:
                             Is_DST tinyint unsigned default 0,
                             Abbreviation char(8) default '')
 status:
-  time_zone Rows 1815, Avg_row_length 45, Data_length 81920,
+  time_zone Rows 1457, Avg_row_length 56, Data_length 81920,
     Data_free 4194304, Auto_increment 1796, Create_time non-NULL,
     Update_time NULL, Comment Time zones
   time_zone_leap_second Rows 0, Avg_row_length 0, Data_length 16384,
     Data_free 4194304, Auto_increment NULL, Create_time non-NULL,
     Update_time NULL, Comment Leap seconds information for time zones
-  time_zone_name Rows 2311, Avg_row_length 113, Data_length 262144,
+  time_zone_name Rows 1712, Avg_row_length 153, Data_length 262144,
     Data_free 4194304, Auto_increment NULL, Create_time non-NULL,
     Update_time NULL, Comment Time zone names
   time_zone_transition Rows 119074, Avg_row_length 39, Data_length 4734976,
     Data_free 4194304, Auto_increment NULL, Create_time non-NULL,
     Update_time NULL, Comment Time zone transitions
-  time_zone_transition_type Rows 9871, Avg_row_length 48,
+  time_zone_transition_type Rows 10529, Avg_row_length 45,
     Data_length 475136, Data_free 4194304, Auto_increment NULL,
     Create_time non-NULL, Update_time NULL,
     Comment Time zone transition types

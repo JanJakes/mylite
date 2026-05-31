@@ -264,6 +264,13 @@ MySQL-observed InnoDB status fields, comments, column metadata, and
 primary-key metadata while keeping zoneinfo row loading, named time-zone
 conversion, leap-second handling, and writes out of scope.
 
+The `baseline-sys-sys-config-table` slice refines `sys.sys_config` with
+direct read-only default rows plus MySQL-observed InnoDB status fields, column
+metadata, and primary-key metadata while keeping writable sys configuration,
+sys triggers, sys functions, sys procedures, sys views, Performance
+Schema-backed values, privilege filtering, and persisted sys table storage out
+of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

@@ -7,14 +7,16 @@ be selected with `USE sys`. The MySQL 8.4.9 target runtime's `sys` table and
 view names are exposed as metadata-only rows through
 `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`, but the tables and views remain non-queryable and
-unsupported unless listed otherwise below. MyLite rejects schema, table, index,
-rename, truncate, and single-table DML writes targeting `sys` with
+unsupported unless listed otherwise below. The current exception is a limited
+read-only `sys.sys_config` synthetic table with MySQL-shaped default rows and
+metadata. MyLite rejects schema, table, index, rename, truncate, and
+single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
 decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 
 | Table | Status | Notes |
 | --- | --- | --- |
-| `sys.sys_config` | ❌ | Table shape and diagnostics |
+| `sys.sys_config` | 🟡 | Limited read-only synthetic sys configuration table with the six MySQL 8.4.9 default rows, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS`, and `SHOW TABLE STATUS` metadata; no writable sys configuration, sys triggers, sys functions, sys procedures, sys views, Performance Schema-backed values, privilege filtering, or persisted sys table storage |
 | `sys.sys_config_insert_set_user` | ❌ | Trigger behavior and diagnostics |
 | `sys.sys_config_update_set_user` | ❌ | Trigger behavior and diagnostics |
 | `sys.host_summary` | ❌ | View shape and diagnostics |

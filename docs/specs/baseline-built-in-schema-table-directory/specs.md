@@ -315,6 +315,16 @@ physical sys views, temporary-table rows, built-in-schema rows,
 FULLTEXT/SPATIAL/functional indexes, privilege/definer enforcement, and
 broader sys view execution out of scope.
 
+The `baseline-sys-schema-table-lock-waits-views` slice refines
+`sys.schema_table_lock_waits` and `sys.x$schema_table_lock_waits` with direct
+read-only empty placeholder rows plus MySQL-observed view status fields,
+column metadata, view definition metadata, table dependency rows on the
+referenced Performance Schema tables and `sys.sys_config`, and routine
+dependency rows on the referenced sys helper functions. It keeps live
+Performance Schema metadata-lock wait collection, blocking-session discovery,
+`KILL` behavior, sys helper-function execution, privilege/definer enforcement,
+and broader sys view execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

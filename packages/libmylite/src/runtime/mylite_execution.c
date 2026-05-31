@@ -591,6 +591,7 @@ enum {
     sys_schema_index_statistics_column_count = 11,
     sys_schema_redundant_indexes_column_count = 10,
     sys_x_schema_flattened_keys_column_count = 6,
+    sys_schema_table_lock_waits_column_count = 18,
     sys_flattened_key_row_initial_capacity = 8,
     sys_schema_object_overview_column_count = 3,
     sys_schema_object_overview_initial_group_capacity = 8,
@@ -4574,6 +4575,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS = 116,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES = 117,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS = 118,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS = 119,
+    INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS = 120,
 };
 
 struct information_schema_column_definition {
@@ -14836,6 +14839,288 @@ static const char *const sys_x_schema_flattened_keys_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition sys_schema_table_lock_waits_columns[] = {
+    {"object_schema",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"object_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"waiting_thread_id",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"waiting_pid",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"waiting_account",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "text"},
+    {"waiting_lock_type",
+     NULL,
+     "NO",
+     "varchar",
+     "32",
+     "128",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(32)"},
+    {"waiting_lock_duration",
+     NULL,
+     "NO",
+     "varchar",
+     "32",
+     "128",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(32)"},
+    {"waiting_query",
+     NULL,
+     "YES",
+     "longtext",
+     "4294967295",
+     "4294967295",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "longtext"},
+    {"waiting_query_secs",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "19",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint"},
+    {"waiting_query_rows_affected",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"waiting_query_rows_examined",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"blocking_thread_id",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"blocking_pid",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"blocking_account",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "text"},
+    {"blocking_lock_type",
+     NULL,
+     "NO",
+     "varchar",
+     "32",
+     "128",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(32)"},
+    {"blocking_lock_duration",
+     NULL,
+     "NO",
+     "varchar",
+     "32",
+     "128",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(32)"},
+    {"sql_kill_blocking_query",
+     NULL,
+     "YES",
+     "varchar",
+     "31",
+     "124",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(31)"},
+    {"sql_kill_blocking_connection",
+     NULL,
+     "YES",
+     "varchar",
+     "25",
+     "100",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(25)"},
+};
+
+static const char *const sys_schema_table_lock_waits_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_table_lock_waits_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_table_lock_waits_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition sys_schema_object_overview_columns[] = {
     {"db",
      "",
@@ -15117,6 +15402,80 @@ static const char sys_x_schema_flattened_keys_show_create_qualified_view_sql[] =
 #undef SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS
 #undef SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION
 
+#define SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS                                                   \
+    "(`object_schema`,`object_name`,`waiting_thread_id`,`waiting_pid`,`waiting_account`,"          \
+    "`waiting_lock_type`,`waiting_lock_duration`,`waiting_query`,`waiting_query_secs`,"            \
+    "`waiting_query_rows_affected`,`waiting_query_rows_examined`,`blocking_thread_id`,"            \
+    "`blocking_pid`,`blocking_account`,`blocking_lock_type`,`blocking_lock_duration`,"             \
+    "`sql_kill_blocking_query`,`sql_kill_blocking_connection`)"
+
+#define SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_PREFIX                                                  \
+    "select `g`.`OBJECT_SCHEMA` AS `object_schema`,`g`.`OBJECT_NAME` AS `object_name`,"            \
+    "`pt`.`THREAD_ID` AS `waiting_thread_id`,`pt`.`PROCESSLIST_ID` AS `waiting_pid`,"              \
+    "`sys`.`ps_thread_account`(`p`.`OWNER_THREAD_ID`) AS `waiting_account`,"                       \
+    "`p`.`LOCK_TYPE` AS `waiting_lock_type`,`p`.`LOCK_DURATION` AS "                               \
+    "`waiting_lock_duration`,"
+
+#define SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_SUFFIX                                                  \
+    " AS `waiting_query`,`pt`.`PROCESSLIST_TIME` AS `waiting_query_secs`,"                         \
+    "`ps`.`ROWS_AFFECTED` AS `waiting_query_rows_affected`,`ps`.`ROWS_EXAMINED` AS "               \
+    "`waiting_query_rows_examined`,`gt`.`THREAD_ID` AS `blocking_thread_id`,"                      \
+    "`gt`.`PROCESSLIST_ID` AS `blocking_pid`,`sys`.`ps_thread_account`("                           \
+    "`g`.`OWNER_THREAD_ID`) AS `blocking_account`,`g`.`LOCK_TYPE` AS `blocking_lock_type`,"        \
+    "`g`.`LOCK_DURATION` AS `blocking_lock_duration`,concat('KILL QUERY ',"                        \
+    "`gt`.`PROCESSLIST_ID`) AS `sql_kill_blocking_query`,concat('KILL ',"                          \
+    "`gt`.`PROCESSLIST_ID`) AS `sql_kill_blocking_connection` from "                               \
+    "(((((`performance_schema`.`metadata_locks` `g` join "                                         \
+    "`performance_schema`.`metadata_locks` `p` on(((`g`.`OBJECT_TYPE` = "                          \
+    "`p`.`OBJECT_TYPE`) and (`g`.`OBJECT_SCHEMA` = `p`.`OBJECT_SCHEMA`) and ("                     \
+    "`g`.`OBJECT_NAME` = `p`.`OBJECT_NAME`) and (`g`.`LOCK_STATUS` = 'GRANTED') and ("             \
+    "`p`.`LOCK_STATUS` = 'PENDING')))) join `performance_schema`.`threads` `gt` on(("              \
+    "`g`.`OWNER_THREAD_ID` = `gt`.`THREAD_ID`))) join `performance_schema`.`threads` `pt` "        \
+    "on((`p`.`OWNER_THREAD_ID` = `pt`.`THREAD_ID`))) left join "                                   \
+    "`performance_schema`.`events_statements_current` `gs` on((`g`.`OWNER_THREAD_ID` = "           \
+    "`gs`.`THREAD_ID`))) left join `performance_schema`.`events_statements_current` `ps` on(("     \
+    "`p`.`OWNER_THREAD_ID` = `ps`.`THREAD_ID`))) where (`g`.`OBJECT_TYPE` = 'TABLE')"
+
+#define SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION                                                \
+    SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_PREFIX                                                      \
+    "`sys`.`format_statement`(`pt`.`PROCESSLIST_INFO`)" SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_SUFFIX
+
+#define SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION                                              \
+    SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_PREFIX                                                      \
+    "`pt`.`PROCESSLIST_INFO`" SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_SUFFIX
+
+static const char sys_schema_table_lock_waits_view_definition[] =
+    SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_schema_table_lock_waits_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_schema_table_lock_waits_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_lock_waits_view_definition[] =
+    SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_lock_waits_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_lock_waits_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
+#undef SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_PREFIX
+#undef SYS_SCHEMA_TABLE_LOCK_WAITS_SELECT_SUFFIX
+#undef SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION
+#undef SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION
+
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
 
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
@@ -15180,6 +15539,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_redundant_indexes_view_definition,
      sys_schema_redundant_indexes_show_create_view_sql,
      sys_schema_redundant_indexes_show_create_qualified_view_sql},
+    {"schema_table_lock_waits",
+     sys_schema_table_lock_waits_view_definition,
+     sys_schema_table_lock_waits_show_create_view_sql,
+     sys_schema_table_lock_waits_show_create_qualified_view_sql},
     {"x$schema_flattened_keys",
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
@@ -15188,6 +15551,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_schema_index_statistics_view_definition,
      sys_x_schema_index_statistics_show_create_view_sql,
      sys_x_schema_index_statistics_show_create_qualified_view_sql},
+    {"x$schema_table_lock_waits",
+     sys_x_schema_table_lock_waits_view_definition,
+     sys_x_schema_table_lock_waits_show_create_view_sql,
+     sys_x_schema_table_lock_waits_show_create_qualified_view_sql},
 };
 
 static const struct information_schema_column_definition mysql_component_columns[] = {
@@ -18037,6 +18404,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS,
+      "schema_table_lock_waits",
+      sys_schema_table_lock_waits_columns,
+      sys_schema_table_lock_waits_column_count},
+     sys_schema_table_lock_waits_column_keys,
+     sys_schema_table_lock_waits_column_extras,
+     sys_schema_table_lock_waits_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS,
       "x$schema_flattened_keys",
       sys_x_schema_flattened_keys_columns,
@@ -18058,6 +18439,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_index_statistics_column_keys,
      sys_schema_index_statistics_column_extras,
      sys_schema_index_statistics_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS,
+      "x$schema_table_lock_waits",
+      sys_schema_table_lock_waits_columns,
+      sys_schema_table_lock_waits_column_count},
+     sys_schema_table_lock_waits_column_keys,
+     sys_schema_table_lock_waits_column_extras,
+     sys_schema_table_lock_waits_column_privileges,
      NULL,
      NULL,
      0U,
@@ -21329,6 +21724,10 @@ static int build_sys_redundant_drop_index_sql(
     const struct sys_flattened_key_row *redundant,
     char **out_sql
 );
+static int append_sys_schema_table_lock_waits_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_sys_schema_object_overview_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -21566,6 +21965,10 @@ static int append_information_schema_views_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_view_table_usage_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_view_routine_usage_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -57027,11 +57430,17 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "schema_redundant_indexes") == 0) {
         return append_sys_schema_redundant_indexes_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "schema_table_lock_waits") == 0) {
+        return append_sys_schema_table_lock_waits_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$schema_index_statistics") == 0) {
         return append_sys_schema_index_statistics_system_rows(database, rows, false);
+    }
+    if (strcmp(definition->query_definition.name, "x$schema_table_lock_waits") == 0) {
+        return append_sys_schema_table_lock_waits_system_rows(database, rows);
     }
 
     set_runtime_error(database, "invalid mysql system table");
@@ -58228,6 +58637,17 @@ static int build_sys_redundant_drop_index_sql(
 
     dynamic_string_deinit(&string);
     return rc;
+}
+
+static int append_sys_schema_table_lock_waits_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_schema_table_lock_waits_column_count) {
+        set_runtime_error(database, "invalid sys.schema_table_lock_waits columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int append_sys_schema_object_overview_system_rows(
@@ -59742,6 +60162,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_views_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
         return append_information_schema_view_table_usage_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
+        return append_information_schema_view_routine_usage_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_ADMINISTRABLE_ROLE_AUTHORIZATIONS:
     case INFORMATION_SCHEMA_TABLE_APPLICABLE_ROLES:
@@ -59784,7 +60206,6 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
-    case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
     case INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES:
     case INFORMATION_SCHEMA_TABLE_MYSQL_DB:
@@ -59824,6 +60245,8 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
@@ -59940,10 +60363,17 @@ static int append_information_schema_view_table_usage_system_rows(
         {"schema_object_overview", "information_schema", "TABLES"},
         {"schema_object_overview", "information_schema", "TRIGGERS"},
         {"schema_redundant_indexes", "sys", "x$schema_flattened_keys"},
+        {"schema_table_lock_waits", "performance_schema", "events_statements_current"},
+        {"schema_table_lock_waits", "performance_schema", "metadata_locks"},
+        {"schema_table_lock_waits", "performance_schema", "threads"},
+        {"schema_table_lock_waits", "sys", "sys_config"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
          "table_io_waits_summary_by_index_usage"},
+        {"x$schema_table_lock_waits", "performance_schema", "events_statements_current"},
+        {"x$schema_table_lock_waits", "performance_schema", "metadata_locks"},
+        {"x$schema_table_lock_waits", "performance_schema", "threads"},
     };
     int rc = MYLITE_OK;
 
@@ -59963,6 +60393,45 @@ static int append_information_schema_view_table_usage_system_rows(
             "def",
             dependency->table_schema,
             dependency->table_name,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_information_schema_view_routine_usage_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct builtin_view_routine_dependency_row {
+        const char *view_name;
+        const char *routine_name;
+    };
+    static const struct builtin_view_routine_dependency_row dependency_rows[] = {
+        {"schema_table_lock_waits", "format_statement"},
+        {"schema_table_lock_waits", "ps_thread_account"},
+        {"x$schema_table_lock_waits", "ps_thread_account"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_view_routine_usage_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t dependency_index = 0U;
+         rc == MYLITE_OK && dependency_index < sizeof(dependency_rows) / sizeof(dependency_rows[0]);
+         ++dependency_index) {
+        const struct builtin_view_routine_dependency_row *dependency =
+            &dependency_rows[dependency_index];
+        const char *values[information_schema_view_routine_usage_column_count] = {
+            "def",
+            "sys",
+            dependency->view_name,
+            "def",
+            "sys",
+            dependency->routine_name,
         };
 
         rc = append_information_schema_row(database, rows, values);
@@ -60074,6 +60543,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:

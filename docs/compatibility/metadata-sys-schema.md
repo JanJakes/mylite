@@ -13,9 +13,11 @@ rows and metadata and a limited read-only `sys.version` synthetic view with the
 observed MySQL 8.4.9 version row and metadata, plus a limited read-only
 `sys.schema_auto_increment_columns` synthetic view over MyLite user-table
 auto-increment descriptors, and a limited read-only
-`sys.schema_object_overview` synthetic view over current MyLite object
-metadata descriptors. MyLite rejects schema, table, index, rename, truncate,
-and single-table DML writes targeting `sys` with
+`sys.schema_index_statistics` / `sys.x$schema_index_statistics` synthetic
+views over descriptor index inventory with zero wait counters, and a limited
+read-only `sys.schema_object_overview` synthetic view over current MyLite
+object metadata descriptors. MyLite rejects schema, table, index, rename,
+truncate, and single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
 decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 
@@ -72,8 +74,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$ps_schema_table_statistics_io` | ❌ | Helper view shape and diagnostics |
 | `sys.ps_check_lost_instrumentation` | ❌ | View shape and diagnostics |
 | `sys.schema_auto_increment_columns` | 🟡 | Limited read-only synthetic auto-increment inventory view returning one row per supported persistent user base-table `AUTO_INCREMENT` column, with MySQL-shaped signedness, maximum-value, next-value, and ratio fields, default MySQL view ordering, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `COLUMNS` and `TABLES`, empty index/constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema-backed sys view execution, temporary-table rows, exact InnoDB stats-cache behavior for every empty-table edge case, privilege/definer enforcement, broader sys views, or sys helper functions |
-| `sys.schema_index_statistics` | ❌ | View shape and diagnostics |
-| `sys.x$schema_index_statistics` | ❌ | View shape and diagnostics |
+| `sys.schema_index_statistics` | 🟡 | Limited read-only synthetic formatted index-statistics view returning one zero-counter row per supported mysql/sys system-table index descriptor and persistent user base-table index descriptor, with formatted zero latency strings, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.table_io_waits_summary_by_index_usage`, empty constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema wait collection, real latency accumulation, temporary-table rows, unsupported Performance Schema/system-table indexes, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$schema_index_statistics` | 🟡 | Limited read-only synthetic raw index-statistics view returning the same descriptor-backed rows as `sys.schema_index_statistics`, but with raw unsigned integer zero latency counters instead of formatted latency strings; same metadata and unsupported behavior as the formatted view |
 | `sys.schema_object_overview` | 🟡 | Limited read-only synthetic object summary view returning grouped counts for built-in table-directory entries, supported mysql/sys system-table BTREE index metadata, persistent user base tables, persistent user views, persistent user index key parts, and the metadata-only `sys.sys_config` triggers, with MySQL-shaped default ordering, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `EVENTS`, `ROUTINES`, `STATISTICS`, `TABLES`, and `TRIGGERS`, empty constraint/routine-dependency metadata for the view itself, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no sys routine/function inventory rows, event rows, Performance Schema HASH index inventory, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.schema_redundant_indexes` | ❌ | View shape and diagnostics |
 | `sys.x$schema_flattened_keys` | ❌ | View shape and diagnostics |

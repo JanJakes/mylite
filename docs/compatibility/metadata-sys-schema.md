@@ -20,7 +20,10 @@ object metadata descriptors, and limited read-only
 `sys.schema_redundant_indexes` / `sys.x$schema_flattened_keys` synthetic views
 over persistent user-table BTREE index descriptors, plus limited read-only
 empty `sys.schema_table_lock_waits` /
-`sys.x$schema_table_lock_waits` synthetic metadata-lock wait placeholders.
+`sys.x$schema_table_lock_waits` synthetic metadata-lock wait placeholders, and
+limited read-only `sys.schema_table_statistics` /
+`sys.x$schema_table_statistics` synthetic table-statistics views over
+descriptor table inventory with zero wait counters.
 MyLite rejects schema, table, index, rename,
 truncate, and single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
@@ -86,8 +89,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$schema_flattened_keys` | 🟡 | Limited read-only synthetic helper view returning one row per persistent user base-table BTREE index descriptor with MySQL-shaped nonunique, prefix-key, and comma-separated key-part column metadata; same metadata surface and unsupported behavior as `sys.schema_redundant_indexes`, except its `VIEW_TABLE_USAGE` dependency points to `INFORMATION_SCHEMA.STATISTICS` |
 | `sys.schema_table_lock_waits` | 🟡 | Limited read-only empty synthetic metadata-lock wait view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.events_statements_current`, `performance_schema.metadata_locks`, `performance_schema.threads`, and `sys.sys_config`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependencies on `sys.format_statement` and `sys.ps_thread_account`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no live Performance Schema metadata-lock waits, blocking session discovery, `KILL` behavior, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$schema_table_lock_waits` | 🟡 | Limited read-only empty raw metadata-lock wait view with the same column metadata and unsupported behavior as `sys.schema_table_lock_waits`; its `VIEW_TABLE_USAGE` dependencies point to `performance_schema.events_statements_current`, `performance_schema.metadata_locks`, and `performance_schema.threads`, and its `VIEW_ROUTINE_USAGE` dependency points to `sys.ps_thread_account` |
-| `sys.schema_table_statistics` | ❌ | View shape and diagnostics |
-| `sys.x$schema_table_statistics` | ❌ | View shape and diagnostics |
+| `sys.schema_table_statistics` | 🟡 | Limited read-only synthetic formatted table-statistics view returning one zero-counter row per supported mysql system-table descriptor, `sys.sys_config`, and persistent user base-table descriptor, with formatted zero latency and byte strings, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.table_io_waits_summary_by_table` and `sys.x$ps_schema_table_statistics_io`, empty constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema table wait collection, real row/latency/byte accumulation, temporary-table rows, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$schema_table_statistics` | 🟡 | Limited read-only synthetic raw table-statistics view returning the same descriptor-backed rows as `sys.schema_table_statistics`, but with raw numeric zero latency and byte counters instead of formatted strings; same metadata and unsupported behavior as the formatted view |
 | `sys.schema_table_statistics_with_buffer` | ❌ | View shape and diagnostics |
 | `sys.x$schema_table_statistics_with_buffer` | ❌ | View shape and diagnostics |
 | `sys.schema_tables_with_full_table_scans` | ❌ | View shape and diagnostics |

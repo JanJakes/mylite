@@ -589,6 +589,7 @@ enum {
     sys_version_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
+    sys_schema_table_statistics_column_count = 19,
     sys_schema_redundant_indexes_column_count = 10,
     sys_x_schema_flattened_keys_column_count = 6,
     sys_schema_table_lock_waits_column_count = 18,
@@ -4577,6 +4578,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS = 118,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS = 119,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS = 120,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS = 121,
+    INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS = 122,
 };
 
 struct information_schema_column_definition {
@@ -4877,6 +4880,13 @@ struct sys_schema_index_statistics_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
     bool formatted_latency;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct sys_schema_table_statistics_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
+    bool formatted_metrics;
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
@@ -14608,6 +14618,467 @@ static const char *const sys_schema_index_statistics_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition sys_schema_table_statistics_columns[] = {
+    {"table_schema",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"table_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"total_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"rows_fetched",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"fetch_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"rows_inserted",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"insert_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"rows_updated",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"update_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"rows_deleted",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"delete_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"io_read_requests",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_read",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"io_read_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"io_write_requests",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_write",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"io_write_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+    {"io_misc_requests",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_misc_latency",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+};
+
+static const struct information_schema_column_definition sys_x_schema_table_statistics_columns[] = {
+    {"table_schema",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"table_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"total_latency",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"rows_fetched",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"fetch_latency",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"rows_inserted",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"insert_latency",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"rows_updated",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"update_latency",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"rows_deleted",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"delete_latency",
+     NULL,
+     "NO",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"io_read_requests",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_read", NULL, "YES", "decimal", NULL, NULL, "41", "0", NULL, NULL, NULL, "decimal(41,0)"},
+    {"io_read_latency",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_write_requests",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_write", NULL, "YES", "decimal", NULL, NULL, "41", "0", NULL, NULL, NULL, "decimal(41,0)"},
+    {"io_write_latency",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_misc_requests",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+    {"io_misc_latency",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "42",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(42,0)"},
+};
+
+static const char *const sys_schema_table_statistics_column_keys[] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const sys_schema_table_statistics_column_extras[] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const sys_schema_table_statistics_column_privileges[] = {
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition sys_schema_redundant_indexes_columns[] = {
     {"table_schema",
      NULL,
@@ -15476,6 +15947,80 @@ static const char sys_x_schema_table_lock_waits_show_create_qualified_view_sql[]
 #undef SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION
 #undef SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION
 
+#define SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS                                                   \
+    "(`table_schema`,`table_name`,`total_latency`,`rows_fetched`,`fetch_latency`,"                 \
+    "`rows_inserted`,`insert_latency`,`rows_updated`,`update_latency`,`rows_deleted`,"             \
+    "`delete_latency`,`io_read_requests`,`io_read`,`io_read_latency`,`io_write_requests`,"         \
+    "`io_write`,`io_write_latency`,`io_misc_requests`,`io_misc_latency`)"
+
+#define SYS_SCHEMA_TABLE_STATISTICS_SELECT_SUFFIX                                                  \
+    " from (`performance_schema`.`table_io_waits_summary_by_table` `pst` left join "               \
+    "`sys`.`x$ps_schema_table_statistics_io` `fsbi` on(((`pst`.`OBJECT_SCHEMA` = "                 \
+    "`sys`.`fsbi`.`table_schema`) and (`pst`.`OBJECT_NAME` = "                                     \
+    "`sys`.`fsbi`.`table_name`)))) order by `pst`.`SUM_TIMER_WAIT` desc"
+
+#define SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION                                                \
+    "select `pst`.`OBJECT_SCHEMA` AS `table_schema`,`pst`.`OBJECT_NAME` AS `table_name`,"          \
+    "format_pico_time(`pst`.`SUM_TIMER_WAIT`) AS `total_latency`,`pst`.`COUNT_FETCH` AS "          \
+    "`rows_fetched`,format_pico_time(`pst`.`SUM_TIMER_FETCH`) AS `fetch_latency`,"                 \
+    "`pst`.`COUNT_INSERT` AS `rows_inserted`,format_pico_time(`pst`.`SUM_TIMER_INSERT`) AS "       \
+    "`insert_latency`,`pst`.`COUNT_UPDATE` AS `rows_updated`,format_pico_time("                    \
+    "`pst`.`SUM_TIMER_UPDATE`) AS `update_latency`,`pst`.`COUNT_DELETE` AS `rows_deleted`,"        \
+    "format_pico_time(`pst`.`SUM_TIMER_DELETE`) AS `delete_latency`,"                              \
+    "`sys`.`fsbi`.`count_read` AS `io_read_requests`,format_bytes("                                \
+    "`sys`.`fsbi`.`sum_number_of_bytes_read`) AS `io_read`,format_pico_time("                      \
+    "`sys`.`fsbi`.`sum_timer_read`) AS `io_read_latency`,`sys`.`fsbi`.`count_write` AS "           \
+    "`io_write_requests`,format_bytes(`sys`.`fsbi`.`sum_number_of_bytes_write`) AS "               \
+    "`io_write`,format_pico_time(`sys`.`fsbi`.`sum_timer_write`) AS `io_write_latency`,"           \
+    "`sys`.`fsbi`.`count_misc` AS `io_misc_requests`,format_pico_time("                            \
+    "`sys`.`fsbi`.`sum_timer_misc`) AS "                                                           \
+    "`io_misc_latency`" SYS_SCHEMA_TABLE_STATISTICS_SELECT_SUFFIX
+
+#define SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION                                              \
+    "select `pst`.`OBJECT_SCHEMA` AS `table_schema`,`pst`.`OBJECT_NAME` AS `table_name`,"          \
+    "`pst`.`SUM_TIMER_WAIT` AS `total_latency`,`pst`.`COUNT_FETCH` AS `rows_fetched`,"             \
+    "`pst`.`SUM_TIMER_FETCH` AS `fetch_latency`,`pst`.`COUNT_INSERT` AS `rows_inserted`,"          \
+    "`pst`.`SUM_TIMER_INSERT` AS `insert_latency`,`pst`.`COUNT_UPDATE` AS `rows_updated`,"         \
+    "`pst`.`SUM_TIMER_UPDATE` AS `update_latency`,`pst`.`COUNT_DELETE` AS `rows_deleted`,"         \
+    "`pst`.`SUM_TIMER_DELETE` AS `delete_latency`,`sys`.`fsbi`.`count_read` AS "                   \
+    "`io_read_requests`,`sys`.`fsbi`.`sum_number_of_bytes_read` AS `io_read`,"                     \
+    "`sys`.`fsbi`.`sum_timer_read` AS `io_read_latency`,`sys`.`fsbi`.`count_write` AS "            \
+    "`io_write_requests`,`sys`.`fsbi`.`sum_number_of_bytes_write` AS `io_write`,"                  \
+    "`sys`.`fsbi`.`sum_timer_write` AS `io_write_latency`,`sys`.`fsbi`.`count_misc` AS "           \
+    "`io_misc_requests`,`sys`.`fsbi`.`sum_timer_misc` AS "                                         \
+    "`io_misc_latency`" SYS_SCHEMA_TABLE_STATISTICS_SELECT_SUFFIX
+
+static const char sys_schema_table_statistics_view_definition[] =
+    SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
+
+static const char sys_schema_table_statistics_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
+
+static const char sys_schema_table_statistics_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_statistics_view_definition[] =
+    SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_statistics_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_statistics_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
+#undef SYS_SCHEMA_TABLE_STATISTICS_SELECT_SUFFIX
+#undef SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION
+#undef SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION
+
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
 
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
@@ -15543,6 +16088,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_table_lock_waits_view_definition,
      sys_schema_table_lock_waits_show_create_view_sql,
      sys_schema_table_lock_waits_show_create_qualified_view_sql},
+    {"schema_table_statistics",
+     sys_schema_table_statistics_view_definition,
+     sys_schema_table_statistics_show_create_view_sql,
+     sys_schema_table_statistics_show_create_qualified_view_sql},
     {"x$schema_flattened_keys",
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
@@ -15555,6 +16104,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_schema_table_lock_waits_view_definition,
      sys_x_schema_table_lock_waits_show_create_view_sql,
      sys_x_schema_table_lock_waits_show_create_qualified_view_sql},
+    {"x$schema_table_statistics",
+     sys_x_schema_table_statistics_view_definition,
+     sys_x_schema_table_statistics_show_create_view_sql,
+     sys_x_schema_table_statistics_show_create_qualified_view_sql},
 };
 
 static const struct information_schema_column_definition mysql_component_columns[] = {
@@ -18418,6 +18971,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS,
+      "schema_table_statistics",
+      sys_schema_table_statistics_columns,
+      sys_schema_table_statistics_column_count},
+     sys_schema_table_statistics_column_keys,
+     sys_schema_table_statistics_column_extras,
+     sys_schema_table_statistics_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS,
       "x$schema_flattened_keys",
       sys_x_schema_flattened_keys_columns,
@@ -18453,6 +19020,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_table_lock_waits_column_keys,
      sys_schema_table_lock_waits_column_extras,
      sys_schema_table_lock_waits_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS,
+      "x$schema_table_statistics",
+      sys_x_schema_table_statistics_columns,
+      sys_schema_table_statistics_column_count},
+     sys_schema_table_statistics_column_keys,
+     sys_schema_table_statistics_column_extras,
+     sys_schema_table_statistics_column_privileges,
      NULL,
      NULL,
      0U,
@@ -21652,6 +22233,31 @@ static int append_sys_schema_index_statistics_index_row(
     const char *schema_name,
     const char *table_name,
     const char *index_name
+);
+static int append_sys_schema_table_statistics_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    bool formatted_metrics
+);
+static int append_sys_schema_table_statistics_mysql_system_rows(
+    struct sys_schema_table_statistics_context *context
+);
+static int append_sys_schema_table_statistics_mysql_system_table_row(
+    struct sys_schema_table_statistics_context *context,
+    const struct mysql_system_table_definition *definition
+);
+static int append_sys_schema_table_statistics_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_sys_schema_table_statistics_table_row_from_catalog(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_sys_schema_table_statistics_table_row(
+    struct sys_schema_table_statistics_context *context,
+    const char *schema_name,
+    const char *table_name
 );
 static int append_sys_schema_redundant_indexes_system_rows(
     struct mylite_db *database,
@@ -57433,6 +58039,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "schema_table_lock_waits") == 0) {
         return append_sys_schema_table_lock_waits_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "schema_table_statistics") == 0) {
+        return append_sys_schema_table_statistics_system_rows(database, rows, true);
+    }
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
     }
@@ -57441,6 +58050,9 @@ static int append_sys_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$schema_table_lock_waits") == 0) {
         return append_sys_schema_table_lock_waits_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$schema_table_statistics") == 0) {
+        return append_sys_schema_table_statistics_system_rows(database, rows, false);
     }
 
     set_runtime_error(database, "invalid mysql system table");
@@ -58166,6 +58778,137 @@ static int append_sys_schema_index_statistics_index_row(
         latency,
         zero,
         latency,
+    };
+
+    return append_information_schema_row(context->database, context->rows, values);
+}
+
+static int append_sys_schema_table_statistics_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    bool formatted_metrics
+) {
+    struct sys_schema_table_statistics_context context = {
+        .database = database,
+        .rows = rows,
+        .formatted_metrics = formatted_metrics,
+        .schema = NULL,
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != sys_schema_table_statistics_column_count) {
+        set_runtime_error(database, "invalid sys.schema_table_statistics columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = append_sys_schema_table_statistics_mysql_system_rows(&context);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_for_each_schema(
+            database,
+            append_sys_schema_table_statistics_schema_rows,
+            &context
+        );
+    }
+    return rc;
+}
+
+static int append_sys_schema_table_statistics_mysql_system_rows(
+    struct sys_schema_table_statistics_context *context
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK &&
+         index < sizeof(mysql_system_table_definitions) / sizeof(mysql_system_table_definitions[0]);
+         ++index) {
+        rc = append_sys_schema_table_statistics_mysql_system_table_row(
+            context,
+            &mysql_system_table_definitions[index]
+        );
+    }
+    return rc;
+}
+
+static int append_sys_schema_table_statistics_mysql_system_table_row(
+    struct sys_schema_table_statistics_context *context,
+    const struct mysql_system_table_definition *definition
+) {
+    if (definition == NULL) {
+        return MYLITE_OK;
+    }
+    if (strcmp(definition->schema_name, "mysql") != 0 &&
+        (strcmp(definition->schema_name, "sys") != 0 ||
+         strcmp(definition->query_definition.name, "sys_config") != 0)) {
+        return MYLITE_OK;
+    }
+    return append_sys_schema_table_statistics_table_row(
+        context,
+        definition->schema_name,
+        definition->query_definition.name
+    );
+}
+
+static int append_sys_schema_table_statistics_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct sys_schema_table_statistics_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (find_builtin_schema_table_directory(schema->name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_sys_schema_table_statistics_table_row_from_catalog,
+        context
+    );
+}
+
+static int append_sys_schema_table_statistics_table_row_from_catalog(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct sys_schema_table_statistics_context *context = user_data;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+    return append_sys_schema_table_statistics_table_row(
+        context,
+        context->schema->name,
+        table->name
+    );
+}
+
+static int append_sys_schema_table_statistics_table_row(
+    struct sys_schema_table_statistics_context *context,
+    const char *schema_name,
+    const char *table_name
+) {
+    static const char formatted_zero_bytes[] = "   0 bytes";
+    static const char formatted_zero_latency[] = "  0 ps";
+    static const char zero[] = "0";
+
+    if (context == NULL || context->database == NULL || context->rows == NULL ||
+        schema_name == NULL || table_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    const char *latency = context->formatted_metrics ? formatted_zero_latency : zero;
+    const char *bytes = context->formatted_metrics ? formatted_zero_bytes : zero;
+    const char *values[sys_schema_table_statistics_column_count] = {
+        schema_name, table_name, latency, zero,    latency, zero,  latency, zero, latency, zero,
+        latency,     zero,       bytes,   latency, zero,    bytes, latency, zero, latency,
     };
 
     return append_information_schema_row(context->database, context->rows, values);
@@ -60246,8 +60989,10 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
         return append_information_schema_triggers_system_rows(database, rows);
@@ -60367,6 +61112,8 @@ static int append_information_schema_view_table_usage_system_rows(
         {"schema_table_lock_waits", "performance_schema", "metadata_locks"},
         {"schema_table_lock_waits", "performance_schema", "threads"},
         {"schema_table_lock_waits", "sys", "sys_config"},
+        {"schema_table_statistics", "performance_schema", "table_io_waits_summary_by_table"},
+        {"schema_table_statistics", "sys", "x$ps_schema_table_statistics_io"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
@@ -60374,6 +61121,8 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$schema_table_lock_waits", "performance_schema", "events_statements_current"},
         {"x$schema_table_lock_waits", "performance_schema", "metadata_locks"},
         {"x$schema_table_lock_waits", "performance_schema", "threads"},
+        {"x$schema_table_statistics", "performance_schema", "table_io_waits_summary_by_table"},
+        {"x$schema_table_statistics", "sys", "x$ps_schema_table_statistics_io"},
     };
     int rc = MYLITE_OK;
 
@@ -60544,8 +61293,10 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:

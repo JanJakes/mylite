@@ -325,6 +325,15 @@ Performance Schema metadata-lock wait collection, blocking-session discovery,
 `KILL` behavior, sys helper-function execution, privilege/definer enforcement,
 and broader sys view execution out of scope.
 
+The `baseline-sys-schema-table-statistics-views` slice refines
+`sys.schema_table_statistics` and `sys.x$schema_table_statistics` with direct
+read-only descriptor-backed zero-counter rows plus MySQL-observed view status
+fields, column metadata, view definition metadata, and dependency rows on
+`performance_schema.table_io_waits_summary_by_table` and
+`sys.x$ps_schema_table_statistics_io`. It keeps Performance Schema table wait
+collection, live row/latency/byte accumulation, physical sys views,
+privilege/definer enforcement, and broader sys view execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

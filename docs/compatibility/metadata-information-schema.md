@@ -30,6 +30,11 @@ MySQL-shaped metadata for the supported synthetic `sys.sys_config` table. Other
 `sys` schema objects remain directory-only metadata rows unless their own
 compatibility entries list broader support.
 
+The `baseline-sys-sys-config-triggers` slice extends
+`INFORMATION_SCHEMA.TRIGGERS` with metadata-only rows for the two built-in
+`sys.sys_config` triggers. It does not add trigger execution, trigger DDL, or
+user-created trigger descriptors.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `INFORMATION_SCHEMA.ADMINISTRABLE_ROLE_AUTHORIZATIONS` | 🟡 | Queryable empty synthetic administrable-role metadata view with MySQL 8.4.9-shaped columns and matching system metadata; no role graph, active-role state, grant descriptors, default or mandatory roles, privilege filtering, or enforcement |
@@ -111,7 +116,7 @@ compatibility entries list broader support.
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATE` | 🟡 | Target-build absent deprecated Enterprise Thread Pool table: standard MySQL 8.4.9 does not expose the plugin view, so direct reads and `SHOW COLUMNS` reject with `1109 / 42S02` and the name is absent from directory metadata; no thread-pool plugin state or placeholder view |
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATS` | 🟡 | Target-build absent deprecated Enterprise Thread Pool table: standard MySQL 8.4.9 does not expose the plugin view, so direct reads and `SHOW COLUMNS` reject with `1109 / 42S02` and the name is absent from directory metadata; no thread-pool statistics or placeholder view |
 | `INFORMATION_SCHEMA.TP_THREAD_STATE` | 🟡 | Target-build absent deprecated Enterprise Thread Pool table: standard MySQL 8.4.9 does not expose the plugin view, so direct reads and `SHOW COLUMNS` reject with `1109 / 42S02` and the name is absent from directory metadata; no thread-pool thread-state snapshots or placeholder view |
-| `INFORMATION_SCHEMA.TRIGGERS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real trigger descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no `CREATE TRIGGER`, `DROP TRIGGER`, trigger execution, stored trigger definitions, definers, privileges, or SQLite trigger reflection |
+| `INFORMATION_SCHEMA.TRIGGERS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, metadata-only rows for the two built-in `sys.sys_config` triggers, empty user rows until MyLite implements real trigger descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no `CREATE TRIGGER`, `DROP TRIGGER`, trigger execution, stored trigger definitions beyond the sys metadata placeholders, privileges, or SQLite trigger reflection |
 | `INFORMATION_SCHEMA.USER_ATTRIBUTES` | 🟡 | Limited synthetic user-attribute row for MyLite's embedded `root@%` identity with `ATTRIBUTE = NULL`, MySQL 8.4.9-shaped columns, and matching system metadata; no account storage, comments, arbitrary attributes, MySQL system-account rows, privilege filtering, or `mysql.user` table |
 | `INFORMATION_SCHEMA.USER_PRIVILEGES` | 🟡 | Limited synthetic global privilege rows for MyLite's embedded `root@%` identity with MySQL 8.4.9-shaped columns and matching system metadata; no account storage, roles, grants, revokes, privilege filtering, or enforcement |
 | `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` | 🟡 | Queryable empty synthetic view-to-stored-function dependency catalog with MySQL 8.4.9-shaped columns and matching system metadata; no stored routine descriptors, view-to-routine dependency analysis, native/loadable function rows, privilege filtering, or view execution |

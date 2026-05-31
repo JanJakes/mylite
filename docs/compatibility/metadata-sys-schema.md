@@ -16,9 +16,9 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 
 | Table | Status | Notes |
 | --- | --- | --- |
-| `sys.sys_config` | 🟡 | Limited read-only synthetic sys configuration table with the six MySQL 8.4.9 default rows, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS`, and `SHOW TABLE STATUS` metadata; no writable sys configuration, sys triggers, sys functions, sys procedures, sys views, Performance Schema-backed values, privilege filtering, or persisted sys table storage |
-| `sys.sys_config_insert_set_user` | ❌ | Trigger behavior and diagnostics |
-| `sys.sys_config_update_set_user` | ❌ | Trigger behavior and diagnostics |
+| `sys.sys_config` | 🟡 | Limited read-only synthetic sys configuration table with the six MySQL 8.4.9 default rows, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS`, and `SHOW TABLE STATUS` metadata; no writable sys configuration, sys trigger execution, sys functions, sys procedures, sys views, Performance Schema-backed values, privilege filtering, or persisted sys table storage |
+| `sys.sys_config_insert_set_user` | 🟡 | Metadata-only built-in trigger row exposed through `INFORMATION_SCHEMA.TRIGGERS` and `SHOW TRIGGERS`; no trigger execution, trigger DDL, writable `sys.sys_config` side effects, or persisted trigger descriptor |
+| `sys.sys_config_update_set_user` | 🟡 | Metadata-only built-in trigger row exposed through `INFORMATION_SCHEMA.TRIGGERS` and `SHOW TRIGGERS`; no trigger execution, trigger DDL, writable `sys.sys_config` side effects, or persisted trigger descriptor |
 | `sys.host_summary` | ❌ | View shape and diagnostics |
 | `sys.x$host_summary` | ❌ | View shape and diagnostics |
 | `sys.host_summary_by_file_io` | ❌ | View shape and diagnostics |

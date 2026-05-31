@@ -4,7 +4,7 @@ This slice adds a MySQL-shaped `sys.sys_config` baseline. MyLite exposes the
 table as a small read-only synthetic table with the default MySQL 8.4.9 sys
 configuration rows, column metadata, primary-key metadata, and table-status
 metadata. It does not implement persistent sys-schema configuration storage,
-sys functions, or sys triggers.
+sys functions, or sys trigger execution.
 
 ## Compatibility Authority
 
@@ -154,8 +154,8 @@ This slice intentionally does not implement:
 
 - persistent or writable `sys.sys_config` storage;
 - insert/update/delete semantics or trigger side effects;
-- `sys.sys_config_insert_set_user` and `sys.sys_config_update_set_user`
-  metadata in `INFORMATION_SCHEMA.TRIGGERS` or `SHOW TRIGGERS`;
+- trigger execution for `sys.sys_config_insert_set_user` and
+  `sys.sys_config_update_set_user`;
 - sys functions, procedures, views, or their `@sys.` session-variable fallback;
 - Performance Schema-backed metrics or diagnostics;
 - privilege filtering or account-specific sys table visibility.

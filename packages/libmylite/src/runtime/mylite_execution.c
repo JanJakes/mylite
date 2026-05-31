@@ -314,6 +314,7 @@ enum {
     date_day_text_length = 2,
     datetime_text_length = 19,
     datetime_date_text_length = 10,
+    timestamp_2_text_length = 22,
     datetime_date_time_separator_offset = 10,
     datetime_hour_text_offset = 11,
     datetime_hour_text_length = 2,
@@ -4164,6 +4165,11 @@ struct show_like_filter {
     bool has_pattern;
     char *pattern;
     size_t pattern_length;
+};
+
+struct sys_sys_config_trigger_definition {
+    const char *name;
+    const char *event;
 };
 
 enum show_variables_where_truth {
@@ -14016,6 +14022,22 @@ static const char *const sys_sys_config_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const char sys_sys_config_trigger_action_statement[] =
+    "BEGIN\n"
+    "    IF @sys.ignore_sys_config_triggers != true AND NEW.set_by IS NULL THEN\n"
+    "        SET NEW.set_by = USER();\n"
+    "    END IF;\n"
+    "END";
+
+static const char sys_sys_config_trigger_sql_mode[] =
+    "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+    "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
+
+static const struct sys_sys_config_trigger_definition sys_sys_config_triggers[] = {
+    {"sys_config_insert_set_user", "INSERT"},
+    {"sys_config_update_set_user", "UPDATE"},
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -20060,6 +20082,11 @@ static int mysql_system_current_timestamp(
     char *buffer,
     size_t buffer_size
 );
+static int mysql_system_current_timestamp2(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+);
 static bool selected_schema_is_mysql_system_schema(const struct mylite_db *database);
 static bool schema_name_is_mysql_system_schema(const char *schema_name);
 static int resolve_information_schema_query(
@@ -20084,6 +20111,10 @@ static int build_information_schema_rows(
 );
 static void information_schema_row_set_deinit(struct information_schema_row_set *rows);
 static int append_information_schema_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_triggers_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -21479,6 +21510,21 @@ static int execute_show_triggers_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int resolve_show_triggers_selected_schema(
+    struct mylite_db *database,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+static int resolve_show_triggers_schema_name(
+    struct mylite_db *database,
+    const char *schema_name,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+static int append_show_sys_sys_config_trigger_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct show_like_filter *filter
 );
 static int execute_show_events_statement(
     struct mylite_db *database,
@@ -56554,6 +56600,25 @@ static int mysql_system_current_timestamp(
     );
 }
 
+static int mysql_system_current_timestamp2(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+) {
+    char timestamp[datetime_text_length + 1U];
+    int rc = mysql_system_current_timestamp(database, timestamp, sizeof(timestamp));
+
+    if (rc == MYLITE_OK) {
+        int written = snprintf(buffer, buffer_size, "%s.00", timestamp);
+
+        if (written < 0 || (size_t)written >= buffer_size) {
+            set_runtime_error(database, "failed to format timestamp(2) metadata");
+            rc = MYLITE_ERROR;
+        }
+    }
+    return rc;
+}
+
 static int resolve_information_schema_query(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -56849,7 +56914,6 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
-    case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
@@ -56887,10 +56951,61 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
         return MYLITE_OK;
+    case INFORMATION_SCHEMA_TABLE_TRIGGERS:
+        return append_information_schema_triggers_system_rows(database, rows);
     }
 
     set_runtime_error(database, "invalid INFORMATION_SCHEMA table");
     return MYLITE_ERROR;
+}
+
+static int append_information_schema_triggers_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    char created[timestamp_2_text_length + 1U];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_triggers_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.TRIGGERS columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mysql_system_current_timestamp2(database, created, sizeof(created));
+    for (size_t trigger_index = 0U;
+         rc == MYLITE_OK &&
+         trigger_index < sizeof(sys_sys_config_triggers) / sizeof(sys_sys_config_triggers[0]);
+         ++trigger_index) {
+        const struct sys_sys_config_trigger_definition *trigger =
+            &sys_sys_config_triggers[trigger_index];
+        const char *values[information_schema_triggers_column_count] = {
+            "def",
+            "sys",
+            trigger->name,
+            trigger->event,
+            "def",
+            "sys",
+            "sys_config",
+            "1",
+            NULL,
+            sys_sys_config_trigger_action_statement,
+            "ROW",
+            "BEFORE",
+            NULL,
+            NULL,
+            "OLD",
+            "NEW",
+            created,
+            sys_sys_config_trigger_sql_mode,
+            "mysql.sys@localhost",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci",
+            "utf8mb4_0900_ai_ci",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
 }
 
 static int append_information_schema_catalog_rows(
@@ -68145,7 +68260,7 @@ static int execute_show_triggers_statement(
         like_node = first_child;
     }
     if (schema_node == NULL) {
-        rc = resolve_selected_schema(database, &schema);
+        rc = resolve_show_triggers_selected_schema(database, &schema);
     } else {
         char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 
@@ -68155,7 +68270,7 @@ static int execute_show_triggers_statement(
             rc = MYLITE_ERROR;
         }
         if (rc == MYLITE_OK) {
-            rc = resolve_schema_name(database, schema_name, &schema);
+            rc = resolve_show_triggers_schema_name(database, schema_name, &schema);
         }
     }
     if (rc == MYLITE_OK) {
@@ -68175,6 +68290,9 @@ static int execute_show_triggers_statement(
             set_nomem_error(database);
         }
     }
+    if (rc == MYLITE_OK) {
+        rc = append_show_sys_sys_config_trigger_rows(database, result, &schema, &filter);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         show_like_filter_deinit(&filter);
@@ -68183,6 +68301,107 @@ static int execute_show_triggers_statement(
 
     show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
+}
+
+static int resolve_show_triggers_selected_schema(
+    struct mylite_db *database,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    if (database == NULL || !database->session.has_selected_schema) {
+        set_no_database_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return resolve_show_triggers_schema_name(
+        database,
+        database->session.selected_schema,
+        out_schema
+    );
+}
+
+static int resolve_show_triggers_schema_name(
+    struct mylite_db *database,
+    const char *schema_name,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    const struct builtin_schema_descriptor *builtin_schema =
+        find_builtin_schema_descriptor(schema_name);
+
+    if (builtin_schema != NULL) {
+        int name_written = 0;
+        int charset_written = 0;
+        int collation_written = 0;
+
+        *out_schema = (struct mylite_catalog_schema_descriptor){0};
+        name_written =
+            snprintf(out_schema->name, sizeof(out_schema->name), "%s", builtin_schema->name);
+        charset_written = snprintf(
+            out_schema->default_charset,
+            sizeof(out_schema->default_charset),
+            "%s",
+            builtin_schema->default_charset
+        );
+        collation_written = snprintf(
+            out_schema->default_collation,
+            sizeof(out_schema->default_collation),
+            "%s",
+            builtin_schema->default_collation
+        );
+
+        if (name_written < 0 || (size_t)name_written >= sizeof(out_schema->name) ||
+            charset_written < 0 || (size_t)charset_written >= sizeof(out_schema->default_charset) ||
+            collation_written < 0 ||
+            (size_t)collation_written >= sizeof(out_schema->default_collation)) {
+            set_runtime_error(database, "failed to format builtin schema metadata");
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    return resolve_schema_name(database, schema_name, out_schema);
+}
+
+static int append_show_sys_sys_config_trigger_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct show_like_filter *filter
+) {
+    char created[timestamp_2_text_length + 1U];
+    int rc = MYLITE_OK;
+
+    if (schema == NULL || strcmp(schema->name, "sys") != 0 ||
+        !show_like_filter_matches(filter, "sys_config", false)) {
+        return MYLITE_OK;
+    }
+
+    rc = mysql_system_current_timestamp2(database, created, sizeof(created));
+    for (size_t trigger_index = 0U;
+         rc == MYLITE_OK &&
+         trigger_index < sizeof(sys_sys_config_triggers) / sizeof(sys_sys_config_triggers[0]);
+         ++trigger_index) {
+        const struct sys_sys_config_trigger_definition *trigger =
+            &sys_sys_config_triggers[trigger_index];
+        const char *values[show_triggers_result_column_count] = {
+            trigger->name,
+            trigger->event,
+            "sys_config",
+            sys_sys_config_trigger_action_statement,
+            "BEFORE",
+            created,
+            sys_sys_config_trigger_sql_mode,
+            "mysql.sys@localhost",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci",
+            "utf8mb4_0900_ai_ci",
+        };
+
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
 }
 
 static int execute_show_events_statement(

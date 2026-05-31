@@ -16,10 +16,10 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW CREATE EVENT` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE FUNCTION` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE PROCEDURE` | ❌ | Result shape, filters, privileges |
-| `SHOW CREATE TABLE` | 🟡 | Limited descriptor-driven MySQL-style DDL for persistent base tables, shadowing session temporary tables, and baseline metadata-only views; base and temporary tables render the current supported column/index/constraint/default/table-option subset, while view targets render MySQL-shaped `CREATE VIEW` metadata using stored view descriptors. Base-table support includes current integer-family, exact `DECIMAL`, approximate `FLOAT`/`DOUBLE`, canonical temporal, character, text, binary, `BIT`, `ENUM`, `SET`, spatial, generated-column, key, foreign-key, check, auto-increment, charset/collation, comment, storage/statistics, and fixed InnoDB suffix metadata described by the table DDL surface; unsupported index/default/type/table-option details remain omitted. View support is limited to baseline direct-projection view descriptors and does not imply view execution, updatable views, privileges, mutable quote-control state, or disabled rendering |
+| `SHOW CREATE TABLE` | 🟡 | Limited descriptor-driven MySQL-style DDL for persistent base tables, shadowing session temporary tables, baseline metadata-only views, and the built-in `sys.version` view; base and temporary tables render the current supported column/index/constraint/default/table-option subset, while view targets render MySQL-shaped `CREATE VIEW` metadata using stored view descriptors or the supported synthetic sys view definition. Base-table support includes current integer-family, exact `DECIMAL`, approximate `FLOAT`/`DOUBLE`, canonical temporal, character, text, binary, `BIT`, `ENUM`, `SET`, spatial, generated-column, key, foreign-key, check, auto-increment, charset/collation, comment, storage/statistics, and fixed InnoDB suffix metadata described by the table DDL surface; unsupported index/default/type/table-option details remain omitted. View support is limited to baseline direct-projection view descriptors and `sys.version`, and does not imply view execution, updatable views, privileges, mutable quote-control state, or disabled rendering |
 | `SHOW CREATE TRIGGER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
-| `SHOW CREATE VIEW` | 🟡 | Limited descriptor-driven output for baseline metadata-only views with MySQL-shaped columns `View`, `Create View`, `character_set_client`, and `collation_connection`; rejects base tables as not-view and does not support view options beyond fixed descriptor metadata, privilege filtering, mutable quote-control state, or executable/updatable views |
+| `SHOW CREATE VIEW` | 🟡 | Limited descriptor-driven output for baseline metadata-only views plus synthetic `sys.version` output, with MySQL-shaped columns `View`, `Create View`, `character_set_client`, and `collation_connection`; rejects base tables as not-view and does not support view options beyond fixed descriptor or supported sys metadata, privilege filtering, mutable quote-control state, or executable/updatable views |
 | `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited schema listing for synthetic built-in schemas `information_schema`, `mysql`, `performance_schema`, and `sys` plus descriptor-owned user schemas, with `LIKE 'pattern'` filters, MySQL-shaped column labels, and limited trailing `WHERE` predicates over the displayed `Database` column using string/`NULL` literals, `LIKE`, `REGEXP`/`RLIKE` over the baseline ASCII pattern subset, `IN`, comparisons, `IS NULL`, and boolean connectives; no NUL-producing pattern escapes, warning-producing numeric coercions, `ORDER BY`, `LIMIT`, or privileges |
 | `SHOW ENGINE` | 🟡 | Limited to `SHOW ENGINE InnoDB STATUS`, with non-`InnoDB` engine names rejected by MyLite's embedded InnoDB-only policy; no `MUTEX`, `LOGS`, Performance Schema engine status, alternate engines, filters, privileges, or live engine internals |
 | `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
@@ -61,9 +61,10 @@ their own slices document support.
 The `baseline-sys-version-view` slice extends the `SHOW COLUMNS` /
 `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX` / `SHOW INDEXES` /
 `SHOW KEYS`, and `SHOW TABLE STATUS` rows above with MySQL-shaped metadata for
-the supported synthetic `sys.version` view. `SHOW CREATE VIEW sys.version`
-remains unsupported until persisted or synthetic view-definition descriptors
-are added for sys schema views.
+the supported synthetic `sys.version` view. The
+`baseline-sys-version-view-definition` slice adds MySQL-shaped
+`SHOW CREATE VIEW` and `SHOW CREATE TABLE` rows for that synthetic view without
+adding persisted sys view descriptors or the broader sys view catalog.
 
 The `baseline-sys-sys-config-triggers` slice extends `SHOW TRIGGERS` and
 `SHOW FULL TRIGGERS` with metadata-only rows for the two built-in

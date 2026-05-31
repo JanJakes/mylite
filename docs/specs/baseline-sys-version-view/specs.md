@@ -76,11 +76,14 @@ and `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` return zero rows.
 This slice intentionally does not implement:
 
 - the full sys schema view catalog;
-- `SHOW CREATE VIEW sys.version`;
 - persisted view descriptors or a physical SQLite view;
 - privilege filtering, definer enforcement, or SQL SECURITY behavior;
 - mutable sys schema installation state;
 - broader sys helper functions that may depend on sys schema views.
+
+The follow-up `baseline-sys-version-view-definition` slice adds synthetic
+`INFORMATION_SCHEMA.VIEWS`, `SHOW CREATE VIEW`, and `SHOW CREATE TABLE`
+metadata for this view without adding persisted sys view descriptors.
 
 Writes to `sys.version` remain blocked by the built-in schema write guard.
 

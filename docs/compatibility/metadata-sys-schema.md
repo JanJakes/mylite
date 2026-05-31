@@ -110,7 +110,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$user_summary_by_statement_latency` | ❌ | View shape and diagnostics |
 | `sys.user_summary_by_statement_type` | ❌ | View shape and diagnostics |
 | `sys.x$user_summary_by_statement_type` | ❌ | View shape and diagnostics |
-| `sys.version` | 🟡 | Limited read-only synthetic version view returning `sys_version = '2.1.3'` and MyLite's MySQL-compatible server version, with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, empty index/constraint metadata, `INFORMATION_SCHEMA.TABLES`, and `SHOW TABLE STATUS`; no `SHOW CREATE VIEW`, persisted view descriptor, privilege/definer behavior, broader sys views, or sys helper functions |
+| `sys.version` | 🟡 | Limited read-only synthetic version view returning `sys_version = '2.1.3'` and MyLite's MySQL-compatible server version, with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, empty index/constraint/dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no persisted view descriptor, privilege/definer enforcement, broader sys views, or sys helper functions |
 | `sys.wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
 | `sys.x$wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
 | `sys.wait_classes_global_by_latency` | ❌ | View shape and diagnostics |

@@ -38,7 +38,9 @@ user-created trigger descriptors.
 The `baseline-sys-version-view` slice extends `INFORMATION_SCHEMA.COLUMNS`,
 `TABLES`, `STATISTICS`, `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, and
 `TABLE_CONSTRAINTS_EXTENSIONS` with MySQL-shaped metadata for the supported
-synthetic `sys.version` view. It does not add `SHOW CREATE VIEW` metadata,
+synthetic `sys.version` view. The `baseline-sys-version-view-definition` slice
+adds the matching `INFORMATION_SCHEMA.VIEWS` row and keeps sys view dependency
+metadata empty, matching the MySQL 8.4.9 target runtime. It does not add
 persisted view descriptors, privilege filtering, or the broader sys view
 catalog.
 
@@ -128,6 +130,6 @@ catalog.
 | `INFORMATION_SCHEMA.USER_PRIVILEGES` | 🟡 | Limited synthetic global privilege rows for MyLite's embedded `root@%` identity with MySQL 8.4.9-shaped columns and matching system metadata; no account storage, roles, grants, revokes, privilege filtering, or enforcement |
 | `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` | 🟡 | Queryable empty synthetic view-to-stored-function dependency catalog with MySQL 8.4.9-shaped columns and matching system metadata; no stored routine descriptors, view-to-routine dependency analysis, native/loadable function rows, privilege filtering, or view execution |
 | `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` | 🟡 | Queryable synthetic view-dependency catalog with MySQL 8.4.9-shaped columns and one source-table dependency row for each baseline direct single-base-table view; no dependencies on routines, joins, subqueries, privilege filtering, or view execution |
-| `INFORMATION_SCHEMA.VIEWS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, rows for baseline view descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; definitions, fixed definer/security/check metadata, charset/collation, and deliberately non-updatable status are stored by MyLite, but there is no privilege filtering, check-option enforcement, view execution, or complete MySQL system catalogs |
+| `INFORMATION_SCHEMA.VIEWS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, rows for baseline view descriptors and the supported built-in `sys.version` view, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; definitions, fixed definer/security/check metadata, charset/collation, and deliberately non-updatable status are stored or synthesized by MyLite, but there is no privilege filtering, check-option enforcement, view execution, or complete MySQL system catalogs |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

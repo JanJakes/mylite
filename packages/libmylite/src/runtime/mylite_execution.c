@@ -4072,6 +4072,8 @@ struct planned_show_create_table {
     struct loaded_check_constraint_info *check_constraints;
     size_t check_constraint_count;
     bool is_view;
+    bool is_builtin_sys_version_view;
+    bool target_was_schema_qualified;
 };
 
 struct planned_delete {
@@ -14082,6 +14084,19 @@ static const char *const sys_version_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const char sys_version_view_definition[] =
+    "select '2.1.3' AS `sys_version`,version() AS `mysql_version`";
+
+static const char sys_version_show_create_view_sql[] =
+    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
+    "`sys_version`,version() AS `mysql_version`";
+
+static const char sys_version_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
+    "`sys_version`,version() AS `mysql_version`";
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -20177,6 +20192,10 @@ static int append_information_schema_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_triggers_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_views_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -29638,6 +29657,34 @@ static int append_show_create_view_result(
     const char *view_name,
     const struct mylite_catalog_view_descriptor *view
 );
+static int execute_show_create_sys_version_view_statement(
+    struct mylite_db *database,
+    bool schema_qualified,
+    mylite_result **out_result
+);
+static int append_show_create_sys_version_view_result(
+    struct mylite_db *database,
+    mylite_result *result,
+    bool schema_qualified
+);
+static int append_show_create_view_text_result(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *view_name,
+    const char *show_create_sql,
+    const char *character_set_client,
+    const char *collation_connection
+);
+static bool show_create_target_is_builtin_sys_version_view(
+    const struct table_name_resolution *target
+);
+static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_node *statement);
+static int show_create_statement_targets_selected_builtin_sys_version_view(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+);
+static void populate_builtin_sys_version_view_target(struct table_name_resolution *target);
 static int build_show_create_table_sql(
     struct mylite_db *database,
     const struct planned_show_create_table *plan,
@@ -56955,6 +57002,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_key_column_usage_mysql_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
         return append_information_schema_statistics_mysql_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_VIEWS:
+        return append_information_schema_views_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_ADMINISTRABLE_ROLE_AUTHORIZATIONS:
     case INFORMATION_SCHEMA_TABLE_APPLICABLE_ROLES:
@@ -56997,7 +57046,6 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
-    case INFORMATION_SCHEMA_TABLE_VIEWS:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
@@ -57090,6 +57138,31 @@ static int append_information_schema_triggers_system_rows(
         rc = append_information_schema_row(database, rows, values);
     }
     return rc;
+}
+
+static int append_information_schema_views_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_views_column_count] = {
+        "def",
+        "sys",
+        "version",
+        sys_version_view_definition,
+        "NONE",
+        "NO",
+        "mysql.sys@localhost",
+        "INVOKER",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
+
+    if (rows->definition->column_count != information_schema_views_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.VIEWS columns");
+        return MYLITE_ERROR;
+    }
+
+    return append_information_schema_row(database, rows, values);
 }
 
 static int append_information_schema_catalog_rows(
@@ -70981,16 +71054,36 @@ static int execute_show_create_view_statement(
     struct mylite_catalog_view_descriptor view = {0};
     mylite_result *result = NULL;
     bool missing_schema = false;
-    int rc = resolve_table_name_allow_missing_schema(
+    bool selected_builtin_sys_version = false;
+    int rc = show_create_statement_targets_selected_builtin_sys_version_view(
         database,
-        child_at(statement, 0U),
-        &target,
-        &missing_schema
+        statement,
+        &selected_builtin_sys_version
     );
+
+    if (rc == MYLITE_OK && selected_builtin_sys_version) {
+        return execute_show_create_sys_version_view_statement(database, false, out_result);
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name_allow_missing_schema(
+            database,
+            child_at(statement, 0U),
+            &target,
+            &missing_schema
+        );
+    }
 
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target.table_name)) {
         set_reserved_name_error(database, "table", target.table_name);
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && show_create_target_is_builtin_sys_version_view(&target)) {
+        return execute_show_create_sys_version_view_statement(
+            database,
+            show_create_target_was_schema_qualified(statement),
+            out_result
+        );
     }
     if (rc == MYLITE_OK) {
         rc = resolve_persistent_metadata_table_reference(database, &target, missing_schema, &table);
@@ -71014,6 +71107,28 @@ static int execute_show_create_view_statement(
     if (rc == MYLITE_OK) {
         rc = append_show_create_view_result(database, result, table.name, &view);
     }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_create_sys_version_view_statement(
+    struct mylite_db *database,
+    bool schema_qualified,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = append_show_create_sys_version_view_result(database, result, schema_qualified);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -71341,18 +71456,40 @@ static int plan_show_create_table(
     struct planned_show_create_table *out_plan
 ) {
     bool missing_schema = false;
+    bool selected_builtin_sys_version = false;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_show_create_table){0};
-    rc = resolve_table_name_allow_missing_schema(
+    rc = show_create_statement_targets_selected_builtin_sys_version_view(
         database,
-        child_at(statement, 0U),
-        &out_plan->target,
-        &missing_schema
+        statement,
+        &selected_builtin_sys_version
     );
+    if (rc == MYLITE_OK && selected_builtin_sys_version) {
+        populate_builtin_sys_version_view_target(&out_plan->target);
+        out_plan->is_view = true;
+        out_plan->is_builtin_sys_version_view = true;
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name_allow_missing_schema(
+            database,
+            child_at(statement, 0U),
+            &out_plan->target,
+            &missing_schema
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->target_was_schema_qualified = show_create_target_was_schema_qualified(statement);
+    }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && show_create_target_is_builtin_sys_version_view(&out_plan->target)) {
+        out_plan->is_view = true;
+        out_plan->is_builtin_sys_version_view = true;
+        return MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
         rc = resolve_metadata_table_reference(
@@ -71449,6 +71586,13 @@ static int execute_show_create_table_from_plan(
     const char *values[show_create_table_result_column_count] = {NULL, NULL};
     int rc = MYLITE_OK;
 
+    if (plan->is_builtin_sys_version_view) {
+        return append_show_create_sys_version_view_result(
+            database,
+            result,
+            plan->target_was_schema_qualified
+        );
+    }
     if (plan->is_view) {
         return append_show_create_view_result(database, result, plan->table.name, &plan->view);
     }
@@ -71486,6 +71630,42 @@ static int append_show_create_view_result(
     const char *view_name,
     const struct mylite_catalog_view_descriptor *view
 ) {
+    return append_show_create_view_text_result(
+        database,
+        result,
+        view_name,
+        view->show_create_sql,
+        view->character_set_client,
+        view->collation_connection
+    );
+}
+
+static int append_show_create_sys_version_view_result(
+    struct mylite_db *database,
+    mylite_result *result,
+    bool schema_qualified
+) {
+    const char *show_create_sql = schema_qualified ? sys_version_show_create_qualified_view_sql
+                                                   : sys_version_show_create_view_sql;
+
+    return append_show_create_view_text_result(
+        database,
+        result,
+        "version",
+        show_create_sql,
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci"
+    );
+}
+
+static int append_show_create_view_text_result(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *view_name,
+    const char *show_create_sql,
+    const char *character_set_client,
+    const char *collation_connection
+) {
     static const char *const result_columns[show_create_view_result_column_count] = {
         "View",
         "Create View",
@@ -71494,9 +71674,9 @@ static int append_show_create_view_result(
     };
     const char *values[show_create_view_result_column_count] = {
         view_name,
-        view->show_create_sql,
-        view->character_set_client,
-        view->collation_connection,
+        show_create_sql,
+        character_set_client,
+        collation_connection,
     };
     int rc = MYLITE_OK;
 
@@ -71515,6 +71695,61 @@ static int append_show_create_view_result(
         }
     }
     return rc;
+}
+
+static bool show_create_target_is_builtin_sys_version_view(
+    const struct table_name_resolution *target
+) {
+    return target != NULL && strcmp(target->schema.name, "sys") == 0 &&
+           strcmp(target->table_name, "version") == 0;
+}
+
+static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *target = statement == NULL ? NULL : child_at(statement, 0U);
+
+    return target != NULL && target->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER;
+}
+
+static int show_create_statement_targets_selected_builtin_sys_version_view(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (database == NULL || !database->session.has_selected_schema ||
+        strcmp(database->session.selected_schema, "sys") != 0) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        statement == NULL ? NULL : child_at(statement, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    *out_matches = part_count == 1U && strcmp(parts[0], "version") == 0;
+    return MYLITE_OK;
+}
+
+static void populate_builtin_sys_version_view_target(struct table_name_resolution *target) {
+    if (target == NULL) {
+        return;
+    }
+
+    *target = (struct table_name_resolution){0};
+    memcpy(target->schema.name, "sys", sizeof("sys"));
+    memcpy(target->table_name, "version", sizeof("version"));
 }
 
 static int build_show_create_table_sql(

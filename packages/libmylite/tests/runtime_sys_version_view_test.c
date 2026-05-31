@@ -19,7 +19,9 @@ enum {
     show_index_column_count = 15,
     information_schema_columns_column_count = 18,
     information_schema_tables_column_count = 19,
+    information_schema_views_column_count = 10,
     show_table_status_column_count = 18,
+    show_create_view_column_count = 4,
     datetime_text_length = 19,
     datetime_year_month_separator = 4,
     datetime_month_day_separator = 7,
@@ -127,6 +129,19 @@ static const char *const information_schema_tables_columns[information_schema_ta
         "TABLE_COLLATION", "CHECKSUM",       "CREATE_OPTIONS", "TABLE_COMMENT",
 };
 
+static const char *const information_schema_views_columns[information_schema_views_column_count] = {
+    "TABLE_CATALOG",
+    "TABLE_SCHEMA",
+    "TABLE_NAME",
+    "VIEW_DEFINITION",
+    "CHECK_OPTION",
+    "IS_UPDATABLE",
+    "DEFINER",
+    "SECURITY_TYPE",
+    "CHARACTER_SET_CLIENT",
+    "COLLATION_CONNECTION",
+};
+
 static const char *const show_table_status_columns[show_table_status_column_count] = {
     "Name",
     "Engine",
@@ -146,6 +161,13 @@ static const char *const show_table_status_columns[show_table_status_column_coun
     "Checksum",
     "Create_options",
     "Comment",
+};
+
+static const char *const show_create_view_columns[show_create_view_column_count] = {
+    "View",
+    "Create View",
+    "character_set_client",
+    "collation_connection",
 };
 
 int main(void) {
@@ -256,6 +278,38 @@ static int test_sys_version_view(void) {
         NULL,
         "VIEW",
     };
+    static const char *const information_schema_views_values[] = {
+        "def",
+        "sys",
+        "version",
+        "select '2.1.3' AS `sys_version`,version() AS `mysql_version`",
+        "NONE",
+        "NO",
+        "mysql.sys@localhost",
+        "INVOKER",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
+    static const char show_create_view_unqualified_sql[] =
+        "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+        "`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
+        "`sys_version`,version() AS `mysql_version`";
+    static const char show_create_view_qualified_sql[] =
+        "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+        "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
+        "`sys_version`,version() AS `mysql_version`";
+    const char *const show_create_view_unqualified_values[] = {
+        "version",
+        show_create_view_unqualified_sql,
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
+    const char *const show_create_view_qualified_values[] = {
+        "version",
+        show_create_view_qualified_sql,
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
     static const char *const show_table_status_values[] = {
         "version",
         NULL,
@@ -326,6 +380,17 @@ static int test_sys_version_view(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SHOW CREATE VIEW version",
+            .column_names = show_create_view_columns,
+            .column_count = show_create_view_column_count,
+            .values = show_create_view_unqualified_values,
+            .row_count = 1U,
+            .context = "sys.version selected-schema show create view",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SHOW COLUMNS FROM sys.version",
             .column_names = show_columns_columns,
             .column_count = show_columns_column_count,
@@ -359,6 +424,28 @@ static int test_sys_version_view(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SHOW CREATE VIEW sys.version",
+            .column_names = show_create_view_columns,
+            .column_count = show_create_view_column_count,
+            .values = show_create_view_qualified_values,
+            .row_count = 1U,
+            .context = "sys.version show create view",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE sys.version",
+            .column_names = show_create_view_columns,
+            .column_count = show_create_view_column_count,
+            .values = show_create_view_qualified_values,
+            .row_count = 1U,
+            .context = "sys.version show create table",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT, IS_NULLABLE, "
                    "DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
                    "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, "
@@ -371,6 +458,20 @@ static int test_sys_version_view(void) {
             .values = information_schema_columns_values,
             .row_count = show_columns_row_count,
             .context = "sys.version information_schema.columns",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, VIEW_DEFINITION, "
+                   "CHECK_OPTION, IS_UPDATABLE, DEFINER, SECURITY_TYPE, "
+                   "CHARACTER_SET_CLIENT, COLLATION_CONNECTION FROM INFORMATION_SCHEMA.VIEWS "
+                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
+            .column_names = information_schema_views_columns,
+            .column_count = information_schema_views_column_count,
+            .values = information_schema_views_values,
+            .row_count = 1U,
+            .context = "sys.version information_schema.views",
         }
     );
     failures += expect_query(
@@ -430,6 +531,30 @@ static int test_sys_version_view(void) {
             .values = count_zero,
             .row_count = 1U,
             .context = "sys.version information_schema.table_constraints_extensions count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.VIEW_TABLE_USAGE "
+                   "WHERE VIEW_SCHEMA = 'sys' AND VIEW_NAME = 'version'",
+            .column_names = count_column,
+            .column_count = sizeof(count_column) / sizeof(count_column[0]),
+            .values = count_zero,
+            .row_count = 1U,
+            .context = "sys.version information_schema.view_table_usage count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE "
+                   "WHERE TABLE_SCHEMA = 'sys' AND TABLE_NAME = 'version'",
+            .column_names = count_column,
+            .column_count = sizeof(count_column) / sizeof(count_column[0]),
+            .values = count_zero,
+            .row_count = 1U,
+            .context = "sys.version information_schema.view_routine_usage count",
         }
     );
     failures += expect_query(

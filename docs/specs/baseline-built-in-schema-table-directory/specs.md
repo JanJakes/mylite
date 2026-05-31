@@ -273,9 +273,11 @@ of scope.
 
 The `baseline-sys-version-view` slice refines `sys.version` with a direct
 read-only synthetic version row plus MySQL-observed view status fields, column
-metadata, and empty index/constraint metadata while keeping `SHOW CREATE VIEW`,
-persisted view descriptors, privilege/definer behavior, broader sys views, and
-sys helper functions out of scope.
+metadata, and empty index/constraint metadata. The follow-up
+`baseline-sys-version-view-definition` slice adds synthetic
+`INFORMATION_SCHEMA.VIEWS`, `SHOW CREATE VIEW`, and `SHOW CREATE TABLE`
+metadata while keeping persisted view descriptors, privilege/definer
+enforcement, broader sys views, and sys helper functions out of scope.
 
 ### SHOW TABLES and SHOW FULL TABLES
 

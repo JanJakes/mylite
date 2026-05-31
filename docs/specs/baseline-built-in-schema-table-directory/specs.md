@@ -305,6 +305,16 @@ stored-routine inventory, event inventory, Performance Schema HASH index
 inventory, privilege/definer enforcement, and broader sys view execution out of
 scope.
 
+The `baseline-sys-schema-redundant-indexes-views` slice refines
+`sys.schema_redundant_indexes` and `sys.x$schema_flattened_keys` with direct
+read-only descriptor-backed redundant-index rows plus MySQL-observed view
+status fields, column metadata, view definition metadata, and dependency rows
+from `sys.schema_redundant_indexes` to `sys.x$schema_flattened_keys` and from
+`sys.x$schema_flattened_keys` to `INFORMATION_SCHEMA.STATISTICS`. It keeps
+physical sys views, temporary-table rows, built-in-schema rows,
+FULLTEXT/SPATIAL/functional indexes, privilege/definer enforcement, and
+broader sys view execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

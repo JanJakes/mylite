@@ -589,6 +589,9 @@ enum {
     sys_version_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
+    sys_schema_redundant_indexes_column_count = 10,
+    sys_x_schema_flattened_keys_column_count = 6,
+    sys_flattened_key_row_initial_capacity = 8,
     sys_schema_object_overview_column_count = 3,
     sys_schema_object_overview_initial_group_capacity = 8,
     mysql_slow_log_column_count = 12,
@@ -4569,6 +4572,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW = 114,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS = 115,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS = 116,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES = 117,
+    INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS = 118,
 };
 
 struct information_schema_column_definition {
@@ -4870,6 +4875,27 @@ struct sys_schema_index_statistics_context {
     struct information_schema_row_set *rows;
     bool formatted_latency;
     const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct sys_schema_redundant_indexes_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct sys_flattened_key_row {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool non_unique;
+    bool subpart_exists;
+    char *index_columns;
+};
+
+struct sys_flattened_key_row_set {
+    struct sys_flattened_key_row *rows;
+    size_t count;
+    size_t capacity;
 };
 
 struct information_schema_innodb_foreign_action_type_flags {
@@ -14579,6 +14605,237 @@ static const char *const sys_schema_index_statistics_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition sys_schema_redundant_indexes_columns[] = {
+    {"table_schema",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"table_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"redundant_index_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"redundant_index_columns",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "text"},
+    {"redundant_index_non_unique",
+     NULL,
+     "YES",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int"},
+    {"dominant_index_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"dominant_index_columns",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "text"},
+    {"dominant_index_non_unique",
+     NULL,
+     "YES",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int"},
+    {"subpart_exists", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"sql_drop_index",
+     NULL,
+     "YES",
+     "varchar",
+     "223",
+     "669",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(223)"},
+};
+
+static const struct information_schema_column_definition sys_x_schema_flattened_keys_columns[] = {
+    {"table_schema",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"table_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"index_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"non_unique", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"subpart_exists", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+    {"index_columns",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "text"},
+};
+
+static const char *const sys_schema_redundant_indexes_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_redundant_indexes_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_redundant_indexes_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const char *const sys_x_schema_flattened_keys_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_x_schema_flattened_keys_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_x_schema_flattened_keys_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition sys_schema_object_overview_columns[] = {
     {"db",
      "",
@@ -14775,6 +15032,91 @@ static const char sys_x_schema_index_statistics_show_create_qualified_view_sql[]
 #undef SYS_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION
 #undef SYS_X_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION
 
+#define SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS                                                  \
+    "(`table_schema`,`table_name`,`redundant_index_name`,`redundant_index_columns`,"               \
+    "`redundant_index_non_unique`,`dominant_index_name`,`dominant_index_columns`,"                 \
+    "`dominant_index_non_unique`,`subpart_exists`,`sql_drop_index`)"
+
+#define SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION                                               \
+    "select `sys`.`redundant_keys`.`table_schema` AS `table_schema`,"                              \
+    "`sys`.`redundant_keys`.`table_name` AS `table_name`,"                                         \
+    "`sys`.`redundant_keys`.`index_name` AS `redundant_index_name`,"                               \
+    "`sys`.`redundant_keys`.`index_columns` AS `redundant_index_columns`,"                         \
+    "`sys`.`redundant_keys`.`non_unique` AS `redundant_index_non_unique`,"                         \
+    "`sys`.`dominant_keys`.`index_name` AS `dominant_index_name`,"                                 \
+    "`sys`.`dominant_keys`.`index_columns` AS `dominant_index_columns`,"                           \
+    "`sys`.`dominant_keys`.`non_unique` AS `dominant_index_non_unique`,"                           \
+    "if(((0 <> `sys`.`redundant_keys`.`subpart_exists`) or (0 <> "                                 \
+    "`sys`.`dominant_keys`.`subpart_exists`)),1,0) AS `subpart_exists`,"                           \
+    "concat('ALTER TABLE `',`sys`.`redundant_keys`.`table_schema`,'`.`',"                          \
+    "`sys`.`redundant_keys`.`table_name`,'` DROP INDEX `',"                                        \
+    "`sys`.`redundant_keys`.`index_name`,'`') AS `sql_drop_index` from "                           \
+    "(`sys`.`x$schema_flattened_keys` `redundant_keys` join "                                      \
+    "`sys`.`x$schema_flattened_keys` `dominant_keys` on((("                                        \
+    "`sys`.`redundant_keys`.`table_schema` = `sys`.`dominant_keys`.`table_schema`) and ("          \
+    "`sys`.`redundant_keys`.`table_name` = `sys`.`dominant_keys`.`table_name`)))) where (("        \
+    "`sys`.`redundant_keys`.`index_name` <> `sys`.`dominant_keys`.`index_name`) and ((("           \
+    "`sys`.`redundant_keys`.`index_columns` = `sys`.`dominant_keys`.`index_columns`) and (("       \
+    "`sys`.`redundant_keys`.`non_unique` > `sys`.`dominant_keys`.`non_unique`) or (("              \
+    "`sys`.`redundant_keys`.`non_unique` = `sys`.`dominant_keys`.`non_unique`) and (if(("          \
+    "`sys`.`redundant_keys`.`index_name` = 'PRIMARY'),'',`sys`.`redundant_keys`.`index_name`) "    \
+    "> if((`sys`.`dominant_keys`.`index_name` = 'PRIMARY'),'',"                                    \
+    "`sys`.`dominant_keys`.`index_name`))))) or ((locate(concat("                                  \
+    "`sys`.`redundant_keys`.`index_columns`,','),`sys`.`dominant_keys`.`index_columns`) = 1) "     \
+    "and (`sys`.`redundant_keys`.`non_unique` = 1)) or ((locate(concat("                           \
+    "`sys`.`dominant_keys`.`index_columns`,','),`sys`.`redundant_keys`.`index_columns`) = 1) "     \
+    "and (`sys`.`dominant_keys`.`non_unique` = 0))))"
+
+#define SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS                                                   \
+    "(`table_schema`,`table_name`,`index_name`,`non_unique`,`subpart_exists`,`index_columns`)"
+
+#define SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION                                                \
+    "select `information_schema`.`STATISTICS`.`TABLE_SCHEMA` AS `TABLE_SCHEMA`,"                   \
+    "`information_schema`.`STATISTICS`.`TABLE_NAME` AS `TABLE_NAME`,"                              \
+    "`information_schema`.`STATISTICS`.`INDEX_NAME` AS `INDEX_NAME`,"                              \
+    "max(`information_schema`.`STATISTICS`.`NON_UNIQUE`) AS `non_unique`,max(if(("                 \
+    "`information_schema`.`STATISTICS`.`SUB_PART` is null),0,1)) AS `subpart_exists`,"             \
+    "group_concat(`information_schema`.`STATISTICS`.`COLUMN_NAME` order by "                       \
+    "`information_schema`.`STATISTICS`.`SEQ_IN_INDEX` ASC separator ',') AS `index_columns` "      \
+    "from `information_schema`.`STATISTICS` where (("                                              \
+    "`information_schema`.`STATISTICS`.`INDEX_TYPE` = 'BTREE') and ("                              \
+    "`information_schema`.`STATISTICS`.`TABLE_SCHEMA` not in ('mysql','sys',"                      \
+    "'INFORMATION_SCHEMA','PERFORMANCE_SCHEMA'))) group by "                                       \
+    "`information_schema`.`STATISTICS`.`TABLE_SCHEMA`,"                                            \
+    "`information_schema`.`STATISTICS`.`TABLE_NAME`,"                                              \
+    "`information_schema`.`STATISTICS`.`INDEX_NAME`"
+
+static const char sys_schema_redundant_indexes_view_definition[] =
+    SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION;
+
+static const char sys_schema_redundant_indexes_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_redundant_indexes` " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION;
+
+static const char sys_schema_redundant_indexes_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_redundant_indexes` " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION;
+
+static const char sys_x_schema_flattened_keys_view_definition[] =
+    SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION;
+
+static const char sys_x_schema_flattened_keys_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$schema_flattened_keys` " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION;
+
+static const char sys_x_schema_flattened_keys_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$schema_flattened_keys` " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS
+#undef SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION
+#undef SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS
+#undef SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION
+
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
 
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
@@ -14834,6 +15176,14 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_object_overview_view_definition,
      sys_schema_object_overview_show_create_view_sql,
      sys_schema_object_overview_show_create_qualified_view_sql},
+    {"schema_redundant_indexes",
+     sys_schema_redundant_indexes_view_definition,
+     sys_schema_redundant_indexes_show_create_view_sql,
+     sys_schema_redundant_indexes_show_create_qualified_view_sql},
+    {"x$schema_flattened_keys",
+     sys_x_schema_flattened_keys_view_definition,
+     sys_x_schema_flattened_keys_show_create_view_sql,
+     sys_x_schema_flattened_keys_show_create_qualified_view_sql},
     {"x$schema_index_statistics",
      sys_x_schema_index_statistics_view_definition,
      sys_x_schema_index_statistics_show_create_view_sql,
@@ -17666,6 +18016,34 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_object_overview_column_keys,
      sys_schema_object_overview_column_extras,
      sys_schema_object_overview_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES,
+      "schema_redundant_indexes",
+      sys_schema_redundant_indexes_columns,
+      sys_schema_redundant_indexes_column_count},
+     sys_schema_redundant_indexes_column_keys,
+     sys_schema_redundant_indexes_column_extras,
+     sys_schema_redundant_indexes_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS,
+      "x$schema_flattened_keys",
+      sys_x_schema_flattened_keys_columns,
+      sys_x_schema_flattened_keys_column_count},
+     sys_x_schema_flattened_keys_column_keys,
+     sys_x_schema_flattened_keys_column_extras,
+     sys_x_schema_flattened_keys_column_privileges,
      NULL,
      NULL,
      0U,
@@ -20781,6 +21159,16 @@ static int append_mysql_system_table_system_rows(
     const struct mysql_system_table_definition *definition,
     struct information_schema_row_set *rows
 );
+static int append_mysql_schema_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+);
+static int append_sys_schema_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+);
 static bool mysql_system_table_definition_has_no_rows(
     const struct mysql_system_table_definition *definition
 );
@@ -20869,6 +21257,77 @@ static int append_sys_schema_index_statistics_index_row(
     const char *schema_name,
     const char *table_name,
     const char *index_name
+);
+static int append_sys_schema_redundant_indexes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_x_schema_flattened_keys_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_schema_redundant_indexes_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_sys_x_schema_flattened_keys_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_sys_schema_redundant_indexes_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_sys_x_schema_flattened_keys_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int build_sys_flattened_key_rows(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    struct sys_flattened_key_row_set *out_rows
+);
+static int append_sys_x_schema_flattened_key_rows(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row_set *key_rows
+);
+static int append_sys_schema_redundant_index_rows(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row_set *key_rows
+);
+static int append_sys_x_schema_flattened_key_row(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row *key_row
+);
+static int append_sys_schema_redundant_index_row(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row *redundant,
+    const struct sys_flattened_key_row *dominant
+);
+static bool sys_schema_redundant_index_pair_matches(
+    const struct sys_flattened_key_row *redundant,
+    const struct sys_flattened_key_row *dominant
+);
+static bool sys_schema_redundant_columns_left_prefix(const char *left, const char *right);
+static int append_sys_flattened_key_row_from_index(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *index,
+    struct sys_flattened_key_row_set *rows
+);
+static bool sys_flattened_key_index_supported(const struct loaded_index_info *index);
+static int build_sys_flattened_key_index_columns(
+    const struct loaded_index_info *index,
+    char **out_columns
+);
+static int reserve_sys_flattened_key_rows(
+    struct sys_flattened_key_row_set *rows,
+    size_t required_capacity
+);
+static void sys_flattened_key_rows_deinit(struct sys_flattened_key_row_set *rows);
+static int build_sys_redundant_drop_index_sql(
+    const struct sys_flattened_key_row *redundant,
+    char **out_sql
 );
 static int append_sys_schema_object_overview_system_rows(
     struct mylite_db *database,
@@ -56509,48 +56968,69 @@ static int append_mysql_system_table_system_rows(
     if (mysql_system_table_definition_has_no_rows(definition)) {
         return MYLITE_OK;
     }
-    if (strcmp(definition->schema_name, "mysql") == 0 &&
-        strcmp(definition->query_definition.name, "engine_cost") == 0) {
+    if (strcmp(definition->schema_name, "mysql") == 0) {
+        return append_mysql_schema_system_table_rows(database, definition, rows);
+    }
+    if (strcmp(definition->schema_name, "sys") == 0) {
+        return append_sys_schema_system_table_rows(database, definition, rows);
+    }
+
+    set_runtime_error(database, "invalid mysql system table");
+    return MYLITE_ERROR;
+}
+
+static int append_mysql_schema_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+) {
+    if (strcmp(definition->query_definition.name, "engine_cost") == 0) {
         return append_mysql_engine_cost_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "mysql") == 0 &&
-        strcmp(definition->query_definition.name, "innodb_index_stats") == 0) {
+    if (strcmp(definition->query_definition.name, "innodb_index_stats") == 0) {
         return append_mysql_innodb_index_stats_builtin_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "mysql") == 0 &&
-        strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
+    if (strcmp(definition->query_definition.name, "innodb_table_stats") == 0) {
         return append_mysql_innodb_table_stats_builtin_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "mysql") == 0 &&
-        strcmp(definition->query_definition.name, "plugin") == 0) {
+    if (strcmp(definition->query_definition.name, "plugin") == 0) {
         return append_mysql_plugin_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "mysql") == 0 &&
-        strcmp(definition->query_definition.name, "server_cost") == 0) {
+    if (strcmp(definition->query_definition.name, "server_cost") == 0) {
         return append_mysql_server_cost_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "sys") == 0 &&
-        strcmp(definition->query_definition.name, "sys_config") == 0) {
+
+    set_runtime_error(database, "invalid mysql system table");
+    return MYLITE_ERROR;
+}
+
+static int append_sys_schema_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+) {
+    if (strcmp(definition->query_definition.name, "sys_config") == 0) {
         return append_sys_sys_config_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "sys") == 0 &&
-        strcmp(definition->query_definition.name, "version") == 0) {
+    if (strcmp(definition->query_definition.name, "version") == 0) {
         return append_sys_version_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "sys") == 0 &&
-        strcmp(definition->query_definition.name, "schema_auto_increment_columns") == 0) {
+    if (strcmp(definition->query_definition.name, "schema_auto_increment_columns") == 0) {
         return append_sys_schema_auto_increment_columns_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "sys") == 0 &&
-        strcmp(definition->query_definition.name, "schema_index_statistics") == 0) {
+    if (strcmp(definition->query_definition.name, "schema_index_statistics") == 0) {
         return append_sys_schema_index_statistics_system_rows(database, rows, true);
     }
-    if (strcmp(definition->schema_name, "sys") == 0 &&
-        strcmp(definition->query_definition.name, "schema_object_overview") == 0) {
+    if (strcmp(definition->query_definition.name, "schema_object_overview") == 0) {
         return append_sys_schema_object_overview_system_rows(database, rows);
     }
-    if (strcmp(definition->schema_name, "sys") == 0 &&
-        strcmp(definition->query_definition.name, "x$schema_index_statistics") == 0) {
+    if (strcmp(definition->query_definition.name, "schema_redundant_indexes") == 0) {
+        return append_sys_schema_redundant_indexes_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
+        return append_sys_x_schema_flattened_keys_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$schema_index_statistics") == 0) {
         return append_sys_schema_index_statistics_system_rows(database, rows, false);
     }
 
@@ -57280,6 +57760,474 @@ static int append_sys_schema_index_statistics_index_row(
     };
 
     return append_information_schema_row(context->database, context->rows, values);
+}
+
+static int append_sys_schema_redundant_indexes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct sys_schema_redundant_indexes_context context = {
+        .database = database,
+        .rows = rows,
+        .schema = NULL,
+    };
+
+    if (rows->definition->column_count != sys_schema_redundant_indexes_column_count) {
+        set_runtime_error(database, "invalid sys.schema_redundant_indexes columns");
+        return MYLITE_ERROR;
+    }
+
+    return mylite_catalog_for_each_schema(
+        database,
+        append_sys_schema_redundant_indexes_schema_rows,
+        &context
+    );
+}
+
+static int append_sys_x_schema_flattened_keys_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct sys_schema_redundant_indexes_context context = {
+        .database = database,
+        .rows = rows,
+        .schema = NULL,
+    };
+
+    if (rows->definition->column_count != sys_x_schema_flattened_keys_column_count) {
+        set_runtime_error(database, "invalid sys.x$schema_flattened_keys columns");
+        return MYLITE_ERROR;
+    }
+
+    return mylite_catalog_for_each_schema(
+        database,
+        append_sys_x_schema_flattened_keys_schema_rows,
+        &context
+    );
+}
+
+static int append_sys_schema_redundant_indexes_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct sys_schema_redundant_indexes_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (find_builtin_schema_table_directory(schema->name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_sys_schema_redundant_indexes_table_rows,
+        context
+    );
+}
+
+static int append_sys_x_schema_flattened_keys_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct sys_schema_redundant_indexes_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (find_builtin_schema_table_directory(schema->name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_sys_x_schema_flattened_keys_table_rows,
+        context
+    );
+}
+
+static int append_sys_schema_redundant_indexes_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct sys_schema_redundant_indexes_context *context = user_data;
+    struct sys_flattened_key_row_set key_rows = {0};
+    int rc = MYLITE_OK;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+
+    rc = build_sys_flattened_key_rows(context, table, &key_rows);
+    if (rc == MYLITE_OK) {
+        rc = append_sys_schema_redundant_index_rows(context, &key_rows);
+    }
+    sys_flattened_key_rows_deinit(&key_rows);
+    return rc;
+}
+
+static int append_sys_x_schema_flattened_keys_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct sys_schema_redundant_indexes_context *context = user_data;
+    struct sys_flattened_key_row_set key_rows = {0};
+    int rc = MYLITE_OK;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+
+    rc = build_sys_flattened_key_rows(context, table, &key_rows);
+    if (rc == MYLITE_OK) {
+        rc = append_sys_x_schema_flattened_key_rows(context, &key_rows);
+    }
+    sys_flattened_key_rows_deinit(&key_rows);
+    return rc;
+}
+
+static int build_sys_flattened_key_rows(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    struct sys_flattened_key_row_set *out_rows
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_rows = (struct sys_flattened_key_row_set){0};
+    rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            context->database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        if (sys_flattened_key_index_supported(&indexes[index])) {
+            rc = append_sys_flattened_key_row_from_index(context, table, &indexes[index], out_rows);
+        }
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int append_sys_x_schema_flattened_key_rows(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row_set *key_rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < key_rows->count; ++index) {
+        rc = append_sys_x_schema_flattened_key_row(context, &key_rows->rows[index]);
+    }
+    return rc;
+}
+
+static int append_sys_schema_redundant_index_rows(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row_set *key_rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t redundant_index = 0U; rc == MYLITE_OK && redundant_index < key_rows->count;
+         ++redundant_index) {
+        const struct sys_flattened_key_row *redundant = &key_rows->rows[redundant_index];
+
+        for (size_t dominant_index = 0U; rc == MYLITE_OK && dominant_index < key_rows->count;
+             ++dominant_index) {
+            const struct sys_flattened_key_row *dominant = &key_rows->rows[dominant_index];
+
+            if (sys_schema_redundant_index_pair_matches(redundant, dominant)) {
+                rc = append_sys_schema_redundant_index_row(context, redundant, dominant);
+            }
+        }
+    }
+    return rc;
+}
+
+static int append_sys_x_schema_flattened_key_row(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row *key_row
+) {
+    const char *non_unique = key_row->non_unique ? "1" : "0";
+    const char *subpart_exists = key_row->subpart_exists ? "1" : "0";
+    const char *values[sys_x_schema_flattened_keys_column_count] = {
+        key_row->schema_name,
+        key_row->table_name,
+        key_row->index_name,
+        non_unique,
+        subpart_exists,
+        key_row->index_columns,
+    };
+
+    return append_information_schema_row(context->database, context->rows, values);
+}
+
+static int append_sys_schema_redundant_index_row(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct sys_flattened_key_row *redundant,
+    const struct sys_flattened_key_row *dominant
+) {
+    char *drop_index_sql = NULL;
+    const char *redundant_non_unique = redundant->non_unique ? "1" : "0";
+    const char *dominant_non_unique = dominant->non_unique ? "1" : "0";
+    const char *subpart_exists = redundant->subpart_exists || dominant->subpart_exists ? "1" : "0";
+    int rc = build_sys_redundant_drop_index_sql(redundant, &drop_index_sql);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(context->database);
+        }
+        return rc;
+    }
+
+    const char *values[sys_schema_redundant_indexes_column_count] = {
+        redundant->schema_name,
+        redundant->table_name,
+        redundant->index_name,
+        redundant->index_columns,
+        redundant_non_unique,
+        dominant->index_name,
+        dominant->index_columns,
+        dominant_non_unique,
+        subpart_exists,
+        drop_index_sql,
+    };
+
+    rc = append_information_schema_row(context->database, context->rows, values);
+    free(drop_index_sql);
+    return rc;
+}
+
+static bool sys_schema_redundant_index_pair_matches(
+    const struct sys_flattened_key_row *redundant,
+    const struct sys_flattened_key_row *dominant
+) {
+    const char *redundant_sort_name = NULL;
+    const char *dominant_sort_name = NULL;
+
+    if (redundant == NULL || dominant == NULL ||
+        strcmp(redundant->index_name, dominant->index_name) == 0) {
+        return false;
+    }
+    if (strcmp(redundant->index_columns, dominant->index_columns) == 0) {
+        if (redundant->non_unique && !dominant->non_unique) {
+            return true;
+        }
+        redundant_sort_name =
+            strcmp(redundant->index_name, "PRIMARY") == 0 ? "" : redundant->index_name;
+        dominant_sort_name =
+            strcmp(dominant->index_name, "PRIMARY") == 0 ? "" : dominant->index_name;
+        if (redundant->non_unique == dominant->non_unique &&
+            strcmp(redundant_sort_name, dominant_sort_name) > 0) {
+            return true;
+        }
+    }
+    if (redundant->non_unique && sys_schema_redundant_columns_left_prefix(
+                                     redundant->index_columns,
+                                     dominant->index_columns
+                                 )) {
+        return true;
+    }
+    return !dominant->non_unique && sys_schema_redundant_columns_left_prefix(
+                                        dominant->index_columns,
+                                        redundant->index_columns
+                                    );
+}
+
+static bool sys_schema_redundant_columns_left_prefix(const char *left, const char *right) {
+    size_t left_length = 0U;
+
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+    left_length = strlen(left);
+    if (left_length == 0U || strncmp(left, right, left_length) != 0) {
+        return false;
+    }
+    return right[left_length] == ',';
+}
+
+static int append_sys_flattened_key_row_from_index(
+    struct sys_schema_redundant_indexes_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *index,
+    struct sys_flattened_key_row_set *rows
+) {
+    struct sys_flattened_key_row row = {0};
+    int written = snprintf(row.schema_name, sizeof(row.schema_name), "%s", context->schema->name);
+    int rc = MYLITE_OK;
+
+    if (written < 0 || (size_t)written >= sizeof(row.schema_name)) {
+        set_runtime_error(context->database, "invalid sys.x$schema_flattened_keys schema name");
+        return MYLITE_ERROR;
+    }
+    written = snprintf(row.table_name, sizeof(row.table_name), "%s", table->name);
+    if (written < 0 || (size_t)written >= sizeof(row.table_name)) {
+        set_runtime_error(context->database, "invalid sys.x$schema_flattened_keys table name");
+        return MYLITE_ERROR;
+    }
+    written = snprintf(row.index_name, sizeof(row.index_name), "%s", index->index.name);
+    if (written < 0 || (size_t)written >= sizeof(row.index_name)) {
+        set_runtime_error(context->database, "invalid sys.x$schema_flattened_keys index name");
+        return MYLITE_ERROR;
+    }
+
+    row.non_unique = !index->index.is_unique;
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        row.subpart_exists =
+            row.subpart_exists || index->parts[part_index].index_column.has_prefix_length;
+    }
+
+    rc = build_sys_flattened_key_index_columns(index, &row.index_columns);
+    if (rc == MYLITE_OK) {
+        rc = reserve_sys_flattened_key_rows(rows, rows->count + 1U);
+    }
+    if (rc != MYLITE_OK) {
+        free(row.index_columns);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(context->database);
+        }
+        return rc;
+    }
+
+    rows->rows[rows->count] = row;
+    ++rows->count;
+    return MYLITE_OK;
+}
+
+static bool sys_flattened_key_index_supported(const struct loaded_index_info *index) {
+    if (index == NULL || index->part_count == 0U) {
+        return false;
+    }
+    return index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY ||
+           index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+}
+
+static int build_sys_flattened_key_index_columns(
+    const struct loaded_index_info *index,
+    char **out_columns
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_columns = NULL;
+    dynamic_string_init(&string);
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append_char(&string, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, index->parts[part_index].column.name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_columns = dynamic_string_take(&string);
+        if (*out_columns == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int reserve_sys_flattened_key_rows(
+    struct sys_flattened_key_row_set *rows,
+    size_t required_capacity
+) {
+    struct sys_flattened_key_row *resized = NULL;
+    size_t capacity =
+        rows->capacity == 0U ? sys_flattened_key_row_initial_capacity : rows->capacity;
+
+    if (required_capacity <= rows->capacity) {
+        return MYLITE_OK;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(rows->rows[0])) {
+        return MYLITE_NOMEM;
+    }
+
+    resized = realloc(rows->rows, capacity * sizeof(rows->rows[0]));
+    if (resized == NULL) {
+        return MYLITE_NOMEM;
+    }
+    rows->rows = resized;
+    rows->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static void sys_flattened_key_rows_deinit(struct sys_flattened_key_row_set *rows) {
+    if (rows == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < rows->count; ++index) {
+        free(rows->rows[index].index_columns);
+    }
+    free(rows->rows);
+    *rows = (struct sys_flattened_key_row_set){0};
+}
+
+static int build_sys_redundant_drop_index_sql(
+    const struct sys_flattened_key_row *redundant,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+    rc = dynamic_string_append(&string, "ALTER TABLE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(&string, redundant->schema_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(&string, redundant->table_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " DROP INDEX ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(&string, redundant->index_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
 }
 
 static int append_sys_schema_object_overview_system_rows(
@@ -58874,6 +59822,8 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
@@ -58989,6 +59939,8 @@ static int append_information_schema_view_table_usage_system_rows(
         {"schema_object_overview", "information_schema", "STATISTICS"},
         {"schema_object_overview", "information_schema", "TABLES"},
         {"schema_object_overview", "information_schema", "TRIGGERS"},
+        {"schema_redundant_indexes", "sys", "x$schema_flattened_keys"},
+        {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
          "table_io_waits_summary_by_index_usage"},
@@ -59120,6 +60072,8 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_REDUNDANT_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:

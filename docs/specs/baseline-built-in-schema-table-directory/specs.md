@@ -305,6 +305,15 @@ objects, and a routine dependency row on `sys.format_path`. It keeps
 Performance Schema file-I/O wait collection, sys helper-function execution,
 privilege/definer enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-io-by-thread-by-latency-views` slice refines
+`sys.io_by_thread_by_latency` and `sys.x$io_by_thread_by_latency` with direct
+read-only empty placeholder rows plus MySQL-observed view status fields,
+column metadata, view definition metadata, dependencies on the referenced
+Performance Schema objects, and empty routine dependency metadata. It keeps
+Performance Schema wait-summary collection, live thread/file-I/O latency rows,
+sys helper-function execution, privilege/definer enforcement, and broader sys
+view execution out of scope.
+
 The `baseline-sys-io-global-by-file-by-bytes-views` slice refines
 `sys.io_global_by_file_by_bytes` and `sys.x$io_global_by_file_by_bytes` with
 direct read-only empty placeholder rows plus MySQL-observed view status fields,

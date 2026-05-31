@@ -279,6 +279,14 @@ metadata, and empty index/constraint metadata. The follow-up
 metadata while keeping persisted view descriptors, privilege/definer
 enforcement, broader sys views, and sys helper functions out of scope.
 
+The `baseline-sys-schema-auto-increment-columns-view` slice refines
+`sys.schema_auto_increment_columns` with direct read-only descriptor-backed
+rows plus MySQL-observed view status fields, column metadata, view definition
+metadata, and dependency rows on `INFORMATION_SCHEMA.COLUMNS` and
+`INFORMATION_SCHEMA.TABLES`. It keeps physical sys views, temporary-table rows,
+privilege/definer enforcement, exact InnoDB statistics-cache behavior for every
+empty-table edge case, and broader sys view execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

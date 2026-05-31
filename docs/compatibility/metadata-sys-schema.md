@@ -10,9 +10,10 @@ view names are exposed as metadata-only rows through
 unsupported unless listed otherwise below. The current exceptions are a
 limited read-only `sys.sys_config` synthetic table with MySQL-shaped default
 rows and metadata and a limited read-only `sys.version` synthetic view with the
-observed MySQL 8.4.9 version row and metadata. MyLite rejects schema, table,
-index, rename, truncate, and
-single-table DML writes targeting `sys` with
+observed MySQL 8.4.9 version row and metadata, plus a limited read-only
+`sys.schema_auto_increment_columns` synthetic view over MyLite user-table
+auto-increment descriptors. MyLite rejects schema, table, index, rename,
+truncate, and single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
 decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 
@@ -68,7 +69,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$ps_digest_avg_latency_distribution` | ❌ | Helper view shape and diagnostics |
 | `sys.x$ps_schema_table_statistics_io` | ❌ | Helper view shape and diagnostics |
 | `sys.ps_check_lost_instrumentation` | ❌ | View shape and diagnostics |
-| `sys.schema_auto_increment_columns` | ❌ | View shape and diagnostics |
+| `sys.schema_auto_increment_columns` | 🟡 | Limited read-only synthetic auto-increment inventory view returning one row per supported persistent user base-table `AUTO_INCREMENT` column, with MySQL-shaped signedness, maximum-value, next-value, and ratio fields, default MySQL view ordering, `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `COLUMNS` and `TABLES`, empty index/constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema-backed sys view execution, temporary-table rows, exact InnoDB stats-cache behavior for every empty-table edge case, privilege/definer enforcement, broader sys views, or sys helper functions |
 | `sys.schema_index_statistics` | ❌ | View shape and diagnostics |
 | `sys.x$schema_index_statistics` | ❌ | View shape and diagnostics |
 | `sys.schema_object_overview` | ❌ | View shape and diagnostics |

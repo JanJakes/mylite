@@ -587,6 +587,7 @@ enum {
     mysql_password_history_column_count = 4,
     sys_sys_config_column_count = 4,
     sys_version_column_count = 2,
+    sys_schema_auto_increment_columns_column_count = 10,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4059,6 +4060,13 @@ struct uint128_parts {
     uint64_t low;
 };
 
+struct builtin_sys_view_definition {
+    const char *name;
+    const char *view_definition;
+    const char *show_create_view_sql;
+    const char *show_create_qualified_view_sql;
+};
+
 struct planned_show_create_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -4071,8 +4079,8 @@ struct planned_show_create_table {
     size_t foreign_key_count;
     struct loaded_check_constraint_info *check_constraints;
     size_t check_constraint_count;
+    const struct builtin_sys_view_definition *builtin_sys_view;
     bool is_view;
-    bool is_builtin_sys_version_view;
     bool target_was_schema_qualified;
 };
 
@@ -4554,6 +4562,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY = 110,
     INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG = 111,
     INFORMATION_SCHEMA_TABLE_SYS_VERSION = 112,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS = 113,
 };
 
 struct information_schema_column_definition {
@@ -4826,6 +4835,12 @@ struct mysql_system_table_catalog_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
     const struct mysql_system_table_definition *definition;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct sys_schema_auto_increment_columns_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
@@ -14084,6 +14099,146 @@ static const char *const sys_version_column_privileges[] = {
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition sys_schema_auto_increment_columns[] = {
+    {"table_schema",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"table_name",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"column_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"data_type",
+     NULL,
+     "YES",
+     "longtext",
+     "4294967295",
+     "4294967295",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "longtext"},
+    {"column_type",
+     NULL,
+     "NO",
+     "mediumtext",
+     "16777215",
+     "16777215",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "mediumtext"},
+    {"is_signed", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"is_unsigned", "0", "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"max_value",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"auto_increment",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"auto_increment_ratio",
+     NULL,
+     "YES",
+     "decimal",
+     NULL,
+     NULL,
+     "25",
+     "4",
+     NULL,
+     NULL,
+     NULL,
+     "decimal(25,4) unsigned"},
+};
+
+static const char *const sys_schema_auto_increment_columns_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_auto_increment_columns_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_auto_increment_columns_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const char sys_version_view_definition[] =
     "select '2.1.3' AS `sys_version`,version() AS `mysql_version`";
 
@@ -14096,6 +14251,73 @@ static const char sys_version_show_create_qualified_view_sql[] =
     "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
     "`sys_version`,version() AS `mysql_version`";
+
+#define SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS                                             \
+    "(`table_schema`,`table_name`,`column_name`,`data_type`,`column_type`,`is_signed`,"            \
+    "`is_unsigned`,`max_value`,`auto_increment`,`auto_increment_ratio`)"
+
+#define SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION                                          \
+    "select `information_schema`.`COLUMNS`.`TABLE_SCHEMA` AS `TABLE_SCHEMA`,"                      \
+    "`information_schema`.`COLUMNS`.`TABLE_NAME` AS `TABLE_NAME`,"                                 \
+    "`information_schema`.`COLUMNS`.`COLUMN_NAME` AS `COLUMN_NAME`,"                               \
+    "`information_schema`.`COLUMNS`.`DATA_TYPE` AS `DATA_TYPE`,"                                   \
+    "`information_schema`.`COLUMNS`.`COLUMN_TYPE` AS `COLUMN_TYPE`,"                               \
+    "(locate('unsigned',`information_schema`.`COLUMNS`.`COLUMN_TYPE`) = 0) AS `is_signed`,"        \
+    "(locate('unsigned',`information_schema`.`COLUMNS`.`COLUMN_TYPE`) > 0) AS `is_unsigned`,"      \
+    "((case `information_schema`.`COLUMNS`.`DATA_TYPE` when 'tinyint' then 255 when "              \
+    "'smallint' then 65535 when 'mediumint' then 16777215 when 'int' then 4294967295 when "        \
+    "'bigint' then 18446744073709551615 end) >> if((locate('unsigned',"                            \
+    "`information_schema`.`COLUMNS`.`COLUMN_TYPE`) > 0),0,1)) AS `max_value`,"                     \
+    "`information_schema`.`TABLES`.`AUTO_INCREMENT` AS `AUTO_INCREMENT`,"                          \
+    "(`information_schema`.`TABLES`.`AUTO_INCREMENT` / ((case "                                    \
+    "`information_schema`.`COLUMNS`.`DATA_TYPE` when 'tinyint' then 255 when 'smallint' then "     \
+    "65535 when 'mediumint' then 16777215 when 'int' then 4294967295 when 'bigint' then "          \
+    "18446744073709551615 end) >> if((locate('unsigned',"                                          \
+    "`information_schema`.`COLUMNS`.`COLUMN_TYPE`) > 0),0,1))) AS `auto_increment_ratio` "         \
+    "from (`information_schema`.`COLUMNS` join `information_schema`.`TABLES` on((("                \
+    "`information_schema`.`COLUMNS`.`TABLE_SCHEMA` = "                                             \
+    "`information_schema`.`TABLES`.`TABLE_SCHEMA`) and "                                           \
+    "(`information_schema`.`COLUMNS`.`TABLE_NAME` = "                                              \
+    "`information_schema`.`TABLES`.`TABLE_NAME`)))) where (("                                      \
+    "`information_schema`.`COLUMNS`.`TABLE_SCHEMA` not in ('mysql','sys','INFORMATION_SCHEMA',"    \
+    "'performance_schema')) and (`information_schema`.`TABLES`.`TABLE_TYPE` = 'BASE TABLE') "      \
+    "and (`information_schema`.`COLUMNS`.`EXTRA` = 'auto_increment')) order by "                   \
+    "(`information_schema`.`TABLES`.`AUTO_INCREMENT` / ((case "                                    \
+    "`information_schema`.`COLUMNS`.`DATA_TYPE` when 'tinyint' then 255 when 'smallint' then "     \
+    "65535 when 'mediumint' then 16777215 when 'int' then 4294967295 when 'bigint' then "          \
+    "18446744073709551615 end) >> if((locate('unsigned',"                                          \
+    "`information_schema`.`COLUMNS`.`COLUMN_TYPE`) > 0),0,1))) desc,((case "                       \
+    "`information_schema`.`COLUMNS`.`DATA_TYPE` when 'tinyint' then 255 when 'smallint' then "     \
+    "65535 when 'mediumint' then 16777215 when 'int' then 4294967295 when 'bigint' then "          \
+    "18446744073709551615 end) >> if((locate('unsigned',"                                          \
+    "`information_schema`.`COLUMNS`.`COLUMN_TYPE`) > 0),0,1))"
+
+static const char sys_schema_auto_increment_columns_view_definition[] =
+    SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION;
+
+static const char sys_schema_auto_increment_columns_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_auto_increment_columns` " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION;
+
+static const char sys_schema_auto_increment_columns_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_auto_increment_columns` " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
+#undef SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION
+
+static const struct builtin_sys_view_definition builtin_sys_view_definitions[] = {
+    {"version",
+     sys_version_view_definition,
+     sys_version_show_create_view_sql,
+     sys_version_show_create_qualified_view_sql},
+    {"schema_auto_increment_columns",
+     sys_schema_auto_increment_columns_view_definition,
+     sys_schema_auto_increment_columns_show_create_view_sql,
+     sys_schema_auto_increment_columns_show_create_qualified_view_sql},
+};
 
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
@@ -16881,6 +17103,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_version_column_keys,
      sys_version_column_extras,
      sys_version_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS,
+      "schema_auto_increment_columns",
+      sys_schema_auto_increment_columns,
+      sys_schema_auto_increment_columns_column_count},
+     sys_schema_auto_increment_columns_column_keys,
+     sys_schema_auto_increment_columns_column_extras,
+     sys_schema_auto_increment_columns_column_privileges,
      NULL,
      NULL,
      0U,
@@ -20008,6 +20244,40 @@ static int append_sys_version_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_sys_schema_auto_increment_columns_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_schema_auto_increment_columns_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_sys_schema_auto_increment_columns_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_sys_schema_auto_increment_columns_column_row(
+    struct sys_schema_auto_increment_columns_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool sys_schema_auto_increment_columns_max_value(
+    const char *data_type,
+    bool is_unsigned,
+    uint64_t *out_value
+);
+static int format_sys_schema_auto_increment_columns_ratio(
+    struct mylite_db *database,
+    int64_t auto_increment,
+    uint64_t max_value,
+    char *buffer,
+    size_t buffer_size
+);
+static void sort_sys_schema_auto_increment_columns_default_order(
+    struct information_schema_row_set *rows
+);
+static int compare_sys_schema_auto_increment_columns_rows(char *const *left, char *const *right);
+static int compare_optional_text(const char *left, const char *right);
 static int append_mysql_innodb_index_stats_builtin_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -20196,6 +20466,10 @@ static int append_information_schema_triggers_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_views_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_view_table_usage_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -29657,14 +29931,16 @@ static int append_show_create_view_result(
     const char *view_name,
     const struct mylite_catalog_view_descriptor *view
 );
-static int execute_show_create_sys_version_view_statement(
+static int execute_show_create_builtin_sys_view_statement(
     struct mylite_db *database,
+    const struct builtin_sys_view_definition *view,
     bool schema_qualified,
     mylite_result **out_result
 );
-static int append_show_create_sys_version_view_result(
+static int append_show_create_builtin_sys_view_result(
     struct mylite_db *database,
     mylite_result *result,
+    const struct builtin_sys_view_definition *view,
     bool schema_qualified
 );
 static int append_show_create_view_text_result(
@@ -29675,16 +29951,22 @@ static int append_show_create_view_text_result(
     const char *character_set_client,
     const char *collation_connection
 );
-static bool show_create_target_is_builtin_sys_version_view(
+static const struct builtin_sys_view_definition *find_builtin_sys_view_definition(
+    const char *view_name
+);
+static const struct builtin_sys_view_definition *show_create_target_builtin_sys_view(
     const struct table_name_resolution *target
 );
 static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_node *statement);
-static int show_create_statement_targets_selected_builtin_sys_version_view(
+static int show_create_statement_targets_selected_builtin_sys_view(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    bool *out_matches
+    const struct builtin_sys_view_definition **out_view
 );
-static void populate_builtin_sys_version_view_target(struct table_name_resolution *target);
+static void populate_builtin_sys_view_target(
+    struct table_name_resolution *target,
+    const struct builtin_sys_view_definition *view
+);
 static int build_show_create_table_sql(
     struct mylite_db *database,
     const struct planned_show_create_table *plan,
@@ -55618,6 +55900,10 @@ static int append_mysql_system_table_system_rows(
         strcmp(definition->query_definition.name, "version") == 0) {
         return append_sys_version_system_rows(database, rows);
     }
+    if (strcmp(definition->schema_name, "sys") == 0 &&
+        strcmp(definition->query_definition.name, "schema_auto_increment_columns") == 0) {
+        return append_sys_schema_auto_increment_columns_system_rows(database, rows);
+    }
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
@@ -55833,6 +56119,340 @@ static int append_sys_version_system_rows(
     }
 
     return append_information_schema_row(database, rows, values);
+}
+
+enum sys_schema_auto_increment_columns_column_index {
+    sys_schema_auto_increment_columns_table_schema_column = 0,
+    sys_schema_auto_increment_columns_table_name_column = 1,
+    sys_schema_auto_increment_columns_column_name_column = 2,
+    sys_schema_auto_increment_columns_max_value_column = 7,
+    sys_schema_auto_increment_columns_auto_increment_ratio_column = 9,
+};
+
+static int append_sys_schema_auto_increment_columns_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct sys_schema_auto_increment_columns_context context = {
+        .database = database,
+        .rows = rows,
+        .schema = NULL,
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != sys_schema_auto_increment_columns_column_count) {
+        set_runtime_error(database, "invalid sys.schema_auto_increment_columns columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_for_each_schema(
+        database,
+        append_sys_schema_auto_increment_columns_schema_rows,
+        &context
+    );
+    if (rc == MYLITE_OK) {
+        sort_sys_schema_auto_increment_columns_default_order(rows);
+    }
+    return rc;
+}
+
+static int append_sys_schema_auto_increment_columns_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct sys_schema_auto_increment_columns_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strcmp(schema->name, "mysql") == 0 || strcmp(schema->name, "sys") == 0 ||
+        strcmp(schema->name, "performance_schema") == 0 ||
+        schema_name_is_information_schema(schema->name)) {
+        return MYLITE_OK;
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_sys_schema_auto_increment_columns_table_rows,
+        context
+    );
+}
+
+static int append_sys_schema_auto_increment_columns_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct sys_schema_auto_increment_columns_context *context = user_data;
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+
+    rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        if (!columns[column_index].is_auto_increment) {
+            continue;
+        }
+        rc = append_sys_schema_auto_increment_columns_column_row(
+            context,
+            table,
+            &columns[column_index]
+        );
+    }
+    free(columns);
+    if (rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(context->database)) == MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(context->database);
+        } else {
+            set_runtime_error(
+                context->database,
+                "failed to build sys.schema_auto_increment_columns rows"
+            );
+        }
+    }
+    return rc;
+}
+
+static int append_sys_schema_auto_increment_columns_column_row(
+    struct sys_schema_auto_increment_columns_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    char column_type_text[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
+    char max_value_text[integer_text_capacity];
+    char auto_increment_text[integer_text_capacity];
+    char ratio_text[integer_text_capacity];
+    const char *column_type = NULL;
+    const char *max_value_cell = NULL;
+    const char *auto_increment_cell = NULL;
+    const char *auto_increment_ratio_cell = NULL;
+    const char *data_type = information_schema_data_type_for_descriptor(column);
+    bool is_unsigned =
+        information_schema_innodb_column_logical_type_is_unsigned(column->logical_type);
+    uint64_t max_value = 0U;
+    int64_t row_count = 0;
+    int rc = show_column_type_text(
+        context->database,
+        column->logical_type,
+        column_type_text,
+        sizeof(column_type_text),
+        &column_type
+    );
+
+    if (rc == MYLITE_OK &&
+        sys_schema_auto_increment_columns_max_value(data_type, is_unsigned, &max_value)) {
+        rc = format_uint64(context->database, max_value, max_value_text, sizeof(max_value_text));
+        if (rc == MYLITE_OK) {
+            max_value_cell = max_value_text;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = read_show_table_status_row_count(context->database, table, &row_count);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(context->database);
+        } else if (rc != MYLITE_OK) {
+            set_runtime_error(
+                context->database,
+                "failed to read sys.schema_auto_increment_columns row count"
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && max_value_cell != NULL &&
+        !(row_count == 0 && table->auto_increment_next <= 1)) {
+        rc = information_schema_format_i64(
+            context->database,
+            table->auto_increment_next,
+            auto_increment_text,
+            sizeof(auto_increment_text)
+        );
+        if (rc == MYLITE_OK) {
+            auto_increment_cell = auto_increment_text;
+            rc = format_sys_schema_auto_increment_columns_ratio(
+                context->database,
+                table->auto_increment_next,
+                max_value,
+                ratio_text,
+                sizeof(ratio_text)
+            );
+        }
+        if (rc == MYLITE_OK) {
+            auto_increment_ratio_cell = ratio_text;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        const char *values[sys_schema_auto_increment_columns_column_count] = {
+            context->schema->name,
+            table->name,
+            column->name,
+            data_type,
+            column_type,
+            is_unsigned ? "0" : "1",
+            is_unsigned ? "1" : "0",
+            max_value_cell,
+            auto_increment_cell,
+            auto_increment_ratio_cell,
+        };
+
+        rc = append_information_schema_row(context->database, context->rows, values);
+    }
+    return rc;
+}
+
+static bool sys_schema_auto_increment_columns_max_value(
+    const char *data_type,
+    bool is_unsigned,
+    uint64_t *out_value
+) {
+    uint64_t value = 0U;
+
+    if (out_value == NULL) {
+        return false;
+    }
+    *out_value = 0U;
+    if (data_type == NULL) {
+        return false;
+    }
+    if (strcmp(data_type, "tinyint") == 0) {
+        value = UINT64_C(255);
+    } else if (strcmp(data_type, "smallint") == 0) {
+        value = UINT64_C(65535);
+    } else if (strcmp(data_type, "mediumint") == 0) {
+        value = UINT64_C(16777215);
+    } else if (strcmp(data_type, "int") == 0) {
+        value = UINT64_C(4294967295);
+    } else if (strcmp(data_type, "bigint") == 0) {
+        value = UINT64_MAX;
+    } else {
+        return false;
+    }
+
+    *out_value = is_unsigned ? value : value >> 1U;
+    return true;
+}
+
+static int format_sys_schema_auto_increment_columns_ratio(
+    struct mylite_db *database,
+    int64_t auto_increment,
+    uint64_t max_value,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = 0;
+
+    if (auto_increment < 0 || max_value == 0U) {
+        set_runtime_error(database, "invalid sys.schema_auto_increment_columns ratio");
+        return MYLITE_ERROR;
+    }
+
+    written =
+        snprintf(buffer, buffer_size, "%.4f", (double)(uint64_t)auto_increment / (double)max_value);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format sys.schema_auto_increment_columns ratio");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static void sort_sys_schema_auto_increment_columns_default_order(
+    struct information_schema_row_set *rows
+) {
+    if (rows == NULL || rows->row_count < 2U) {
+        return;
+    }
+
+    for (size_t index = 1U; index < rows->row_count; ++index) {
+        char **row = rows->rows[index];
+        size_t insert = index;
+
+        while (insert > 0U &&
+               compare_sys_schema_auto_increment_columns_rows(row, rows->rows[insert - 1U]) < 0) {
+            rows->rows[insert] = rows->rows[insert - 1U];
+            --insert;
+        }
+        rows->rows[insert] = row;
+    }
+}
+
+static int compare_sys_schema_auto_increment_columns_rows(char *const *left, char *const *right) {
+    const char *left_ratio = left[sys_schema_auto_increment_columns_auto_increment_ratio_column];
+    const char *right_ratio = right[sys_schema_auto_increment_columns_auto_increment_ratio_column];
+    int text_compare = 0;
+
+    if (left_ratio == NULL && right_ratio != NULL) {
+        return 1;
+    }
+    if (left_ratio != NULL && right_ratio == NULL) {
+        return -1;
+    }
+    if (left_ratio != NULL && right_ratio != NULL) {
+        double left_value = strtod(left_ratio, NULL);
+        double right_value = strtod(right_ratio, NULL);
+
+        if (left_value > right_value) {
+            return -1;
+        }
+        if (left_value < right_value) {
+            return 1;
+        }
+    }
+
+    if (left[sys_schema_auto_increment_columns_max_value_column] != NULL &&
+        right[sys_schema_auto_increment_columns_max_value_column] != NULL) {
+        uint64_t left_max =
+            strtoull(left[sys_schema_auto_increment_columns_max_value_column], NULL, decimal_base);
+        uint64_t right_max =
+            strtoull(right[sys_schema_auto_increment_columns_max_value_column], NULL, decimal_base);
+
+        if (left_max < right_max) {
+            return -1;
+        }
+        if (left_max > right_max) {
+            return 1;
+        }
+    }
+
+    text_compare = compare_optional_text(
+        left[sys_schema_auto_increment_columns_table_schema_column],
+        right[sys_schema_auto_increment_columns_table_schema_column]
+    );
+    if (text_compare != 0) {
+        return text_compare;
+    }
+    text_compare = compare_optional_text(
+        left[sys_schema_auto_increment_columns_table_name_column],
+        right[sys_schema_auto_increment_columns_table_name_column]
+    );
+    if (text_compare != 0) {
+        return text_compare;
+    }
+    return compare_optional_text(
+        left[sys_schema_auto_increment_columns_column_name_column],
+        right[sys_schema_auto_increment_columns_column_name_column]
+    );
+}
+
+static int compare_optional_text(const char *left, const char *right) {
+    if (left == NULL && right == NULL) {
+        return 0;
+    }
+    if (left == NULL) {
+        return 1;
+    }
+    if (right == NULL) {
+        return -1;
+    }
+    return strcmp(left, right);
 }
 
 static const char *mysql_system_table_column_comment(
@@ -57004,6 +57624,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_statistics_mysql_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_VIEWS:
         return append_information_schema_views_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
+        return append_information_schema_view_table_usage_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_ADMINISTRABLE_ROLE_AUTHORIZATIONS:
     case INFORMATION_SCHEMA_TABLE_APPLICABLE_ROLES:
@@ -57047,7 +57669,6 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
-    case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
     case INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES:
     case INFORMATION_SCHEMA_TABLE_MYSQL_DB:
@@ -57082,6 +57703,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
         return append_information_schema_triggers_system_rows(database, rows);
@@ -57144,25 +57766,67 @@ static int append_information_schema_views_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
-    const char *values[information_schema_views_column_count] = {
-        "def",
-        "sys",
-        "version",
-        sys_version_view_definition,
-        "NONE",
-        "NO",
-        "mysql.sys@localhost",
-        "INVOKER",
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-    };
+    int rc = MYLITE_OK;
 
     if (rows->definition->column_count != information_schema_views_column_count) {
         set_runtime_error(database, "invalid INFORMATION_SCHEMA.VIEWS columns");
         return MYLITE_ERROR;
     }
 
-    return append_information_schema_row(database, rows, values);
+    for (size_t view_index = 0U;
+         rc == MYLITE_OK && view_index < sizeof(builtin_sys_view_definitions) /
+                                             sizeof(builtin_sys_view_definitions[0]);
+         ++view_index) {
+        const struct builtin_sys_view_definition *view = &builtin_sys_view_definitions[view_index];
+        const char *values[information_schema_views_column_count] = {
+            "def",
+            "sys",
+            view->name,
+            view->view_definition,
+            "NONE",
+            "NO",
+            "mysql.sys@localhost",
+            "INVOKER",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_information_schema_view_table_usage_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    static const char *const dependency_table_names[] = {
+        "COLUMNS",
+        "TABLES",
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != information_schema_view_table_usage_column_count) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA.VIEW_TABLE_USAGE columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t dependency_index = 0U;
+         rc == MYLITE_OK &&
+         dependency_index < sizeof(dependency_table_names) / sizeof(dependency_table_names[0]);
+         ++dependency_index) {
+        const char *values[information_schema_view_table_usage_column_count] = {
+            "def",
+            "sys",
+            "schema_auto_increment_columns",
+            "def",
+            "information_schema",
+            dependency_table_names[dependency_index],
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
 }
 
 static int append_information_schema_catalog_rows(
@@ -57264,6 +57928,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:
@@ -71054,15 +71719,21 @@ static int execute_show_create_view_statement(
     struct mylite_catalog_view_descriptor view = {0};
     mylite_result *result = NULL;
     bool missing_schema = false;
-    bool selected_builtin_sys_version = false;
-    int rc = show_create_statement_targets_selected_builtin_sys_version_view(
+    const struct builtin_sys_view_definition *selected_builtin_sys_view = NULL;
+    const struct builtin_sys_view_definition *builtin_sys_view = NULL;
+    int rc = show_create_statement_targets_selected_builtin_sys_view(
         database,
         statement,
-        &selected_builtin_sys_version
+        &selected_builtin_sys_view
     );
 
-    if (rc == MYLITE_OK && selected_builtin_sys_version) {
-        return execute_show_create_sys_version_view_statement(database, false, out_result);
+    if (rc == MYLITE_OK && selected_builtin_sys_view != NULL) {
+        return execute_show_create_builtin_sys_view_statement(
+            database,
+            selected_builtin_sys_view,
+            false,
+            out_result
+        );
     }
 
     if (rc == MYLITE_OK) {
@@ -71078,9 +71749,13 @@ static int execute_show_create_view_statement(
         set_reserved_name_error(database, "table", target.table_name);
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && show_create_target_is_builtin_sys_version_view(&target)) {
-        return execute_show_create_sys_version_view_statement(
+    if (rc == MYLITE_OK) {
+        builtin_sys_view = show_create_target_builtin_sys_view(&target);
+    }
+    if (rc == MYLITE_OK && builtin_sys_view != NULL) {
+        return execute_show_create_builtin_sys_view_statement(
             database,
+            builtin_sys_view,
             show_create_target_was_schema_qualified(statement),
             out_result
         );
@@ -71115,8 +71790,9 @@ static int execute_show_create_view_statement(
     return finish_successful_result(database, result, out_result);
 }
 
-static int execute_show_create_sys_version_view_statement(
+static int execute_show_create_builtin_sys_view_statement(
     struct mylite_db *database,
+    const struct builtin_sys_view_definition *view,
     bool schema_qualified,
     mylite_result **out_result
 ) {
@@ -71128,7 +71804,7 @@ static int execute_show_create_sys_version_view_statement(
         return rc;
     }
 
-    rc = append_show_create_sys_version_view_result(database, result, schema_qualified);
+    rc = append_show_create_builtin_sys_view_result(database, result, view, schema_qualified);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -71456,19 +72132,20 @@ static int plan_show_create_table(
     struct planned_show_create_table *out_plan
 ) {
     bool missing_schema = false;
-    bool selected_builtin_sys_version = false;
+    const struct builtin_sys_view_definition *selected_builtin_sys_view = NULL;
+    const struct builtin_sys_view_definition *builtin_sys_view = NULL;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_show_create_table){0};
-    rc = show_create_statement_targets_selected_builtin_sys_version_view(
+    rc = show_create_statement_targets_selected_builtin_sys_view(
         database,
         statement,
-        &selected_builtin_sys_version
+        &selected_builtin_sys_view
     );
-    if (rc == MYLITE_OK && selected_builtin_sys_version) {
-        populate_builtin_sys_version_view_target(&out_plan->target);
+    if (rc == MYLITE_OK && selected_builtin_sys_view != NULL) {
+        populate_builtin_sys_view_target(&out_plan->target, selected_builtin_sys_view);
         out_plan->is_view = true;
-        out_plan->is_builtin_sys_version_view = true;
+        out_plan->builtin_sys_view = selected_builtin_sys_view;
         return MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
@@ -71486,9 +72163,12 @@ static int plan_show_create_table(
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && show_create_target_is_builtin_sys_version_view(&out_plan->target)) {
+    if (rc == MYLITE_OK) {
+        builtin_sys_view = show_create_target_builtin_sys_view(&out_plan->target);
+    }
+    if (rc == MYLITE_OK && builtin_sys_view != NULL) {
         out_plan->is_view = true;
-        out_plan->is_builtin_sys_version_view = true;
+        out_plan->builtin_sys_view = builtin_sys_view;
         return MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
@@ -71586,10 +72266,11 @@ static int execute_show_create_table_from_plan(
     const char *values[show_create_table_result_column_count] = {NULL, NULL};
     int rc = MYLITE_OK;
 
-    if (plan->is_builtin_sys_version_view) {
-        return append_show_create_sys_version_view_result(
+    if (plan->builtin_sys_view != NULL) {
+        return append_show_create_builtin_sys_view_result(
             database,
             result,
+            plan->builtin_sys_view,
             plan->target_was_schema_qualified
         );
     }
@@ -71640,18 +72321,19 @@ static int append_show_create_view_result(
     );
 }
 
-static int append_show_create_sys_version_view_result(
+static int append_show_create_builtin_sys_view_result(
     struct mylite_db *database,
     mylite_result *result,
+    const struct builtin_sys_view_definition *view,
     bool schema_qualified
 ) {
-    const char *show_create_sql = schema_qualified ? sys_version_show_create_qualified_view_sql
-                                                   : sys_version_show_create_view_sql;
+    const char *show_create_sql =
+        schema_qualified ? view->show_create_qualified_view_sql : view->show_create_view_sql;
 
     return append_show_create_view_text_result(
         database,
         result,
-        "version",
+        view->name,
         show_create_sql,
         "utf8mb4",
         "utf8mb4_0900_ai_ci"
@@ -71697,11 +72379,30 @@ static int append_show_create_view_text_result(
     return rc;
 }
 
-static bool show_create_target_is_builtin_sys_version_view(
+static const struct builtin_sys_view_definition *find_builtin_sys_view_definition(
+    const char *view_name
+) {
+    if (view_name == NULL) {
+        return NULL;
+    }
+
+    for (size_t view_index = 0U; view_index < sizeof(builtin_sys_view_definitions) /
+                                                  sizeof(builtin_sys_view_definitions[0]);
+         ++view_index) {
+        if (strcmp(view_name, builtin_sys_view_definitions[view_index].name) == 0) {
+            return &builtin_sys_view_definitions[view_index];
+        }
+    }
+    return NULL;
+}
+
+static const struct builtin_sys_view_definition *show_create_target_builtin_sys_view(
     const struct table_name_resolution *target
 ) {
-    return target != NULL && strcmp(target->schema.name, "sys") == 0 &&
-           strcmp(target->table_name, "version") == 0;
+    if (target == NULL || strcmp(target->schema.name, "sys") != 0) {
+        return NULL;
+    }
+    return find_builtin_sys_view_definition(target->table_name);
 }
 
 static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_node *statement) {
@@ -71710,19 +72411,19 @@ static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_
     return target != NULL && target->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER;
 }
 
-static int show_create_statement_targets_selected_builtin_sys_version_view(
+static int show_create_statement_targets_selected_builtin_sys_view(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    bool *out_matches
+    const struct builtin_sys_view_definition **out_view
 ) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t part_count = 0U;
     int rc = MYLITE_OK;
 
-    if (out_matches == NULL) {
+    if (out_view == NULL) {
         return MYLITE_MISUSE;
     }
-    *out_matches = false;
+    *out_view = NULL;
     if (database == NULL || !database->session.has_selected_schema ||
         strcmp(database->session.selected_schema, "sys") != 0) {
         return MYLITE_OK;
@@ -71738,18 +72439,23 @@ static int show_create_statement_targets_selected_builtin_sys_version_view(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    *out_matches = part_count == 1U && strcmp(parts[0], "version") == 0;
+    if (part_count == 1U) {
+        *out_view = find_builtin_sys_view_definition(parts[0]);
+    }
     return MYLITE_OK;
 }
 
-static void populate_builtin_sys_version_view_target(struct table_name_resolution *target) {
-    if (target == NULL) {
+static void populate_builtin_sys_view_target(
+    struct table_name_resolution *target,
+    const struct builtin_sys_view_definition *view
+) {
+    if (target == NULL || view == NULL) {
         return;
     }
 
     *target = (struct table_name_resolution){0};
-    memcpy(target->schema.name, "sys", sizeof("sys"));
-    memcpy(target->table_name, "version", sizeof("version"));
+    (void)snprintf(target->schema.name, sizeof(target->schema.name), "%s", "sys");
+    (void)snprintf(target->table_name, sizeof(target->table_name), "%s", view->name);
 }
 
 static int build_show_create_table_sql(

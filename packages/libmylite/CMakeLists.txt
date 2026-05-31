@@ -2046,6 +2046,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_sys_schema_table_lock_waits_views_test)
 
+  add_executable(mylite_runtime_sys_x_ps_schema_table_statistics_io_view_test
+    tests/runtime_sys_x_ps_schema_table_statistics_io_view_test.c
+  )
+  target_link_libraries(mylite_runtime_sys_x_ps_schema_table_statistics_io_view_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_sys_x_ps_schema_table_statistics_io_view_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sys_x_ps_schema_table_statistics_io_view_test)
+
   add_executable(mylite_runtime_sys_schema_table_statistics_views_test
     tests/runtime_sys_schema_table_statistics_views_test.c
   )
@@ -5696,6 +5707,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.sys_schema_table_lock_waits_views
     COMMAND mylite_runtime_sys_schema_table_lock_waits_views_test
+  )
+  add_test(
+    NAME libmylite.runtime.sys_x_ps_schema_table_statistics_io_view
+    COMMAND mylite_runtime_sys_x_ps_schema_table_statistics_io_view_test
   )
   add_test(
     NAME libmylite.runtime.sys_schema_table_statistics_views

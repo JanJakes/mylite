@@ -305,6 +305,15 @@ objects, and a routine dependency row on `sys.format_path`. It keeps
 Performance Schema file-I/O wait collection, sys helper-function execution,
 privilege/definer enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-x-ps-schema-table-statistics-io-view` slice refines
+`sys.x$ps_schema_table_statistics_io` with direct read-only descriptor-backed
+zero-counter rows plus MySQL-observed view status fields, column metadata, view
+definition metadata, a dependency row on
+`performance_schema.file_summary_by_instance`, and routine dependency rows on
+the referenced sys helper functions. It keeps Performance Schema file-summary
+collection, live byte/timer counters, sys helper-function execution,
+privilege/definer enforcement, and broader sys view execution out of scope.
+
 The `baseline-sys-schema-auto-increment-columns-view` slice refines
 `sys.schema_auto_increment_columns` with direct read-only descriptor-backed
 rows plus MySQL-observed view status fields, column metadata, view definition

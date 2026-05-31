@@ -334,6 +334,18 @@ fields, column metadata, view definition metadata, and dependency rows on
 collection, live row/latency/byte accumulation, physical sys views,
 privilege/definer enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-schema-table-statistics-with-buffer-views` slice refines
+`sys.schema_table_statistics_with_buffer` and
+`sys.x$schema_table_statistics_with_buffer` with direct read-only
+descriptor-backed zero-counter and zero-buffer rows plus MySQL-observed view
+status fields, column metadata, view definition metadata, and dependency rows
+on `performance_schema.table_io_waits_summary_by_table`,
+`sys.x$ps_schema_table_statistics_io`, and
+`sys.x$innodb_buffer_stats_by_table`. It keeps Performance Schema table wait
+collection, InnoDB buffer-pool table accounting, live row/latency/byte/page
+accumulation, physical sys views, privilege/definer enforcement, and broader
+sys view execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

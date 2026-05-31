@@ -590,6 +590,7 @@ enum {
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
     sys_schema_table_statistics_column_count = 19,
+    sys_schema_table_statistics_with_buffer_column_count = 25,
     sys_schema_redundant_indexes_column_count = 10,
     sys_x_schema_flattened_keys_column_count = 6,
     sys_schema_table_lock_waits_column_count = 18,
@@ -4580,6 +4581,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS = 120,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS = 121,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS = 122,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER = 123,
+    INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER = 124,
 };
 
 struct information_schema_column_definition {
@@ -4887,6 +4890,7 @@ struct sys_schema_table_statistics_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
     bool formatted_metrics;
+    bool include_buffer_metrics;
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
@@ -15058,6 +15062,614 @@ static const struct information_schema_column_definition sys_x_schema_table_stat
      "decimal(42,0)"},
 };
 
+static const struct information_schema_column_definition
+    sys_schema_table_statistics_with_buffer_columns[] = {
+        {"table_schema",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"table_name",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"rows_fetched",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"fetch_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"rows_inserted",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"insert_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"rows_updated",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"update_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"rows_deleted",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"delete_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"io_read_requests",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_read",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"io_read_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"io_write_requests",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_write",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"io_write_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"io_misc_requests",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_misc_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"innodb_buffer_allocated",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"innodb_buffer_data",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"innodb_buffer_free",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"innodb_buffer_pages",
+         "0",
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"innodb_buffer_pages_hashed",
+         "0",
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"innodb_buffer_pages_old",
+         "0",
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"innodb_buffer_rows_cached",
+         "0",
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "45",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(45,0)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_schema_table_statistics_with_buffer_columns[] = {
+        {"table_schema",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"table_name",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"rows_fetched",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"fetch_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"rows_inserted",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"insert_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"rows_updated",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"update_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"rows_deleted",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"delete_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"io_read_requests",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_read",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+        {"io_read_latency",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_write_requests",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_write",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+        {"io_write_latency",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_misc_requests",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"io_misc_latency",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "42",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(42,0)"},
+        {"innodb_buffer_allocated",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "44",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(44,0)"},
+        {"innodb_buffer_data",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "44",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(44,0)"},
+        {"innodb_buffer_free",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "45",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(45,0)"},
+        {"innodb_buffer_pages",
+         "0",
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"innodb_buffer_pages_hashed",
+         "0",
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"innodb_buffer_pages_old",
+         "0",
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"innodb_buffer_rows_cached",
+         "0",
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "45",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(45,0)"},
+};
+
 static const char *const sys_schema_table_statistics_column_keys[] = {
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
 };
@@ -15067,6 +15679,32 @@ static const char *const sys_schema_table_statistics_column_extras[] = {
 };
 
 static const char *const sys_schema_table_statistics_column_privileges[] = {
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const char *const sys_schema_table_statistics_with_buffer_column_keys[] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const sys_schema_table_statistics_with_buffer_column_extras[] = {
+    "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const sys_schema_table_statistics_with_buffer_column_privileges[] = {
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references", "select,insert,update,references",
     "select,insert,update,references", "select,insert,update,references",
     "select,insert,update,references", "select,insert,update,references",
     "select,insert,update,references", "select,insert,update,references",
@@ -16021,6 +16659,102 @@ static const char sys_x_schema_table_statistics_show_create_qualified_view_sql[]
 #undef SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION
 #undef SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION
 
+#define SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS                                       \
+    "(`table_schema`,`table_name`,`rows_fetched`,`fetch_latency`,`rows_inserted`,"                 \
+    "`insert_latency`,`rows_updated`,`update_latency`,`rows_deleted`,`delete_latency`,"            \
+    "`io_read_requests`,`io_read`,`io_read_latency`,`io_write_requests`,`io_write`,"               \
+    "`io_write_latency`,`io_misc_requests`,`io_misc_latency`,`innodb_buffer_allocated`,"           \
+    "`innodb_buffer_data`,`innodb_buffer_free`,`innodb_buffer_pages`,"                             \
+    "`innodb_buffer_pages_hashed`,`innodb_buffer_pages_old`,`innodb_buffer_rows_cached`)"
+
+#define SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX                                      \
+    " from ((`performance_schema`.`table_io_waits_summary_by_table` `pst` left join "              \
+    "`sys`.`x$ps_schema_table_statistics_io` `fsbi` on(((`pst`.`OBJECT_SCHEMA` = "                 \
+    "`sys`.`fsbi`.`table_schema`) and (`pst`.`OBJECT_NAME` = "                                     \
+    "`sys`.`fsbi`.`table_name`)))) left join `sys`.`x$innodb_buffer_stats_by_table` `ibp` "        \
+    "on(((`pst`.`OBJECT_SCHEMA` = `sys`.`ibp`.`object_schema`) and ("                              \
+    "`pst`.`OBJECT_NAME` = `sys`.`ibp`.`object_name`)))) order by `pst`.`SUM_TIMER_WAIT` desc"
+
+#define SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION                                    \
+    "select `pst`.`OBJECT_SCHEMA` AS `table_schema`,`pst`.`OBJECT_NAME` AS `table_name`,"          \
+    "`pst`.`COUNT_FETCH` AS `rows_fetched`,format_pico_time(`pst`.`SUM_TIMER_FETCH`) AS "          \
+    "`fetch_latency`,`pst`.`COUNT_INSERT` AS `rows_inserted`,format_pico_time("                    \
+    "`pst`.`SUM_TIMER_INSERT`) AS `insert_latency`,`pst`.`COUNT_UPDATE` AS `rows_updated`,"        \
+    "format_pico_time(`pst`.`SUM_TIMER_UPDATE`) AS `update_latency`,`pst`.`COUNT_DELETE` AS "      \
+    "`rows_deleted`,format_pico_time(`pst`.`SUM_TIMER_DELETE`) AS `delete_latency`,"               \
+    "`sys`.`fsbi`.`count_read` AS `io_read_requests`,format_bytes("                                \
+    "`sys`.`fsbi`.`sum_number_of_bytes_read`) AS `io_read`,format_pico_time("                      \
+    "`sys`.`fsbi`.`sum_timer_read`) AS `io_read_latency`,`sys`.`fsbi`.`count_write` AS "           \
+    "`io_write_requests`,format_bytes(`sys`.`fsbi`.`sum_number_of_bytes_write`) AS "               \
+    "`io_write`,format_pico_time(`sys`.`fsbi`.`sum_timer_write`) AS `io_write_latency`,"           \
+    "`sys`.`fsbi`.`count_misc` AS `io_misc_requests`,format_pico_time("                            \
+    "`sys`.`fsbi`.`sum_timer_misc`) AS `io_misc_latency`,format_bytes("                            \
+    "`sys`.`ibp`.`allocated`) AS `innodb_buffer_allocated`,format_bytes("                          \
+    "`sys`.`ibp`.`data`) AS `innodb_buffer_data`,format_bytes((`sys`.`ibp`.`allocated` - "         \
+    "`sys`.`ibp`.`data`)) AS `innodb_buffer_free`,`sys`.`ibp`.`pages` AS "                         \
+    "`innodb_buffer_pages`,`sys`.`ibp`.`pages_hashed` AS `innodb_buffer_pages_hashed`,"            \
+    "`sys`.`ibp`.`pages_old` AS `innodb_buffer_pages_old`,`sys`.`ibp`.`rows_cached` AS "           \
+    "`innodb_buffer_rows_cached`" SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX
+
+#define SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX                                    \
+    " from ((`performance_schema`.`table_io_waits_summary_by_table` `pst` left join "              \
+    "`x$ps_schema_table_statistics_io` `fsbi` on(((`pst`.`OBJECT_SCHEMA` = "                       \
+    "`fsbi`.`table_schema`) and (`pst`.`OBJECT_NAME` = `fsbi`.`table_name`)))) left join "         \
+    "`x$innodb_buffer_stats_by_table` `ibp` on(((`pst`.`OBJECT_SCHEMA` = "                         \
+    "`ibp`.`object_schema`) and (`pst`.`OBJECT_NAME` = `ibp`.`object_name`)))) order by "          \
+    "`pst`.`SUM_TIMER_WAIT` desc"
+
+#define SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION                                  \
+    "select `pst`.`OBJECT_SCHEMA` AS `table_schema`,`pst`.`OBJECT_NAME` AS `table_name`,"          \
+    "`pst`.`COUNT_FETCH` AS `rows_fetched`,`pst`.`SUM_TIMER_FETCH` AS `fetch_latency`,"            \
+    "`pst`.`COUNT_INSERT` AS `rows_inserted`,`pst`.`SUM_TIMER_INSERT` AS `insert_latency`,"        \
+    "`pst`.`COUNT_UPDATE` AS `rows_updated`,`pst`.`SUM_TIMER_UPDATE` AS `update_latency`,"         \
+    "`pst`.`COUNT_DELETE` AS `rows_deleted`,`pst`.`SUM_TIMER_DELETE` AS `delete_latency`,"         \
+    "`fsbi`.`count_read` AS `io_read_requests`,`fsbi`.`sum_number_of_bytes_read` AS "              \
+    "`io_read`,`fsbi`.`sum_timer_read` AS `io_read_latency`,`fsbi`.`count_write` AS "              \
+    "`io_write_requests`,`fsbi`.`sum_number_of_bytes_write` AS `io_write`,"                        \
+    "`fsbi`.`sum_timer_write` AS `io_write_latency`,`fsbi`.`count_misc` AS "                       \
+    "`io_misc_requests`,`fsbi`.`sum_timer_misc` AS `io_misc_latency`,`ibp`.`allocated` AS "        \
+    "`innodb_buffer_allocated`,`ibp`.`data` AS `innodb_buffer_data`,("                             \
+    "`ibp`.`allocated` - `ibp`.`data`) AS `innodb_buffer_free`,`ibp`.`pages` AS "                  \
+    "`innodb_buffer_pages`,`ibp`.`pages_hashed` AS `innodb_buffer_pages_hashed`,"                  \
+    "`ibp`.`pages_old` AS `innodb_buffer_pages_old`,`ibp`.`rows_cached` AS "                       \
+    "`innodb_buffer_rows_cached`" SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX
+
+static const char sys_schema_table_statistics_with_buffer_view_definition[] =
+    SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
+
+static const char sys_schema_table_statistics_with_buffer_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_table_statistics_with_buffer` " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
+
+static const char sys_schema_table_statistics_with_buffer_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_table_statistics_with_buffer`"
+    " " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_statistics_with_buffer_view_definition[] =
+    SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_statistics_with_buffer_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$schema_table_statistics_with_buffer` " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
+
+static const char sys_x_schema_table_statistics_with_buffer_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$schema_table_statistics_with_buffer`"
+    " " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
+#undef SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX
+#undef SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION
+#undef SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX
+#undef SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION
+
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
 
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
@@ -16092,6 +16826,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_table_statistics_view_definition,
      sys_schema_table_statistics_show_create_view_sql,
      sys_schema_table_statistics_show_create_qualified_view_sql},
+    {"schema_table_statistics_with_buffer",
+     sys_schema_table_statistics_with_buffer_view_definition,
+     sys_schema_table_statistics_with_buffer_show_create_view_sql,
+     sys_schema_table_statistics_with_buffer_show_create_qualified_view_sql},
     {"x$schema_flattened_keys",
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
@@ -16108,6 +16846,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_schema_table_statistics_view_definition,
      sys_x_schema_table_statistics_show_create_view_sql,
      sys_x_schema_table_statistics_show_create_qualified_view_sql},
+    {"x$schema_table_statistics_with_buffer",
+     sys_x_schema_table_statistics_with_buffer_view_definition,
+     sys_x_schema_table_statistics_with_buffer_show_create_view_sql,
+     sys_x_schema_table_statistics_with_buffer_show_create_qualified_view_sql},
 };
 
 static const struct information_schema_column_definition mysql_component_columns[] = {
@@ -18985,6 +19727,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER,
+      "schema_table_statistics_with_buffer",
+      sys_schema_table_statistics_with_buffer_columns,
+      sys_schema_table_statistics_with_buffer_column_count},
+     sys_schema_table_statistics_with_buffer_column_keys,
+     sys_schema_table_statistics_with_buffer_column_extras,
+     sys_schema_table_statistics_with_buffer_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS,
       "x$schema_flattened_keys",
       sys_x_schema_flattened_keys_columns,
@@ -19034,6 +19790,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_table_statistics_column_keys,
      sys_schema_table_statistics_column_extras,
      sys_schema_table_statistics_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER,
+      "x$schema_table_statistics_with_buffer",
+      sys_x_schema_table_statistics_with_buffer_columns,
+      sys_schema_table_statistics_with_buffer_column_count},
+     sys_schema_table_statistics_with_buffer_column_keys,
+     sys_schema_table_statistics_with_buffer_column_extras,
+     sys_schema_table_statistics_with_buffer_column_privileges,
      NULL,
      NULL,
      0U,
@@ -22237,7 +23007,8 @@ static int append_sys_schema_index_statistics_index_row(
 static int append_sys_schema_table_statistics_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
-    bool formatted_metrics
+    bool formatted_metrics,
+    bool include_buffer_metrics
 );
 static int append_sys_schema_table_statistics_mysql_system_rows(
     struct sys_schema_table_statistics_context *context
@@ -58040,7 +58811,10 @@ static int append_sys_schema_system_table_rows(
         return append_sys_schema_table_lock_waits_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "schema_table_statistics") == 0) {
-        return append_sys_schema_table_statistics_system_rows(database, rows, true);
+        return append_sys_schema_table_statistics_system_rows(database, rows, true, false);
+    }
+    if (strcmp(definition->query_definition.name, "schema_table_statistics_with_buffer") == 0) {
+        return append_sys_schema_table_statistics_system_rows(database, rows, true, true);
     }
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
@@ -58052,7 +58826,10 @@ static int append_sys_schema_system_table_rows(
         return append_sys_schema_table_lock_waits_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$schema_table_statistics") == 0) {
-        return append_sys_schema_table_statistics_system_rows(database, rows, false);
+        return append_sys_schema_table_statistics_system_rows(database, rows, false, false);
+    }
+    if (strcmp(definition->query_definition.name, "x$schema_table_statistics_with_buffer") == 0) {
+        return append_sys_schema_table_statistics_system_rows(database, rows, false, true);
     }
 
     set_runtime_error(database, "invalid mysql system table");
@@ -58786,17 +59563,22 @@ static int append_sys_schema_index_statistics_index_row(
 static int append_sys_schema_table_statistics_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
-    bool formatted_metrics
+    bool formatted_metrics,
+    bool include_buffer_metrics
 ) {
     struct sys_schema_table_statistics_context context = {
         .database = database,
         .rows = rows,
         .formatted_metrics = formatted_metrics,
+        .include_buffer_metrics = include_buffer_metrics,
         .schema = NULL,
     };
+    size_t expected_column_count = include_buffer_metrics
+                                       ? sys_schema_table_statistics_with_buffer_column_count
+                                       : sys_schema_table_statistics_column_count;
     int rc = MYLITE_OK;
 
-    if (rows->definition->column_count != sys_schema_table_statistics_column_count) {
+    if (rows->definition->column_count != expected_column_count) {
         set_runtime_error(database, "invalid sys.schema_table_statistics columns");
         return MYLITE_ERROR;
     }
@@ -58906,6 +59688,16 @@ static int append_sys_schema_table_statistics_table_row(
 
     const char *latency = context->formatted_metrics ? formatted_zero_latency : zero;
     const char *bytes = context->formatted_metrics ? formatted_zero_bytes : zero;
+    if (context->include_buffer_metrics) {
+        const char *values[sys_schema_table_statistics_with_buffer_column_count] = {
+            schema_name, table_name, zero,  latency, zero, latency, zero,    latency, zero,
+            latency,     zero,       bytes, latency, zero, bytes,   latency, zero,    latency,
+            bytes,       bytes,      bytes, zero,    zero, zero,    zero,
+        };
+
+        return append_information_schema_row(context->database, context->rows, values);
+    }
+
     const char *values[sys_schema_table_statistics_column_count] = {
         schema_name, table_name, latency, zero,    latency, zero,  latency, zero, latency, zero,
         latency,     zero,       bytes,   latency, zero,    bytes, latency, zero, latency,
@@ -60990,9 +61782,11 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
         return append_information_schema_triggers_system_rows(database, rows);
@@ -61114,6 +61908,11 @@ static int append_information_schema_view_table_usage_system_rows(
         {"schema_table_lock_waits", "sys", "sys_config"},
         {"schema_table_statistics", "performance_schema", "table_io_waits_summary_by_table"},
         {"schema_table_statistics", "sys", "x$ps_schema_table_statistics_io"},
+        {"schema_table_statistics_with_buffer",
+         "performance_schema",
+         "table_io_waits_summary_by_table"},
+        {"schema_table_statistics_with_buffer", "sys", "x$innodb_buffer_stats_by_table"},
+        {"schema_table_statistics_with_buffer", "sys", "x$ps_schema_table_statistics_io"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
@@ -61123,6 +61922,11 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$schema_table_lock_waits", "performance_schema", "threads"},
         {"x$schema_table_statistics", "performance_schema", "table_io_waits_summary_by_table"},
         {"x$schema_table_statistics", "sys", "x$ps_schema_table_statistics_io"},
+        {"x$schema_table_statistics_with_buffer",
+         "performance_schema",
+         "table_io_waits_summary_by_table"},
+        {"x$schema_table_statistics_with_buffer", "sys", "x$innodb_buffer_stats_by_table"},
+        {"x$schema_table_statistics_with_buffer", "sys", "x$ps_schema_table_statistics_io"},
     };
     int rc = MYLITE_OK;
 
@@ -61294,9 +62098,11 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:

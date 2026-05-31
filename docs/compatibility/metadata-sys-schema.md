@@ -23,7 +23,10 @@ empty `sys.schema_table_lock_waits` /
 `sys.x$schema_table_lock_waits` synthetic metadata-lock wait placeholders, and
 limited read-only `sys.schema_table_statistics` /
 `sys.x$schema_table_statistics` synthetic table-statistics views over
-descriptor table inventory with zero wait counters.
+descriptor table inventory with zero wait counters, plus limited read-only
+`sys.schema_table_statistics_with_buffer` /
+`sys.x$schema_table_statistics_with_buffer` synthetic table-statistics views
+with zero wait and buffer counters.
 MyLite rejects schema, table, index, rename,
 truncate, and single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
@@ -91,8 +94,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$schema_table_lock_waits` | 🟡 | Limited read-only empty raw metadata-lock wait view with the same column metadata and unsupported behavior as `sys.schema_table_lock_waits`; its `VIEW_TABLE_USAGE` dependencies point to `performance_schema.events_statements_current`, `performance_schema.metadata_locks`, and `performance_schema.threads`, and its `VIEW_ROUTINE_USAGE` dependency points to `sys.ps_thread_account` |
 | `sys.schema_table_statistics` | 🟡 | Limited read-only synthetic formatted table-statistics view returning one zero-counter row per supported mysql system-table descriptor, `sys.sys_config`, and persistent user base-table descriptor, with formatted zero latency and byte strings, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.table_io_waits_summary_by_table` and `sys.x$ps_schema_table_statistics_io`, empty constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema table wait collection, real row/latency/byte accumulation, temporary-table rows, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$schema_table_statistics` | 🟡 | Limited read-only synthetic raw table-statistics view returning the same descriptor-backed rows as `sys.schema_table_statistics`, but with raw numeric zero latency and byte counters instead of formatted strings; same metadata and unsupported behavior as the formatted view |
-| `sys.schema_table_statistics_with_buffer` | ❌ | View shape and diagnostics |
-| `sys.x$schema_table_statistics_with_buffer` | ❌ | View shape and diagnostics |
+| `sys.schema_table_statistics_with_buffer` | 🟡 | Limited read-only synthetic formatted table-statistics-with-buffer view returning one zero-counter row per supported mysql system-table descriptor, `sys.sys_config`, and persistent user base-table descriptor, with formatted zero latency and byte strings, zero InnoDB buffer placeholders, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.table_io_waits_summary_by_table`, `sys.x$ps_schema_table_statistics_io`, and `sys.x$innodb_buffer_stats_by_table`, empty constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema table wait collection, InnoDB buffer-pool table accounting, real row/latency/byte/page accumulation, temporary-table rows, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$schema_table_statistics_with_buffer` | 🟡 | Limited read-only synthetic raw table-statistics-with-buffer view returning the same descriptor-backed rows as `sys.schema_table_statistics_with_buffer`, but with raw numeric zero latency, byte, and buffer counters instead of formatted strings; same metadata and unsupported behavior as the formatted view |
 | `sys.schema_tables_with_full_table_scans` | ❌ | View shape and diagnostics |
 | `sys.x$schema_tables_with_full_table_scans` | ❌ | View shape and diagnostics |
 | `sys.schema_unused_indexes` | ❌ | View shape and diagnostics |

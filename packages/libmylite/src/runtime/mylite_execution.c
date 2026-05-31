@@ -583,6 +583,7 @@ enum {
     mysql_proxies_priv_column_count = 7,
     mysql_default_roles_column_count = 4,
     mysql_role_edges_column_count = 5,
+    mysql_password_history_column_count = 4,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4540,6 +4541,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV = 107,
     INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES = 108,
     INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES = 109,
+    INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY = 110,
 };
 
 struct information_schema_column_definition {
@@ -13873,6 +13875,73 @@ static const size_t mysql_role_edges_primary_key_column_indexes[] = {
     3U,
 };
 
+static const struct information_schema_column_definition mysql_password_history_columns[] = {
+    {"Host",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"User", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"Password_timestamp",
+     "CURRENT_TIMESTAMP(6)",
+     "NO",
+     "timestamp",
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "6",
+     NULL,
+     NULL,
+     "timestamp(6)"},
+    {"Password",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "text"},
+};
+
+static const char *const mysql_password_history_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "",
+};
+
+static const char *const mysql_password_history_column_extras[] = {
+    "",
+    "",
+    "DEFAULT_GENERATED",
+    "",
+};
+
+static const char *const mysql_password_history_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t mysql_password_history_primary_key_column_indexes[] = {
+    0U,
+    1U,
+    2U,
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -16277,6 +16346,21 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_role_edges_primary_key_column_indexes,
      sizeof(mysql_role_edges_primary_key_column_indexes) /
          sizeof(mysql_role_edges_primary_key_column_indexes[0]),
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY,
+      "password_history",
+      mysql_password_history_columns,
+      mysql_password_history_column_count},
+     mysql_password_history_column_keys,
+     mysql_password_history_column_extras,
+     mysql_password_history_column_privileges,
+     NULL,
+     mysql_password_history_primary_key_column_indexes,
+     sizeof(mysql_password_history_primary_key_column_indexes) /
+         sizeof(mysql_password_history_primary_key_column_indexes[0]),
      NULL,
      NULL,
      0U},
@@ -37909,6 +37993,14 @@ static const char *mysql_system_table_primary_key_cardinality_for_name(
     const char *table_name,
     size_t sequence
 );
+static const char *mysql_system_table_primary_key_collation(
+    const struct mysql_system_table_definition *definition,
+    size_t sequence
+);
+static const char *mysql_system_table_primary_key_collation_for_name(
+    const char *table_name,
+    size_t sequence
+);
 static int validate_show_index_where_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause
@@ -55292,6 +55384,7 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "help_relation") == 0 ||
             strcmp(definition->query_definition.name, "help_topic") == 0 ||
             strcmp(definition->query_definition.name, "ndb_binlog_index") == 0 ||
+            strcmp(definition->query_definition.name, "password_history") == 0 ||
             strcmp(definition->query_definition.name, "procs_priv") == 0 ||
             strcmp(definition->query_definition.name, "proxies_priv") == 0 ||
             strcmp(definition->query_definition.name, "role_edges") == 0 ||
@@ -56636,6 +56729,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV:
@@ -56739,6 +56833,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_HELP_TOPIC:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_NDB_BINLOG_INDEX:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_PASSWORD_HISTORY:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV:
@@ -58444,6 +58539,8 @@ static const char *builtin_schema_table_data_free(
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "default_roles") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "password_history") == 0) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "role_edges") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "procs_priv") == 0) ||
@@ -58567,6 +58664,7 @@ static const char *builtin_mysql_table_comment(const char *table_name) {
         {"help_keyword", "help keywords"},
         {"help_relation", "keyword-topic relation"},
         {"help_topic", "help topics"},
+        {"password_history", "Password history for user accounts"},
         {"plugin", "MySQL plugins"},
         {"procs_priv", "Procedure privileges"},
         {"proxies_priv", "User proxy privileges"},
@@ -63272,7 +63370,7 @@ static int append_information_schema_statistics_mysql_system_table_rows(
             "PRIMARY",
             sequence_text,
             column->name,
-            "A",
+            mysql_system_table_primary_key_collation(definition, key_index + 1),
             mysql_system_table_primary_key_cardinality(definition, key_index + 1),
             NULL,
             NULL,
@@ -70148,7 +70246,7 @@ static int append_show_index_mysql_system_table_primary_key_rows(
                 "PRIMARY",
                 sequence_text,
                 column->name,
-                "A",
+                mysql_system_table_primary_key_collation(definition, key_index + 1),
                 mysql_system_table_primary_key_cardinality(definition, key_index + 1),
                 NULL,
                 NULL,
@@ -70304,6 +70402,34 @@ static const char *mysql_system_table_primary_key_cardinality_for_name(
         }
     }
     return "0";
+}
+
+static const char *mysql_system_table_primary_key_collation(
+    const struct mysql_system_table_definition *definition,
+    size_t sequence
+) {
+    if (definition == NULL) {
+        return "A";
+    }
+    return mysql_system_table_primary_key_collation_for_name(
+        definition->query_definition.name,
+        sequence
+    );
+}
+
+static const char *mysql_system_table_primary_key_collation_for_name(
+    const char *table_name,
+    size_t sequence
+) {
+    enum {
+        mysql_password_history_timestamp_sequence = 3,
+    };
+
+    if (table_name != NULL && strcmp(table_name, "password_history") == 0 &&
+        sequence == mysql_password_history_timestamp_sequence) {
+        return "D";
+    }
+    return "A";
 }
 
 static int resolve_show_index_filter_nodes(

@@ -219,12 +219,12 @@ static int test_information_schema_mysql_system_constraints(void) {
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE "
-                   "TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'default_roles'",
+                   "TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'role_edges'",
             .column_names = count_column,
             .column_count = sizeof(count_column) / sizeof(count_column[0]),
             .values = count_zero,
             .row_count = 1U,
-            .context = "unsupported mysql default_roles table constraints omitted",
+            .context = "unsupported mysql role_edges table constraints omitted",
         }
     );
     failures += expect_row_count_status(database, "row count after mysql system constraints");

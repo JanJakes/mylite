@@ -581,6 +581,7 @@ enum {
     mysql_columns_priv_column_count = 7,
     mysql_procs_priv_column_count = 8,
     mysql_proxies_priv_column_count = 7,
+    mysql_default_roles_column_count = 4,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4536,6 +4537,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_COLUMNS_PRIV = 105,
     INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV = 106,
     INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV = 107,
+    INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES = 108,
 };
 
 struct information_schema_column_definition {
@@ -13707,6 +13709,74 @@ static const struct mysql_system_table_secondary_index_definition
         {"Grantor", 5U, "1", "1", false},
 };
 
+static const struct information_schema_column_definition mysql_default_roles_columns[] = {
+    {"HOST",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"USER", "", "NO", "char", "32", "96", NULL, NULL, NULL, "utf8mb3", "utf8mb3_bin", "char(32)"},
+    {"DEFAULT_ROLE_HOST",
+     "%",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"DEFAULT_ROLE_USER",
+     "",
+     "NO",
+     "char",
+     "32",
+     "96",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "char(32)"},
+};
+
+static const char *const mysql_default_roles_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "PRI",
+};
+
+static const char *const mysql_default_roles_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_default_roles_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t mysql_default_roles_primary_key_column_indexes[] = {
+    0U,
+    1U,
+    2U,
+    3U,
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -16084,6 +16154,21 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_proxies_priv_secondary_indexes,
      sizeof(mysql_proxies_priv_secondary_indexes) /
          sizeof(mysql_proxies_priv_secondary_indexes[0])},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES,
+      "default_roles",
+      mysql_default_roles_columns,
+      mysql_default_roles_column_count},
+     mysql_default_roles_column_keys,
+     mysql_default_roles_column_extras,
+     mysql_default_roles_column_privileges,
+     NULL,
+     mysql_default_roles_primary_key_column_indexes,
+     sizeof(mysql_default_roles_primary_key_column_indexes) /
+         sizeof(mysql_default_roles_primary_key_column_indexes[0]),
+     NULL,
+     NULL,
+     0U},
     {"mysql",
      {INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT,
       "component",
@@ -55086,6 +55171,7 @@ static bool mysql_system_table_definition_has_no_rows(
            (strcmp(definition->query_definition.name, "component") == 0 ||
             strcmp(definition->query_definition.name, "columns_priv") == 0 ||
             strcmp(definition->query_definition.name, "db") == 0 ||
+            strcmp(definition->query_definition.name, "default_roles") == 0 ||
             strcmp(definition->query_definition.name, "func") == 0 ||
             strcmp(definition->query_definition.name, "general_log") == 0 ||
             strcmp(definition->query_definition.name, "global_grants") == 0 ||
@@ -56425,6 +56511,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES:
     case INFORMATION_SCHEMA_TABLE_MYSQL_DB:
     case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
@@ -56526,6 +56613,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEW_ROUTINE_USAGE:
     case INFORMATION_SCHEMA_TABLE_MYSQL_COMPONENT:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES:
     case INFORMATION_SCHEMA_TABLE_MYSQL_DB:
     case INFORMATION_SCHEMA_TABLE_MYSQL_ENGINE_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_FUNC:
@@ -58240,6 +58328,8 @@ static const char *builtin_schema_table_data_free(
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "columns_priv") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "default_roles") == 0) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "procs_priv") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "proxies_priv") == 0) ||
@@ -58353,6 +58443,7 @@ static const char *builtin_mysql_table_comment(const char *table_name) {
         {"columns_priv", "Column privileges"},
         {"component", "Components"},
         {"db", "Database privileges"},
+        {"default_roles", "Default roles"},
         {"func", "User defined functions"},
         {"general_log", "General log"},
         {"global_grants", "Extended global grants"},

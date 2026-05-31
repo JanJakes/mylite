@@ -29,7 +29,8 @@ descriptor table inventory with zero wait counters, plus limited read-only
 with zero wait and buffer counters, plus limited read-only empty
 `sys.schema_tables_with_full_table_scans` /
 `sys.x$schema_tables_with_full_table_scans` synthetic full-table-scan
-placeholders.
+placeholders, plus a limited read-only `sys.schema_unused_indexes` synthetic
+view over persistent user-table non-unique index descriptors.
 MyLite rejects schema, table, index, rename,
 truncate, and single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
@@ -101,7 +102,7 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$schema_table_statistics_with_buffer` | 🟡 | Limited read-only synthetic raw table-statistics-with-buffer view returning the same descriptor-backed rows as `sys.schema_table_statistics_with_buffer`, but with raw numeric zero latency, byte, and buffer counters instead of formatted strings; same metadata and unsupported behavior as the formatted view |
 | `sys.schema_tables_with_full_table_scans` | 🟡 | Limited read-only empty formatted full-table-scan placeholder view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.table_io_waits_summary_by_index_usage`, empty constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema table I/O wait collection, live full-table-scan detection, real row/latency accumulation, temporary-table rows, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$schema_tables_with_full_table_scans` | 🟡 | Limited read-only empty raw full-table-scan placeholder view with the same metadata and unsupported behavior as `sys.schema_tables_with_full_table_scans`, except its `latency` column exposes raw unsigned integer metadata instead of formatted latency text |
-| `sys.schema_unused_indexes` | ❌ | View shape and diagnostics |
+| `sys.schema_unused_indexes` | 🟡 | Limited read-only synthetic unused-index view returning descriptor-backed rows for supported persistent user base-table non-unique indexes, with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `INFORMATION_SCHEMA.STATISTICS` and `performance_schema.table_io_waits_summary_by_index_usage`, empty constraint/routine-dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema index-usage collection, removal of rows after index reads, temporary-table rows, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.session` | ❌ | View shape and diagnostics |
 | `sys.x$session` | ❌ | View shape and diagnostics |
 | `sys.session_ssl_status` | ❌ | View shape and diagnostics |

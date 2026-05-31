@@ -356,6 +356,16 @@ Performance Schema table I/O wait collection, live full-table-scan detection,
 real row/latency accumulation, physical sys views, privilege/definer
 enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-schema-unused-indexes-view` slice refines
+`sys.schema_unused_indexes` with direct read-only descriptor-backed rows for
+supported user base-table non-unique indexes plus MySQL-observed view status
+fields, column metadata, view definition metadata, and dependency rows on
+`information_schema.STATISTICS` and
+`performance_schema.table_io_waits_summary_by_index_usage`. It keeps
+Performance Schema index-usage collection, row removal after index reads,
+physical sys views, privilege/definer enforcement, and broader sys view
+execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

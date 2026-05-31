@@ -2046,6 +2046,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_sys_schema_tables_with_full_table_scans_views_test)
 
+  add_executable(mylite_runtime_sys_schema_unused_indexes_view_test
+    tests/runtime_sys_schema_unused_indexes_view_test.c
+  )
+  target_link_libraries(mylite_runtime_sys_schema_unused_indexes_view_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_sys_schema_unused_indexes_view_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sys_schema_unused_indexes_view_test)
+
   add_executable(mylite_runtime_sys_schema_object_overview_view_test
     tests/runtime_sys_schema_object_overview_view_test.c
   )
@@ -5652,6 +5663,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.sys_schema_tables_with_full_table_scans_views
     COMMAND mylite_runtime_sys_schema_tables_with_full_table_scans_views_test
+  )
+  add_test(
+    NAME libmylite.runtime.sys_schema_unused_indexes_view
+    COMMAND mylite_runtime_sys_schema_unused_indexes_view_test
   )
   add_test(
     NAME libmylite.runtime.sys_schema_object_overview_view

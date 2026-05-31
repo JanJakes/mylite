@@ -592,6 +592,7 @@ enum {
     sys_schema_table_statistics_column_count = 19,
     sys_schema_table_statistics_with_buffer_column_count = 25,
     sys_schema_tables_with_full_table_scans_column_count = 4,
+    sys_schema_unused_indexes_column_count = 3,
     sys_schema_redundant_indexes_column_count = 10,
     sys_x_schema_flattened_keys_column_count = 6,
     sys_schema_table_lock_waits_column_count = 18,
@@ -4586,6 +4587,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER = 124,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 125,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 126,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES = 127,
 };
 
 struct information_schema_column_definition {
@@ -4886,6 +4888,12 @@ struct sys_schema_index_statistics_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
     bool formatted_latency;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+struct sys_schema_unused_indexes_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
@@ -15845,6 +15853,63 @@ static const char *const sys_schema_tables_with_full_table_scans_column_privileg
     "select,insert,update,references",
 };
 
+static const struct information_schema_column_definition sys_schema_unused_indexes_columns[] = {
+    {"object_schema",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"object_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+    {"index_name",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "256",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb4",
+     "utf8mb4_0900_ai_ci",
+     "varchar(64)"},
+};
+
+static const char *const sys_schema_unused_indexes_column_keys[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_unused_indexes_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_unused_indexes_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct information_schema_column_definition sys_schema_redundant_indexes_columns[] = {
     {"table_schema",
      NULL,
@@ -16942,6 +17007,37 @@ static const char sys_x_schema_tables_with_full_table_scans_show_create_qualifie
 #undef SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION
 #undef SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION
 
+#define SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS "(`object_schema`,`object_name`,`index_name`)"
+
+#define SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION                                                  \
+    "select `t`.`OBJECT_SCHEMA` AS `object_schema`,`t`.`OBJECT_NAME` AS `object_name`,"            \
+    "`t`.`INDEX_NAME` AS `index_name` from ("                                                      \
+    "`performance_schema`.`table_io_waits_summary_by_index_usage` `t` join "                       \
+    "`information_schema`.`STATISTICS` `s` on(((`t`.`OBJECT_SCHEMA` = "                            \
+    "`information_schema`.`s`.`TABLE_SCHEMA`) and (`t`.`OBJECT_NAME` = "                           \
+    "`information_schema`.`s`.`TABLE_NAME`) and (`t`.`INDEX_NAME` = "                              \
+    "`information_schema`.`s`.`INDEX_NAME`)))) where ((`t`.`INDEX_NAME` is not null) "             \
+    "and (`t`.`COUNT_STAR` = 0) and (`t`.`OBJECT_SCHEMA` <> 'mysql') and "                         \
+    "(`t`.`INDEX_NAME` <> 'PRIMARY') and (`information_schema`.`s`.`NON_UNIQUE` = 1) "             \
+    "and (`information_schema`.`s`.`SEQ_IN_INDEX` = 1)) order by `t`.`OBJECT_SCHEMA`,"             \
+    "`t`.`OBJECT_NAME`"
+
+static const char sys_schema_unused_indexes_view_definition[] =
+    SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION;
+
+static const char sys_schema_unused_indexes_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_unused_indexes` " SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION;
+
+static const char sys_schema_unused_indexes_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_unused_indexes` " SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS
+#undef SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION
+
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
 
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
@@ -17021,6 +17117,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_tables_with_full_table_scans_view_definition,
      sys_schema_tables_with_full_table_scans_show_create_view_sql,
      sys_schema_tables_with_full_table_scans_show_create_qualified_view_sql},
+    {"schema_unused_indexes",
+     sys_schema_unused_indexes_view_definition,
+     sys_schema_unused_indexes_show_create_view_sql,
+     sys_schema_unused_indexes_show_create_qualified_view_sql},
     {"x$schema_flattened_keys",
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
@@ -19943,6 +20043,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_tables_with_full_table_scans_column_keys,
      sys_schema_tables_with_full_table_scans_column_extras,
      sys_schema_tables_with_full_table_scans_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES,
+      "schema_unused_indexes",
+      sys_schema_unused_indexes_columns,
+      sys_schema_unused_indexes_column_count},
+     sys_schema_unused_indexes_column_keys,
+     sys_schema_unused_indexes_column_extras,
+     sys_schema_unused_indexes_column_privileges,
      NULL,
      NULL,
      0U,
@@ -23332,6 +23446,28 @@ static int append_sys_schema_tables_with_full_table_scans_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_sys_schema_unused_indexes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_schema_unused_indexes_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_sys_schema_unused_indexes_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_sys_schema_unused_indexes_index_rows(
+    struct sys_schema_unused_indexes_context *context,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_sys_schema_unused_indexes_index_row(
+    struct sys_schema_unused_indexes_context *context,
+    const char *table_name,
+    const struct loaded_index_info *index
+);
+static bool sys_schema_unused_indexes_index_supported(const struct loaded_index_info *index);
 static int append_sys_schema_object_overview_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -59046,6 +59182,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "schema_tables_with_full_table_scans") == 0) {
         return append_sys_schema_tables_with_full_table_scans_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "schema_unused_indexes") == 0) {
+        return append_sys_schema_unused_indexes_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
     }
@@ -60427,6 +60566,120 @@ static int append_sys_schema_tables_with_full_table_scans_system_rows(
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int append_sys_schema_unused_indexes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct sys_schema_unused_indexes_context context = {
+        .database = database,
+        .rows = rows,
+        .schema = NULL,
+    };
+
+    if (rows->definition->column_count != sys_schema_unused_indexes_column_count) {
+        set_runtime_error(database, "invalid sys.schema_unused_indexes columns");
+        return MYLITE_ERROR;
+    }
+
+    return mylite_catalog_for_each_schema(
+        database,
+        append_sys_schema_unused_indexes_schema_rows,
+        &context
+    );
+}
+
+static int append_sys_schema_unused_indexes_schema_rows(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct sys_schema_unused_indexes_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (find_builtin_schema_table_directory(schema->name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_sys_schema_unused_indexes_table_rows,
+        context
+    );
+}
+
+static int append_sys_schema_unused_indexes_table_rows(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct sys_schema_unused_indexes_context *context = user_data;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+    return append_sys_schema_unused_indexes_index_rows(context, table);
+}
+
+static int append_sys_schema_unused_indexes_index_rows(
+    struct sys_schema_unused_indexes_context *context,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            context->database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        if (sys_schema_unused_indexes_index_supported(&indexes[index])) {
+            rc = append_sys_schema_unused_indexes_index_row(context, table->name, &indexes[index]);
+        }
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int append_sys_schema_unused_indexes_index_row(
+    struct sys_schema_unused_indexes_context *context,
+    const char *table_name,
+    const struct loaded_index_info *index
+) {
+    const char *values[sys_schema_unused_indexes_column_count] = {
+        context->schema->name,
+        table_name,
+        index->index.name,
+    };
+
+    return append_information_schema_row(context->database, context->rows, values);
+}
+
+static bool sys_schema_unused_indexes_index_supported(const struct loaded_index_info *index) {
+    if (index == NULL || index->part_count == 0U || index->index.is_unique) {
+        return false;
+    }
+    return index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
+           index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+           index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL;
 }
 
 static int append_sys_schema_object_overview_system_rows(
@@ -62028,6 +62281,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
@@ -62111,7 +62365,8 @@ static int append_information_schema_views_system_rows(
             strcmp(view->name, "schema_index_statistics") == 0 ||
                     strcmp(view->name, "x$schema_index_statistics") == 0 ||
                     strcmp(view->name, "schema_tables_with_full_table_scans") == 0 ||
-                    strcmp(view->name, "x$schema_tables_with_full_table_scans") == 0
+                    strcmp(view->name, "x$schema_tables_with_full_table_scans") == 0 ||
+                    strcmp(view->name, "schema_unused_indexes") == 0
                 ? "YES"
                 : "NO";
         const char *values[information_schema_views_column_count] = {
@@ -62165,6 +62420,8 @@ static int append_information_schema_view_table_usage_system_rows(
         {"schema_tables_with_full_table_scans",
          "performance_schema",
          "table_io_waits_summary_by_index_usage"},
+        {"schema_unused_indexes", "information_schema", "STATISTICS"},
+        {"schema_unused_indexes", "performance_schema", "table_io_waits_summary_by_index_usage"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
@@ -62355,6 +62612,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:

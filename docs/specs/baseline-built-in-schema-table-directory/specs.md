@@ -346,6 +346,16 @@ collection, InnoDB buffer-pool table accounting, live row/latency/byte/page
 accumulation, physical sys views, privilege/definer enforcement, and broader
 sys view execution out of scope.
 
+The `baseline-sys-schema-tables-with-full-table-scans-views` slice refines
+`sys.schema_tables_with_full_table_scans` and
+`sys.x$schema_tables_with_full_table_scans` with direct read-only empty
+placeholder rows plus MySQL-observed view status fields, column metadata, view
+definition metadata, and dependency rows on
+`performance_schema.table_io_waits_summary_by_index_usage`. It keeps
+Performance Schema table I/O wait collection, live full-table-scan detection,
+real row/latency accumulation, physical sys views, privilege/definer
+enforcement, and broader sys view execution out of scope.
+
 ### SHOW TABLES and SHOW FULL TABLES
 
 When the selected schema or explicit `FROM` / `IN` schema is built in,

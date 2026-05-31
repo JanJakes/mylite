@@ -591,6 +591,7 @@ enum {
     sys_schema_index_statistics_column_count = 11,
     sys_schema_table_statistics_column_count = 19,
     sys_schema_table_statistics_with_buffer_column_count = 25,
+    sys_schema_tables_with_full_table_scans_column_count = 4,
     sys_schema_redundant_indexes_column_count = 10,
     sys_x_schema_flattened_keys_column_count = 6,
     sys_schema_table_lock_waits_column_count = 18,
@@ -4583,6 +4584,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS = 122,
     INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER = 123,
     INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER = 124,
+    INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 125,
+    INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS = 126,
 };
 
 struct information_schema_column_definition {
@@ -15670,6 +15673,110 @@ static const struct information_schema_column_definition
          "decimal(45,0)"},
 };
 
+static const struct information_schema_column_definition
+    sys_schema_tables_with_full_table_scans_columns[] = {
+        {"object_schema",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"object_name",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"rows_full_scanned",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_schema_tables_with_full_table_scans_columns[] = {
+        {"object_schema",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"object_name",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"rows_full_scanned",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+};
+
 static const char *const sys_schema_table_statistics_column_keys[] = {
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
 };
@@ -15714,6 +15821,27 @@ static const char *const sys_schema_table_statistics_with_buffer_column_privileg
     "select,insert,update,references", "select,insert,update,references",
     "select,insert,update,references", "select,insert,update,references",
     "select,insert,update,references", "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const char *const sys_schema_tables_with_full_table_scans_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_tables_with_full_table_scans_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_schema_tables_with_full_table_scans_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
     "select,insert,update,references",
 };
 
@@ -16755,6 +16883,65 @@ static const char sys_x_schema_table_statistics_with_buffer_show_create_qualifie
 #undef SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_SELECT_SUFFIX
 #undef SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION
 
+#define SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS                                       \
+    "(`object_schema`,`object_name`,`rows_full_scanned`,`latency`)"
+
+#define SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_SUFFIX                                      \
+    " from `performance_schema`.`table_io_waits_summary_by_index_usage` where (("                  \
+    "`performance_schema`.`table_io_waits_summary_by_index_usage`.`INDEX_NAME` is null) and ("     \
+    "`performance_schema`.`table_io_waits_summary_by_index_usage`.`COUNT_READ` > 0)) order by "    \
+    "`performance_schema`.`table_io_waits_summary_by_index_usage`.`COUNT_READ` desc"
+
+#define SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_PREFIX                                      \
+    "select `performance_schema`.`table_io_waits_summary_by_index_usage`.`OBJECT_SCHEMA` AS "      \
+    "`object_schema`,`performance_schema`.`table_io_waits_summary_by_index_usage`.`OBJECT_NAME` "  \
+    "AS `object_name`,`performance_schema`.`table_io_waits_summary_by_index_usage`.`COUNT_READ` "  \
+    "AS `rows_full_scanned`,"
+
+#define SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION                                    \
+    SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_PREFIX                                          \
+    "format_pico_time(`performance_schema`.`table_io_waits_summary_by_index_usage`."               \
+    "`SUM_TIMER_WAIT`) AS `latency`" SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_SUFFIX
+
+#define SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION                                  \
+    SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_PREFIX                                          \
+    "`performance_schema`.`table_io_waits_summary_by_index_usage`.`SUM_TIMER_WAIT` AS "            \
+    "`latency`" SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_SUFFIX
+
+static const char sys_schema_tables_with_full_table_scans_view_definition[] =
+    SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
+
+static const char sys_schema_tables_with_full_table_scans_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`schema_tables_with_full_table_scans` " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
+
+static const char sys_schema_tables_with_full_table_scans_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`schema_tables_with_full_table_scans`"
+    " " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
+
+static const char sys_x_schema_tables_with_full_table_scans_view_definition[] =
+    SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
+
+static const char sys_x_schema_tables_with_full_table_scans_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$schema_tables_with_full_table_scans` " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
+
+static const char sys_x_schema_tables_with_full_table_scans_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$schema_tables_with_full_table_scans`"
+    " " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
+
+#undef SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+#undef SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_SUFFIX
+#undef SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_SELECT_PREFIX
+#undef SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION
+#undef SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION
+
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS "(`db`,`object_type`,`count`)"
 
 #define SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION                                                 \
@@ -16830,6 +17017,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_schema_table_statistics_with_buffer_view_definition,
      sys_schema_table_statistics_with_buffer_show_create_view_sql,
      sys_schema_table_statistics_with_buffer_show_create_qualified_view_sql},
+    {"schema_tables_with_full_table_scans",
+     sys_schema_tables_with_full_table_scans_view_definition,
+     sys_schema_tables_with_full_table_scans_show_create_view_sql,
+     sys_schema_tables_with_full_table_scans_show_create_qualified_view_sql},
     {"x$schema_flattened_keys",
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
@@ -16850,6 +17041,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_schema_table_statistics_with_buffer_view_definition,
      sys_x_schema_table_statistics_with_buffer_show_create_view_sql,
      sys_x_schema_table_statistics_with_buffer_show_create_qualified_view_sql},
+    {"x$schema_tables_with_full_table_scans",
+     sys_x_schema_tables_with_full_table_scans_view_definition,
+     sys_x_schema_tables_with_full_table_scans_show_create_view_sql,
+     sys_x_schema_tables_with_full_table_scans_show_create_qualified_view_sql},
 };
 
 static const struct information_schema_column_definition mysql_component_columns[] = {
@@ -19741,6 +19936,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS,
+      "schema_tables_with_full_table_scans",
+      sys_schema_tables_with_full_table_scans_columns,
+      sys_schema_tables_with_full_table_scans_column_count},
+     sys_schema_tables_with_full_table_scans_column_keys,
+     sys_schema_tables_with_full_table_scans_column_extras,
+     sys_schema_tables_with_full_table_scans_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_FLATTENED_KEYS,
       "x$schema_flattened_keys",
       sys_x_schema_flattened_keys_columns,
@@ -19804,6 +20013,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_schema_table_statistics_with_buffer_column_keys,
      sys_schema_table_statistics_with_buffer_column_extras,
      sys_schema_table_statistics_with_buffer_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS,
+      "x$schema_tables_with_full_table_scans",
+      sys_x_schema_tables_with_full_table_scans_columns,
+      sys_schema_tables_with_full_table_scans_column_count},
+     sys_schema_tables_with_full_table_scans_column_keys,
+     sys_schema_tables_with_full_table_scans_column_extras,
+     sys_schema_tables_with_full_table_scans_column_privileges,
      NULL,
      NULL,
      0U,
@@ -23102,6 +23325,10 @@ static int build_sys_redundant_drop_index_sql(
     char **out_sql
 );
 static int append_sys_schema_table_lock_waits_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_schema_tables_with_full_table_scans_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -58816,6 +59043,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "schema_table_statistics_with_buffer") == 0) {
         return append_sys_schema_table_statistics_system_rows(database, rows, true, true);
     }
+    if (strcmp(definition->query_definition.name, "schema_tables_with_full_table_scans") == 0) {
+        return append_sys_schema_tables_with_full_table_scans_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
     }
@@ -58830,6 +59060,9 @@ static int append_sys_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$schema_table_statistics_with_buffer") == 0) {
         return append_sys_schema_table_statistics_system_rows(database, rows, false, true);
+    }
+    if (strcmp(definition->query_definition.name, "x$schema_tables_with_full_table_scans") == 0) {
+        return append_sys_schema_tables_with_full_table_scans_system_rows(database, rows);
     }
 
     set_runtime_error(database, "invalid mysql system table");
@@ -60180,6 +60413,17 @@ static int append_sys_schema_table_lock_waits_system_rows(
 ) {
     if (rows->definition->column_count != sys_schema_table_lock_waits_column_count) {
         set_runtime_error(database, "invalid sys.schema_table_lock_waits columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_schema_tables_with_full_table_scans_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_schema_tables_with_full_table_scans_column_count) {
+        set_runtime_error(database, "invalid sys.schema_tables_with_full_table_scans columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -61783,10 +62027,12 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
         return append_information_schema_triggers_system_rows(database, rows);
@@ -61861,10 +62107,13 @@ static int append_information_schema_views_system_rows(
                                              sizeof(builtin_sys_view_definitions[0]);
          ++view_index) {
         const struct builtin_sys_view_definition *view = &builtin_sys_view_definitions[view_index];
-        const char *is_updatable = strcmp(view->name, "schema_index_statistics") == 0 ||
-                                           strcmp(view->name, "x$schema_index_statistics") == 0
-                                       ? "YES"
-                                       : "NO";
+        const char *is_updatable =
+            strcmp(view->name, "schema_index_statistics") == 0 ||
+                    strcmp(view->name, "x$schema_index_statistics") == 0 ||
+                    strcmp(view->name, "schema_tables_with_full_table_scans") == 0 ||
+                    strcmp(view->name, "x$schema_tables_with_full_table_scans") == 0
+                ? "YES"
+                : "NO";
         const char *values[information_schema_views_column_count] = {
             "def",
             "sys",
@@ -61913,6 +62162,9 @@ static int append_information_schema_view_table_usage_system_rows(
          "table_io_waits_summary_by_table"},
         {"schema_table_statistics_with_buffer", "sys", "x$innodb_buffer_stats_by_table"},
         {"schema_table_statistics_with_buffer", "sys", "x$ps_schema_table_statistics_io"},
+        {"schema_tables_with_full_table_scans",
+         "performance_schema",
+         "table_io_waits_summary_by_index_usage"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",
          "performance_schema",
@@ -61927,6 +62179,9 @@ static int append_information_schema_view_table_usage_system_rows(
          "table_io_waits_summary_by_table"},
         {"x$schema_table_statistics_with_buffer", "sys", "x$innodb_buffer_stats_by_table"},
         {"x$schema_table_statistics_with_buffer", "sys", "x$ps_schema_table_statistics_io"},
+        {"x$schema_tables_with_full_table_scans",
+         "performance_schema",
+         "table_io_waits_summary_by_index_usage"},
     };
     int rc = MYLITE_OK;
 
@@ -62099,10 +62354,12 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
+    case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_SCHEMATA_EXTENSIONS:

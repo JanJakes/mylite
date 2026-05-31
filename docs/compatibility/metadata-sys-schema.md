@@ -37,8 +37,12 @@ wait placeholders, plus limited read-only empty
 placeholders, plus a limited read-only empty
 `sys.ps_check_lost_instrumentation` synthetic view over
 lost-instrumentation Performance Schema status metadata, and a limited
-read-only `sys.schema_unused_indexes` synthetic view over persistent
-user-table non-unique index descriptors.
+read-only empty `sys.io_global_by_file_by_bytes` /
+`sys.x$io_global_by_file_by_bytes` synthetic file-summary byte placeholders,
+limited read-only empty `sys.io_global_by_file_by_latency` /
+`sys.x$io_global_by_file_by_latency` synthetic file-summary latency
+placeholders, and a limited read-only `sys.schema_unused_indexes` synthetic
+view over persistent user-table non-unique index descriptors.
 MyLite rejects schema, table, index, rename,
 truncate, and single-table DML writes targeting `sys` with
 `3552 / HY000` system-schema diagnostics as a stricter embedded-design
@@ -71,8 +75,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$io_by_thread_by_latency` | ❌ | View shape and diagnostics |
 | `sys.io_global_by_file_by_bytes` | 🟡 | Limited read-only empty formatted global file-I/O by-file view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.file_summary_by_instance` and `performance_schema.global_variables`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependency on `sys.format_path`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema file-summary collection, live byte/average/write percentage rows, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$io_global_by_file_by_bytes` | 🟡 | Limited read-only empty raw global file-I/O by-file view with the same metadata and unsupported behavior as `sys.io_global_by_file_by_bytes`, except byte totals and averages expose raw numeric metadata and its dependencies omit `performance_schema.global_variables` and `sys.format_path` |
-| `sys.io_global_by_file_by_latency` | ❌ | View shape and diagnostics |
-| `sys.x$io_global_by_file_by_latency` | ❌ | View shape and diagnostics |
+| `sys.io_global_by_file_by_latency` | 🟡 | Limited read-only empty formatted global file-I/O latency by-file view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.file_summary_by_instance` and `performance_schema.global_variables`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependency on `sys.format_path`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema file-summary collection, live event/latency rows, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$io_global_by_file_by_latency` | 🟡 | Limited read-only empty raw global file-I/O latency by-file view with the same metadata and unsupported behavior as `sys.io_global_by_file_by_latency`, except latency totals expose raw unsigned numeric metadata and its dependencies omit `performance_schema.global_variables` and `sys.format_path` |
 | `sys.io_global_by_wait_by_bytes` | ❌ | View shape and diagnostics |
 | `sys.x$io_global_by_wait_by_bytes` | ❌ | View shape and diagnostics |
 | `sys.io_global_by_wait_by_latency` | ❌ | View shape and diagnostics |

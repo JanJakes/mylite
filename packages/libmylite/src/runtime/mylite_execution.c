@@ -589,6 +589,7 @@ enum {
     sys_version_column_count = 2,
     sys_innodb_lock_waits_column_count = 30,
     sys_io_global_by_file_by_bytes_column_count = 9,
+    sys_io_global_by_file_by_latency_column_count = 9,
     sys_latest_file_io_column_count = 5,
     sys_ps_check_lost_instrumentation_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
@@ -4601,6 +4602,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO = 133,
     INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES = 134,
     INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES = 135,
+    INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_LATENCY = 136,
+    INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY = 137,
 };
 
 struct information_schema_column_definition {
@@ -15095,6 +15098,248 @@ static const char *const
 };
 
 static const struct information_schema_column_definition
+    sys_io_global_by_file_by_latency_columns[sys_io_global_by_file_by_latency_column_count] = {
+        {"file",
+         NULL,
+         "YES",
+         "varchar",
+         "512",
+         "2048",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(512)"},
+        {"total", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+        {"total_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"count_read",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"read_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"count_write",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"write_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"count_misc",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"misc_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_io_global_by_file_by_latency_columns[sys_io_global_by_file_by_latency_column_count] = {
+        {"file",
+         NULL,
+         "NO",
+         "varchar",
+         "512",
+         "2048",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(512)"},
+        {"total", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+        {"total_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"count_read",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"read_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"count_write",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"write_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"count_misc",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"misc_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+};
+
+static const char *const
+    sys_io_global_by_file_by_latency_column_keys[sys_io_global_by_file_by_latency_column_count] = {
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+};
+
+static const char *const
+    sys_io_global_by_file_by_latency_column_extras[sys_io_global_by_file_by_latency_column_count] =
+        {
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+};
+
+static const char *const sys_io_global_by_file_by_latency_column_privileges
+    [sys_io_global_by_file_by_latency_column_count] = {
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_latest_file_io_columns[sys_latest_file_io_column_count] = {
         {"thread",
          NULL,
@@ -17905,6 +18150,67 @@ static const char sys_x_io_global_by_file_by_bytes_show_create_qualified_view_sq
 #undef SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION
 #undef SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION
 
+#define SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS                                              \
+    "(`file`,`total`,`total_latency`,`count_read`,`read_latency`,`count_write`,`write_latency`,"   \
+    "`count_misc`,`misc_latency`)"
+
+#define SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION                                           \
+    "select `sys`.`format_path`(`performance_schema`.`file_summary_by_instance`.`FILE_NAME`) AS "  \
+    "`file`,`performance_schema`.`file_summary_by_instance`.`COUNT_STAR` AS "                      \
+    "`total`,format_pico_time(`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_WAIT`) "  \
+    "AS `total_latency`,`performance_schema`.`file_summary_by_instance`.`COUNT_READ` AS "          \
+    "`count_read`,format_pico_time(`performance_schema`.`file_summary_by_instance`."               \
+    "`SUM_TIMER_READ`) AS `read_latency`,`performance_schema`.`file_summary_by_instance`."         \
+    "`COUNT_WRITE` AS `count_write`,format_pico_time(`performance_schema`."                        \
+    "`file_summary_by_instance`.`SUM_TIMER_WRITE`) AS `write_latency`,`performance_schema`."       \
+    "`file_summary_by_instance`.`COUNT_MISC` AS `count_misc`,format_pico_time("                    \
+    "`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_MISC`) AS "                        \
+    "`misc_latency` from `performance_schema`.`file_summary_by_instance` order by "                \
+    "`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_WAIT` desc"
+
+#define SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION                                         \
+    "select `performance_schema`.`file_summary_by_instance`.`FILE_NAME` AS "                       \
+    "`file`,`performance_schema`.`file_summary_by_instance`.`COUNT_STAR` AS "                      \
+    "`total`,`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_WAIT` AS "                 \
+    "`total_latency`,`performance_schema`.`file_summary_by_instance`.`COUNT_READ` AS "             \
+    "`count_read`,`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_READ` AS "            \
+    "`read_latency`,`performance_schema`.`file_summary_by_instance`.`COUNT_WRITE` AS "             \
+    "`count_write`,`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_WRITE` AS "          \
+    "`write_latency`,`performance_schema`.`file_summary_by_instance`.`COUNT_MISC` AS "             \
+    "`count_misc`,`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_MISC` AS "            \
+    "`misc_latency` from `performance_schema`.`file_summary_by_instance` order by "                \
+    "`performance_schema`.`file_summary_by_instance`.`SUM_TIMER_WAIT` desc"
+
+static const char sys_io_global_by_file_by_latency_view_definition[] =
+    SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_io_global_by_file_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_io_global_by_file_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_io_global_by_file_by_latency_view_definition[] =
+    SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_io_global_by_file_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_io_global_by_file_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
+
+#undef SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
+#undef SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION
+#undef SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION
+
 #define SYS_LATEST_FILE_IO_VIEW_COLUMNS "(`thread`,`file`,`latency`,`operation`,`requested`)"
 
 #define SYS_LATEST_FILE_IO_SELECT_PREFIX                                                           \
@@ -18656,6 +18962,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_io_global_by_file_by_bytes_view_definition,
      sys_io_global_by_file_by_bytes_show_create_view_sql,
      sys_io_global_by_file_by_bytes_show_create_qualified_view_sql},
+    {"io_global_by_file_by_latency",
+     sys_io_global_by_file_by_latency_view_definition,
+     sys_io_global_by_file_by_latency_show_create_view_sql,
+     sys_io_global_by_file_by_latency_show_create_qualified_view_sql},
     {"latest_file_io",
      sys_latest_file_io_view_definition,
      sys_latest_file_io_show_create_view_sql,
@@ -18712,6 +19022,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_io_global_by_file_by_bytes_view_definition,
      sys_x_io_global_by_file_by_bytes_show_create_view_sql,
      sys_x_io_global_by_file_by_bytes_show_create_qualified_view_sql},
+    {"x$io_global_by_file_by_latency",
+     sys_x_io_global_by_file_by_latency_view_definition,
+     sys_x_io_global_by_file_by_latency_show_create_view_sql,
+     sys_x_io_global_by_file_by_latency_show_create_qualified_view_sql},
     {"x$latest_file_io",
      sys_x_latest_file_io_view_definition,
      sys_x_latest_file_io_show_create_view_sql,
@@ -21561,6 +21875,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_LATENCY,
+      "io_global_by_file_by_latency",
+      sys_io_global_by_file_by_latency_columns,
+      sys_io_global_by_file_by_latency_column_count},
+     sys_io_global_by_file_by_latency_column_keys,
+     sys_io_global_by_file_by_latency_column_extras,
+     sys_io_global_by_file_by_latency_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO,
       "latest_file_io",
       sys_latest_file_io_columns,
@@ -21750,6 +22078,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_io_global_by_file_by_bytes_column_keys,
      sys_io_global_by_file_by_bytes_column_extras,
      sys_io_global_by_file_by_bytes_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY,
+      "x$io_global_by_file_by_latency",
+      sys_x_io_global_by_file_by_latency_columns,
+      sys_io_global_by_file_by_latency_column_count},
+     sys_io_global_by_file_by_latency_column_keys,
+     sys_io_global_by_file_by_latency_column_extras,
+     sys_io_global_by_file_by_latency_column_privileges,
      NULL,
      NULL,
      0U,
@@ -24959,6 +25301,11 @@ static int append_sys_schema_system_table_rows(
     const struct mysql_system_table_definition *definition,
     struct information_schema_row_set *rows
 );
+static int append_sys_schema_x_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+);
 static bool mysql_system_table_definition_has_no_rows(
     const struct mysql_system_table_definition *definition
 );
@@ -24990,6 +25337,10 @@ static int append_sys_innodb_lock_waits_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_io_global_by_file_by_bytes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_io_global_by_file_by_latency_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -60911,6 +61262,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "io_global_by_file_by_bytes") == 0) {
         return append_sys_io_global_by_file_by_bytes_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "io_global_by_file_by_latency") == 0) {
+        return append_sys_io_global_by_file_by_latency_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "latest_file_io") == 0) {
         return append_sys_latest_file_io_system_rows(database, rows);
     }
@@ -60944,6 +61298,15 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "schema_unused_indexes") == 0) {
         return append_sys_schema_unused_indexes_system_rows(database, rows);
     }
+
+    return append_sys_schema_x_system_table_rows(database, definition, rows);
+}
+
+static int append_sys_schema_x_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows
+) {
     if (strcmp(definition->query_definition.name, "x$schema_flattened_keys") == 0) {
         return append_sys_x_schema_flattened_keys_system_rows(database, rows);
     }
@@ -60952,6 +61315,9 @@ static int append_sys_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$io_global_by_file_by_bytes") == 0) {
         return append_sys_io_global_by_file_by_bytes_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$io_global_by_file_by_latency") == 0) {
+        return append_sys_io_global_by_file_by_latency_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$latest_file_io") == 0) {
         return append_sys_latest_file_io_system_rows(database, rows);
@@ -61208,6 +61574,17 @@ static int append_sys_io_global_by_file_by_bytes_system_rows(
 ) {
     if (rows->definition->column_count != sys_io_global_by_file_by_bytes_column_count) {
         set_runtime_error(database, "invalid sys.io_global_by_file_by_bytes columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_io_global_by_file_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_io_global_by_file_by_latency_column_count) {
+        set_runtime_error(database, "invalid sys.io_global_by_file_by_latency columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -64224,6 +64601,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
@@ -64238,6 +64616,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
@@ -64322,7 +64701,9 @@ static int append_information_schema_views_system_rows(
         const char *is_updatable =
             strcmp(view->name, "ps_check_lost_instrumentation") == 0 ||
                     strcmp(view->name, "io_global_by_file_by_bytes") == 0 ||
+                    strcmp(view->name, "io_global_by_file_by_latency") == 0 ||
                     strcmp(view->name, "x$io_global_by_file_by_bytes") == 0 ||
+                    strcmp(view->name, "x$io_global_by_file_by_latency") == 0 ||
                     strcmp(view->name, "schema_index_statistics") == 0 ||
                     strcmp(view->name, "x$schema_index_statistics") == 0 ||
                     strcmp(view->name, "schema_tables_with_full_table_scans") == 0 ||
@@ -64364,6 +64745,8 @@ static int append_information_schema_view_table_usage_system_rows(
         {"innodb_lock_waits", "sys", "sys_config"},
         {"io_global_by_file_by_bytes", "performance_schema", "file_summary_by_instance"},
         {"io_global_by_file_by_bytes", "performance_schema", "global_variables"},
+        {"io_global_by_file_by_latency", "performance_schema", "file_summary_by_instance"},
+        {"io_global_by_file_by_latency", "performance_schema", "global_variables"},
         {"latest_file_io", "information_schema", "PROCESSLIST"},
         {"latest_file_io", "performance_schema", "events_waits_history_long"},
         {"latest_file_io", "performance_schema", "global_variables"},
@@ -64398,6 +64781,7 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"x$innodb_lock_waits", "performance_schema", "data_locks"},
         {"x$io_global_by_file_by_bytes", "performance_schema", "file_summary_by_instance"},
+        {"x$io_global_by_file_by_latency", "performance_schema", "file_summary_by_instance"},
         {"x$latest_file_io", "information_schema", "PROCESSLIST"},
         {"x$latest_file_io", "performance_schema", "events_waits_history_long"},
         {"x$latest_file_io", "performance_schema", "threads"},
@@ -64457,6 +64841,7 @@ static int append_information_schema_view_routine_usage_system_rows(
         {"innodb_lock_waits", "format_statement"},
         {"innodb_lock_waits", "quote_identifier"},
         {"io_global_by_file_by_bytes", "format_path"},
+        {"io_global_by_file_by_latency", "format_path"},
         {"latest_file_io", "format_path"},
         {"schema_table_lock_waits", "format_statement"},
         {"schema_table_lock_waits", "ps_thread_account"},
@@ -64592,6 +64977,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
@@ -64606,6 +64992,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:

@@ -355,14 +355,15 @@ static int test_mysql_system_show_columns(void) {
     failures += expect_row_count_status(database, "row count after mysql system show columns");
     failures += expect_error(
         database,
-        "SHOW COLUMNS FROM mysql.role_edges",
+        "SHOW COLUMNS FROM mysql.password_history",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SHOW COLUMNS supports selected mysql system tables",
         }
     );
-    failures += expect_error_status(database, "status after unsupported mysql role_edges table");
+    failures +=
+        expect_error_status(database, "status after unsupported mysql password_history table");
     failures += expect_error(
         database,
         "SHOW COLUMNS FROM mysql.no_such_table",

@@ -243,6 +243,13 @@ default-role storage, role graph storage, grant reload, role activation,
 privilege filtering, privilege enforcement, account-management DDL, and writes
 out of scope.
 
+The `baseline-mysql-role-edges-table` slice refines `mysql.role_edges` with
+direct empty placeholder reads plus MySQL-observed InnoDB status fields,
+comments, column metadata, and composite primary-key metadata while keeping
+role graph storage, default-role storage, grant reload, role activation,
+privilege filtering, privilege enforcement, account-management DDL, and writes
+out of scope.
+
 The `baseline-mysql-time-zone-tables` slice refines the five
 `mysql.time_zone*` tables with direct empty placeholder reads plus
 MySQL-observed InnoDB status fields, comments, column metadata, and

@@ -582,6 +582,7 @@ enum {
     mysql_procs_priv_column_count = 8,
     mysql_proxies_priv_column_count = 7,
     mysql_default_roles_column_count = 4,
+    mysql_role_edges_column_count = 5,
     mysql_slow_log_column_count = 12,
     mysql_help_category_column_count = 4,
     mysql_help_keyword_column_count = 2,
@@ -4538,6 +4539,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV = 106,
     INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV = 107,
     INFORMATION_SCHEMA_TABLE_MYSQL_DEFAULT_ROLES = 108,
+    INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES = 109,
 };
 
 struct information_schema_column_definition {
@@ -13777,6 +13779,100 @@ static const size_t mysql_default_roles_primary_key_column_indexes[] = {
     3U,
 };
 
+static const struct information_schema_column_definition mysql_role_edges_columns[] = {
+    {"FROM_HOST",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"FROM_USER",
+     "",
+     "NO",
+     "char",
+     "32",
+     "96",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "char(32)"},
+    {"TO_HOST",
+     "",
+     "NO",
+     "char",
+     "255",
+     "255",
+     NULL,
+     NULL,
+     NULL,
+     "ascii",
+     "ascii_general_ci",
+     "char(255)"},
+    {"TO_USER",
+     "",
+     "NO",
+     "char",
+     "32",
+     "96",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "char(32)"},
+    {"WITH_ADMIN_OPTION",
+     "N",
+     "NO",
+     "enum",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "enum('N','Y')"},
+};
+
+static const char *const mysql_role_edges_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "PRI",
+    "",
+};
+
+static const char *const mysql_role_edges_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const mysql_role_edges_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t mysql_role_edges_primary_key_column_indexes[] = {
+    0U,
+    1U,
+    2U,
+    3U,
+};
+
 static const struct information_schema_column_definition mysql_component_columns[] = {
     {"component_id", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
     {"component_group_id",
@@ -16166,6 +16262,21 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      mysql_default_roles_primary_key_column_indexes,
      sizeof(mysql_default_roles_primary_key_column_indexes) /
          sizeof(mysql_default_roles_primary_key_column_indexes[0]),
+     NULL,
+     NULL,
+     0U},
+    {"mysql",
+     {INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES,
+      "role_edges",
+      mysql_role_edges_columns,
+      mysql_role_edges_column_count},
+     mysql_role_edges_column_keys,
+     mysql_role_edges_column_extras,
+     mysql_role_edges_column_privileges,
+     NULL,
+     mysql_role_edges_primary_key_column_indexes,
+     sizeof(mysql_role_edges_primary_key_column_indexes) /
+         sizeof(mysql_role_edges_primary_key_column_indexes[0]),
      NULL,
      NULL,
      0U},
@@ -55183,6 +55294,7 @@ static bool mysql_system_table_definition_has_no_rows(
             strcmp(definition->query_definition.name, "ndb_binlog_index") == 0 ||
             strcmp(definition->query_definition.name, "procs_priv") == 0 ||
             strcmp(definition->query_definition.name, "proxies_priv") == 0 ||
+            strcmp(definition->query_definition.name, "role_edges") == 0 ||
             strcmp(definition->query_definition.name, "servers") == 0 ||
             strcmp(definition->query_definition.name, "slave_master_info") == 0 ||
             strcmp(definition->query_definition.name, "slave_relay_log_info") == 0 ||
@@ -56527,6 +56639,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_MASTER_INFO:
@@ -56629,6 +56742,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_PLUGIN:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROCS_PRIV:
     case INFORMATION_SCHEMA_TABLE_MYSQL_PROXIES_PRIV:
+    case INFORMATION_SCHEMA_TABLE_MYSQL_ROLE_EDGES:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVER_COST:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SERVERS:
     case INFORMATION_SCHEMA_TABLE_MYSQL_SLAVE_MASTER_INFO:
@@ -58330,6 +58444,8 @@ static const char *builtin_schema_table_data_free(
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "default_roles") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
+                    strcmp(table_name, "role_edges") == 0) ||
+                   (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "procs_priv") == 0) ||
                    (strcmp(directory->schema_name, "mysql") == 0 &&
                     strcmp(table_name, "proxies_priv") == 0) ||
@@ -58454,6 +58570,7 @@ static const char *builtin_mysql_table_comment(const char *table_name) {
         {"plugin", "MySQL plugins"},
         {"procs_priv", "Procedure privileges"},
         {"proxies_priv", "User proxy privileges"},
+        {"role_edges", "Role hierarchy and role grants"},
         {"servers", "MySQL Foreign Servers table"},
         {"slave_master_info", "Master Information"},
         {"slave_relay_log_info", "Relay Log Information"},

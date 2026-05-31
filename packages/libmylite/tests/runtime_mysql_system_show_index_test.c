@@ -277,14 +277,15 @@ static int test_mysql_system_show_index(void) {
     failures += expect_row_count_status(database, "row count after mysql system show index");
     failures += expect_error(
         database,
-        "SHOW INDEX FROM mysql.role_edges",
+        "SHOW INDEX FROM mysql.password_history",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SHOW INDEX supports selected mysql system tables",
         }
     );
-    failures += expect_error_status(database, "status after unsupported mysql role_edges index");
+    failures +=
+        expect_error_status(database, "status after unsupported mysql password_history index");
     failures += expect_error(
         database,
         "SHOW INDEX FROM mysql.no_such_table",

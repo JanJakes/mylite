@@ -315,6 +315,17 @@ dependency metadata. It keeps Performance Schema memory-summary collection,
 live host memory rows, sys helper-function execution, privilege/definer
 enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-memory-by-thread-by-current-bytes-views` slice refines
+`sys.memory_by_thread_by_current_bytes` and
+`sys.x$memory_by_thread_by_current_bytes` with direct read-only empty
+placeholder rows plus MySQL-observed view status fields, column metadata, view
+definition metadata, dependencies on
+`performance_schema.memory_summary_by_thread_by_event_name` and
+`performance_schema.threads`, and empty routine dependency metadata. It keeps
+Performance Schema memory-summary collection, live thread rows, sys
+helper-function execution, privilege/definer enforcement, and broader sys view
+execution out of scope.
+
 The `baseline-sys-host-summary-views` slice refines `sys.host_summary` and
 `sys.x$host_summary` with direct read-only empty placeholder rows plus
 MySQL-observed view status fields, column metadata, view definition metadata,

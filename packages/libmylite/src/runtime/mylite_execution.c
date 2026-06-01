@@ -603,6 +603,7 @@ enum {
     sys_io_global_by_wait_by_latency_column_count = 14,
     sys_latest_file_io_column_count = 5,
     sys_memory_by_host_by_current_bytes_column_count = 6,
+    sys_memory_by_thread_by_current_bytes_column_count = 7,
     sys_ps_check_lost_instrumentation_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,
@@ -4640,6 +4641,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_TABLE = 159,
     INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES = 160,
     INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES = 161,
+    INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES = 162,
+    INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES = 163,
 };
 
 struct information_schema_column_definition {
@@ -15682,6 +15685,217 @@ static const char *const sys_memory_by_host_by_current_bytes_column_privileges
 };
 
 static const struct information_schema_column_definition
+    sys_memory_by_thread_by_current_bytes_columns
+        [sys_memory_by_thread_by_current_bytes_column_count] = {
+            {"thread_id",
+             NULL,
+             "NO",
+             "bigint",
+             NULL,
+             NULL,
+             "20",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "bigint unsigned"},
+            {"user",
+             NULL,
+             "YES",
+             "varchar",
+             "288",
+             "1152",
+             NULL,
+             NULL,
+             NULL,
+             "utf8mb4",
+             "utf8mb4_0900_ai_ci",
+             "varchar(288)"},
+            {"current_count_used",
+             NULL,
+             "YES",
+             "decimal",
+             NULL,
+             NULL,
+             "41",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "decimal(41,0)"},
+            {"current_allocated",
+             NULL,
+             "YES",
+             "varchar",
+             "11",
+             "33",
+             NULL,
+             NULL,
+             NULL,
+             "utf8mb3",
+             "utf8mb3_general_ci",
+             "varchar(11)"},
+            {"current_avg_alloc",
+             NULL,
+             "YES",
+             "varchar",
+             "11",
+             "33",
+             NULL,
+             NULL,
+             NULL,
+             "utf8mb3",
+             "utf8mb3_general_ci",
+             "varchar(11)"},
+            {"current_max_alloc",
+             NULL,
+             "YES",
+             "varchar",
+             "11",
+             "33",
+             NULL,
+             NULL,
+             NULL,
+             "utf8mb3",
+             "utf8mb3_general_ci",
+             "varchar(11)"},
+            {"total_allocated",
+             NULL,
+             "YES",
+             "varchar",
+             "11",
+             "33",
+             NULL,
+             NULL,
+             NULL,
+             "utf8mb3",
+             "utf8mb3_general_ci",
+             "varchar(11)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_memory_by_thread_by_current_bytes_columns
+        [sys_memory_by_thread_by_current_bytes_column_count] = {
+            {"thread_id",
+             NULL,
+             "NO",
+             "bigint",
+             NULL,
+             NULL,
+             "20",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "bigint unsigned"},
+            {"user",
+             NULL,
+             "YES",
+             "varchar",
+             "288",
+             "1152",
+             NULL,
+             NULL,
+             NULL,
+             "utf8mb4",
+             "utf8mb4_0900_ai_ci",
+             "varchar(288)"},
+            {"current_count_used",
+             NULL,
+             "YES",
+             "decimal",
+             NULL,
+             NULL,
+             "41",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "decimal(41,0)"},
+            {"current_allocated",
+             NULL,
+             "YES",
+             "decimal",
+             NULL,
+             NULL,
+             "41",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "decimal(41,0)"},
+            {"current_avg_alloc",
+             "0.0000",
+             "NO",
+             "decimal",
+             NULL,
+             NULL,
+             "45",
+             "4",
+             NULL,
+             NULL,
+             NULL,
+             "decimal(45,4)"},
+            {"current_max_alloc",
+             NULL,
+             "YES",
+             "bigint",
+             NULL,
+             NULL,
+             "19",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "bigint"},
+            {"total_allocated",
+             NULL,
+             "YES",
+             "decimal",
+             NULL,
+             NULL,
+             "42",
+             "0",
+             NULL,
+             NULL,
+             NULL,
+             "decimal(42,0)"},
+};
+
+static const char *const sys_memory_by_thread_by_current_bytes_column_keys
+    [sys_memory_by_thread_by_current_bytes_column_count] = {
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+};
+
+static const char *const sys_memory_by_thread_by_current_bytes_column_extras
+    [sys_memory_by_thread_by_current_bytes_column_count] = {
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+};
+
+static const char *const sys_memory_by_thread_by_current_bytes_column_privileges
+    [sys_memory_by_thread_by_current_bytes_column_count] = {
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_innodb_buffer_stats_by_schema_columns[sys_innodb_buffer_stats_by_schema_column_count] = {
         {"object_schema",
          NULL,
@@ -21199,6 +21413,97 @@ static const char sys_x_memory_by_host_by_current_bytes_show_create_qualified_vi
 #undef SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION
 #undef SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION
 
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS                                         \
+    "(`thread_id`,`user`,`current_count_used`,`current_allocated`,`current_avg_alloc`,"            \
+    "`current_max_alloc`,`total_allocated`)"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_MEMORY_SOURCE                                        \
+    "`performance_schema`.`memory_summary_by_thread_by_event_name` `mt`"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_THREAD_SOURCE "`performance_schema`.`threads` `t`"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_FROM_EXPR                                            \
+    "(" SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_MEMORY_SOURCE                                        \
+    " join " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_THREAD_SOURCE                                   \
+    " on((`mt`.`THREAD_ID` = `t`.`THREAD_ID`)))"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_USER_EXPR                                            \
+    "if((`t`.`NAME` = 'thread/sql/one_connection'),concat(`t`.`PROCESSLIST_USER`,'@',"             \
+    "convert(`t`.`PROCESSLIST_HOST` using utf8mb4)),replace(`t`.`NAME`,'thread/',''))"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR                                   \
+    "sum(`mt`.`CURRENT_NUMBER_OF_BYTES_USED`)"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_COUNT_EXPR "sum(`mt`.`CURRENT_COUNT_USED`)"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_AVG_EXPR                                             \
+    "ifnull((" SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR                            \
+    " / nullif(" SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_COUNT_EXPR ",0)),0)"
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_SELECT_SUFFIX                                        \
+    "max(`mt`.`CURRENT_NUMBER_OF_BYTES_USED`) AS `current_max_alloc`,"                             \
+    "sum(`mt`.`SUM_NUMBER_OF_BYTES_ALLOC`) AS `total_allocated` "                                  \
+    "from " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_FROM_EXPR
+
+#define SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION                                      \
+    "select `mt`.`THREAD_ID` AS `thread_id`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_USER_EXPR      \
+    " AS `user`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_COUNT_EXPR " AS `current_count_used`,"     \
+    "format_bytes(" SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR                       \
+    ") AS `current_allocated`,format_bytes(" SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_AVG_EXPR        \
+    ") AS `current_avg_alloc`,format_bytes(max(`mt`.`CURRENT_NUMBER_OF_BYTES_USED`)) AS "          \
+    "`current_max_alloc`,format_bytes(sum(`mt`.`SUM_NUMBER_OF_BYTES_ALLOC`)) AS "                  \
+    "`total_allocated` from " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_FROM_EXPR                      \
+    " group by `mt`.`THREAD_ID`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_USER_EXPR                  \
+    " order by " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR " desc"
+
+#define SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION                                    \
+    "select `t`.`THREAD_ID` AS `thread_id`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_USER_EXPR       \
+    " AS `user`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_COUNT_EXPR                                 \
+    " AS `current_count_used`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR           \
+    " AS `current_allocated`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_AVG_EXPR                      \
+    " AS `current_avg_alloc`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_SELECT_SUFFIX                 \
+    " group by `t`.`THREAD_ID`," SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_USER_EXPR                   \
+    " order by " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR " desc"
+
+static const char sys_memory_by_thread_by_current_bytes_view_definition[] =
+    SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
+
+static const char sys_memory_by_thread_by_current_bytes_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`memory_by_thread_by_current_bytes` " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
+    " AS " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
+
+static const char sys_memory_by_thread_by_current_bytes_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`memory_by_thread_by_current_bytes` " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
+    " AS " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
+
+static const char sys_x_memory_by_thread_by_current_bytes_view_definition[] =
+    SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
+
+static const char sys_x_memory_by_thread_by_current_bytes_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$memory_by_thread_by_current_bytes` " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
+    " AS " SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
+
+static const char sys_x_memory_by_thread_by_current_bytes_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$memory_by_thread_by_current_bytes`"
+    " " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
+    " AS " SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
+
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_MEMORY_SOURCE
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_THREAD_SOURCE
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_FROM_EXPR
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_USER_EXPR
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_CURRENT_BYTES_EXPR
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_COUNT_EXPR
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_AVG_EXPR
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_SELECT_SUFFIX
+#undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION
+#undef SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION
+
 #define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS                                             \
     "(`object_schema`,`allocated`,`data`,`pages`,`pages_hashed`,`pages_old`,`rows_cached`)"
 
@@ -22629,6 +22934,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_memory_by_host_by_current_bytes_view_definition,
      sys_memory_by_host_by_current_bytes_show_create_view_sql,
      sys_memory_by_host_by_current_bytes_show_create_qualified_view_sql},
+    {"memory_by_thread_by_current_bytes",
+     sys_memory_by_thread_by_current_bytes_view_definition,
+     sys_memory_by_thread_by_current_bytes_show_create_view_sql,
+     sys_memory_by_thread_by_current_bytes_show_create_qualified_view_sql},
     {"ps_check_lost_instrumentation",
      sys_ps_check_lost_instrumentation_view_definition,
      sys_ps_check_lost_instrumentation_show_create_view_sql,
@@ -22737,6 +23046,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_memory_by_host_by_current_bytes_view_definition,
      sys_x_memory_by_host_by_current_bytes_show_create_view_sql,
      sys_x_memory_by_host_by_current_bytes_show_create_qualified_view_sql},
+    {"x$memory_by_thread_by_current_bytes",
+     sys_x_memory_by_thread_by_current_bytes_view_definition,
+     sys_x_memory_by_thread_by_current_bytes_show_create_view_sql,
+     sys_x_memory_by_thread_by_current_bytes_show_create_qualified_view_sql},
     {"x$ps_schema_table_statistics_io",
      sys_x_ps_schema_table_statistics_io_view_definition,
      sys_x_ps_schema_table_statistics_io_show_create_view_sql,
@@ -25778,6 +26091,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES,
+      "memory_by_thread_by_current_bytes",
+      sys_memory_by_thread_by_current_bytes_columns,
+      sys_memory_by_thread_by_current_bytes_column_count},
+     sys_memory_by_thread_by_current_bytes_column_keys,
+     sys_memory_by_thread_by_current_bytes_column_extras,
+     sys_memory_by_thread_by_current_bytes_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION,
       "ps_check_lost_instrumentation",
       sys_ps_check_lost_instrumentation_columns,
@@ -26149,6 +26476,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_memory_by_host_by_current_bytes_column_keys,
      sys_memory_by_host_by_current_bytes_column_extras,
      sys_memory_by_host_by_current_bytes_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES,
+      "x$memory_by_thread_by_current_bytes",
+      sys_x_memory_by_thread_by_current_bytes_columns,
+      sys_memory_by_thread_by_current_bytes_column_count},
+     sys_memory_by_thread_by_current_bytes_column_keys,
+     sys_memory_by_thread_by_current_bytes_column_extras,
+     sys_memory_by_thread_by_current_bytes_column_privileges,
      NULL,
      NULL,
      0U,
@@ -29448,6 +29789,10 @@ static int append_sys_latest_file_io_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_memory_by_host_by_current_bytes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_memory_by_thread_by_current_bytes_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -65453,6 +65798,10 @@ static bool append_sys_schema_summary_system_table_rows(
         *out_status = append_sys_memory_by_host_by_current_bytes_system_rows(database, rows);
         return true;
     }
+    if (strcmp(definition->query_definition.name, "memory_by_thread_by_current_bytes") == 0) {
+        *out_status = append_sys_memory_by_thread_by_current_bytes_system_rows(database, rows);
+        return true;
+    }
     if (strcmp(definition->query_definition.name, "innodb_buffer_stats_by_schema") == 0) {
         *out_status = append_sys_innodb_buffer_stats_by_schema_system_rows(database, rows);
         return true;
@@ -65554,6 +65903,10 @@ static bool append_sys_schema_x_summary_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$memory_by_host_by_current_bytes") == 0) {
         *out_status = append_sys_memory_by_host_by_current_bytes_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$memory_by_thread_by_current_bytes") == 0) {
+        *out_status = append_sys_memory_by_thread_by_current_bytes_system_rows(database, rows);
         return true;
     }
     if (strcmp(definition->query_definition.name, "x$innodb_buffer_stats_by_schema") == 0) {
@@ -65863,6 +66216,17 @@ static int append_sys_memory_by_host_by_current_bytes_system_rows(
 ) {
     if (rows->definition->column_count != sys_memory_by_host_by_current_bytes_column_count) {
         set_runtime_error(database, "invalid sys.memory_by_host_by_current_bytes columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_memory_by_thread_by_current_bytes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_memory_by_thread_by_current_bytes_column_count) {
+        set_runtime_error(database, "invalid sys.memory_by_thread_by_current_bytes columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -68970,6 +69334,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -68997,6 +69362,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_WAIT_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
@@ -69152,6 +69518,10 @@ static int append_information_schema_view_table_usage_system_rows(
         {"memory_by_host_by_current_bytes",
          "performance_schema",
          "memory_summary_by_host_by_event_name"},
+        {"memory_by_thread_by_current_bytes",
+         "performance_schema",
+         "memory_summary_by_thread_by_event_name"},
+        {"memory_by_thread_by_current_bytes", "performance_schema", "threads"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -69220,6 +69590,10 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$memory_by_host_by_current_bytes",
          "performance_schema",
          "memory_summary_by_host_by_event_name"},
+        {"x$memory_by_thread_by_current_bytes",
+         "performance_schema",
+         "memory_summary_by_thread_by_event_name"},
+        {"x$memory_by_thread_by_current_bytes", "performance_schema", "threads"},
         {"x$innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"x$innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"x$innodb_lock_waits", "performance_schema", "data_locks"},
@@ -69440,6 +69814,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES:
     case INFORMATION_SCHEMA_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -69467,6 +69842,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_WAIT_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_LATEST_FILE_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:

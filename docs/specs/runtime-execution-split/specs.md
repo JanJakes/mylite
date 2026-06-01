@@ -6,7 +6,8 @@
 translation unit containing statement planning, execution, generated SQL text
 building, MySQL catalog metadata, system table definitions, and assorted local
 helpers. This slice is a behavior-preserving refactor whose purpose is to move
-cohesive, low-dependency runtime pieces into smaller internal modules without
+cohesive, low-dependency runtime pieces into smaller internal modules, and to
+split tightly coupled runtime implementation into named fragments, without
 changing MySQL compatibility behavior.
 
 The initial split extracts:
@@ -23,14 +24,24 @@ The second split extracts:
   SHOW STATUS descriptors, SQL mode descriptor parsing/formatting, and system
   variable scope/classification helpers.
 
+The third split keeps the remaining execution implementation in one translation
+unit but physically splits it into large include fragments. This is intentional:
+the runtime still has broad private helper coupling, and forcing the next split
+into separately compiled objects would require exporting hundreds of helpers
+before a stable internal API exists. The fragments provide smaller files and
+clearer logical ownership while preserving existing `static` linkage.
+
 ## Goals
 
-- Reduce the size and clang-tidy surface of `mylite_execution.c` with real
-  translation-unit boundaries.
+- Reduce the size and review surface of `mylite_execution.c`.
+- Use real translation-unit boundaries where the dependency surface is already
+  narrow.
+- Use same-translation-unit fragments for broad runtime slices until their
+  cross-cutting helper API is designed.
 - Keep MyLite compatibility logic outside the SQLite fork.
 - Preserve all existing runtime behavior, metadata values, diagnostics, and
   tests.
-- Keep the first split conservative: do not introduce large abstractions,
+- Keep each split conservative: do not introduce large abstractions,
   generated catalog sources, or many small files until the next extraction
   justifies them.
 
@@ -107,6 +118,47 @@ The system variables module does not own:
 - Database/schema lookup for selected schema character set and collation values.
 - Time zone state mutation.
 
+### Runtime implementation fragments
+
+The `mylite_execution_*.inc` files are implementation fragments included only
+by `mylite_execution.c`. They are not headers, are not separately compiled, and
+must not be included by other files. They preserve the previous single
+translation unit and its file-local symbols while shrinking the physical
+working files.
+
+The fragments are:
+
+- `mylite_execution_statement_core.inc`: statement completion, dispatch,
+  session state, prepared statements, SET, transaction, savepoint, and lock
+  handling.
+- `mylite_execution_ddl_statements.inc`: high-level DDL/schema statement
+  execution.
+- `mylite_execution_dml_statements.inc`: high-level INSERT/REPLACE/LOAD
+  DATA/DELETE/UPDATE execution.
+- `mylite_execution_metadata_queries.inc`: `DO`, `SELECT` entry points,
+  `INFORMATION_SCHEMA` SELECT execution, read-only `mysql`/`sys` virtual table
+  row synthesis, and tabular `SHOW` execution.
+- `mylite_execution_ddl_planning.inc`: DDL planning, table/index/constraint
+  validation, and catalog mutation helpers.
+- `mylite_execution_dml_planning.inc`: DML planning, value conversion, insert
+  row execution, duplicate-key handling, and DML validation.
+- `mylite_execution_scalar.inc`: session scalar expression evaluation and
+  scalar built-in function support.
+- `mylite_execution_catalog_loading.inc`: runtime catalog table/column/index,
+  foreign-key, and check-constraint loading helpers.
+- `mylite_execution_query_planning.inc`: row-scalar, predicate, ordering,
+  aggregate, and query planning helpers.
+- `mylite_execution_show_helpers.inc`: `SHOW` filtering, sorting, and display
+  formatting helpers.
+- `mylite_execution_sql_builders.inc`: physical SQLite SQL rendering, statement
+  preparation, binding, stepping, and result extraction helpers.
+- `mylite_execution_diagnostics.inc`: MySQL-compatible diagnostics, warnings,
+  notes, and parse-status mapping helpers.
+
+Fragment boundaries should remain coarse and logical. New work may move a
+fragment into a real `.c` module only after the required private helper surface
+is narrow enough to be reviewed as an intentional internal API.
+
 ## Compatibility requirements
 
 - Existing MySQL 8.4.9-shaped metadata must be byte-for-byte equivalent at the
@@ -119,6 +171,9 @@ The system variables module does not own:
   loaded MySQL server data.
 - System variable names, scope handling, warning behavior, placeholder values,
   and SQL mode canonical text must stay identical to the previous runtime
+  behavior.
+- Metadata SELECT and SHOW result columns, row order, warnings, errors,
+  SQLSTATEs, and placeholder rows must remain identical to the previous runtime
   behavior.
 
 ## Implementation plan
@@ -138,6 +193,9 @@ The system variables module does not own:
 8. Extract system variable descriptors, SHOW STATUS descriptors, SQL mode
    descriptor helpers, and pure system variable classification helpers into
    `mylite_execution_system_variables.h/.c`.
+9. Split the tightly coupled execution implementation into large
+   same-translation-unit fragments, avoiding new exported helper surfaces until
+   a later true-module boundary is ready.
 
 ## Review checklist
 
@@ -148,4 +206,8 @@ The system variables module does not own:
 - The execution monolith still owns behavior; the catalog module owns data.
 - System variable session mutation and value rendering stay in the execution
   monolith until a later runtime-state boundary is designed.
+- Runtime fragments do not introduce new exported symbols, writable metadata
+  state, or a second query engine.
+- `mylite_execution.c` is the only file that includes runtime implementation
+  fragments.
 - Tests prove behavior preservation.

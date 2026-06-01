@@ -27,3 +27,18 @@
 - [x] Review the second split for behavior preservation and module boundaries.
 - [x] Fix review findings.
 - [x] Commit and push the second split.
+
+## Round 3
+
+- [x] Reinspect large boundaries after the system-variable extraction.
+- [x] Specify a larger same-translation-unit implementation-fragment split.
+- [x] Split the remaining execution implementation into coarse logical
+      fragments.
+- [x] Preserve the existing private helper surface without adding a broad
+      exported bridge.
+- [x] Run focused build and runtime tests.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Review the third split for behavior preservation, fragment boundaries,
+      and readiness for later true-module extraction.
+- [x] Fix review findings.
+- [ ] Commit and push the third split.

@@ -314,6 +314,15 @@ statement, file-I/O, and memory summary collection, live host rows, raw-view
 warning production, sys helper-function execution, privilege/definer
 enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-host-summary-by-file-io-views` slice refines
+`sys.host_summary_by_file_io` and `sys.x$host_summary_by_file_io` with direct
+read-only empty placeholder rows plus MySQL-observed view status fields,
+column metadata, view definition metadata, dependencies on the referenced
+Performance Schema wait-summary table, and empty routine dependency metadata.
+It keeps Performance Schema host wait-summary collection, live file-I/O rows,
+sys helper-function execution, privilege/definer enforcement, and broader sys
+view execution out of scope.
+
 The `baseline-sys-io-by-thread-by-latency-views` slice refines
 `sys.io_by_thread_by_latency` and `sys.x$io_by_thread_by_latency` with direct
 read-only empty placeholder rows plus MySQL-observed view status fields,

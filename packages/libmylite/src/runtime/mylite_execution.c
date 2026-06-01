@@ -27857,6 +27857,30 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_ddl_planning.inc"
 
+#include "mylite_execution_create_table_constraints.inc"
+
+#include "mylite_execution_create_table_variants.inc"
+
+#include "mylite_execution_table_options_planning.inc"
+
+#include "mylite_execution_create_table_execution.inc"
+
+#include "mylite_execution_schema_table_admin.inc"
+
+#include "mylite_execution_alter_table_add_column.inc"
+
+#include "mylite_execution_alter_table_add_index.inc"
+
+#include "mylite_execution_alter_table_foreign_key_index.inc"
+
+#include "mylite_execution_alter_table_check_constraints.inc"
+
+#include "mylite_execution_alter_table_drop_rename_column.inc"
+
+#include "mylite_execution_alter_table_modify_options.inc"
+
+#include "mylite_execution_load_data_planning.inc"
+
 #include "mylite_execution_dml_planning.inc"
 
 #include "mylite_execution_insert_execution.inc"

@@ -153,4 +153,23 @@
       and fragment naming.
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
-- [ ] Commit and push the ninth split.
+- [x] Commit and push the ninth split.
+
+## Round 10
+
+- [x] Reinspect the remaining oversized DDL planning fragment after the DML
+      planning split.
+- [x] Select coarse CREATE TABLE, table option, schema/table admin, ALTER
+      TABLE, and LOAD DATA planning fragments.
+- [x] Split CREATE TABLE constraints/options/execution, schema/table admin,
+      ALTER TABLE add-column, add-index, foreign-key/index, check-constraint,
+      drop/rename-column, modify/options, and LOAD DATA helpers into named
+      fragments.
+- [x] Preserve same-translation-unit static linkage and original function
+      ordering.
+- [x] Run focused build and runtime tests.
+- [x] Review the split for missing includes, ordering drift, behavior changes,
+      and fragment naming.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [ ] Commit and push the tenth split.

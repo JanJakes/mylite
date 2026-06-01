@@ -69,6 +69,14 @@ planning/execution, VALUES, scalar projection SELECT execution, and scalar
 warning helpers. The split keeps those routines in the execution translation
 unit but gives each family a named fragment.
 
+The tenth split applies the same behavior-preserving same-translation-unit
+approach to DDL planning. The former 19k-line DDL planning fragment mixed
+CREATE TABLE analysis, constraint/index planning, table option decoding,
+CREATE TABLE execution/catalog mutation, schema/table administration, ALTER
+TABLE action families, physical rebuild helpers, and LOAD DATA target
+planning. The split keeps static helper visibility unchanged while making each
+DDL family separately reviewable.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -222,8 +230,46 @@ The fragments are:
 - `mylite_execution_result_completion.inc`: completed-statement row-count
   classification, diagnostics snapshot preservation, and successful-result
   finalization helpers.
-- `mylite_execution_ddl_planning.inc`: DDL planning, table/index/constraint
-  validation, and catalog mutation helpers.
+- `mylite_execution_ddl_planning.inc`: CREATE TABLE planning core, column item
+  planning, inline primary/unique/index collection, generated column
+  finalization, and generated/CHECK expression rendering.
+- `mylite_execution_create_table_constraints.inc`: CREATE TABLE CHECK,
+  FOREIGN KEY, secondary-index, primary-key, and AUTO_INCREMENT validation and
+  planning helpers.
+- `mylite_execution_create_table_variants.inc`: CREATE TABLE LIKE and CREATE
+  TABLE ... SELECT planning, descriptor cloning, source-column inference, row
+  validation, and copy execution.
+- `mylite_execution_table_options_planning.inc`: CREATE/ALTER/SCHEMA table
+  option validation, character set and collation option resolution, storage
+  statistics option handling, normalized table option decoding, CREATE TABLE
+  cleanup, and `sql_require_primary_key` validation.
+- `mylite_execution_create_table_execution.inc`: CREATE TABLE catalog
+  mutation, persistent and temporary table descriptor construction, physical
+  CREATE/DROP TABLE execution helpers, and index/foreign-key/check identifier
+  assignment.
+- `mylite_execution_schema_table_admin.inc`: CREATE/DROP DATABASE, TRUNCATE
+  TABLE, RENAME TABLE, and ALTER TABLE RENAME planning/execution.
+- `mylite_execution_alter_table_add_column.inc`: ALTER TABLE ADD COLUMN and
+  ADD PRIMARY KEY planning, validation, mutation, warnings, and physical
+  ALTER execution.
+- `mylite_execution_alter_table_add_index.inc`: ALTER TABLE ADD INDEX and
+  CREATE INDEX planning, index option decoding, add-index execution, and
+  fulltext/spatial/hash warning handling.
+- `mylite_execution_alter_table_foreign_key_index.inc`: ALTER TABLE ADD/DROP
+  FOREIGN KEY, DROP CONSTRAINT, DROP INDEX, RENAME INDEX, foreign-key
+  dependency rejection, and loaded-index validation helpers.
+- `mylite_execution_alter_table_check_constraints.inc`: ALTER TABLE ADD CHECK,
+  DROP CHECK, and ALTER CHECK planning, temporary rebuild planning,
+  check-catalog row insertion, and physical check rebuild helpers.
+- `mylite_execution_alter_table_drop_rename_column.inc`: ALTER TABLE DROP
+  PRIMARY KEY, AUTO_INCREMENT option, DROP COLUMN dependency planning, and
+  RENAME COLUMN planning/execution.
+- `mylite_execution_alter_table_modify_options.inc`: ALTER TABLE MODIFY/
+  CHANGE COLUMN, SET/DROP DEFAULT, column/index visibility, default
+  charset/collation, CONVERT CHARACTER SET, COMMENT, ORDER BY, FORCE, key
+  maintenance, rebuild SQL, and rename collision helpers.
+- `mylite_execution_load_data_planning.inc`: LOAD DATA target-column
+  resolution, target index collection, and IGNORE line-count parsing.
 - `mylite_execution_dml_planning.inc`: INSERT/REPLACE target planning,
   duplicate-key assignment planning, AUTO_INCREMENT planning, and planned value
   cleanup.

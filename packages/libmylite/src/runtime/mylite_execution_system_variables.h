@@ -1,0 +1,154 @@
+#ifndef MYLITE_EXECUTION_SYSTEM_VARIABLES_H
+#define MYLITE_EXECUTION_SYSTEM_VARIABLES_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+enum mylite_execution_system_variable_kind {
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE = 0,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_WARNING_COUNT = 1,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ERROR_COUNT = 2,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT = 3,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION = 4,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS = 5,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_CONNECTION = 6,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION = 7,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMMENT = 8,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER = 9,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER = 10,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE = 11,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE = 12,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE = 13,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM = 14,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM = 15,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT = 16,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE = 17,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS = 18,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS = 19,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT = 20,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL = 21,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS = 22,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY = 23,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES = 24,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_WARNINGS = 25,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT = 26,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES = 27,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT = 28,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN = 29,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF = 30,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE = 31,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY = 32,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER = 33,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER = 34,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP = 35,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE = 36,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE = 37,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED = 38,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_MODE = 39,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_OWNED = 40,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_PURGED = 41,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES = 42,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM = 43,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET = 44,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION = 45,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 46,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT = 47,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET = 48,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT = 49,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 50,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP = 51,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN = 52,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY = 53,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SUPER_READ_ONLY = 54,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY = 55,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY = 56,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES = 57,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN = 58,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_BASENAME = 59,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_INDEX = 60,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS = 61,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID = 62,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS = 63,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_UUID = 64,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BASEDIR = 65,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DATADIR = 66,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HOSTNAME = 67,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LICENSE = 68,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE = 69,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR = 70,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT = 71,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET = 72,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION = 73,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE = 74,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_OS = 75,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 76,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE = 77,
+};
+
+struct mylite_execution_system_variable_descriptor {
+    const char *name;
+    enum mylite_execution_system_variable_kind kind;
+    bool show_session;
+    bool show_global;
+};
+
+struct mylite_execution_show_status_descriptor {
+    const char *name;
+    const char *value;
+    bool show_session;
+    bool show_global;
+};
+
+size_t mylite_execution_system_variable_descriptor_count(void);
+const struct mylite_execution_system_variable_descriptor *mylite_execution_system_variable_descriptor_at(
+    size_t index
+);
+const struct mylite_execution_system_variable_descriptor *mylite_execution_system_variable_descriptor_by_name(
+    const char *name
+);
+const struct mylite_execution_system_variable_descriptor *mylite_execution_system_variable_descriptor_by_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_allows_global_scope(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_allows_session_scope(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_warns_on_scalar_read(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_fixed_boolean_value(
+    enum mylite_execution_system_variable_kind kind,
+    bool *out_value
+);
+bool mylite_execution_system_variable_is_global_read_only_toggle(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_read_only_server_identity_binary_log(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_read_only_server_build(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_read_only_server_environment(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);
+
+size_t mylite_execution_show_status_descriptor_count(void);
+const struct mylite_execution_show_status_descriptor *mylite_execution_show_status_descriptor_at(
+    size_t index
+);
+
+bool mylite_execution_sql_mode_token_matches(const char *text, size_t length, const char *expected);
+int mylite_execution_sql_mode_parse(
+    const char *text,
+    uint64_t *out_modes,
+    const char **out_invalid_token,
+    size_t *out_invalid_token_length
+);
+int mylite_execution_sql_mode_format(uint64_t modes, char *buffer, size_t buffer_size);
+
+#endif

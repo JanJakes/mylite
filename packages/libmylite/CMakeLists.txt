@@ -48,6 +48,7 @@ add_library(mylite STATIC
   src/runtime/mylite_dynamic_string.c
   src/runtime/mylite_execution.c
   src/runtime/mylite_execution_catalog.c
+  src/runtime/mylite_execution_system_variables.c
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_json.c

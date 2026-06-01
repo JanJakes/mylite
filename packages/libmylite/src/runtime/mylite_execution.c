@@ -9,6 +9,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
 #include "mylite_mysql_server_identity.h"
@@ -3941,110 +3942,9 @@ struct if_validation_stack {
     size_t capacity;
 };
 
-enum session_system_variable_kind {
-    SESSION_SYSTEM_VARIABLE_NONE = 0,
-    SESSION_SYSTEM_VARIABLE_WARNING_COUNT = 1,
-    SESSION_SYSTEM_VARIABLE_ERROR_COUNT = 2,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT = 3,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION = 4,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS = 5,
-    SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION = 6,
-    SESSION_SYSTEM_VARIABLE_VERSION = 7,
-    SESSION_SYSTEM_VARIABLE_VERSION_COMMENT = 8,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER = 9,
-    SESSION_SYSTEM_VARIABLE_COLLATION_SERVER = 10,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE = 11,
-    SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE = 12,
-    SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE = 13,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM = 14,
-    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM = 15,
-    SESSION_SYSTEM_VARIABLE_AUTOCOMMIT = 16,
-    SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE = 17,
-    SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS = 18,
-    SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS = 19,
-    SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT = 20,
-    SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL = 21,
-    SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS = 22,
-    SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY = 23,
-    SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES = 24,
-    SESSION_SYSTEM_VARIABLE_SQL_WARNINGS = 25,
-    SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT = 26,
-    SESSION_SYSTEM_VARIABLE_SQL_NOTES = 27,
-    SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT = 28,
-    SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN = 29,
-    SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF = 30,
-    SESSION_SYSTEM_VARIABLE_SQL_MODE = 31,
-    SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY = 32,
-    SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER = 33,
-    SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER = 34,
-    SESSION_SYSTEM_VARIABLE_TIMESTAMP = 35,
-    SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE = 36,
-    SESSION_SYSTEM_VARIABLE_TIME_ZONE = 37,
-    SESSION_SYSTEM_VARIABLE_GTID_EXECUTED = 38,
-    SESSION_SYSTEM_VARIABLE_GTID_MODE = 39,
-    SESSION_SYSTEM_VARIABLE_GTID_OWNED = 40,
-    SESSION_SYSTEM_VARIABLE_GTID_PURGED = 41,
-    SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES = 42,
-    SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM = 43,
-    SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET = 44,
-    SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION = 45,
-    SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 46,
-    SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT = 47,
-    SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET = 48,
-    SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT = 49,
-    SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 50,
-    SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP = 51,
-    SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN = 52,
-    SESSION_SYSTEM_VARIABLE_READ_ONLY = 53,
-    SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY = 54,
-    SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY = 55,
-    SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY = 56,
-    SESSION_SYSTEM_VARIABLE_BIG_TABLES = 57,
-    SESSION_SYSTEM_VARIABLE_LOG_BIN = 58,
-    SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME = 59,
-    SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX = 60,
-    SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS = 61,
-    SESSION_SYSTEM_VARIABLE_SERVER_ID = 62,
-    SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS = 63,
-    SESSION_SYSTEM_VARIABLE_SERVER_UUID = 64,
-    SESSION_SYSTEM_VARIABLE_BASEDIR = 65,
-    SESSION_SYSTEM_VARIABLE_DATADIR = 66,
-    SESSION_SYSTEM_VARIABLE_HOSTNAME = 67,
-    SESSION_SYSTEM_VARIABLE_LICENSE = 68,
-    SESSION_SYSTEM_VARIABLE_PID_FILE = 69,
-    SESSION_SYSTEM_VARIABLE_PLUGIN_DIR = 70,
-    SESSION_SYSTEM_VARIABLE_PORT = 71,
-    SESSION_SYSTEM_VARIABLE_SOCKET = 72,
-    SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION = 73,
-    SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE = 74,
-    SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS = 75,
-    SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 76,
-    SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE = 77,
-};
-
 struct system_variable_component {
     char text[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool quoted;
-};
-
-struct system_variable_descriptor {
-    const char *name;
-    enum session_system_variable_kind kind;
-    bool show_session;
-    bool show_global;
-};
-
-struct show_status_descriptor {
-    const char *name;
-    const char *value;
-    bool show_session;
-    bool show_global;
-};
-
-struct sql_mode_descriptor {
-    const char *name;
-    uint64_t bit;
-    uint64_t expansion;
 };
 
 enum set_system_variable_scope {
@@ -4055,7 +3955,7 @@ enum set_system_variable_scope {
 };
 
 struct resolved_set_system_variable_target {
-    enum session_system_variable_kind kind;
+    enum mylite_execution_system_variable_kind kind;
     enum set_system_variable_scope scope;
     bool is_system_variable_target;
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -4092,217 +3992,6 @@ struct set_session_snapshot {
     struct mylite_session_user_variable *user_variables;
     size_t user_variable_count;
     size_t user_variable_capacity;
-};
-
-static const struct system_variable_descriptor system_variable_descriptors[] = {
-    {"auto_increment_increment", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT, true, true},
-    {"auto_increment_offset", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET, true, true},
-    {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT, true, true},
-    {"basedir", SESSION_SYSTEM_VARIABLE_BASEDIR, true, true},
-    {"big_tables", SESSION_SYSTEM_VARIABLE_BIG_TABLES, true, true},
-    {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT, true, true},
-    {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION, true, true},
-    {"character_set_database", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE, true, true},
-    {"character_set_filesystem", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM, true, true},
-    {"character_set_results", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS, true, true},
-    {"character_set_server", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER, true, true},
-    {"character_set_system", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM, true, true},
-    {"collation_connection", SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION, true, true},
-    {"collation_database", SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE, true, true},
-    {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER, true, true},
-    {"datadir", SESSION_SYSTEM_VARIABLE_DATADIR, true, true},
-    {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE, true, true},
-    {"default_tmp_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE, true, true},
-    {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT, true, false},
-    {"explicit_defaults_for_timestamp",
-     SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP,
-     true,
-     true},
-    {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS, true, true},
-    {"group_concat_max_len", SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN, true, true},
-    {"gtid_executed", SESSION_SYSTEM_VARIABLE_GTID_EXECUTED, true, true},
-    {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
-    {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
-    {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
-    {"hostname", SESSION_SYSTEM_VARIABLE_HOSTNAME, true, true},
-    {"information_schema_stats_expiry",
-     SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY,
-     true,
-     true},
-    {"innodb_read_only", SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY, true, true},
-    {"interactive_timeout", SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT, true, true},
-    {"license", SESSION_SYSTEM_VARIABLE_LICENSE, true, true},
-    {"log_bin", SESSION_SYSTEM_VARIABLE_LOG_BIN, true, true},
-    {"log_bin_basename", SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME, true, true},
-    {"log_bin_index", SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX, true, true},
-    {"log_bin_trust_function_creators",
-     SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS,
-     true,
-     true},
-    {"lower_case_file_system", SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
-    {"lower_case_table_names", SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
-    {"max_allowed_packet", SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
-    {"pid_file", SESSION_SYSTEM_VARIABLE_PID_FILE, true, true},
-    {"plugin_dir", SESSION_SYSTEM_VARIABLE_PLUGIN_DIR, true, true},
-    {"port", SESSION_SYSTEM_VARIABLE_PORT, true, true},
-    {"protocol_version", SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION, true, true},
-    {"read_only", SESSION_SYSTEM_VARIABLE_READ_ONLY, true, true},
-    {"server_id", SESSION_SYSTEM_VARIABLE_SERVER_ID, true, true},
-    {"server_id_bits", SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS, true, true},
-    {"server_uuid", SESSION_SYSTEM_VARIABLE_SERVER_UUID, true, true},
-    {"socket", SESSION_SYSTEM_VARIABLE_SOCKET, true, true},
-    {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
-    {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
-    {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
-    {"sql_generate_invisible_primary_key",
-     SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY,
-     true,
-     true},
-    {"sql_log_bin", SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN, true, false},
-    {"sql_log_off", SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF, true, true},
-    {"sql_mode", SESSION_SYSTEM_VARIABLE_SQL_MODE, true, true},
-    {"sql_notes", SESSION_SYSTEM_VARIABLE_SQL_NOTES, true, true},
-    {"sql_quote_show_create", SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE, true, true},
-    {"sql_replica_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER, true, true},
-    {"sql_require_primary_key", SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY, true, true},
-    {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES, true, true},
-    {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT, true, true},
-    {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER, true, true},
-    {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS, true, true},
-    {"super_read_only", SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY, true, true},
-    {"system_time_zone", SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE, true, true},
-    {"timestamp", SESSION_SYSTEM_VARIABLE_TIMESTAMP, true, false},
-    {"time_zone", SESSION_SYSTEM_VARIABLE_TIME_ZONE, true, true},
-    {"transaction_isolation", SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION, true, true},
-    {"transaction_read_only", SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY, true, true},
-    {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS, true, true},
-    {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT, true, true},
-    {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
-    {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT, true, true},
-    {"version_compile_machine", SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE, true, true},
-    {"version_compile_os", SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS, true, true},
-    {"version_compile_zlib", SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB, true, true},
-    {"wait_timeout", SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT, true, true},
-    {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT, true, false},
-};
-
-static const struct show_status_descriptor show_status_descriptors[] = {
-    {"Aborted_clients", "0", true, true},
-    {"Aborted_connects", "0", true, true},
-    {"Bytes_received", "0", true, true},
-    {"Bytes_sent", "0", true, true},
-    {"Com_begin", "0", true, true},
-    {"Com_commit", "0", true, true},
-    {"Com_delete", "0", true, true},
-    {"Com_insert", "0", true, true},
-    {"Com_replace", "0", true, true},
-    {"Com_rollback", "0", true, true},
-    {"Com_select", "0", true, true},
-    {"Com_set_option", "0", true, true},
-    {"Com_show_status", "0", true, true},
-    {"Com_show_variables", "0", true, true},
-    {"Com_update", "0", true, true},
-    {"Compression", "OFF", true, false},
-    {"Connections", "1", true, true},
-    {"Created_tmp_disk_tables", "0", true, true},
-    {"Created_tmp_files", "0", true, true},
-    {"Created_tmp_tables", "0", true, true},
-    {"Handler_delete", "0", true, true},
-    {"Handler_read_first", "0", true, true},
-    {"Handler_read_key", "0", true, true},
-    {"Handler_read_next", "0", true, true},
-    {"Handler_read_rnd", "0", true, true},
-    {"Handler_read_rnd_next", "0", true, true},
-    {"Handler_update", "0", true, true},
-    {"Handler_write", "0", true, true},
-    {"Open_files", "0", true, true},
-    {"Open_streams", "0", true, true},
-    {"Open_table_definitions", "0", true, true},
-    {"Open_tables", "0", true, true},
-    {"Opened_files", "0", true, true},
-    {"Opened_table_definitions", "0", true, true},
-    {"Opened_tables", "0", true, true},
-    {"Prepared_stmt_count", "0", true, true},
-    {"Queries", "0", true, true},
-    {"Questions", "0", true, true},
-    {"Select_full_join", "0", true, true},
-    {"Select_full_range_join", "0", true, true},
-    {"Select_range", "0", true, true},
-    {"Select_scan", "0", true, true},
-    {"Slow_queries", "0", true, true},
-    {"Ssl_cipher", "", true, true},
-    {"Ssl_version", "", true, true},
-    {"Table_locks_immediate", "0", true, true},
-    {"Table_locks_waited", "0", true, true},
-    {"Threads_cached", "0", true, true},
-    {"Threads_connected", "1", true, true},
-    {"Threads_created", "1", true, true},
-    {"Threads_running", "1", true, true},
-    {"Uptime", "0", true, true},
-    {"Uptime_since_flush_status", "0", true, true},
-};
-
-static const struct sql_mode_descriptor sql_mode_descriptors[] = {
-    {"REAL_AS_FLOAT", MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT, MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT},
-    {"PIPES_AS_CONCAT",
-     MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT,
-     MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT},
-    {"ANSI_QUOTES", MYLITE_SESSION_SQL_MODE_ANSI_QUOTES, MYLITE_SESSION_SQL_MODE_ANSI_QUOTES},
-    {"IGNORE_SPACE", MYLITE_SESSION_SQL_MODE_IGNORE_SPACE, MYLITE_SESSION_SQL_MODE_IGNORE_SPACE},
-    {"ONLY_FULL_GROUP_BY",
-     MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY,
-     MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY},
-    {"NO_UNSIGNED_SUBTRACTION",
-     MYLITE_SESSION_SQL_MODE_NO_UNSIGNED_SUBTRACTION,
-     MYLITE_SESSION_SQL_MODE_NO_UNSIGNED_SUBTRACTION},
-    {"NO_DIR_IN_CREATE",
-     MYLITE_SESSION_SQL_MODE_NO_DIR_IN_CREATE,
-     MYLITE_SESSION_SQL_MODE_NO_DIR_IN_CREATE},
-    {"ANSI",
-     MYLITE_SESSION_SQL_MODE_ANSI,
-     MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT | MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT |
-         MYLITE_SESSION_SQL_MODE_ANSI_QUOTES | MYLITE_SESSION_SQL_MODE_IGNORE_SPACE |
-         MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY | MYLITE_SESSION_SQL_MODE_ANSI},
-    {"NO_AUTO_VALUE_ON_ZERO",
-     MYLITE_SESSION_SQL_MODE_NO_AUTO_VALUE_ON_ZERO,
-     MYLITE_SESSION_SQL_MODE_NO_AUTO_VALUE_ON_ZERO},
-    {"NO_BACKSLASH_ESCAPES",
-     MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES,
-     MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES},
-    {"STRICT_TRANS_TABLES",
-     MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES,
-     MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES},
-    {"STRICT_ALL_TABLES",
-     MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES,
-     MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES},
-    {"NO_ZERO_IN_DATE",
-     MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE,
-     MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE},
-    {"NO_ZERO_DATE", MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE, MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE},
-    {"ALLOW_INVALID_DATES",
-     MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES,
-     MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES},
-    {"ERROR_FOR_DIVISION_BY_ZERO",
-     MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO,
-     MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO},
-    {"TRADITIONAL",
-     MYLITE_SESSION_SQL_MODE_TRADITIONAL,
-     MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES | MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES |
-         MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE | MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE |
-         MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO | MYLITE_SESSION_SQL_MODE_TRADITIONAL |
-         MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION},
-    {"HIGH_NOT_PRECEDENCE",
-     MYLITE_SESSION_SQL_MODE_HIGH_NOT_PRECEDENCE,
-     MYLITE_SESSION_SQL_MODE_HIGH_NOT_PRECEDENCE},
-    {"NO_ENGINE_SUBSTITUTION",
-     MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION,
-     MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION},
-    {"PAD_CHAR_TO_FULL_LENGTH",
-     MYLITE_SESSION_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH,
-     MYLITE_SESSION_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH},
-    {"TIME_TRUNCATE_FRACTIONAL",
-     MYLITE_SESSION_SQL_MODE_TIME_TRUNCATE_FRACTIONAL,
-     MYLITE_SESSION_SQL_MODE_TIME_TRUNCATE_FRACTIONAL},
 };
 
 static int execute_parsed_statement(
@@ -4784,21 +4473,11 @@ static void copy_foreign_key_checks_value_text(
     char *buffer,
     size_t buffer_size
 );
-static bool is_read_only_server_identity_binary_log_system_variable(
-    enum session_system_variable_kind kind
-);
-static bool is_read_only_server_build_system_variable(enum session_system_variable_kind kind);
-static bool is_read_only_server_environment_system_variable(enum session_system_variable_kind kind);
 static bool fixed_global_uint64_server_identity_system_variable_value(
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     uint64_t *out_value,
     const char **out_unsupported_message
 );
-static bool set_system_variable_fixed_boolean_value(
-    enum session_system_variable_kind kind,
-    bool *out_value
-);
-static bool is_global_read_only_toggle_system_variable(enum session_system_variable_kind kind);
 static int validate_set_fixed_boolean_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -4953,7 +4632,6 @@ static int validate_set_fixed_uint64_value(
     uint64_t expected_value,
     const char *unsupported_message
 );
-static bool is_timeout_system_variable_kind(enum session_system_variable_kind kind);
 static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
@@ -4991,12 +4669,6 @@ static void set_unknown_or_incorrect_time_zone_error(
 );
 static void set_time_zone_incorrect_argument_type_error(struct mylite_db *database);
 static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes);
-static int parse_sql_mode_token(
-    struct mylite_db *database,
-    const char *text,
-    size_t length,
-    uint64_t *modes
-);
 static bool sql_mode_token_matches(const char *text, size_t length, const char *expected);
 static void set_invalid_sql_mode_error(struct mylite_db *database, const char *text, size_t length);
 static void set_system_variable_cant_be_set_value_error(
@@ -15543,7 +15215,7 @@ static int format_session_scalar_uint64_value(
 );
 static uint64_t auto_increment_step_system_variable_value(
     const struct mylite_db *database,
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     bool global_scope
 );
 static uint64_t sql_select_limit_system_variable_value(
@@ -15552,7 +15224,7 @@ static uint64_t sql_select_limit_system_variable_value(
 );
 static uint64_t timeout_system_variable_value(
     const struct mylite_db *database,
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     bool global_scope
 );
 static const char *default_sql_mode_value(void);
@@ -15561,27 +15233,21 @@ static const struct mylite_diagnostics *system_variable_count_diagnostics(
 );
 static int diagnostics_count_system_variable_value(
     const struct mylite_diagnostics *diagnostics,
-    enum session_system_variable_kind variable,
+    enum mylite_execution_system_variable_kind variable,
     uint64_t *out_count
 );
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    enum session_system_variable_kind *out_kind
+    enum mylite_execution_system_variable_kind *out_kind
 );
 static bool resolve_system_variable_kind(
     const struct system_variable_component *name,
-    enum session_system_variable_kind *out_kind
+    enum mylite_execution_system_variable_kind *out_kind
 );
-static const struct system_variable_descriptor *system_variable_descriptor_for_kind(
-    enum session_system_variable_kind kind
-);
-static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
-static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
-static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind);
 static int show_system_variable_value(
     struct mylite_db *database,
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     bool global_scope,
     char *integer_buffer,
     size_t integer_buffer_size,
@@ -15601,7 +15267,7 @@ static int format_timestamp_system_variable_value(
 );
 static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope);
 static bool show_status_descriptor_visible(
-    const struct show_status_descriptor *descriptor,
+    const struct mylite_execution_show_status_descriptor *descriptor,
     bool global_scope
 );
 static int append_show_status(
@@ -15609,7 +15275,7 @@ static int append_show_status(
     mylite_result *result,
     const struct show_like_filter *filter,
     bool global_scope,
-    const struct show_status_descriptor *descriptor
+    const struct mylite_execution_show_status_descriptor *descriptor
 );
 static int append_show_variable(
     struct mylite_db *database,
@@ -15617,10 +15283,10 @@ static int append_show_variable(
     const struct show_like_filter *filter,
     const struct mylite_sql_ast_node *where_clause,
     bool global_scope,
-    const struct system_variable_descriptor *descriptor
+    const struct mylite_execution_system_variable_descriptor *descriptor
 );
 static bool show_variable_descriptor_visible(
-    const struct system_variable_descriptor *descriptor,
+    const struct mylite_execution_system_variable_descriptor *descriptor,
     bool global_scope
 );
 static int show_variables_where_clause_matches(
@@ -15989,7 +15655,7 @@ static bool is_scalar_numeric_function_attempt_operand(
 );
 static int append_system_variable_read_warning(
     struct mylite_db *database,
-    enum session_system_variable_kind kind
+    enum mylite_execution_system_variable_kind kind
 );
 static int parse_system_variable_component(
     struct mylite_db *database,
@@ -31285,11 +30951,11 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
-        target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
-        target.kind == SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
-        is_read_only_server_build_system_variable(target.kind) ||
-        is_read_only_server_environment_system_variable(target.kind)) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
+        target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
+        target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
+        mylite_execution_system_variable_is_read_only_server_build(target.kind) ||
+        mylite_execution_system_variable_is_read_only_server_environment(target.kind)) {
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
@@ -31302,44 +30968,47 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    if (is_global_read_only_toggle_system_variable(target.kind)) {
+    if (mylite_execution_system_variable_is_global_read_only_toggle(target.kind)) {
         if (target.scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
             set_global_variable_set_global_required_error(database, target.name);
             return MYLITE_ERROR;
         }
         return validate_set_fixed_boolean_value(database, value_node, false);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
-        target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
+        target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
         return apply_set_transaction_system_variable_value(database, &target, value_node);
     }
     rc = apply_set_integer_system_variable_value(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         return apply_set_foreign_key_checks_value(database, &target, value_node);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY) {
         return apply_set_sql_require_primary_key_value(database, &target, value_node);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_BIG_TABLES) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_value(database, &target, value_node);
     }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
     }
-    if (set_system_variable_fixed_boolean_value(target.kind, &expected_boolean_value)) {
+    if (mylite_execution_system_variable_fixed_boolean_value(
+            target.kind,
+            &expected_boolean_value
+        )) {
         return validate_set_fixed_boolean_value(database, value_node, expected_boolean_value);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE) {
         return apply_set_sql_mode_value(database, value_node);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_TIMESTAMP) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP) {
         return apply_set_timestamp_value(database, value_node);
     }
-    if (target.kind == SESSION_SYSTEM_VARIABLE_TIME_ZONE) {
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
         return apply_set_time_zone_value(database, value_node);
     }
 
@@ -31358,7 +31027,7 @@ static int apply_set_server_identity_binary_log_system_variable_assignment(
     int rc = MYLITE_OK;
 
     *out_handled = false;
-    if (is_read_only_server_identity_binary_log_system_variable(target->kind)) {
+    if (mylite_execution_system_variable_is_read_only_server_identity_binary_log(target->kind)) {
         *out_handled = true;
         set_read_only_system_variable_error(database, target->name);
         return MYLITE_ERROR;
@@ -31380,7 +31049,7 @@ static int apply_set_server_identity_binary_log_system_variable_assignment(
             unsupported_message
         );
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
         *out_handled = true;
         if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
             set_global_variable_set_global_required_error(database, target->name);
@@ -31437,23 +31106,23 @@ static int apply_set_integer_system_variable_value(
         return MYLITE_MISUSE;
     }
     *out_handled = true;
-    if (target->kind == SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET) {
         return apply_set_max_allowed_packet_value(database, target, value_node);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT ||
-        target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT ||
+        target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
         return apply_set_auto_increment_step_value(database, target, value_node);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_value(database, target, value_node);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
         return apply_set_group_concat_max_len_value(database, target, value_node);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
         return apply_set_information_schema_stats_expiry_value(database, target, value_node);
     }
-    if (is_timeout_system_variable_kind(target->kind)) {
+    if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_value(database, target, value_node);
     }
 
@@ -32696,19 +32365,19 @@ static int apply_set_system_variable_cell_value(
     if (reject_invalid_read_only_system_variable_cell_target(database, target)) {
         return MYLITE_ERROR;
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE) {
         return apply_set_sql_mode_cell_value(database, value);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_TIME_ZONE) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
         return apply_set_time_zone_cell_value(database, value);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_cell_value(database, target, value, value_kind);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
         return apply_set_group_concat_max_len_cell_value(database, target, value, value_kind);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
         return apply_set_information_schema_stats_expiry_cell_value(
             database,
             target,
@@ -32716,10 +32385,10 @@ static int apply_set_system_variable_cell_value(
             value_kind
         );
     }
-    if (is_timeout_system_variable_kind(target->kind)) {
+    if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
         if (rc == MYLITE_OK) {
             database->session.foreign_key_checks_enabled = boolean_value;
@@ -32727,10 +32396,10 @@ static int apply_set_system_variable_cell_value(
         }
         return rc;
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY) {
         return apply_set_sql_require_primary_key_cell_value(database, target, value, value_kind);
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_BIG_TABLES) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_cell_value(database, target, value, value_kind);
     }
     if (fixed_global_uint64_server_identity_system_variable_value(target->kind, NULL, NULL)) {
@@ -32740,7 +32409,7 @@ static int apply_set_system_variable_cell_value(
         );
         return MYLITE_ERROR;
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
         rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
         if (rc != MYLITE_OK) {
             return rc;
@@ -32754,7 +32423,7 @@ static int apply_set_system_variable_cell_value(
         }
         return append_system_variable_read_warning(database, target->kind);
     }
-    if (set_system_variable_fixed_boolean_value(target->kind, &boolean_value)) {
+    if (mylite_execution_system_variable_fixed_boolean_value(target->kind, &boolean_value)) {
         bool actual = false;
 
         rc = parse_set_boolean_cell_value(database, target->name, value, &actual);
@@ -32820,29 +32489,29 @@ static bool reject_invalid_read_only_system_variable_cell_target(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 ) {
-    if (target->kind == SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
-    if (is_read_only_server_environment_system_variable(target->kind)) {
+    if (mylite_execution_system_variable_is_read_only_server_environment(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
-    if (is_read_only_server_build_system_variable(target->kind)) {
+    if (mylite_execution_system_variable_is_read_only_server_build(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
-    if (is_read_only_server_identity_binary_log_system_variable(target->kind)) {
+    if (mylite_execution_system_variable_is_read_only_server_identity_binary_log(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
     if ((fixed_global_uint64_server_identity_system_variable_value(target->kind, NULL, NULL) ||
-         target->kind == SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) &&
+         target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return true;
     }
-    if (is_global_read_only_toggle_system_variable(target->kind) &&
+    if (mylite_execution_system_variable_is_global_read_only_toggle(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return true;
@@ -33098,86 +32767,13 @@ static int resolve_set_system_variable_system_target(
     return MYLITE_OK;
 }
 
-static bool set_system_variable_fixed_boolean_value(
-    enum session_system_variable_kind kind,
-    bool *out_value
-) {
-    switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
-    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
-    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
-        *out_value = true;
-        return true;
-    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
-    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
-    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
-    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
-    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
-    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
-        *out_value = false;
-        return true;
-    default:
-        return false;
-    }
-}
-
-static bool is_read_only_server_identity_binary_log_system_variable(
-    enum session_system_variable_kind kind
-) {
-    switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
-    case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
-        return true;
-    default:
-        return false;
-    }
-}
-
-static bool is_read_only_server_build_system_variable(enum session_system_variable_kind kind) {
-    switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
-        return true;
-    default:
-        return false;
-    }
-}
-
-static bool is_read_only_server_environment_system_variable(
-    enum session_system_variable_kind kind
-) {
-    switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_BASEDIR:
-    case SESSION_SYSTEM_VARIABLE_DATADIR:
-    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
-    case SESSION_SYSTEM_VARIABLE_LICENSE:
-    case SESSION_SYSTEM_VARIABLE_PID_FILE:
-    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
-    case SESSION_SYSTEM_VARIABLE_PORT:
-    case SESSION_SYSTEM_VARIABLE_SOCKET:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static bool fixed_global_uint64_server_identity_system_variable_value(
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     uint64_t *out_value,
     const char **out_unsupported_message
 ) {
     switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
         if (out_value != NULL) {
             *out_value = server_id_system_variable_value;
         }
@@ -33185,7 +32781,7 @@ static bool fixed_global_uint64_server_identity_system_variable_value(
             *out_unsupported_message = "SET server_id supports only fixed no-op global assignments";
         }
         return true;
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS:
         if (out_value != NULL) {
             *out_value = server_id_bits_system_variable_value;
         }
@@ -33197,15 +32793,6 @@ static bool fixed_global_uint64_server_identity_system_variable_value(
     default:
         return false;
     }
-}
-
-static bool is_global_read_only_toggle_system_variable(enum session_system_variable_kind kind) {
-    if (kind == SESSION_SYSTEM_VARIABLE_READ_ONLY ||
-        kind == SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY) {
-        return true;
-    }
-
-    return false;
 }
 
 static int validate_set_fixed_boolean_value(
@@ -33864,7 +33451,7 @@ static int apply_set_transaction_system_variable_value(
         set_runtime_error(database, "invalid transaction system variable target");
         return MYLITE_ERROR;
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION) {
         rc =
             parse_set_transaction_isolation_value(database, value_node, &characteristics.isolation);
         if (rc != MYLITE_OK) {
@@ -33879,7 +33466,7 @@ static int apply_set_transaction_system_variable_value(
             );
             return MYLITE_ERROR;
         }
-    } else if (target->kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
         rc = parse_set_transaction_read_only_value(
             database,
             value_node,
@@ -33929,9 +33516,9 @@ static int apply_set_auto_increment_step_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT) {
         database->session.auto_increment_increment = value;
-    } else if (target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
         database->session.auto_increment_offset = value;
     } else {
         set_runtime_error(database, "invalid auto-increment system variable kind");
@@ -34681,9 +34268,9 @@ static int apply_timeout_system_variable_value(
     if (database == NULL || target == NULL) {
         return MYLITE_MISUSE;
     }
-    if (target->kind == SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
         database->session.wait_timeout = value;
-    } else if (target->kind == SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
         database->session.interactive_timeout = value;
     } else {
         set_runtime_error(database, "invalid timeout system variable kind");
@@ -34844,16 +34431,6 @@ static int parse_set_timeout_system_variable_cell_value(
         value->value,
         out_value
     );
-}
-
-static bool is_timeout_system_variable_kind(enum session_system_variable_kind kind) {
-    if (kind == SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
-        return true;
-    }
-    if (kind == SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
-        return true;
-    }
-    return false;
 }
 
 static int append_truncated_incorrect_system_variable_warning(
@@ -35239,64 +34816,26 @@ static void set_time_zone_incorrect_argument_type_error(struct mylite_db *databa
 }
 
 static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes) {
-    size_t token_start = 0U;
-    size_t index = 0U;
-    uint64_t modes = 0U;
-    int rc = MYLITE_OK;
+    const char *invalid_token = NULL;
+    size_t invalid_token_length = 0U;
+    int rc =
+        mylite_execution_sql_mode_parse(text, out_modes, &invalid_token, &invalid_token_length);
 
-    if (text == NULL || out_modes == NULL) {
+    if (rc == MYLITE_MISUSE) {
         set_runtime_error(database, "invalid sql_mode value");
         return MYLITE_ERROR;
     }
-
-    while (rc == MYLITE_OK) {
-        if (text[index] == ',' || text[index] == '\0') {
-            rc = parse_sql_mode_token(database, &text[token_start], index - token_start, &modes);
-            token_start = index + 1U;
-        }
-        if (text[index] == '\0') {
-            break;
-        }
-        ++index;
+    if (rc == MYLITE_ERROR) {
+        set_invalid_sql_mode_error(database, invalid_token, invalid_token_length);
     }
-    if (rc == MYLITE_OK) {
-        *out_modes = modes;
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
     }
     return rc;
 }
 
-static int parse_sql_mode_token(
-    struct mylite_db *database,
-    const char *text,
-    size_t length,
-    uint64_t *modes
-) {
-    if (length == 0U) {
-        return MYLITE_OK;
-    }
-    for (size_t index = 0U; index < sizeof(sql_mode_descriptors) / sizeof(sql_mode_descriptors[0]);
-         ++index) {
-        if (sql_mode_token_matches(text, length, sql_mode_descriptors[index].name)) {
-            *modes |= sql_mode_descriptors[index].expansion;
-            return MYLITE_OK;
-        }
-    }
-
-    set_invalid_sql_mode_error(database, text, length);
-    return MYLITE_ERROR;
-}
-
 static bool sql_mode_token_matches(const char *text, size_t length, const char *expected) {
-    if (text == NULL || expected == NULL || strlen(expected) != length) {
-        return false;
-    }
-    for (size_t index = 0U; index < length; ++index) {
-        if (ascii_lower((unsigned char)text[index]) !=
-            ascii_lower((unsigned char)expected[index])) {
-            return false;
-        }
-    }
-    return true;
+    return mylite_execution_sql_mode_token_matches(text, length, expected);
 }
 
 static void set_invalid_sql_mode_error(
@@ -35416,38 +34955,12 @@ static int rebuild_sql_mode_text(
     char *buffer,
     size_t buffer_size
 ) {
-    size_t offset = 0U;
+    int rc = mylite_execution_sql_mode_format(modes, buffer, buffer_size);
 
-    if (buffer == NULL || buffer_size == 0U) {
+    if (rc != MYLITE_OK) {
         set_nomem_error(database);
-        return MYLITE_NOMEM;
     }
-    buffer[0] = '\0';
-    for (size_t index = 0U; index < sizeof(sql_mode_descriptors) / sizeof(sql_mode_descriptors[0]);
-         ++index) {
-        const char *name = sql_mode_descriptors[index].name;
-        size_t name_length = strlen(name);
-
-        if ((modes & sql_mode_descriptors[index].bit) == 0U) {
-            continue;
-        }
-        if (offset != 0U) {
-            if (offset + 1U >= buffer_size) {
-                set_nomem_error(database);
-                return MYLITE_NOMEM;
-            }
-            buffer[offset] = ',';
-            ++offset;
-        }
-        if (offset + name_length >= buffer_size) {
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        memcpy(&buffer[offset], name, name_length);
-        offset += name_length;
-        buffer[offset] = '\0';
-    }
-    return MYLITE_OK;
+    return rc;
 }
 
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode) {
@@ -56504,8 +56017,8 @@ static int execute_show_variables_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(system_variable_descriptors) /
-                                                           sizeof(system_variable_descriptors[0]);
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_system_variable_descriptor_count();
          ++index) {
         rc = append_show_variable(
             database,
@@ -56513,7 +56026,7 @@ static int execute_show_variables_statement(
             &filter,
             where_clause,
             global_scope,
-            &system_variable_descriptors[index]
+            mylite_execution_system_variable_descriptor_at(index)
         );
     }
     if (rc != MYLITE_OK) {
@@ -56567,15 +56080,15 @@ static int execute_show_status_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(show_status_descriptors) /
-                                                           sizeof(show_status_descriptors[0]);
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
          ++index) {
         rc = append_show_status(
             database,
             result,
             &filter,
             global_scope,
-            &show_status_descriptors[index]
+            mylite_execution_show_status_descriptor_at(index)
         );
     }
     if (rc != MYLITE_OK) {
@@ -56593,7 +56106,7 @@ static int append_show_status(
     mylite_result *result,
     const struct show_like_filter *filter,
     bool global_scope,
-    const struct show_status_descriptor *descriptor
+    const struct mylite_execution_show_status_descriptor *descriptor
 ) {
     const char *values[2] = {NULL, NULL};
     int rc = MYLITE_OK;
@@ -56616,7 +56129,7 @@ static int append_show_status(
 }
 
 static bool show_status_descriptor_visible(
-    const struct show_status_descriptor *descriptor,
+    const struct mylite_execution_show_status_descriptor *descriptor,
     bool global_scope
 ) {
     if (descriptor == NULL) {
@@ -56651,7 +56164,7 @@ static int append_show_variable(
     const struct show_like_filter *filter,
     const struct mylite_sql_ast_node *where_clause,
     bool global_scope,
-    const struct system_variable_descriptor *descriptor
+    const struct mylite_execution_system_variable_descriptor *descriptor
 ) {
     char integer_buffer[integer_text_capacity];
     const char *values[2] = {NULL, NULL};
@@ -56694,7 +56207,7 @@ static int append_show_variable(
 }
 
 static bool show_variable_descriptor_visible(
-    const struct system_variable_descriptor *descriptor,
+    const struct mylite_execution_system_variable_descriptor *descriptor,
     bool global_scope
 ) {
     if (descriptor == NULL) {
@@ -101569,10 +101082,12 @@ static int append_session_scalar_expression_warnings(
         } else if (current->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
             rc = append_convert_using_charset_warning(database, current);
         } else if (current->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
-            enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+            enum mylite_execution_system_variable_kind variable =
+                MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
 
             rc = resolve_session_system_variable(database, current, &variable);
-            if (rc == MYLITE_OK && system_variable_kind_warns_on_scalar_read(variable)) {
+            if (rc == MYLITE_OK &&
+                mylite_execution_system_variable_warns_on_scalar_read(variable)) {
                 rc = append_system_variable_read_warning(database, variable);
             }
         }
@@ -120829,7 +120344,7 @@ static int hex_numeric_system_variable_value(
     struct scalar_bitwise_value *out_value,
     bool *out_handled
 ) {
-    enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+    enum mylite_execution_system_variable_kind variable = MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
     int64_t timestamp = 0;
     int rc = MYLITE_OK;
 
@@ -120845,94 +120360,94 @@ static int hex_numeric_system_variable_value(
     }
 
     switch (variable) {
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
         out_value->integer = auto_increment_step_system_variable_value(
             database,
             variable,
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
-    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         out_value->integer = timeout_system_variable_value(
             database,
             variable,
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
         if (system_variable_expression_has_global_scope(expression)) {
             out_value->integer = group_concat_max_len_default_value;
         } else {
             out_value->integer = database->session.group_concat_max_len;
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         if (system_variable_expression_has_global_scope(expression)) {
             out_value->integer = information_schema_stats_expiry_default_value;
         } else {
             out_value->integer = database->session.information_schema_stats_expiry;
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         out_value->integer = foreign_key_checks_system_variable_uint64_value(
             database,
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES:
         out_value->integer = big_tables_system_variable_uint64_value(
             database,
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
-    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
-    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
-    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
         out_value->integer = 1U;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
-    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
-    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
-    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
-    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
-    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         out_value->integer = 0U;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
         out_value->integer = server_id_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS:
         out_value->integer = server_id_bits_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_PORT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:
         out_value->integer = port_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
         out_value->integer = protocol_version_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
         out_value->integer = sql_select_limit_system_variable_value(
             database,
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_TIMESTAMP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP:
         timestamp = current_timestamp_epoch(database);
         out_value->integer = (uint64_t)timestamp;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_WARNING_COUNT:
-    case SESSION_SYSTEM_VARIABLE_ERROR_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WARNING_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_ERROR_COUNT:
         return diagnostics_count_system_variable_value(
             system_variable_count_diagnostics(database),
             variable,
@@ -130297,7 +129812,7 @@ static int system_variable_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
-    enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+    enum mylite_execution_system_variable_kind variable = MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
     uint64_t count = 0U;
     int rc = resolve_session_system_variable(database, expression, &variable);
 
@@ -130306,25 +129821,25 @@ static int system_variable_value(
     }
 
     switch (variable) {
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
         out_cell->value = database->session.character_set_client;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
         out_cell->value = database->session.character_set_connection;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
         out_cell->value = database->session.character_set_results;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
         out_cell->value = database->session.collation_connection;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
         out_cell->value = "utf8mb4";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER:
         out_cell->value = "utf8mb4_0900_ai_ci";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
         return database_character_set_system_variable_value(
             database,
             system_variable_expression_has_global_scope(expression),
@@ -130332,7 +129847,7 @@ static int system_variable_value(
             sizeof(out_cell->literal_text),
             &out_cell->value
         );
-    case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE:
         return database_collation_system_variable_value(
             database,
             system_variable_expression_has_global_scope(expression),
@@ -130340,85 +129855,85 @@ static int system_variable_value(
             sizeof(out_cell->literal_text),
             &out_cell->value
         );
-    case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
-    case SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
         out_cell->value = "InnoDB";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
         out_cell->value = "YES";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
         out_cell->value = "utf8mb3";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
         out_cell->value = "binary";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE:
         if (system_variable_expression_has_global_scope(expression)) {
             out_cell->value = default_sql_mode_value();
         } else {
             out_cell->value = database->session.sql_mode_text;
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
         out_cell->value = "UTC";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE:
         if (system_variable_expression_has_global_scope(expression)) {
             out_cell->value = "SYSTEM";
         } else {
             out_cell->value = database->session.time_zone;
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_GTID_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_MODE:
         out_cell->value = "OFF";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
-    case SESSION_SYSTEM_VARIABLE_GTID_OWNED:
-    case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_OWNED:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_PURGED:
         out_cell->value = "";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_BASEDIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BASEDIR:
         out_cell->value = basedir_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_DATADIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DATADIR:
         out_cell->value = datadir_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HOSTNAME:
         out_cell->value = hostname_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_LICENSE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LICENSE:
         out_cell->value = license_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
         out_cell->value = log_bin_basename_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
         out_cell->value = log_bin_index_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE:
         out_cell->value = pid_file_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR:
         out_cell->value = plugin_dir_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
         out_cell->value = version_compile_machine_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
         out_cell->value = version_compile_os_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
         out_cell->value = version_compile_zlib_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_UUID:
         out_cell->value = server_uuid_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SOCKET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET:
         out_cell->value = socket_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
         return format_session_scalar_uint64_value(
             database,
             auto_increment_step_system_variable_value(
@@ -130428,8 +129943,8 @@ static int system_variable_value(
             ),
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
-    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_session_scalar_uint64_value(
             database,
             timeout_system_variable_value(
@@ -130439,7 +129954,7 @@ static int system_variable_value(
             ),
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
         if (system_variable_expression_has_global_scope(expression)) {
             return format_session_scalar_uint64_value(
                 database,
@@ -130452,7 +129967,7 @@ static int system_variable_value(
             database->session.group_concat_max_len,
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         return format_session_scalar_uint64_value(
             database,
             information_schema_stats_expiry_system_variable_value(
@@ -130461,7 +129976,7 @@ static int system_variable_value(
             ),
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         return format_session_scalar_uint64_value(
             database,
             foreign_key_checks_system_variable_uint64_value(
@@ -130470,7 +129985,7 @@ static int system_variable_value(
             ),
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
         return format_session_scalar_uint64_value(
             database,
             sql_require_primary_key_system_variable_uint64_value(
@@ -130479,7 +129994,7 @@ static int system_variable_value(
             ),
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES:
         return format_session_scalar_uint64_value(
             database,
             big_tables_system_variable_uint64_value(
@@ -130488,59 +130003,59 @@ static int system_variable_value(
             ),
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
-    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
-    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
-    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
         rc = format_uint64(database, 1U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->integer_text;
         }
         return rc;
-    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
-    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
-    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
-    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
-    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
-    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
-    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         rc = format_uint64(database, 0U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->integer_text;
         }
         return rc;
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
         return format_session_scalar_uint64_value(
             database,
             server_id_system_variable_value,
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS:
         return format_session_scalar_uint64_value(
             database,
             server_id_bits_system_variable_value,
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_PORT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:
         return format_session_scalar_uint64_value(database, port_system_variable_value, out_cell);
-    case SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
         return format_session_scalar_uint64_value(
             database,
             protocol_version_system_variable_value,
             out_cell
         );
-    case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
         rc = format_uint64(
             database,
             sql_select_limit_system_variable_value(
@@ -130554,7 +130069,7 @@ static int system_variable_value(
             out_cell->value = out_cell->integer_text;
         }
         return rc;
-    case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
         rc = format_uint64(
             database,
             max_allowed_packet_default_value,
@@ -130565,13 +130080,13 @@ static int system_variable_value(
             out_cell->value = out_cell->integer_text;
         }
         return rc;
-    case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
         out_cell->value = transaction_isolation_system_variable_value(database, expression);
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
         out_cell->value = transaction_read_only_system_variable_value(database, expression);
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_TIMESTAMP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP:
         rc = format_timestamp_system_variable_value(
             database,
             out_cell->literal_text,
@@ -130581,10 +130096,10 @@ static int system_variable_value(
             out_cell->value = out_cell->literal_text;
         }
         return rc;
-    case SESSION_SYSTEM_VARIABLE_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION:
         out_cell->value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMMENT:
         out_cell->value = MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING;
         return MYLITE_OK;
     default:
@@ -130609,7 +130124,7 @@ static int system_variable_value(
 
 static int diagnostics_count_system_variable_value(
     const struct mylite_diagnostics *diagnostics,
-    enum session_system_variable_kind variable,
+    enum mylite_execution_system_variable_kind variable,
     uint64_t *out_count
 ) {
     uint64_t warning_count = 0U;
@@ -130619,7 +130134,7 @@ static int diagnostics_count_system_variable_value(
     if (diagnostics == NULL || out_count == NULL) {
         return MYLITE_MISUSE;
     }
-    if (variable == SESSION_SYSTEM_VARIABLE_ERROR_COUNT) {
+    if (variable == MYLITE_EXECUTION_SYSTEM_VARIABLE_ERROR_COUNT) {
         return previous_diagnostics_error_count(diagnostics, out_count);
     }
 
@@ -130743,16 +130258,16 @@ static int format_session_scalar_uint64_value(
 
 static uint64_t auto_increment_step_system_variable_value(
     const struct mylite_db *database,
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     bool global_scope
 ) {
     if (global_scope || database == NULL) {
         return 1U;
     }
-    if (kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT) {
         return database->session.auto_increment_increment;
     }
-    if (kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
         return database->session.auto_increment_offset;
     }
     return 1U;
@@ -130770,16 +130285,16 @@ static uint64_t sql_select_limit_system_variable_value(
 
 static uint64_t timeout_system_variable_value(
     const struct mylite_db *database,
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     bool global_scope
 ) {
     if (global_scope || database == NULL) {
         return timeout_system_variable_default_value;
     }
-    if (kind == SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
         return database->session.wait_timeout;
     }
-    if (kind == SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
         return database->session.interactive_timeout;
     }
     return timeout_system_variable_default_value;
@@ -130920,7 +130435,7 @@ static const struct mylite_diagnostics *system_variable_count_diagnostics(
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    enum session_system_variable_kind *out_kind
+    enum mylite_execution_system_variable_kind *out_kind
 ) {
     const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
     struct system_variable_component first = {0};
@@ -130930,7 +130445,7 @@ static int resolve_session_system_variable(
     bool has_scope = false;
     int rc = MYLITE_OK;
 
-    *out_kind = SESSION_SYSTEM_VARIABLE_NONE;
+    *out_kind = MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
     if (span == NULL || span->text == NULL || span->length < 3U || span->text[0] != '@' ||
         span->text[1] != '@') {
         set_unknown_system_variable_error(database, expression);
@@ -130968,7 +130483,7 @@ static int resolve_session_system_variable(
         return MYLITE_OK;
     }
     if (system_variable_component_equals(&first, "global")) {
-        if (system_variable_kind_allows_global_scope(*out_kind)) {
+        if (mylite_execution_system_variable_allows_global_scope(*out_kind)) {
             return MYLITE_OK;
         }
         set_session_variable_only_error(database, name->text);
@@ -130976,7 +130491,7 @@ static int resolve_session_system_variable(
     }
     if (system_variable_component_equals(&first, "session") ||
         system_variable_component_equals(&first, "local")) {
-        if (!system_variable_kind_allows_session_scope(*out_kind)) {
+        if (!mylite_execution_system_variable_allows_session_scope(*out_kind)) {
             set_global_variable_only_error(database, name->text);
             return MYLITE_ERROR;
         }
@@ -130989,192 +130504,50 @@ static int resolve_session_system_variable(
 
 static bool resolve_system_variable_kind(
     const struct system_variable_component *name,
-    enum session_system_variable_kind *out_kind
+    enum mylite_execution_system_variable_kind *out_kind
 ) {
-    for (size_t index = 0U;
-         index < sizeof(system_variable_descriptors) / sizeof(system_variable_descriptors[0]);
-         ++index) {
-        if (system_variable_component_equals(name, system_variable_descriptors[index].name)) {
-            *out_kind = system_variable_descriptors[index].kind;
-            return true;
-        }
+    const struct mylite_execution_system_variable_descriptor *descriptor =
+        mylite_execution_system_variable_descriptor_by_name(name == NULL ? NULL : name->text);
+
+    if (descriptor != NULL && system_variable_component_equals(name, descriptor->name)) {
+        *out_kind = descriptor->kind;
+        return true;
     }
 
     return false;
 }
 
-static const struct system_variable_descriptor *system_variable_descriptor_for_kind(
-    enum session_system_variable_kind kind
-) {
-    for (size_t index = 0U;
-         index < sizeof(system_variable_descriptors) / sizeof(system_variable_descriptors[0]);
-         ++index) {
-        if (system_variable_descriptors[index].kind == kind) {
-            return &system_variable_descriptors[index];
-        }
-    }
-
-    return NULL;
-}
-
-static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind) {
-    switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
-    case SESSION_SYSTEM_VARIABLE_BASEDIR:
-    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
-    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
-    case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
-    case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
-    case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
-    case SESSION_SYSTEM_VARIABLE_DATADIR:
-    case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
-    case SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
-    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
-    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
-    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
-    case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
-    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
-    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
-    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
-    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
-    case SESSION_SYSTEM_VARIABLE_SQL_MODE:
-    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
-    case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
-    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
-    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
-    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
-    case SESSION_SYSTEM_VARIABLE_VERSION:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
-    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
-    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
-    case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
-    case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
-    case SESSION_SYSTEM_VARIABLE_GTID_MODE:
-    case SESSION_SYSTEM_VARIABLE_GTID_OWNED:
-    case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
-    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
-    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_LICENSE:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
-    case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
-    case SESSION_SYSTEM_VARIABLE_PID_FILE:
-    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
-    case SESSION_SYSTEM_VARIABLE_PORT:
-    case SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
-    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID:
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
-    case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
-    case SESSION_SYSTEM_VARIABLE_SOCKET:
-    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
-    case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
-        return true;
-    default:
-        return false;
-    }
-}
-
-static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind) {
-    switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_BASEDIR:
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
-    case SESSION_SYSTEM_VARIABLE_DATADIR:
-    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
-    case SESSION_SYSTEM_VARIABLE_LICENSE:
-    case SESSION_SYSTEM_VARIABLE_PID_FILE:
-    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
-    case SESSION_SYSTEM_VARIABLE_PORT:
-    case SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
-    case SESSION_SYSTEM_VARIABLE_SOCKET:
-    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_VERSION:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
-    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
-    case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
-    case SESSION_SYSTEM_VARIABLE_GTID_MODE:
-    case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
-    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
-    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID:
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
-    case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
-    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
-        return false;
-    default:
-        return true;
-    }
-}
-
-static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind) {
-    return (kind == SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER ||
-            kind == SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) != 0;
-}
-
 static int show_system_variable_value(
     struct mylite_db *database,
-    enum session_system_variable_kind kind,
+    enum mylite_execution_system_variable_kind kind,
     bool global_scope,
     char *integer_buffer,
     size_t integer_buffer_size,
     const char **out_value
 ) {
-    if (out_value == NULL || system_variable_descriptor_for_kind(kind) == NULL) {
+    if (out_value == NULL || mylite_execution_system_variable_descriptor_by_kind(kind) == NULL) {
         set_runtime_error(database, "invalid SHOW VARIABLES descriptor");
         return MYLITE_ERROR;
     }
     *out_value = NULL;
 
     switch (kind) {
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
         *out_value = database->session.character_set_client;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
         *out_value = database->session.character_set_connection;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
         *out_value = database->session.character_set_results;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
         *out_value = database->session.collation_connection;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
         *out_value = "utf8mb4";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
         return database_character_set_system_variable_value(
             database,
             global_scope,
@@ -131182,10 +130555,10 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER:
         *out_value = "utf8mb4_0900_ai_ci";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE:
         return database_collation_system_variable_value(
             database,
             global_scope,
@@ -131193,85 +130566,85 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
-    case SESSION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
         *out_value = "InnoDB";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
         *out_value = "YES";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
         *out_value = "utf8mb3";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
         *out_value = "binary";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE:
         if (global_scope) {
             *out_value = default_sql_mode_value();
         } else {
             *out_value = database->session.sql_mode_text;
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
         *out_value = "UTC";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE:
         if (global_scope) {
             *out_value = "SYSTEM";
         } else {
             *out_value = database->session.time_zone;
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_GTID_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_MODE:
         *out_value = "OFF";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
-    case SESSION_SYSTEM_VARIABLE_GTID_OWNED:
-    case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_OWNED:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_PURGED:
         *out_value = "";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_BASEDIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BASEDIR:
         *out_value = basedir_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_DATADIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DATADIR:
         *out_value = datadir_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_HOSTNAME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HOSTNAME:
         *out_value = hostname_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_LICENSE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LICENSE:
         *out_value = license_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
         *out_value = log_bin_basename_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
         *out_value = log_bin_index_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_PID_FILE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE:
         *out_value = pid_file_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_PLUGIN_DIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR:
         *out_value = plugin_dir_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE:
         *out_value = version_compile_machine_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_OS:
         *out_value = version_compile_os_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB:
         *out_value = version_compile_zlib_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SERVER_UUID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_UUID:
         *out_value = server_uuid_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SOCKET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET:
         *out_value = socket_system_variable_value;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
-    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
         return format_show_system_variable_uint64_value(
             database,
             auto_increment_step_system_variable_value(database, kind, global_scope),
@@ -131279,8 +130652,8 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
-    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_show_system_variable_uint64_value(
             database,
             timeout_system_variable_value(database, kind, global_scope),
@@ -131288,7 +130661,7 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
         if (global_scope) {
             return format_show_system_variable_uint64_value(
                 database,
@@ -131305,7 +130678,7 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         return format_show_system_variable_uint64_value(
             database,
             information_schema_stats_expiry_system_variable_value(database, global_scope),
@@ -131313,46 +130686,46 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         *out_value = foreign_key_checks_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
         *out_value = sql_require_primary_key_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_BIG_TABLES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES:
         *out_value = big_tables_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
-    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
-    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
-    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
         *out_value = "ON";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
-    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
-    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
-    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
-    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
-    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
-    case SESSION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
-    case SESSION_SYSTEM_VARIABLE_READ_ONLY:
-    case SESSION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
         *out_value = "OFF";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_WARNING_COUNT:
-    case SESSION_SYSTEM_VARIABLE_ERROR_COUNT:
-    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
-    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
-    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WARNING_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_ERROR_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         *out_value = "0";
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
         return format_show_system_variable_uint64_value(
             database,
             server_id_system_variable_value,
@@ -131360,7 +130733,7 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_SERVER_ID_BITS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS:
         return format_show_system_variable_uint64_value(
             database,
             server_id_bits_system_variable_value,
@@ -131368,7 +130741,7 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_PORT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:
         return format_show_system_variable_uint64_value(
             database,
             port_system_variable_value,
@@ -131376,7 +130749,7 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
         return format_show_system_variable_uint64_value(
             database,
             protocol_version_system_variable_value,
@@ -131384,7 +130757,7 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
-    case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET: {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET: {
         int rc = format_uint64(
             database,
             max_allowed_packet_default_value,
@@ -131396,7 +130769,7 @@ static int show_system_variable_value(
         }
         return rc;
     }
-    case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
         if (global_scope) {
             *out_value =
                 transaction_isolation_value_text(MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ);
@@ -131405,7 +130778,7 @@ static int show_system_variable_value(
                 transaction_isolation_value_text(database->session.session_transaction_isolation);
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
         if (global_scope) {
             *out_value = transaction_read_only_show_text(MYLITE_TRANSACTION_ACCESS_READ_WRITE);
         } else {
@@ -131413,7 +130786,7 @@ static int show_system_variable_value(
                 transaction_read_only_show_text(database->session.session_transaction_access_mode);
         }
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
         int rc = format_uint64(
             database,
             sql_select_limit_system_variable_value(database, global_scope),
@@ -131425,7 +130798,7 @@ static int show_system_variable_value(
         }
         return rc;
     }
-    case SESSION_SYSTEM_VARIABLE_TIMESTAMP: {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP: {
         int rc =
             format_timestamp_system_variable_value(database, integer_buffer, integer_buffer_size);
         if (rc == MYLITE_OK) {
@@ -131433,13 +130806,13 @@ static int show_system_variable_value(
         }
         return rc;
     }
-    case SESSION_SYSTEM_VARIABLE_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION:
         *out_value = MYLITE_MYSQL_SERVER_VERSION_STRING;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMMENT:
         *out_value = MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING;
         return MYLITE_OK;
-    case SESSION_SYSTEM_VARIABLE_NONE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE:
         break;
     }
 
@@ -131488,9 +130861,9 @@ static int format_timestamp_system_variable_value(
 
 static int append_system_variable_read_warning(
     struct mylite_db *database,
-    enum session_system_variable_kind kind
+    enum mylite_execution_system_variable_kind kind
 ) {
-    if (kind == SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER) {
         return mylite_diagnostics_append_warning(
             mylite_connection_diagnostics(database),
             mysql_warning_deprecated_system_variable,
@@ -131499,7 +130872,7 @@ static int append_system_variable_read_warning(
             "Please use sql_replica_skip_counter instead."
         );
     }
-    if (kind == SESSION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
         return mylite_diagnostics_append_warning(
             mylite_connection_diagnostics(database),
             mysql_warning_deprecated_system_variable,

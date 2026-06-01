@@ -17,6 +17,12 @@ The initial split extracts:
   character sets, collations, `INFORMATION_SCHEMA` tables, MySQL system tables,
   built-in schemas, and built-in metadata placeholder rows.
 
+The second split extracts:
+
+- `mylite_execution_system_variables`: immutable system variable descriptors,
+  SHOW STATUS descriptors, SQL mode descriptor parsing/formatting, and system
+  variable scope/classification helpers.
+
 ## Goals
 
 - Reduce the size and clang-tidy surface of `mylite_execution.c` with real
@@ -79,6 +85,28 @@ The catalog module does not own:
 - Session state, diagnostics, warnings, or SQL modes.
 - Mutable database metadata or user tables.
 
+### `mylite_execution_system_variables`
+
+The system variables module owns static descriptor data and pure classification
+helpers for MySQL-compatible system variable handling. It exposes descriptors
+through accessors and keeps descriptor arrays file-local.
+
+The system variables module includes:
+
+- System variable name, kind, and SHOW GLOBAL/SESSION visibility descriptors.
+- SHOW STATUS placeholder descriptors and their SHOW GLOBAL/SESSION visibility.
+- SQL mode token descriptors, parsing, canonical formatting, and token matching.
+- Scope and mutability classification helpers for variable resolution and SET
+  validation.
+
+The system variables module does not own:
+
+- Session state mutation.
+- Dynamic system variable value rendering.
+- Diagnostics and warning emission.
+- Database/schema lookup for selected schema character set and collation values.
+- Time zone state mutation.
+
 ## Compatibility requirements
 
 - Existing MySQL 8.4.9-shaped metadata must be byte-for-byte equivalent at the
@@ -89,6 +117,9 @@ The catalog module does not own:
   `information_schema`, `mysql`, `performance_schema`, then `sys`.
 - Empty placeholder catalog rows remain placeholders; this refactor does not add
   loaded MySQL server data.
+- System variable names, scope handling, warning behavior, placeholder values,
+  and SQL mode canonical text must stay identical to the previous runtime
+  behavior.
 
 ## Implementation plan
 
@@ -104,6 +135,9 @@ The catalog module does not own:
 6. Run focused build/tests and the full check workflow.
 7. Perform a release-gate style review of the split and fix any findings before
    committing.
+8. Extract system variable descriptors, SHOW STATUS descriptors, SQL mode
+   descriptor helpers, and pure system variable classification helpers into
+   `mylite_execution_system_variables.h/.c`.
 
 ## Review checklist
 
@@ -112,4 +146,6 @@ The catalog module does not own:
 - Moved catalog arrays remain immutable and file-local.
 - No data copies or runtime table materialization are introduced by the split.
 - The execution monolith still owns behavior; the catalog module owns data.
+- System variable session mutation and value rendering stay in the execution
+  monolith until a later runtime-state boundary is designed.
 - Tests prove behavior preservation.

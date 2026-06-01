@@ -333,6 +333,15 @@ wait-summary collection, live file-I/O type rows, sys helper-function
 execution, privilege/definer enforcement, and broader sys view execution out
 of scope.
 
+The `baseline-sys-host-summary-by-stages-views` slice refines
+`sys.host_summary_by_stages` and `sys.x$host_summary_by_stages` with direct
+read-only empty placeholder rows plus MySQL-observed view status fields, column
+metadata, view definition metadata, dependencies on the referenced Performance
+Schema stage-summary table, and empty routine dependency metadata. It keeps
+Performance Schema host/stage summary collection, live stage rows, sys
+helper-function execution, privilege/definer enforcement, and broader sys view
+execution out of scope.
+
 The `baseline-sys-io-by-thread-by-latency-views` slice refines
 `sys.io_by_thread_by_latency` and `sys.x$io_by_thread_by_latency` with direct
 read-only empty placeholder rows plus MySQL-observed view status fields,

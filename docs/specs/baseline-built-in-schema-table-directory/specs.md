@@ -305,6 +305,15 @@ objects, and a routine dependency row on `sys.format_path`. It keeps
 Performance Schema file-I/O wait collection, sys helper-function execution,
 privilege/definer enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-host-summary-views` slice refines `sys.host_summary` and
+`sys.x$host_summary` with direct read-only empty placeholder rows plus
+MySQL-observed view status fields, column metadata, view definition metadata,
+dependencies on the referenced `performance_schema` and `sys` objects, and
+empty routine dependency metadata. It keeps Performance Schema account,
+statement, file-I/O, and memory summary collection, live host rows, raw-view
+warning production, sys helper-function execution, privilege/definer
+enforcement, and broader sys view execution out of scope.
+
 The `baseline-sys-io-by-thread-by-latency-views` slice refines
 `sys.io_by_thread_by_latency` and `sys.x$io_by_thread_by_latency` with direct
 read-only empty placeholder rows plus MySQL-observed view status fields,

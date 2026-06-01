@@ -45,7 +45,9 @@ placeholders, limited read-only empty `sys.io_global_by_wait_by_bytes` /
 `sys.x$io_global_by_wait_by_bytes` synthetic file-summary wait-byte
 placeholders, limited read-only empty `sys.io_global_by_wait_by_latency` /
 `sys.x$io_global_by_wait_by_latency` synthetic file-summary wait-latency
-placeholders, limited read-only empty `sys.io_by_thread_by_latency` /
+placeholders, limited read-only empty `sys.host_summary` /
+`sys.x$host_summary` synthetic host summary placeholders, limited read-only
+empty `sys.io_by_thread_by_latency` /
 `sys.x$io_by_thread_by_latency` synthetic thread file-I/O latency
 placeholders, and a limited read-only `sys.schema_unused_indexes` synthetic
 view over persistent user-table non-unique index descriptors.
@@ -59,8 +61,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.sys_config` | 🟡 | Limited read-only synthetic sys configuration table with the six MySQL 8.4.9 default rows, MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, `INFORMATION_SCHEMA.COLUMNS` / `TABLES` / `STATISTICS` / `TABLE_CONSTRAINTS` / `KEY_COLUMN_USAGE` / `TABLE_CONSTRAINTS_EXTENSIONS`, and `SHOW TABLE STATUS` metadata; no writable sys configuration, sys trigger execution, sys functions, sys procedures, sys views, Performance Schema-backed values, privilege filtering, or persisted sys table storage |
 | `sys.sys_config_insert_set_user` | 🟡 | Metadata-only built-in trigger row exposed through `INFORMATION_SCHEMA.TRIGGERS` and `SHOW TRIGGERS`; no trigger execution, trigger DDL, writable `sys.sys_config` side effects, or persisted trigger descriptor |
 | `sys.sys_config_update_set_user` | 🟡 | Metadata-only built-in trigger row exposed through `INFORMATION_SCHEMA.TRIGGERS` and `SHOW TRIGGERS`; no trigger execution, trigger DDL, writable `sys.sys_config` side effects, or persisted trigger descriptor |
-| `sys.host_summary` | ❌ | View shape and diagnostics |
-| `sys.x$host_summary` | ❌ | View shape and diagnostics |
+| `sys.host_summary` | 🟡 | Limited read-only empty formatted host summary view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `performance_schema.accounts`, `sys.x$host_summary_by_file_io`, `sys.x$host_summary_by_statement_latency`, and `sys.x$memory_by_host_by_current_bytes`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema account, statement, file-I/O, or memory summary collection, live host rows, raw-view warning production, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$host_summary` | 🟡 | Limited read-only empty raw host summary view with the same metadata and unsupported behavior as `sys.host_summary`, except latency and memory totals expose raw numeric metadata |
 | `sys.host_summary_by_file_io` | ❌ | View shape and diagnostics |
 | `sys.x$host_summary_by_file_io` | ❌ | View shape and diagnostics |
 | `sys.host_summary_by_file_io_type` | ❌ | View shape and diagnostics |

@@ -587,6 +587,7 @@ enum {
     mysql_password_history_column_count = 4,
     sys_sys_config_column_count = 4,
     sys_version_column_count = 2,
+    sys_host_summary_column_count = 12,
     sys_innodb_lock_waits_column_count = 30,
     sys_io_by_thread_by_latency_column_count = 8,
     sys_io_global_by_file_by_bytes_column_count = 9,
@@ -4613,6 +4614,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_WAIT_BY_LATENCY = 141,
     INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY = 142,
     INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY = 143,
+    INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY = 144,
+    INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY = 145,
 };
 
 struct information_schema_column_definition {
@@ -14207,6 +14210,325 @@ static const char *const sys_version_column_privileges[] = {
 };
 
 static const struct information_schema_column_definition
+    sys_host_summary_columns[sys_host_summary_column_count] = {
+        {"host",
+         NULL,
+         "YES",
+         "varchar",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "varchar(255)"},
+        {"statements",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+        {"statement_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"statement_avg_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"table_scans",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "65",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(65,0)"},
+        {"file_ios",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+        {"file_io_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"current_connections",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+        {"total_connections",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+        {"unique_users", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"current_memory",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"total_memory_allocated",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_host_summary_columns[sys_host_summary_column_count] = {
+        {"host",
+         NULL,
+         "YES",
+         "varchar",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "varchar(255)"},
+        {"statements",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+        {"statement_latency",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+        {"statement_avg_latency",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "65",
+         "4",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(65,4)"},
+        {"table_scans",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "65",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(65,0)"},
+        {"file_ios",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+        {"file_io_latency",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+        {"current_connections",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+        {"total_connections",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+        {"unique_users", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"current_memory",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "63",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(63,0)"},
+        {"total_memory_allocated",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "64",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(64,0)"},
+};
+
+static const char *const sys_host_summary_column_keys[sys_host_summary_column_count] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_host_summary_column_extras[sys_host_summary_column_count] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const sys_host_summary_column_privileges[sys_host_summary_column_count] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_innodb_lock_waits_columns[sys_innodb_lock_waits_column_count] = {
         {"wait_started",
          NULL,
@@ -18882,6 +19204,119 @@ static const char sys_version_show_create_qualified_view_sql[] =
     "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
     "`sys_version`,version() AS `mysql_version`";
 
+#define SYS_HOST_SUMMARY_VIEW_COLUMNS                                                              \
+    "(`host`,`statements`,`statement_latency`,`statement_avg_latency`,`table_scans`,`file_ios`,"   \
+    "`file_io_latency`,`current_connections`,`total_connections`,`unique_users`,`current_memory`," \
+    "`total_memory_allocated`)"
+
+#define SYS_HOST_SUMMARY_QUALIFIED_SELECT_SUFFIX                                                   \
+    "sum(`performance_schema`.`accounts`.`CURRENT_CONNECTIONS`) AS `current_connections`,"         \
+    "sum(`performance_schema`.`accounts`.`TOTAL_CONNECTIONS`) AS `total_connections`,count("       \
+    "distinct `performance_schema`.`accounts`.`USER`) AS `unique_users`,"
+
+#define SYS_HOST_SUMMARY_QUALIFIED_FROM                                                            \
+    " from (((`performance_schema`.`accounts` join `sys`."                                         \
+    "`x$host_summary_by_statement_latency` `stmt` on((`performance_schema`.`accounts`.`HOST` "     \
+    "= `sys`.`stmt`.`host`))) join `sys`.`x$host_summary_by_file_io` `io` on(("                    \
+    "`performance_schema`.`accounts`.`HOST` = `sys`.`io`.`host`))) join `sys`."                    \
+    "`x$memory_by_host_by_current_bytes` `mem` on((`performance_schema`.`accounts`.`HOST` = "      \
+    "`sys`.`mem`.`host`))) group by if((`performance_schema`.`accounts`.`HOST` is null),"          \
+    "'background',`performance_schema`.`accounts`.`HOST`)"
+
+#define SYS_HOST_SUMMARY_UNQUALIFIED_SELECT_SUFFIX                                                 \
+    "sum(`performance_schema`.`accounts`.`CURRENT_CONNECTIONS`) AS `current_connections`,"         \
+    "sum(`performance_schema`.`accounts`.`TOTAL_CONNECTIONS`) AS `total_connections`,count("       \
+    "distinct `performance_schema`.`accounts`.`USER`) AS `unique_users`,"
+
+#define SYS_HOST_SUMMARY_UNQUALIFIED_FROM                                                          \
+    " from (((`performance_schema`.`accounts` join `x$host_summary_by_statement_latency` "         \
+    "`stmt` on((`performance_schema`.`accounts`.`HOST` = `stmt`.`host`))) join "                   \
+    "`x$host_summary_by_file_io` `io` on((`performance_schema`.`accounts`.`HOST` = "               \
+    "`io`.`host`))) join `x$memory_by_host_by_current_bytes` `mem` on(("                           \
+    "`performance_schema`.`accounts`.`HOST` = `mem`.`host`))) group by if(("                       \
+    "`performance_schema`.`accounts`.`HOST` is null),'background',"                                \
+    "`performance_schema`.`accounts`.`HOST`)"
+
+#define SYS_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION                                                 \
+    "select if((`performance_schema`.`accounts`.`HOST` is null),'background',"                     \
+    "`performance_schema`.`accounts`.`HOST`) AS `host`,sum(`sys`.`stmt`.`total`) AS "              \
+    "`statements`,format_pico_time(sum(`sys`.`stmt`.`total_latency`)) AS "                         \
+    "`statement_latency`,format_pico_time(ifnull((sum(`sys`.`stmt`.`total_latency`) / "            \
+    "nullif(sum(`sys`.`stmt`.`total`),0)),0)) AS `statement_avg_latency`,sum("                     \
+    "`sys`.`stmt`.`full_scans`) AS `table_scans`,sum(`sys`.`io`.`ios`) AS "                        \
+    "`file_ios`,format_pico_time(sum(`sys`.`io`.`io_latency`)) AS "                                \
+    "`file_io_latency`," SYS_HOST_SUMMARY_QUALIFIED_SELECT_SUFFIX                                  \
+    "format_bytes(sum(`sys`.`mem`.`current_allocated`)) AS `current_memory`,format_bytes("         \
+    "sum(`sys`.`mem`.`total_allocated`)) AS "                                                      \
+    "`total_memory_allocated`" SYS_HOST_SUMMARY_QUALIFIED_FROM
+
+#define SYS_X_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION                                               \
+    "select if((`performance_schema`.`accounts`.`HOST` is null),'background',"                     \
+    "`performance_schema`.`accounts`.`HOST`) AS `host`,sum(`sys`.`stmt`.`total`) AS "              \
+    "`statements`,sum(`sys`.`stmt`.`total_latency`) AS `statement_latency`,("                      \
+    "sum(`sys`.`stmt`.`total_latency`) / sum(`sys`.`stmt`.`total`)) AS "                           \
+    "`statement_avg_latency`,sum(`sys`.`stmt`.`full_scans`) AS `table_scans`,sum("                 \
+    "`sys`.`io`.`ios`) AS `file_ios`,sum(`sys`.`io`.`io_latency`) AS "                             \
+    "`file_io_latency`," SYS_HOST_SUMMARY_QUALIFIED_SELECT_SUFFIX                                  \
+    "sum(`sys`.`mem`.`current_allocated`) AS `current_memory`,sum("                                \
+    "`sys`.`mem`.`total_allocated`) AS `total_memory_allocated`" SYS_HOST_SUMMARY_QUALIFIED_FROM
+
+#define SYS_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION                                               \
+    "select if((`performance_schema`.`accounts`.`HOST` is null),'background',"                     \
+    "`performance_schema`.`accounts`.`HOST`) AS `host`,sum(`stmt`.`total`) AS "                    \
+    "`statements`,format_pico_time(sum(`stmt`.`total_latency`)) AS "                               \
+    "`statement_latency`,format_pico_time(ifnull((sum(`stmt`.`total_latency`) / nullif(sum("       \
+    "`stmt`.`total`),0)),0)) AS `statement_avg_latency`,sum(`stmt`.`full_scans`) AS "              \
+    "`table_scans`,sum(`io`.`ios`) AS `file_ios`,format_pico_time(sum(`io`."                       \
+    "`io_latency`)) AS `file_io_latency`," SYS_HOST_SUMMARY_UNQUALIFIED_SELECT_SUFFIX              \
+    "format_bytes(sum(`mem`.`current_allocated`)) AS `current_memory`,format_bytes(sum("           \
+    "`mem`.`total_allocated`)) AS `total_memory_allocated`" SYS_HOST_SUMMARY_UNQUALIFIED_FROM
+
+#define SYS_X_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION                                             \
+    "select if((`performance_schema`.`accounts`.`HOST` is null),'background',"                     \
+    "`performance_schema`.`accounts`.`HOST`) AS `host`,sum(`stmt`.`total`) AS "                    \
+    "`statements`,sum(`stmt`.`total_latency`) AS `statement_latency`,(sum("                        \
+    "`stmt`.`total_latency`) / sum(`stmt`.`total`)) AS `statement_avg_latency`,sum("               \
+    "`stmt`.`full_scans`) AS `table_scans`,sum(`io`.`ios`) AS `file_ios`,sum("                     \
+    "`io`.`io_latency`) AS `file_io_latency`," SYS_HOST_SUMMARY_UNQUALIFIED_SELECT_SUFFIX          \
+    "sum(`mem`.`current_allocated`) AS `current_memory`,sum(`mem`.`total_allocated`) AS "          \
+    "`total_memory_allocated`" SYS_HOST_SUMMARY_UNQUALIFIED_FROM
+
+static const char sys_host_summary_view_definition[] = SYS_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_host_summary_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_host_summary_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_host_summary_view_definition[] =
+    SYS_X_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_host_summary_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_X_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_host_summary_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_X_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+#undef SYS_HOST_SUMMARY_VIEW_COLUMNS
+#undef SYS_HOST_SUMMARY_QUALIFIED_SELECT_SUFFIX
+#undef SYS_HOST_SUMMARY_QUALIFIED_FROM
+#undef SYS_HOST_SUMMARY_UNQUALIFIED_SELECT_SUFFIX
+#undef SYS_HOST_SUMMARY_UNQUALIFIED_FROM
+#undef SYS_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION
+#undef SYS_X_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION
+#undef SYS_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION
+#undef SYS_X_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION
+
 #define SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS                                                         \
     "(`wait_started`,`wait_age`,`wait_age_secs`,`locked_table`,`locked_table_schema`,"             \
     "`locked_table_name`,`locked_table_partition`,`locked_table_subpartition`,`locked_index`,"     \
@@ -20097,6 +20532,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_version_view_definition,
      sys_version_show_create_view_sql,
      sys_version_show_create_qualified_view_sql},
+    {"host_summary",
+     sys_host_summary_view_definition,
+     sys_host_summary_show_create_view_sql,
+     sys_host_summary_show_create_qualified_view_sql},
     {"innodb_lock_waits",
      sys_innodb_lock_waits_view_definition,
      sys_innodb_lock_waits_show_create_view_sql,
@@ -20169,6 +20608,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_schema_flattened_keys_view_definition,
      sys_x_schema_flattened_keys_show_create_view_sql,
      sys_x_schema_flattened_keys_show_create_qualified_view_sql},
+    {"x$host_summary",
+     sys_x_host_summary_view_definition,
+     sys_x_host_summary_show_create_view_sql,
+     sys_x_host_summary_show_create_qualified_view_sql},
     {"x$innodb_lock_waits",
      sys_x_innodb_lock_waits_view_definition,
      sys_x_innodb_lock_waits_show_create_view_sql,
@@ -23014,6 +23457,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY,
+      "host_summary",
+      sys_host_summary_columns,
+      sys_host_summary_column_count},
+     sys_host_summary_column_keys,
+     sys_host_summary_column_extras,
+     sys_host_summary_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS,
       "innodb_lock_waits",
       sys_innodb_lock_waits_columns,
@@ -23259,6 +23716,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_x_schema_flattened_keys_column_keys,
      sys_x_schema_flattened_keys_column_extras,
      sys_x_schema_flattened_keys_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY,
+      "x$host_summary",
+      sys_x_host_summary_columns,
+      sys_host_summary_column_count},
+     sys_host_summary_column_keys,
+     sys_host_summary_column_extras,
+     sys_host_summary_column_privileges,
      NULL,
      NULL,
      0U,
@@ -26584,6 +27055,10 @@ static int append_sys_version_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_innodb_lock_waits_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_host_summary_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -62522,6 +62997,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "host_summary") == 0) {
+        return append_sys_host_summary_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "io_by_thread_by_latency") == 0) {
         return append_sys_io_by_thread_by_latency_system_rows(database, rows);
     }
@@ -62584,6 +63062,9 @@ static int append_sys_schema_x_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$host_summary") == 0) {
+        return append_sys_host_summary_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$io_by_thread_by_latency") == 0) {
         return append_sys_io_by_thread_by_latency_system_rows(database, rows);
@@ -62844,6 +63325,17 @@ static int append_sys_innodb_lock_waits_system_rows(
 ) {
     if (rows->definition->column_count != sys_innodb_lock_waits_column_count) {
         set_runtime_error(database, "invalid sys.innodb_lock_waits columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_host_summary_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_host_summary_column_count) {
+        set_runtime_error(database, "invalid sys.host_summary columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -65913,6 +66405,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -65931,6 +66424,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -66063,6 +66557,10 @@ static int append_information_schema_view_table_usage_system_rows(
         const char *table_name;
     };
     static const struct builtin_view_dependency_row dependency_rows[] = {
+        {"host_summary", "performance_schema", "accounts"},
+        {"host_summary", "sys", "x$host_summary_by_file_io"},
+        {"host_summary", "sys", "x$host_summary_by_statement_latency"},
+        {"host_summary", "sys", "x$memory_by_host_by_current_bytes"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -66107,6 +66605,10 @@ static int append_information_schema_view_table_usage_system_rows(
          "table_io_waits_summary_by_index_usage"},
         {"schema_unused_indexes", "information_schema", "STATISTICS"},
         {"schema_unused_indexes", "performance_schema", "table_io_waits_summary_by_index_usage"},
+        {"x$host_summary", "performance_schema", "accounts"},
+        {"x$host_summary", "sys", "x$host_summary_by_file_io"},
+        {"x$host_summary", "sys", "x$host_summary_by_statement_latency"},
+        {"x$host_summary", "sys", "x$memory_by_host_by_current_bytes"},
         {"x$innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"x$innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"x$innodb_lock_waits", "performance_schema", "data_locks"},
@@ -66311,6 +66813,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_MYSQL_USER:
     case INFORMATION_SCHEMA_TABLE_SYS_SYS_CONFIG:
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
+    case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -66329,6 +66832,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS:
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:

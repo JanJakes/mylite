@@ -27,6 +27,12 @@ struct expected_sql_error {
     const char *message_part;
 };
 
+struct expected_warning_row {
+    const char *level;
+    const char *code;
+    const char *message_part;
+};
+
 static int test_error_codes_and_sqlstates(void);
 static int test_warning_codes_count_and_order(void);
 static int open_test_database(mylite_db **out_database, char *path, size_t path_size);
@@ -36,9 +42,7 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 static int expect_show_warning_row(
     const mylite_result *result,
     size_t row_index,
-    const char *level,
-    const char *code,
-    const char *message_part,
+    struct expected_warning_row expected,
     const char *context
 );
 static int expect_show_count_warnings(
@@ -169,17 +173,21 @@ static int test_warning_codes_count_and_order(void) {
     failures += expect_show_warning_row(
         result,
         0U,
-        "Note",
-        "1265",
-        "Data truncated for column 'v' at row 1",
+        (struct expected_warning_row){
+            .level = "Note",
+            .code = "1265",
+            .message_part = "Data truncated for column 'v' at row 1",
+        },
         "first truncation note"
     );
     failures += expect_show_warning_row(
         result,
         1U,
-        "Note",
-        "1265",
-        "Data truncated for column 'n' at row 1",
+        (struct expected_warning_row){
+            .level = "Note",
+            .code = "1265",
+            .message_part = "Data truncated for column 'n' at row 1",
+        },
         "second truncation note"
     );
     mylite_result_free(result);
@@ -198,9 +206,11 @@ static int test_warning_codes_count_and_order(void) {
     failures += expect_show_warning_row(
         result,
         0U,
-        "Warning",
-        "1287",
-        "INFORMATION_SCHEMA.PROCESSLIST",
+        (struct expected_warning_row){
+            .level = "Warning",
+            .code = "1287",
+            .message_part = "INFORMATION_SCHEMA.PROCESSLIST",
+        },
         "processlist deprecation warning"
     );
     mylite_result_free(result);
@@ -258,19 +268,24 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 static int expect_show_warning_row(
     const mylite_result *result,
     size_t row_index,
-    const char *level,
-    const char *code,
-    const char *message_part,
+    struct expected_warning_row expected,
     const char *context
 ) {
     int failures = 0;
 
-    failures +=
-        expect_text_or_null(mylite_result_value_text(result, row_index, 0U), level, context);
-    failures += expect_text_or_null(mylite_result_value_text(result, row_index, 1U), code, context);
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, row_index, 0U),
+        expected.level,
+        context
+    );
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, row_index, 1U),
+        expected.code,
+        context
+    );
     failures += expect_text_contains(
         mylite_result_value_text(result, row_index, 2U),
-        message_part,
+        expected.message_part,
         context
     );
 

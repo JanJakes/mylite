@@ -1697,6 +1697,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_row_number_window_function(
     struct mylite_sql_ast_node *window_spec,
     struct mylite_sql_token right_paren
 );
+
+struct mylite_sql_window_function_arguments {
+    size_t count;
+    struct mylite_sql_ast_node *items[3];
+};
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_window_function_arguments arguments,
+    struct mylite_sql_ast_node *window_spec,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_spec(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *partition_clause,

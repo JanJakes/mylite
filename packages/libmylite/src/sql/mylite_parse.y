@@ -4537,6 +4537,139 @@ expression(A) ::= expression(V) COLLATE(C) option_name(N). {
 expression(A) ::= ROW_NUMBER(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
     A = mylite_sql_parser_make_row_number_window_function(state, T, W, R);
 }
+expression(A) ::= RANK(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_RANK_FUNCTION,
+        (struct mylite_sql_window_function_arguments){0},
+        W,
+        R);
+}
+expression(A) ::= DENSE_RANK(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_DENSE_RANK_FUNCTION,
+        (struct mylite_sql_window_function_arguments){0},
+        W,
+        R);
+}
+expression(A) ::= PERCENT_RANK(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_PERCENT_RANK_FUNCTION,
+        (struct mylite_sql_window_function_arguments){0},
+        W,
+        R);
+}
+expression(A) ::= CUME_DIST(T) LPAREN RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_CUME_DIST_FUNCTION,
+        (struct mylite_sql_window_function_arguments){0},
+        W,
+        R);
+}
+expression(A) ::= NTILE(T) LPAREN expression(B) RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_NTILE_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        W,
+        R);
+}
+expression(A) ::= LAG(T) LPAREN expression(B) RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LAG_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        W,
+        R);
+}
+expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LAG_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 2U, .items = {B, C}},
+        W,
+        R);
+}
+expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LAG_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 3U, .items = {B, C, D}},
+        W,
+        R);
+}
+expression(A) ::= LEAD(T) LPAREN expression(B) RPAREN OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LEAD_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        W,
+        R);
+}
+expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LEAD_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 2U, .items = {B, C}},
+        W,
+        R);
+}
+expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LEAD_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 3U, .items = {B, C, D}},
+        W,
+        R);
+}
+expression(A) ::= FIRST_VALUE(T) LPAREN expression(B) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_FIRST_VALUE_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        W,
+        R);
+}
+expression(A) ::= LAST_VALUE(T) LPAREN expression(B) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_LAST_VALUE_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        W,
+        R);
+}
+expression(A) ::= NTH_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN
+                  OVER LPAREN window_spec_opt(W) RPAREN(R). {
+    A = mylite_sql_parser_make_window_function(
+        state,
+        T,
+        MYLITE_SQL_AST_NTH_VALUE_FUNCTION,
+        (struct mylite_sql_window_function_arguments){.count = 2U, .items = {B, C}},
+        W,
+        R);
+}
 
 window_spec_opt(A) ::= . {
     A = NULL;

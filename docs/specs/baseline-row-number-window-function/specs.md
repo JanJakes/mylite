@@ -117,8 +117,9 @@ Deferred syntax and behavior:
   keys, expression order keys, ordinal order keys, table-qualified keys for
   unrelated sources, collations in the window spec, parameters, and arbitrary
   scalar expression arguments;
-- other window functions such as `RANK()`, `DENSE_RANK()`, `LAG()`,
-  `LEAD()`, and aggregate window functions.
+- rank, distribution, navigation, and frame-value window functions are covered
+  by `docs/specs/baseline-window-rank-navigation-functions/specs.md`;
+  aggregate window functions remain deferred.
 
 ## Ownership Boundaries
 

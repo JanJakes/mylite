@@ -1811,6 +1811,26 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "order_direction";
     case MYLITE_SQL_AST_ROW_NUMBER_FUNCTION:
         return "row_number_function";
+    case MYLITE_SQL_AST_RANK_FUNCTION:
+        return "rank_function";
+    case MYLITE_SQL_AST_DENSE_RANK_FUNCTION:
+        return "dense_rank_function";
+    case MYLITE_SQL_AST_PERCENT_RANK_FUNCTION:
+        return "percent_rank_function";
+    case MYLITE_SQL_AST_CUME_DIST_FUNCTION:
+        return "cume_dist_function";
+    case MYLITE_SQL_AST_NTILE_FUNCTION:
+        return "ntile_function";
+    case MYLITE_SQL_AST_LAG_FUNCTION:
+        return "lag_function";
+    case MYLITE_SQL_AST_LEAD_FUNCTION:
+        return "lead_function";
+    case MYLITE_SQL_AST_FIRST_VALUE_FUNCTION:
+        return "first_value_function";
+    case MYLITE_SQL_AST_LAST_VALUE_FUNCTION:
+        return "last_value_function";
+    case MYLITE_SQL_AST_NTH_VALUE_FUNCTION:
+        return "nth_value_function";
     case MYLITE_SQL_AST_WINDOW_SPEC:
         return "window_spec";
     case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:

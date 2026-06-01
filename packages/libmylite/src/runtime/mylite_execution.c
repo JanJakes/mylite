@@ -302,6 +302,8 @@ enum {
     base64_signed_integer_message_capacity = 96,
     base64_column_message_capacity = 128,
     base64_unsupported_message_capacity = 256,
+    window_function_name_lower_capacity = 32,
+    window_function_unsupported_message_capacity = 256,
     integer_expression_default_text_initial_capacity = 16,
     integer_expression_default_text_growth_factor = 2,
     week_temporal_mode_count = 8,
@@ -2504,7 +2506,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE = 68,
     PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP = 69,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK = 70,
-    PLANNED_ROW_SCALAR_EXPRESSION_ROW_NUMBER = 71,
+    PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION = 71,
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR = 72,
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR = 73,
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE = 74,
@@ -2519,6 +2521,26 @@ enum planned_row_scalar_expression_kind {
 
 enum {
     planned_row_scalar_timestampdiff_argument_count = 5,
+};
+
+enum planned_window_function_kind {
+    PLANNED_WINDOW_FUNCTION_NONE = 0,
+    PLANNED_WINDOW_FUNCTION_ROW_NUMBER = 1,
+    PLANNED_WINDOW_FUNCTION_RANK = 2,
+    PLANNED_WINDOW_FUNCTION_DENSE_RANK = 3,
+    PLANNED_WINDOW_FUNCTION_PERCENT_RANK = 4,
+    PLANNED_WINDOW_FUNCTION_CUME_DIST = 5,
+    PLANNED_WINDOW_FUNCTION_NTILE = 6,
+    PLANNED_WINDOW_FUNCTION_LAG = 7,
+    PLANNED_WINDOW_FUNCTION_LEAD = 8,
+    PLANNED_WINDOW_FUNCTION_FIRST_VALUE = 9,
+    PLANNED_WINDOW_FUNCTION_LAST_VALUE = 10,
+    PLANNED_WINDOW_FUNCTION_NTH_VALUE = 11,
+};
+
+struct window_function_argument_count_request {
+    enum planned_window_function_kind kind;
+    size_t argument_count;
 };
 
 enum planned_row_scalar_field_domain {
@@ -2661,6 +2683,7 @@ struct planned_row_scalar_expression {
     enum planned_string_bitmask_function_kind string_bitmask_kind;
     enum planned_regexp_string_function_kind regexp_string_kind;
     enum planned_row_scalar_conversion_kind conversion_kind;
+    enum planned_window_function_kind window_function_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     enum mylite_sql_ast_operator arithmetic_operator;
     struct planned_value value;
@@ -2669,17 +2692,17 @@ struct planned_row_scalar_expression {
     bool regexp_case_sensitive;
     bool has_rand_seed;
     uint32_t rand_seed;
-    bool row_number_has_partition;
-    bool row_number_has_order;
+    bool window_has_partition;
+    bool window_has_order;
     bool conversion_ascii_only;
     const char *conversion_charset;
     const char *conversion_collation;
     struct planned_row_scalar_conversion_step
         conversion_steps[planned_row_scalar_conversion_step_capacity];
     size_t conversion_step_count;
-    enum planned_select_order_direction row_number_order_direction;
-    struct mylite_catalog_column_descriptor row_number_partition_column;
-    struct mylite_catalog_column_descriptor row_number_order_column;
+    enum planned_select_order_direction window_order_direction;
+    struct mylite_catalog_column_descriptor window_partition_column;
+    struct mylite_catalog_column_descriptor window_order_column;
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
@@ -10866,6 +10889,26 @@ static int make_row_scalar_column_result_column_descriptor(
 static int populate_row_scalar_expression_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_window_function_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_window_value_function_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_window_value_column_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_window_value_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_value *value,
     struct mylite_result_column_descriptor *descriptor
 );
 static int populate_row_scalar_conversion_result_column_descriptor(
@@ -21626,7 +21669,8 @@ static int plan_row_scalar_rand_expression(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static int plan_row_scalar_row_number_window_expression(
+static bool row_scalar_expression_is_window_function(const struct mylite_sql_ast_node *expression);
+static int plan_row_scalar_window_function_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -21635,26 +21679,108 @@ static int plan_row_scalar_row_number_window_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
-static int plan_row_scalar_row_number_partition_clause(
+static enum planned_window_function_kind planned_window_function_kind_from_ast(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *window_function_argument_list_node(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *window_function_spec_node(
+    const struct mylite_sql_ast_node *expression
+);
+static bool window_function_has_arguments(enum planned_window_function_kind kind);
+static int plan_row_scalar_window_function_arguments(
     struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct mylite_sql_ast_node *arguments,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int validate_window_function_argument_count(
+    struct mylite_db *database,
+    struct window_function_argument_count_request request
+);
+static int plan_row_scalar_window_function_argument(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    size_t argument_index,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+);
+static bool window_function_signed_integer_argument_is_supported(
+    enum planned_window_function_kind kind,
+    size_t argument_index
+);
+static int set_unknown_window_argument_column_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument
+);
+static int plan_row_scalar_window_function_column_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_sql_ast_node *argument,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+);
+static bool window_function_argument_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int validate_window_function_integer_argument(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct planned_row_scalar_expression *expression
+);
+static bool window_function_null_integer_argument_is_syntax_error(
+    enum planned_window_function_kind kind
+);
+static size_t window_function_integer_argument_index(enum planned_window_function_kind kind);
+static void set_incorrect_window_function_argument_error(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind
+);
+static int plan_row_scalar_window_partition_clause(
+    struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *partition_clause,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
-static int plan_row_scalar_row_number_order_clause(
+static int plan_row_scalar_window_order_clause(
     struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *order_clause,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
-static bool row_number_window_column_descriptor_is_supported(
+static bool window_key_column_descriptor_is_supported(
     struct mylite_db *database,
+    const char *function_name,
     const struct mylite_catalog_column_descriptor *column
 );
+static const char *window_function_display_name(enum planned_window_function_kind kind);
+static int set_window_function_unsupported_error(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *detail
+);
+static int copy_lowercase_function_name(const char *source, char *destination, size_t size);
 static int plan_row_scalar_integer_arithmetic_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -25267,10 +25393,17 @@ static int append_row_scalar_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
-static int append_row_scalar_row_number_expression_sql(
+static int append_row_scalar_window_function_expression_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_row_scalar_expression *expression
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
 );
+static int append_row_scalar_window_function_argument_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *argument,
+    size_t *next_parameter
+);
+static const char *window_function_sql_name(enum planned_window_function_kind kind);
 static int append_row_scalar_rand_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -26811,6 +26944,16 @@ static int bind_row_scalar_expression_parameters(
 static int bind_row_scalar_non_concat_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_window_function_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_window_function_argument_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *argument,
     int *parameter_index
 );
 static int bind_row_scalar_rand_expression_parameters(

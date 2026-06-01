@@ -5867,15 +5867,55 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_row_number_window_function(
     struct mylite_sql_ast_node *window_spec,
     struct mylite_sql_token right_paren
 ) {
-    struct mylite_sql_ast_node *function = make_node(
+    return mylite_sql_parser_make_window_function(
         state,
+        function_token,
         MYLITE_SQL_AST_ROW_NUMBER_FUNCTION,
+        (struct mylite_sql_window_function_arguments){0},
+        window_spec,
+        right_paren
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_window_function_arguments arguments,
+    struct mylite_sql_ast_node *window_spec,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *argument_list = NULL;
+    struct mylite_sql_ast_node *function = NULL;
+
+    if (arguments.count > sizeof(arguments.items) / sizeof(arguments.items[0])) {
+        return NULL;
+    }
+    if (arguments.count != 0U) {
+        argument_list = mylite_sql_parser_make_function_argument_list(state, arguments.items[0]);
+    }
+    for (size_t argument_index = 1U; argument_list != NULL && argument_index < arguments.count;
+         ++argument_index) {
+        argument_list = mylite_sql_parser_append_function_argument(
+            state,
+            argument_list,
+            arguments.items[argument_index]
+        );
+    }
+    if (arguments.count != 0U && argument_list == NULL) {
+        return NULL;
+    }
+
+    function = make_node(
+        state,
+        function_kind,
         span_join(span_from_token(&function_token), span_from_token(&right_paren))
     );
 
     if (function == NULL) {
         return NULL;
     }
+    mylite_sql_ast_node_append_child(function, argument_list);
     mylite_sql_ast_node_append_child(function, window_spec);
     return function;
 }
@@ -8535,6 +8575,16 @@ static bool map_keyword_token(
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"WEIGHT_STRING", MYLITE_SQL_PARSE_WEIGHT_STRING},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"CUME_DIST", MYLITE_SQL_PARSE_CUME_DIST},
+        {"DENSE_RANK", MYLITE_SQL_PARSE_DENSE_RANK},
+        {"FIRST_VALUE", MYLITE_SQL_PARSE_FIRST_VALUE},
+        {"LAG", MYLITE_SQL_PARSE_LAG},
+        {"LAST_VALUE", MYLITE_SQL_PARSE_LAST_VALUE},
+        {"LEAD", MYLITE_SQL_PARSE_LEAD},
+        {"NTH_VALUE", MYLITE_SQL_PARSE_NTH_VALUE},
+        {"NTILE", MYLITE_SQL_PARSE_NTILE},
+        {"PERCENT_RANK", MYLITE_SQL_PARSE_PERCENT_RANK},
+        {"RANK", MYLITE_SQL_PARSE_RANK},
         {"ROW_NUMBER", MYLITE_SQL_PARSE_ROW_NUMBER},
         {"SEPARATOR", MYLITE_SQL_PARSE_SEPARATOR},
         {"SERIAL", MYLITE_SQL_PARSE_SERIAL},

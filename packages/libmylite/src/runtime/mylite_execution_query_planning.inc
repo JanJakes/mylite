@@ -255,8 +255,8 @@ static int plan_row_scalar_special_expression(
             out_expression
         );
     }
-    if (expression->kind == MYLITE_SQL_AST_ROW_NUMBER_FUNCTION) {
-        return plan_row_scalar_row_number_window_expression(
+    if (row_scalar_expression_is_window_function(expression)) {
+        return plan_row_scalar_window_function_expression(
             database,
             expression,
             has_source,
@@ -366,7 +366,11 @@ static int plan_row_scalar_rand_expression(
     return MYLITE_ERROR;
 }
 
-static int plan_row_scalar_row_number_window_expression(
+static bool row_scalar_expression_is_window_function(const struct mylite_sql_ast_node *expression) {
+    return planned_window_function_kind_from_ast(expression) != PLANNED_WINDOW_FUNCTION_NONE;
+}
+
+static int plan_row_scalar_window_function_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -375,32 +379,56 @@ static int plan_row_scalar_row_number_window_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    const struct mylite_sql_ast_node *window_spec = child_at(expression, 0U);
+    enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
+    const struct mylite_sql_ast_node *arguments = window_function_argument_list_node(expression);
+    const struct mylite_sql_ast_node *window_spec = window_function_spec_node(expression);
     const struct mylite_sql_ast_node *clause = NULL;
+    const char *function_name = window_function_display_name(kind);
     int rc = MYLITE_OK;
 
     if (out_expression == NULL) {
         return MYLITE_MISUSE;
     }
     planned_row_scalar_expression_deinit(out_expression);
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_ROW_NUMBER_FUNCTION) {
+    if (kind == PLANNED_WINDOW_FUNCTION_NONE || function_name == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_ROW_NUMBER;
-    out_expression->row_number_order_direction = PLANNED_SELECT_ORDER_ASC;
+    rc = plan_row_scalar_window_function_arguments(
+        database,
+        kind,
+        arguments,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+        return rc;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION;
+    out_expression->window_function_kind = kind;
+    out_expression->window_order_direction = PLANNED_SELECT_ORDER_ASC;
     if (window_spec == NULL) {
         return MYLITE_OK;
     }
     if (window_spec->kind != MYLITE_SQL_AST_WINDOW_SPEC) {
-        set_unsupported_error(database, "ROW_NUMBER() supports only a baseline window spec");
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "supports only a baseline window spec"
+        );
         return MYLITE_ERROR;
     }
     if (!has_source && mylite_sql_ast_node_child_count(window_spec) != 0U) {
-        set_unsupported_error(
+        set_window_function_unsupported_error(
             database,
-            "ROW_NUMBER() without a table source supports only OVER ()"
+            function_name,
+            "without a table source supports only OVER ()"
         );
         return MYLITE_ERROR;
     }
@@ -408,8 +436,9 @@ static int plan_row_scalar_row_number_window_expression(
     clause = child_at(window_spec, 0U);
     while (rc == MYLITE_OK && clause != NULL) {
         if (clause->kind == MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE) {
-            rc = plan_row_scalar_row_number_partition_clause(
+            rc = plan_row_scalar_window_partition_clause(
                 database,
+                function_name,
                 clause,
                 source_context,
                 table_columns,
@@ -417,8 +446,9 @@ static int plan_row_scalar_row_number_window_expression(
                 out_expression
             );
         } else if (clause->kind == MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE) {
-            rc = plan_row_scalar_row_number_order_clause(
+            rc = plan_row_scalar_window_order_clause(
                 database,
+                function_name,
                 clause,
                 source_context,
                 table_columns,
@@ -426,7 +456,11 @@ static int plan_row_scalar_row_number_window_expression(
                 out_expression
             );
         } else {
-            set_unsupported_error(database, "ROW_NUMBER() supports only PARTITION BY and ORDER BY");
+            set_window_function_unsupported_error(
+                database,
+                function_name,
+                "supports only PARTITION BY and ORDER BY"
+            );
             rc = MYLITE_ERROR;
         }
         clause = clause->next_sibling;
@@ -438,8 +472,458 @@ static int plan_row_scalar_row_number_window_expression(
     return rc;
 }
 
-static int plan_row_scalar_row_number_partition_clause(
+static enum planned_window_function_kind planned_window_function_kind_from_ast(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL) {
+        return PLANNED_WINDOW_FUNCTION_NONE;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_ROW_NUMBER_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_ROW_NUMBER;
+    case MYLITE_SQL_AST_RANK_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_RANK;
+    case MYLITE_SQL_AST_DENSE_RANK_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_DENSE_RANK;
+    case MYLITE_SQL_AST_PERCENT_RANK_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_PERCENT_RANK;
+    case MYLITE_SQL_AST_CUME_DIST_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_CUME_DIST;
+    case MYLITE_SQL_AST_NTILE_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_NTILE;
+    case MYLITE_SQL_AST_LAG_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_LAG;
+    case MYLITE_SQL_AST_LEAD_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_LEAD;
+    case MYLITE_SQL_AST_FIRST_VALUE_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_FIRST_VALUE;
+    case MYLITE_SQL_AST_LAST_VALUE_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_LAST_VALUE;
+    case MYLITE_SQL_AST_NTH_VALUE_FUNCTION:
+        return PLANNED_WINDOW_FUNCTION_NTH_VALUE;
+    default:
+        break;
+    }
+    return PLANNED_WINDOW_FUNCTION_NONE;
+}
+
+static const struct mylite_sql_ast_node *window_function_argument_list_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
+
+    if (!window_function_has_arguments(kind)) {
+        return NULL;
+    }
+    return child_at(expression, 0U);
+}
+
+static const struct mylite_sql_ast_node *window_function_spec_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
+
+    if (!window_function_has_arguments(kind)) {
+        return child_at(expression, 0U);
+    }
+    return child_at(expression, 1U);
+}
+
+static bool window_function_has_arguments(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+        break;
+    }
+    return false;
+}
+
+static int plan_row_scalar_window_function_arguments(
     struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct mylite_sql_ast_node *arguments,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    size_t argument_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+    int rc = validate_window_function_argument_count(
+        database,
+        (struct window_function_argument_count_request){
+            .kind = kind,
+            .argument_count = argument_count,
+        }
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = argument_count;
+
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < argument_count;
+         ++argument_index) {
+        rc = plan_row_scalar_window_function_argument(
+            database,
+            kind,
+            argument_index,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_index]
+        );
+        argument = argument == NULL ? NULL : argument->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_window_function_integer_argument(database, kind, out_expression);
+    }
+    return rc;
+}
+
+static int validate_window_function_argument_count(
+    struct mylite_db *database,
+    struct window_function_argument_count_request request
+) {
+    const char *function_name = window_function_display_name(request.kind);
+    size_t min_count = 0U;
+    size_t max_count = 0U;
+
+    switch (request.kind) {
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+        min_count = 1U;
+        max_count = 1U;
+        break;
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        min_count = 2U;
+        max_count = 2U;
+        break;
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+        min_count = 1U;
+        max_count = 3U;
+        break;
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+        min_count = 0U;
+        max_count = 0U;
+        break;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (request.argument_count < min_count || request.argument_count > max_count ||
+        function_name == NULL) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_window_function_argument(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    size_t argument_index,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(argument);
+    const char *function_name = window_function_display_name(kind);
+
+    if (unwrapped == NULL || function_name == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            return set_unknown_window_argument_column_error(database, unwrapped);
+        }
+        return plan_row_scalar_window_function_column_argument(
+            database,
+            function_name,
+            argument_index,
+            unwrapped,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_argument
+        );
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_LITERAL ||
+        (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+         window_function_signed_integer_argument_is_supported(kind, argument_index))) {
+        if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            return plan_row_scalar_integer_value(database, unwrapped, out_argument);
+        }
+        return plan_row_scalar_literal_value(database, unwrapped, out_argument);
+    }
+
+    set_window_function_unsupported_error(
+        database,
+        function_name,
+        "supports only descriptor-column and scalar-literal arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static bool window_function_signed_integer_argument_is_supported(
+    enum planned_window_function_kind kind,
+    size_t argument_index
+) {
+    return kind == PLANNED_WINDOW_FUNCTION_NTH_VALUE && argument_index == 1U;
+}
+
+static int set_unknown_window_argument_column_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = collect_column_reference_parts(database, argument, parts, &part_count);
+
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            column_name,
+            sizeof(column_name)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    set_unknown_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_window_function_column_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_sql_ast_node *argument,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        argument,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "window functions support only descriptor-column arguments",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!window_function_argument_column_descriptor_is_supported(
+            database,
+            function_name,
+            argument_index,
+            &column
+        )) {
+        return MYLITE_ERROR;
+    }
+
+    out_argument->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_argument->column = column;
+    return MYLITE_OK;
+}
+
+static bool window_function_argument_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (argument_index != 0U) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "offset and default arguments support only scalar literals"
+        );
+        return false;
+    }
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "arguments do not support approximate columns"
+        );
+        return false;
+    }
+
+    set_window_function_unsupported_error(
+        database,
+        function_name,
+        "arguments support only integer, DECIMAL, string, binary string, BIT, YEAR, and temporal "
+        "columns"
+    );
+    return false;
+}
+
+static int validate_window_function_integer_argument(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct planned_row_scalar_expression *expression
+) {
+    size_t argument_index = window_function_integer_argument_index(kind);
+    bool positive = false;
+
+    if (argument_index == SIZE_MAX) {
+        return MYLITE_OK;
+    }
+    positive = kind == PLANNED_WINDOW_FUNCTION_NTILE || kind == PLANNED_WINDOW_FUNCTION_NTH_VALUE;
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (argument_index >= expression->argument_count) {
+        return MYLITE_OK;
+    }
+
+    const struct planned_row_scalar_expression *argument = &expression->arguments[argument_index];
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE && argument->value.is_null &&
+        window_function_null_integer_argument_is_syntax_error(kind)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE || argument->value.is_null ||
+        argument->value.is_text || argument->value.is_blob || argument->value.is_real ||
+        argument->value.integer < (positive ? 1 : 0)) {
+        set_incorrect_window_function_argument_error(database, kind);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool window_function_null_integer_argument_is_syntax_error(
+    enum planned_window_function_kind kind
+) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        break;
+    }
+    return false;
+}
+
+static size_t window_function_integer_argument_index(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+        return 0U;
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return 1U;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+        break;
+    }
+    return SIZE_MAX;
+}
+
+static void set_incorrect_window_function_argument_error(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind
+) {
+    const char *function_name = window_function_display_name(kind);
+    char lowered[window_function_name_lower_capacity];
+    char message[window_function_unsupported_message_capacity];
+    int written = 0;
+
+    if (copy_lowercase_function_name(function_name, lowered, sizeof(lowered)) != MYLITE_OK) {
+        set_runtime_error(database, "failed to format window function argument diagnostic");
+        return;
+    }
+    written = snprintf(message, sizeof(message), "Incorrect arguments to %s", lowered);
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format window function argument diagnostic");
+        return;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_arguments,
+        "HY000",
+        message
+    );
+}
+
+static int plan_row_scalar_window_partition_clause(
+    struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *partition_clause,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -449,8 +933,12 @@ static int plan_row_scalar_row_number_partition_clause(
     struct mylite_catalog_column_descriptor column = {0};
     int rc = MYLITE_OK;
 
-    if (out_expression->row_number_has_partition) {
-        set_unsupported_error(database, "ROW_NUMBER() supports only one PARTITION BY key");
+    if (out_expression->window_has_partition) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "supports only one PARTITION BY key"
+        );
         return MYLITE_ERROR;
     }
 
@@ -459,7 +947,7 @@ static int plan_row_scalar_row_number_partition_clause(
         child_at(partition_clause, 0U),
         source_context,
         COLUMN_REFERENCE_FIELD,
-        "ROW_NUMBER() supports only descriptor columns in PARTITION BY",
+        "window functions support only descriptor columns in PARTITION BY",
         table_columns,
         table_column_count,
         &column
@@ -467,17 +955,18 @@ static int plan_row_scalar_row_number_partition_clause(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!row_number_window_column_descriptor_is_supported(database, &column)) {
+    if (!window_key_column_descriptor_is_supported(database, function_name, &column)) {
         return MYLITE_ERROR;
     }
 
-    out_expression->row_number_has_partition = true;
-    out_expression->row_number_partition_column = column;
+    out_expression->window_has_partition = true;
+    out_expression->window_partition_column = column;
     return MYLITE_OK;
 }
 
-static int plan_row_scalar_row_number_order_clause(
+static int plan_row_scalar_window_order_clause(
     struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *order_clause,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -488,8 +977,12 @@ static int plan_row_scalar_row_number_order_clause(
     struct mylite_catalog_column_descriptor column = {0};
     int rc = MYLITE_OK;
 
-    if (out_expression->row_number_has_order) {
-        set_unsupported_error(database, "ROW_NUMBER() supports only one ORDER BY key");
+    if (out_expression->window_has_order) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "supports only one ORDER BY key"
+        );
         return MYLITE_ERROR;
     }
 
@@ -498,7 +991,7 @@ static int plan_row_scalar_row_number_order_clause(
         child_at(order_clause, 0U),
         source_context,
         COLUMN_REFERENCE_ORDER,
-        "ROW_NUMBER() supports only descriptor columns in ORDER BY",
+        "window functions support only descriptor columns in ORDER BY",
         table_columns,
         table_column_count,
         &column
@@ -506,21 +999,22 @@ static int plan_row_scalar_row_number_order_clause(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!row_number_window_column_descriptor_is_supported(database, &column)) {
+    if (!window_key_column_descriptor_is_supported(database, function_name, &column)) {
         return MYLITE_ERROR;
     }
 
-    out_expression->row_number_has_order = true;
-    out_expression->row_number_order_column = column;
-    out_expression->row_number_order_direction = PLANNED_SELECT_ORDER_ASC;
+    out_expression->window_has_order = true;
+    out_expression->window_order_column = column;
+    out_expression->window_order_direction = PLANNED_SELECT_ORDER_ASC;
     if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-        out_expression->row_number_order_direction = PLANNED_SELECT_ORDER_DESC;
+        out_expression->window_order_direction = PLANNED_SELECT_ORDER_DESC;
     }
     return MYLITE_OK;
 }
 
-static bool row_number_window_column_descriptor_is_supported(
+static bool window_key_column_descriptor_is_supported(
     struct mylite_db *database,
+    const char *function_name,
     const struct mylite_catalog_column_descriptor *column
 ) {
     if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
@@ -534,19 +1028,86 @@ static bool row_number_window_column_descriptor_is_supported(
         return true;
     }
     if (column_descriptor_is_approximate(column)) {
-        set_unsupported_error(
+        set_window_function_unsupported_error(
             database,
-            "ROW_NUMBER() window keys do not support approximate columns"
+            function_name,
+            "window keys do not support approximate columns"
         );
         return false;
     }
 
-    set_unsupported_error(
+    set_window_function_unsupported_error(
         database,
-        "ROW_NUMBER() window keys support only integer, DECIMAL, string, binary string, BIT, "
+        function_name,
+        "window keys support only integer, DECIMAL, string, binary string, BIT, "
         "YEAR, and temporal columns"
     );
     return false;
+}
+
+static const char *window_function_display_name(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+        return "ROW_NUMBER";
+    case PLANNED_WINDOW_FUNCTION_RANK:
+        return "RANK";
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+        return "DENSE_RANK";
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+        return "PERCENT_RANK";
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+        return "CUME_DIST";
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+        return "NTILE";
+    case PLANNED_WINDOW_FUNCTION_LAG:
+        return "LAG";
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+        return "LEAD";
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+        return "FIRST_VALUE";
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+        return "LAST_VALUE";
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return "NTH_VALUE";
+    case PLANNED_WINDOW_FUNCTION_NONE:
+        break;
+    }
+    return NULL;
+}
+
+static int set_window_function_unsupported_error(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *detail
+) {
+    char message[window_function_unsupported_message_capacity];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "%s() %s",
+        function_name == NULL ? "Window function" : function_name,
+        detail == NULL ? "is not supported" : detail
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format window function diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
+static int copy_lowercase_function_name(const char *source, char *destination, size_t size) {
+    size_t length = source == NULL ? 0U : strlen(source);
+
+    if (source == NULL || destination == NULL || size == 0U || length >= size) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < length; ++index) {
+        destination[index] = (char)tolower((unsigned char)source[index]);
+    }
+    destination[length] = '\0';
+    return MYLITE_OK;
 }
 
 static int plan_row_scalar_integer_arithmetic_expression(
@@ -10767,7 +11328,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
         return expression->field_domain;
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ROW_NUMBER:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         if (expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_SIGNED ||
@@ -14314,8 +14875,8 @@ static int plan_row_scalar_period_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_name = period_function_name(expression == NULL ? MYLITE_SQL_AST_SCRIPT
-                                                            : expression->kind);
+    function_name =
+        period_function_name(expression == NULL ? MYLITE_SQL_AST_SCRIPT : expression->kind);
     if (expression == NULL ||
         (expression->kind != MYLITE_SQL_AST_PERIOD_ADD_FUNCTION &&
          expression->kind != MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION) ||
@@ -14378,8 +14939,7 @@ static int plan_row_scalar_convert_tz_expression(
 ) {
     const char *temporal_message =
         "CONVERT_TZ() supports only string, DATE, DATETIME, TIMESTAMP, and NULL datetime values";
-    const char *zone_message =
-        "CONVERT_TZ() supports only string and NULL time-zone values";
+    const char *zone_message = "CONVERT_TZ() supports only string and NULL time-zone values";
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
@@ -14558,9 +15118,8 @@ static int plan_row_scalar_weight_string_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL ||
-        (expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION &&
-         expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION)) {
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION)) {
         set_unsupported_error(database, "WEIGHT_STRING() expression is unsupported");
         return MYLITE_ERROR;
     }
@@ -17075,7 +17634,7 @@ static bool row_scalar_expression_contains_row_function(
             is_string_search_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR ||
-            current->kind == MYLITE_SQL_AST_ROW_NUMBER_FUNCTION ||
+            row_scalar_expression_is_window_function(current) ||
             current->kind == MYLITE_SQL_AST_REPLACE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_INSERT_STRING_FUNCTION ||
             current->kind == MYLITE_SQL_AST_REVERSE_FUNCTION ||

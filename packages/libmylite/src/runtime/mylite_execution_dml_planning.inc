@@ -14784,18 +14784,8 @@ static int populate_row_scalar_expression_result_column_descriptor(
     }
 
     switch (expression->kind) {
-    case PLANNED_ROW_SCALAR_EXPRESSION_ROW_NUMBER:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = mysql_scalar_bigint_display_length,
-                .decimals = 0U,
-                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
-                .nullable = false,
-            }
-        );
-        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+        return populate_window_function_result_column_descriptor(database, expression, descriptor);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
@@ -14990,6 +14980,282 @@ static int populate_row_scalar_expression_result_column_descriptor(
         return MYLITE_OK;
     }
 
+    return MYLITE_OK;
+}
+
+static int populate_window_function_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    if (expression == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    switch (expression->window_function_kind) {
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_approximate_decimals,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return populate_window_value_function_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    case PLANNED_WINDOW_FUNCTION_NONE:
+        break;
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int populate_window_value_function_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct planned_row_scalar_expression *argument = NULL;
+
+    if (expression == NULL || descriptor == NULL || expression->argument_count == 0U ||
+        expression->arguments == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    argument = &expression->arguments[0];
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return populate_window_value_column_result_column_descriptor(
+            database,
+            &argument->column,
+            descriptor
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return populate_window_value_literal_result_column_descriptor(
+            database,
+            &argument->value,
+            descriptor
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "window value metadata supports only literal and column values"
+    );
+    return MYLITE_ERROR;
+}
+
+static int populate_window_value_column_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    bool matched = false;
+    int rc = populate_numeric_result_column_descriptor(database, column, descriptor, &matched);
+
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_string_result_column_descriptor(database, NULL, column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_temporal_result_column_descriptor(column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_bit_result_column_descriptor(column, descriptor, &matched);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!matched) {
+        set_unsupported_error(
+            database,
+            "window value metadata supports only current baseline column descriptors"
+        );
+        return MYLITE_ERROR;
+    }
+
+    descriptor->nullable = true;
+    descriptor->flags &= ~((uint32_t)MYLITE_RESULT_COLUMN_FLAG_NOT_NULL);
+    return MYLITE_OK;
+}
+
+static int populate_window_value_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_value *value,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    uint64_t display_length = 0U;
+
+    if (database == NULL || value == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value->is_null) {
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NULL,
+                .display_length = 0U,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    }
+    if (value->is_text) {
+        if (value->text_length > UINT64_MAX / scalar_connection_max_bytes_per_character(database)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        display_length =
+            (uint64_t)value->text_length * scalar_connection_max_bytes_per_character(database);
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = display_length,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    }
+    if (value->is_real) {
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_approximate_decimals,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    }
+
+    populate_scalar_binary_numeric_result_column_descriptor(
+        descriptor,
+        (struct scalar_binary_numeric_result_column_shape){
+            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+            .display_length = mysql_scalar_bigint_display_length,
+            .decimals = 0U,
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
     return MYLITE_OK;
 }
 

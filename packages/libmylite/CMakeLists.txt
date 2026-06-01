@@ -133,12 +133,46 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_lexer_test)
 
-  add_executable(mylite_parser_test
-    tests/parser_test.c
+  add_library(mylite_parser_test_support OBJECT
+    tests/parser_test_support.c
   )
-  target_link_libraries(mylite_parser_test PRIVATE MyLite::mylite)
-  target_include_directories(mylite_parser_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-  mylite_configure_c_target(mylite_parser_test)
+  target_link_libraries(mylite_parser_test_support PRIVATE MyLite::mylite)
+  target_include_directories(mylite_parser_test_support PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  mylite_configure_c_target(mylite_parser_test_support)
+
+  function(mylite_add_parser_test target source)
+    add_executable(${target}
+      ${source}
+      $<TARGET_OBJECTS:mylite_parser_test_support>
+    )
+    target_link_libraries(${target} PRIVATE MyLite::mylite)
+    target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    mylite_configure_c_target(${target})
+  endfunction()
+
+  mylite_add_parser_test(mylite_parser_core_test tests/parser_core_test.c)
+  mylite_add_parser_test(
+    mylite_parser_builtin_string_json_test
+    tests/parser_builtin_string_json_test.c
+  )
+  mylite_add_parser_test(
+    mylite_parser_builtin_temporal_numeric_test
+    tests/parser_builtin_temporal_numeric_test.c
+  )
+  mylite_add_parser_test(
+    mylite_parser_expression_aggregate_test
+    tests/parser_expression_aggregate_test.c
+  )
+  mylite_add_parser_test(mylite_parser_ddl_table_test tests/parser_ddl_table_test.c)
+  mylite_add_parser_test(mylite_parser_types_test tests/parser_types_test.c)
+  mylite_add_parser_test(
+    mylite_parser_constraints_indexes_test
+    tests/parser_constraints_indexes_test.c
+  )
+  mylite_add_parser_test(mylite_parser_show_test tests/parser_show_test.c)
+  mylite_add_parser_test(mylite_parser_select_test tests/parser_select_test.c)
+  mylite_add_parser_test(mylite_parser_dml_control_test tests/parser_dml_control_test.c)
+  mylite_add_parser_test(mylite_parser_errors_test tests/parser_errors_test.c)
 
   add_executable(mylite_file_format_test
     tests/file_format_test.c
@@ -5257,7 +5291,29 @@ if(BUILD_TESTING)
   mylite_configure_c_target(mylite_runtime_sqlite_bootstrap_test)
 
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
-  add_test(NAME libmylite.parser COMMAND mylite_parser_test)
+  add_test(NAME libmylite.parser.core COMMAND mylite_parser_core_test)
+  add_test(
+    NAME libmylite.parser.builtin_string_json
+    COMMAND mylite_parser_builtin_string_json_test
+  )
+  add_test(
+    NAME libmylite.parser.builtin_temporal_numeric
+    COMMAND mylite_parser_builtin_temporal_numeric_test
+  )
+  add_test(
+    NAME libmylite.parser.expression_aggregate
+    COMMAND mylite_parser_expression_aggregate_test
+  )
+  add_test(NAME libmylite.parser.ddl_table COMMAND mylite_parser_ddl_table_test)
+  add_test(NAME libmylite.parser.types COMMAND mylite_parser_types_test)
+  add_test(
+    NAME libmylite.parser.constraints_indexes
+    COMMAND mylite_parser_constraints_indexes_test
+  )
+  add_test(NAME libmylite.parser.show COMMAND mylite_parser_show_test)
+  add_test(NAME libmylite.parser.select COMMAND mylite_parser_select_test)
+  add_test(NAME libmylite.parser.dml_control COMMAND mylite_parser_dml_control_test)
+  add_test(NAME libmylite.parser.errors COMMAND mylite_parser_errors_test)
   add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
   add_test(NAME libmylite.runtime.diagnostics COMMAND mylite_runtime_diagnostics_test)
   add_test(

@@ -82,3 +82,20 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifth split.
+
+## Round 6
+
+- [x] Reinspect the remaining oversized scalar fragment after JSON extraction.
+- [x] Select coarse scalar-family fragments and misplaced planning tail
+      fragments as the next behavior-preserving split.
+- [x] Split basic string, temporal, extended string, misc, numeric, conversion,
+      temporal-format, expression-evaluator, control-flow, scalar-projection,
+      DELETE planning, and column-planning code into named fragments.
+- [x] Preserve same-translation-unit static linkage and original function
+      ordering.
+- [x] Run focused build and runtime tests.
+- [x] Review the split for missing includes, ordering drift, behavior changes,
+      and fragment naming.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the sixth split.

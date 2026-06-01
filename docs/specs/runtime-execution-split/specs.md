@@ -43,6 +43,13 @@ small internal scalar execution header for the shared scalar cell type, JSON
 mutation kind, JSON scalar entry points, and execution helper wrappers needed
 for AST traversal, nested scalar evaluation, and MySQL-compatible diagnostics.
 
+The sixth split keeps the remaining scalar and planning code in the same
+translation unit, but breaks the oversized scalar fragment into coarse
+scalar-family fragments and two planning fragments that had been left in the
+scalar file. This is a mechanical split only: it preserves static linkage,
+include order, helper visibility, and runtime behavior while replacing the last
+37k-line scalar fragment with files sized for review.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -172,8 +179,37 @@ The fragments are:
   validation, and catalog mutation helpers.
 - `mylite_execution_dml_planning.inc`: DML planning, value conversion, insert
   row execution, duplicate-key handling, and DML validation.
-- `mylite_execution_scalar.inc`: session scalar expression evaluation and
-  scalar built-in function support.
+- `mylite_execution_scalar.inc`: scalar dispatch, `LAST_INSERT_ID`, `RAND`,
+  and current date/time scalar core support.
+- `mylite_execution_scalar_string_core.inc`: basic string length, codepoint,
+  case, and trim scalar support.
+- `mylite_execution_scalar_temporal_core.inc`: UNIX timestamp, timestamp
+  difference, temporal constructor, period, time zone, and temporal extraction
+  scalar support.
+- `mylite_execution_scalar_string_extended.inc`: string slice, padding,
+  bitmask, search, replacement, regular expression, character set, collation,
+  and coercibility scalar support.
+- `mylite_execution_scalar_misc.inc`: scalar subquery, concatenation,
+  `ELT`, `FIELD`, `GREATEST`, `LEAST`, and `INTERVAL` scalar support.
+- `mylite_execution_scalar_numeric.inc`: numeric, bitwise, base conversion,
+  UUID, Base64, `HEX`, `UNHEX`, `CHAR`, `FORMAT`, and `TRUNCATE` scalar
+  support.
+- `mylite_execution_scalar_conversion.inc`: scalar `CAST`, `CONVERT`, and
+  `COLLATE` support.
+- `mylite_execution_scalar_temporal_format.inc`: date/time formatting, parsing,
+  interval, and time arithmetic scalar support.
+- `mylite_execution_scalar_expression_eval.inc`: scalar arithmetic, logical,
+  comparison, and bitwise expression evaluators.
+- `mylite_execution_scalar_control.inc`: IF/CASE scalar control flow,
+  literal projection, system-variable scalar values, and control-flow
+  validation.
+- `mylite_execution_scalar_projection.inc`: scalar projection classifiers,
+  parenthesis unwrapping, and source-span copying helpers.
+- `mylite_execution_delete_planning.inc`: DELETE planning and execution helpers
+  that were previously housed in the scalar fragment.
+- `mylite_execution_column_planning.inc`: column planning, default handling,
+  and column descriptor helpers that were previously housed in the scalar
+  fragment.
 - `mylite_execution_catalog_loading.inc`: runtime catalog table/column/index,
   foreign-key, and check-constraint loading helpers.
 - `mylite_execution_query_planning.inc`: row-scalar, predicate, ordering,

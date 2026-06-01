@@ -27843,6 +27843,30 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_scalar.inc"
 
+#include "mylite_execution_scalar_string_core.inc"
+
+#include "mylite_execution_scalar_temporal_core.inc"
+
+#include "mylite_execution_scalar_string_extended.inc"
+
+#include "mylite_execution_scalar_misc.inc"
+
+#include "mylite_execution_scalar_numeric.inc"
+
+#include "mylite_execution_scalar_conversion.inc"
+
+#include "mylite_execution_scalar_temporal_format.inc"
+
+#include "mylite_execution_scalar_expression_eval.inc"
+
+#include "mylite_execution_scalar_control.inc"
+
+#include "mylite_execution_scalar_projection.inc"
+
+#include "mylite_execution_delete_planning.inc"
+
+#include "mylite_execution_column_planning.inc"
+
 #include "mylite_execution_catalog_loading.inc"
 
 #include "mylite_execution_query_planning.inc"

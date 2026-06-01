@@ -352,6 +352,16 @@ Performance Schema host statement-summary collection, live statement rows,
 latency or row counters, sys helper-function execution, privilege/definer
 enforcement, and broader sys view execution out of scope.
 
+The `baseline-sys-host-summary-by-statement-type-views` slice refines
+`sys.host_summary_by_statement_type` and
+`sys.x$host_summary_by_statement_type` with direct read-only empty placeholder
+rows plus MySQL-observed view status fields, column metadata, view definition
+metadata, dependencies on the referenced Performance Schema statement-summary
+table, and empty routine dependency metadata. It keeps Performance Schema host
+statement-summary collection, live statement-type rows, latency or row
+counters, sys helper-function execution, privilege/definer enforcement, and
+broader sys view execution out of scope.
+
 The `baseline-sys-io-by-thread-by-latency-views` slice refines
 `sys.io_by_thread_by_latency` and `sys.x$io_by_thread_by_latency` with direct
 read-only empty placeholder rows plus MySQL-observed view status fields,

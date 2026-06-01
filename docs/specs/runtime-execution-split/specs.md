@@ -55,6 +55,13 @@ keeps row-scalar and SELECT/UPDATE planning in the execution translation unit,
 but divides the former 28k-line `mylite_execution_query_planning.inc` into
 coarse planner fragments with the original order and static helper visibility.
 
+The eighth split applies the same mechanical same-translation-unit approach to
+metadata query execution. It divides the former 23k-line
+`mylite_execution_metadata_queries.inc` into high-level SELECT dispatch,
+mysql/sys virtual rows, INFORMATION_SCHEMA row synthesis and filtering, table
+maintenance, SHOW execution families, SHOW CREATE rendering, and result
+completion helpers.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -177,9 +184,37 @@ The fragments are:
   execution.
 - `mylite_execution_dml_statements.inc`: high-level INSERT/REPLACE/LOAD
   DATA/DELETE/UPDATE execution.
-- `mylite_execution_metadata_queries.inc`: `DO`, `SELECT` entry points,
-  `INFORMATION_SCHEMA` SELECT execution, read-only `mysql`/`sys` virtual table
-  row synthesis, and tabular `SHOW` execution.
+- `mylite_execution_metadata_queries.inc`: `DO`, high-level `SELECT`
+  dispatch, compound SELECT execution, selected metadata target detection, and
+  scalar/row-scalar SELECT routing.
+- `mylite_execution_mysql_system_queries.inc`: mysql/sys virtual table SELECT
+  execution, built-in row synthesis, mysql system table metadata row helpers,
+  and sys view placeholder rows.
+- `mylite_execution_information_schema_queries.inc`: INFORMATION_SCHEMA SELECT
+  query execution, row-set ownership, static metadata rows, catalog table rows,
+  table-status values, and built-in schema table metadata rows.
+- `mylite_execution_information_schema_columns.inc`: INFORMATION_SCHEMA column,
+  view-usage, InnoDB, constraint, key-usage, referential-constraint, and
+  statistics row synthesis.
+- `mylite_execution_information_schema_filtering.inc`: INFORMATION_SCHEMA
+  result columns, result rows, COUNT(*) rows, WHERE predicate validation and
+  evaluation, ORDER/LIMIT planning, source resolution, text comparison, and
+  descriptor type metadata helpers.
+- `mylite_execution_table_maintenance_queries.inc`: CHECKSUM TABLE and
+  ANALYZE/CHECK/OPTIMIZE/REPAIR TABLE placeholder execution.
+- `mylite_execution_show_general.inc`: SHOW TABLES, SHOW TABLE STATUS, SHOW
+  CHARACTER SET, SHOW COLLATION, SHOW VARIABLES, SHOW STATUS, SHOW TRIGGERS,
+  SHOW EVENTS, SHOW OPEN TABLES, SHOW ROUTINE STATUS, SHOW PROCESSLIST, SHOW
+  GRANTS, SHOW PRIVILEGES, binary-log/replica SHOW placeholders, and
+  SHOW WARNINGS/ERRORS execution.
+- `mylite_execution_show_columns_indexes.inc`: SHOW COLUMNS and SHOW INDEX
+  execution for user tables and supported mysql system tables.
+- `mylite_execution_show_create.inc`: SHOW CREATE TABLE/VIEW/DATABASE,
+  SHOW ENGINES, SHOW ENGINE STATUS, SHOW PLUGINS, SHOW DATABASES, and SHOW
+  CREATE SQL rendering helpers.
+- `mylite_execution_result_completion.inc`: completed-statement row-count
+  classification, diagnostics snapshot preservation, and successful-result
+  finalization helpers.
 - `mylite_execution_ddl_planning.inc`: DDL planning, table/index/constraint
   validation, and catalog mutation helpers.
 - `mylite_execution_dml_planning.inc`: DML planning, value conversion, insert

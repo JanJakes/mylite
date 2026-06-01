@@ -27837,6 +27837,24 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_metadata_queries.inc"
 
+#include "mylite_execution_mysql_system_queries.inc"
+
+#include "mylite_execution_information_schema_queries.inc"
+
+#include "mylite_execution_information_schema_columns.inc"
+
+#include "mylite_execution_information_schema_filtering.inc"
+
+#include "mylite_execution_table_maintenance_queries.inc"
+
+#include "mylite_execution_show_general.inc"
+
+#include "mylite_execution_show_columns_indexes.inc"
+
+#include "mylite_execution_show_create.inc"
+
+#include "mylite_execution_result_completion.inc"
+
 #include "mylite_execution_ddl_planning.inc"
 
 #include "mylite_execution_dml_planning.inc"

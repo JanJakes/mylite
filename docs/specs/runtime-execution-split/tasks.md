@@ -118,3 +118,21 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the seventh split.
+
+## Round 8
+
+- [x] Reinspect the remaining oversized metadata-query fragment after the query
+      planning split.
+- [x] Select coarse metadata execution, mysql/sys, INFORMATION_SCHEMA, table
+      maintenance, SHOW, and result-completion fragments.
+- [x] Split mysql/sys virtual rows, INFORMATION_SCHEMA rows, INFORMATION_SCHEMA
+      filtering, table maintenance, general SHOW, SHOW columns/indexes,
+      SHOW CREATE, and result-completion helpers into named fragments.
+- [x] Preserve same-translation-unit static linkage and original function
+      ordering.
+- [x] Run focused build and runtime tests.
+- [x] Review the split for missing includes, ordering drift, behavior changes,
+      and fragment naming.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the eighth split.

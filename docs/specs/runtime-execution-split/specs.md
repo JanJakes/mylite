@@ -31,6 +31,11 @@ into separately compiled objects would require exporting hundreds of helpers
 before a stable internal API exists. The fragments provide smaller files and
 clearer logical ownership while preserving existing `static` linkage.
 
+The fourth split turns the large execution catalog module into a small catalog
+module family. The catalog data is immutable and has a narrow accessor surface,
+so this split can use true translation-unit boundaries without changing runtime
+execution state, planner helper linkage, or SQLite integration behavior.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -70,13 +75,13 @@ standard C allocation/string headers.
 
 ### `mylite_execution_catalog`
 
-The catalog module owns immutable static catalog data and narrow lookup/accessor
-functions. It exposes internal structs because the execution code reads catalog
-metadata directly while planning and building result rows. The module should
-prefer accessors over exported arrays so the static data remains local to the
-catalog translation unit.
+The catalog module family owns immutable static catalog data and narrow
+lookup/accessor functions. It exposes internal structs because the execution
+code reads catalog metadata directly while planning and building result rows.
+The modules should prefer accessors over exported arrays so the static data
+remains local to the owning catalog translation unit.
 
-The catalog module includes:
+The catalog module family includes:
 
 - Supported runtime character sets and collations.
 - MySQL catalog rows for `INFORMATION_SCHEMA.CHARACTER_SETS` and
@@ -89,12 +94,30 @@ The catalog module includes:
 - Built-in placeholder rows for catalog tables such as `FILES`,
   `INNODB_TABLESPACES`, and `ST_UNITS_OF_MEASURE`.
 
-The catalog module does not own:
+The catalog module family does not own:
 
 - Result row construction.
 - Predicate evaluation.
 - Session state, diagnostics, warnings, or SQL modes.
 - Mutable database metadata or user tables.
+
+The fourth split keeps one shared header, `mylite_execution_catalog.h`, and
+uses these true C modules:
+
+- `mylite_execution_catalog_charsets.c`: supported character sets, collations,
+  scalar collation metadata, and their lookup/accessor functions.
+- `mylite_execution_catalog_information_schema.c`: `INFORMATION_SCHEMA`
+  keyword rows, table definitions, column definitions, and accessors.
+- `mylite_execution_catalog_system_tables.c`: `mysql` and `sys` system table
+  definitions, sys configuration trigger metadata, and built-in sys view
+  definitions. The `mysql` and `sys` definitions intentionally stay together
+  for now because the public accessor returns one ordered system-table catalog.
+- `mylite_execution_catalog_builtin.c`: built-in schema descriptors, built-in
+  table directories, and placeholder rows for static metadata tables.
+
+These modules may duplicate a tiny file-local ASCII-insensitive lookup helper
+when that keeps the helper private and avoids inventing a broader internal
+utility API before it earns its cost.
 
 ### `mylite_execution_system_variables`
 
@@ -196,6 +219,9 @@ is narrow enough to be reviewed as an intentional internal API.
 9. Split the tightly coupled execution implementation into large
    same-translation-unit fragments, avoiding new exported helper surfaces until
    a later true-module boundary is ready.
+10. Split the execution catalog data into a small family of true C modules:
+    character sets/collations, `INFORMATION_SCHEMA`, `mysql`/`sys` system
+    tables, and built-in static placeholder catalogs.
 
 ## Review checklist
 
@@ -210,4 +236,8 @@ is narrow enough to be reviewed as an intentional internal API.
   state, or a second query engine.
 - `mylite_execution.c` is the only file that includes runtime implementation
   fragments.
+- Catalog-family modules keep their static arrays file-local and expose only
+  the existing accessor surface.
+- Splitting catalog modules does not introduce generated sources, dynamic
+  catalog loading, or runtime table materialization.
 - Tests prove behavior preservation.

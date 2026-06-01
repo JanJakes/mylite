@@ -589,6 +589,7 @@ enum {
     sys_version_column_count = 2,
     sys_host_summary_column_count = 12,
     sys_host_summary_by_file_io_column_count = 3,
+    sys_host_summary_by_file_io_type_column_count = 5,
     sys_innodb_lock_waits_column_count = 30,
     sys_io_by_thread_by_latency_column_count = 8,
     sys_io_global_by_file_by_bytes_column_count = 9,
@@ -4619,6 +4620,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY = 145,
     INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO = 146,
     INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO = 147,
+    INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO_TYPE = 148,
+    INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE = 149,
 };
 
 struct information_schema_column_definition {
@@ -14611,6 +14614,140 @@ static const char *const
 };
 
 static const struct information_schema_column_definition
+    sys_host_summary_by_file_io_type_columns[sys_host_summary_by_file_io_type_column_count] = {
+        {"host",
+         NULL,
+         "YES",
+         "varchar",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "varchar(255)"},
+        {"event_name",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"total", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+        {"total_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"max_latency",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_host_summary_by_file_io_type_columns[sys_host_summary_by_file_io_type_column_count] = {
+        {"host",
+         NULL,
+         "YES",
+         "varchar",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "varchar(255)"},
+        {"event_name",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"total", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+        {"total_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"max_latency",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+};
+
+static const char *const
+    sys_host_summary_by_file_io_type_column_keys[sys_host_summary_by_file_io_type_column_count] = {
+        "",
+        "",
+        "",
+        "",
+        "",
+};
+
+static const char *const
+    sys_host_summary_by_file_io_type_column_extras[sys_host_summary_by_file_io_type_column_count] =
+        {
+            "",
+            "",
+            "",
+            "",
+            "",
+};
+
+static const char *const sys_host_summary_by_file_io_type_column_privileges
+    [sys_host_summary_by_file_io_type_column_count] = {
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_innodb_lock_waits_columns[sys_innodb_lock_waits_column_count] = {
         {"wait_started",
          NULL,
@@ -19457,6 +19594,70 @@ static const char sys_x_host_summary_by_file_io_show_create_qualified_view_sql[]
 #undef SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION
 #undef SYS_X_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION
 
+#define SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS                                              \
+    "(`host`,`event_name`,`total`,`total_latency`,`max_latency`)"
+
+#define SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX                                             \
+    "select if((`performance_schema`.`events_waits_summary_by_host_by_event_name`.`HOST` is "      \
+    "null),'background',`performance_schema`.`events_waits_summary_by_host_by_event_name`."        \
+    "`HOST`) AS `host`,`performance_schema`.`events_waits_summary_by_host_by_event_name`."         \
+    "`EVENT_NAME` AS `event_name`,`performance_schema`."                                           \
+    "`events_waits_summary_by_host_by_event_name`.`COUNT_STAR` AS `total`,"
+
+#define SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX                                             \
+    " from `performance_schema`.`events_waits_summary_by_host_by_event_name` where (("             \
+    "`performance_schema`.`events_waits_summary_by_host_by_event_name`.`EVENT_NAME` like "         \
+    "'wait/io/file%') and (`performance_schema`."                                                  \
+    "`events_waits_summary_by_host_by_event_name`.`COUNT_STAR` > 0)) order by if(("                \
+    "`performance_schema`.`events_waits_summary_by_host_by_event_name`.`HOST` is null),"           \
+    "'background',`performance_schema`.`events_waits_summary_by_host_by_event_name`.`HOST`),"      \
+    "`performance_schema`.`events_waits_summary_by_host_by_event_name`.`SUM_TIMER_WAIT` desc"
+
+#define SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION                                           \
+    SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX                                                 \
+    "format_pico_time(`performance_schema`.`events_waits_summary_by_host_by_event_name`."          \
+    "`SUM_TIMER_WAIT`) AS `total_latency`,format_pico_time(`performance_schema`."                  \
+    "`events_waits_summary_by_host_by_event_name`.`MAX_TIMER_WAIT`) AS "                           \
+    "`max_latency`" SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX
+
+#define SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION                                         \
+    SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX                                                 \
+    "`performance_schema`.`events_waits_summary_by_host_by_event_name`.`SUM_TIMER_WAIT` AS "       \
+    "`total_latency`,`performance_schema`.`events_waits_summary_by_host_by_event_name`."           \
+    "`MAX_TIMER_WAIT` AS `max_latency`" SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX
+
+static const char sys_host_summary_by_file_io_type_view_definition[] =
+    SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_host_summary_by_file_io_type_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_host_summary_by_file_io_type_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_host_summary_by_file_io_type_view_definition[] =
+    SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_host_summary_by_file_io_type_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_host_summary_by_file_io_type_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+#undef SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+#undef SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX
+#undef SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX
+#undef SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION
+#undef SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION
+
 #define SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS                                                         \
     "(`wait_started`,`wait_age`,`wait_age_secs`,`locked_table`,`locked_table_schema`,"             \
     "`locked_table_name`,`locked_table_partition`,`locked_table_subpartition`,`locked_index`,"     \
@@ -20680,6 +20881,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_host_summary_by_file_io_view_definition,
      sys_host_summary_by_file_io_show_create_view_sql,
      sys_host_summary_by_file_io_show_create_qualified_view_sql},
+    {"host_summary_by_file_io_type",
+     sys_host_summary_by_file_io_type_view_definition,
+     sys_host_summary_by_file_io_type_show_create_view_sql,
+     sys_host_summary_by_file_io_type_show_create_qualified_view_sql},
     {"innodb_lock_waits",
      sys_innodb_lock_waits_view_definition,
      sys_innodb_lock_waits_show_create_view_sql,
@@ -20760,6 +20965,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_host_summary_by_file_io_view_definition,
      sys_x_host_summary_by_file_io_show_create_view_sql,
      sys_x_host_summary_by_file_io_show_create_qualified_view_sql},
+    {"x$host_summary_by_file_io_type",
+     sys_x_host_summary_by_file_io_type_view_definition,
+     sys_x_host_summary_by_file_io_type_show_create_view_sql,
+     sys_x_host_summary_by_file_io_type_show_create_qualified_view_sql},
     {"x$innodb_lock_waits",
      sys_x_innodb_lock_waits_view_definition,
      sys_x_innodb_lock_waits_show_create_view_sql,
@@ -23633,6 +23842,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO_TYPE,
+      "host_summary_by_file_io_type",
+      sys_host_summary_by_file_io_type_columns,
+      sys_host_summary_by_file_io_type_column_count},
+     sys_host_summary_by_file_io_type_column_keys,
+     sys_host_summary_by_file_io_type_column_extras,
+     sys_host_summary_by_file_io_type_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS,
       "innodb_lock_waits",
       sys_innodb_lock_waits_columns,
@@ -23906,6 +24129,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_host_summary_by_file_io_column_keys,
      sys_host_summary_by_file_io_column_extras,
      sys_host_summary_by_file_io_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE,
+      "x$host_summary_by_file_io_type",
+      sys_x_host_summary_by_file_io_type_columns,
+      sys_host_summary_by_file_io_type_column_count},
+     sys_host_summary_by_file_io_type_column_keys,
+     sys_host_summary_by_file_io_type_column_extras,
+     sys_host_summary_by_file_io_type_column_privileges,
      NULL,
      NULL,
      0U,
@@ -27239,6 +27476,10 @@ static int append_sys_host_summary_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_host_summary_by_file_io_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_host_summary_by_file_io_type_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -63183,6 +63424,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "host_summary_by_file_io") == 0) {
         return append_sys_host_summary_by_file_io_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "host_summary_by_file_io_type") == 0) {
+        return append_sys_host_summary_by_file_io_type_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "io_by_thread_by_latency") == 0) {
         return append_sys_io_by_thread_by_latency_system_rows(database, rows);
     }
@@ -63251,6 +63495,9 @@ static int append_sys_schema_x_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$host_summary_by_file_io") == 0) {
         return append_sys_host_summary_by_file_io_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$host_summary_by_file_io_type") == 0) {
+        return append_sys_host_summary_by_file_io_type_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$io_by_thread_by_latency") == 0) {
         return append_sys_io_by_thread_by_latency_system_rows(database, rows);
@@ -63533,6 +63780,17 @@ static int append_sys_host_summary_by_file_io_system_rows(
 ) {
     if (rows->definition->column_count != sys_host_summary_by_file_io_column_count) {
         set_runtime_error(database, "invalid sys.host_summary_by_file_io columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_host_summary_by_file_io_type_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_host_summary_by_file_io_type_column_count) {
+        set_runtime_error(database, "invalid sys.host_summary_by_file_io_type columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -66604,6 +66862,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO:
+    case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO_TYPE:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -66624,6 +66883,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -66717,6 +66977,8 @@ static int append_information_schema_views_system_rows(
                     strcmp(view->name, "io_global_by_file_by_latency") == 0 ||
                     strcmp(view->name, "io_global_by_wait_by_bytes") == 0 ||
                     strcmp(view->name, "io_global_by_wait_by_latency") == 0 ||
+                    strcmp(view->name, "host_summary_by_file_io_type") == 0 ||
+                    strcmp(view->name, "x$host_summary_by_file_io_type") == 0 ||
                     strcmp(view->name, "x$io_global_by_file_by_bytes") == 0 ||
                     strcmp(view->name, "x$io_global_by_file_by_latency") == 0 ||
                     strcmp(view->name, "x$io_global_by_wait_by_bytes") == 0 ||
@@ -66761,6 +67023,9 @@ static int append_information_schema_view_table_usage_system_rows(
         {"host_summary", "sys", "x$host_summary_by_statement_latency"},
         {"host_summary", "sys", "x$memory_by_host_by_current_bytes"},
         {"host_summary_by_file_io",
+         "performance_schema",
+         "events_waits_summary_by_host_by_event_name"},
+        {"host_summary_by_file_io_type",
          "performance_schema",
          "events_waits_summary_by_host_by_event_name"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
@@ -66812,6 +67077,9 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$host_summary", "sys", "x$host_summary_by_statement_latency"},
         {"x$host_summary", "sys", "x$memory_by_host_by_current_bytes"},
         {"x$host_summary_by_file_io",
+         "performance_schema",
+         "events_waits_summary_by_host_by_event_name"},
+        {"x$host_summary_by_file_io_type",
          "performance_schema",
          "events_waits_summary_by_host_by_event_name"},
         {"x$innodb_lock_waits", "information_schema", "INNODB_TRX"},
@@ -67020,6 +67288,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_VERSION:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO:
+    case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_FILE_IO_TYPE:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -67040,6 +67309,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_SCHEMA_UNUSED_INDEXES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:

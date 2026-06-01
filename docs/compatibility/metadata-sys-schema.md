@@ -49,6 +49,9 @@ placeholders, limited read-only empty `sys.host_summary` /
 `sys.x$host_summary` synthetic host summary placeholders, limited read-only
 empty `sys.host_summary_by_file_io` /
 `sys.x$host_summary_by_file_io` synthetic host file-I/O placeholders, limited
+read-only empty `sys.host_summary_by_file_io_type` /
+`sys.x$host_summary_by_file_io_type` synthetic host file-I/O type
+placeholders, limited
 read-only empty `sys.io_by_thread_by_latency` /
 `sys.x$io_by_thread_by_latency` synthetic thread file-I/O latency
 placeholders, and a limited read-only `sys.schema_unused_indexes` synthetic
@@ -67,8 +70,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$host_summary` | 🟡 | Limited read-only empty raw host summary view with the same metadata and unsupported behavior as `sys.host_summary`, except latency and memory totals expose raw numeric metadata |
 | `sys.host_summary_by_file_io` | 🟡 | Limited read-only empty formatted host file-I/O summary view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.events_waits_summary_by_host_by_event_name`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema host wait-summary collection, live file-I/O rows, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$host_summary_by_file_io` | 🟡 | Limited read-only empty raw host file-I/O summary view with the same metadata and unsupported behavior as `sys.host_summary_by_file_io`, except latency totals expose raw numeric metadata |
-| `sys.host_summary_by_file_io_type` | ❌ | View shape and diagnostics |
-| `sys.x$host_summary_by_file_io_type` | ❌ | View shape and diagnostics |
+| `sys.host_summary_by_file_io_type` | 🟡 | Limited read-only empty formatted host file-I/O type summary view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.events_waits_summary_by_host_by_event_name`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema host/event wait-summary collection, live file-I/O type rows, sys helper-function execution, true updatable-view writes, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$host_summary_by_file_io_type` | 🟡 | Limited read-only empty raw host file-I/O type summary view with the same metadata and unsupported behavior as `sys.host_summary_by_file_io_type`, except latency totals expose raw numeric metadata |
 | `sys.host_summary_by_stages` | ❌ | View shape and diagnostics |
 | `sys.x$host_summary_by_stages` | ❌ | View shape and diagnostics |
 | `sys.host_summary_by_statement_latency` | ❌ | View shape and diagnostics |

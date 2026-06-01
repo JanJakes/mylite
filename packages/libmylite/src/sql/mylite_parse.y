@@ -7398,6 +7398,9 @@ identifier(A) ::= IDENTIFIER(T). {
 identifier(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= ARRAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= DATA(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -8299,6 +8302,12 @@ primary_key_part_list(A) ::= primary_key_part_list(B) COMMA primary_key_part(C).
 primary_key_part(A) ::= identifier(B) index_key_direction_opt(D). {
     A = mylite_sql_parser_make_secondary_index_part(state, B, NULL, D);
 }
+primary_key_part(A) ::= functional_index_part(B). {
+    A = B;
+}
+primary_key_part(A) ::= multi_valued_index_part(B). {
+    A = B;
+}
 
 secondary_index_definition(A) ::=
     KEY(K) index_name_opt(N) index_type_opt(Y) LPAREN secondary_index_part_list(L) RPAREN(R)
@@ -8555,6 +8564,22 @@ secondary_index_part(A) ::= identifier(B) LPAREN INTEGER(L) RPAREN index_key_dir
         B,
         mylite_sql_parser_make_literal(state, L, MYLITE_SQL_AST_LITERAL_INTEGER),
         D);
+}
+secondary_index_part(A) ::= functional_index_part(B). {
+    A = B;
+}
+secondary_index_part(A) ::= multi_valued_index_part(B). {
+    A = B;
+}
+
+functional_index_part(A) ::= LPAREN(L) expression(B) RPAREN(R) index_key_direction_opt(D). {
+    A = mylite_sql_parser_make_functional_index_part(state, L, B, R, D);
+}
+
+multi_valued_index_part(A) ::=
+    LPAREN(L) CAST(T) LPAREN expression(B) AS cast_basic_target(K) ARRAY RPAREN(C) RPAREN(R)
+    index_key_direction_opt(D). {
+    A = mylite_sql_parser_make_multi_valued_index_part(state, L, T, B, K, C, R, D);
 }
 
 index_key_direction_opt(A) ::= . {

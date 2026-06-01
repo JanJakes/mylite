@@ -22517,6 +22517,7 @@ static int64_t row_count_for_completed_statement(
         return 0;
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART:
     case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:
         break;
     case MYLITE_SQL_AST_SELECT_STATEMENT:

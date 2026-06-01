@@ -6751,6 +6751,80 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
     return part;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_functional_index_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *direction
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *part = NULL;
+
+    if (direction != NULL) {
+        span = span_join(span, direction->span);
+    }
+
+    part = make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX_PART, span);
+    if (part == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(part, expression);
+    if (direction != NULL) {
+        mylite_sql_ast_node_append_child(part, direction);
+    }
+    return part;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_multi_valued_index_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_token cast_token,
+    struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_node_kind cast_target,
+    struct mylite_sql_token right_cast_paren,
+    struct mylite_sql_token right_part_paren,
+    struct mylite_sql_ast_node *direction
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&left_paren), span_from_token(&right_part_paren));
+    struct mylite_sql_ast_node *multi_valued = NULL;
+    struct mylite_sql_ast_node *cast_type = NULL;
+    struct mylite_sql_ast_node *part = NULL;
+
+    if (direction != NULL) {
+        span = span_join(span, direction->span);
+    }
+
+    multi_valued = make_node(state, MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART, span);
+    if (multi_valued == NULL) {
+        return NULL;
+    }
+
+    cast_type = make_node(
+        state,
+        cast_target,
+        span_join(span_from_token(&cast_token), span_from_token(&right_cast_paren))
+    );
+    if (cast_type == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(multi_valued, expression);
+    mylite_sql_ast_node_append_child(multi_valued, cast_type);
+
+    part = make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX_PART, span);
+    if (part == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(part, multi_valued);
+    if (direction != NULL) {
+        mylite_sql_ast_node_append_child(part, direction);
+    }
+    return part;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,
@@ -8118,6 +8192,7 @@ static bool map_keyword_token(
         {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
         {"GENERATED", MYLITE_SQL_PARSE_GENERATED},
         {"ALWAYS", MYLITE_SQL_PARSE_ALWAYS},
+        {"ARRAY", MYLITE_SQL_PARSE_ARRAY},
         {"VIRTUAL", MYLITE_SQL_PARSE_VIRTUAL},
         {"STORED", MYLITE_SQL_PARSE_STORED},
         {"IF", MYLITE_SQL_PARSE_IF},

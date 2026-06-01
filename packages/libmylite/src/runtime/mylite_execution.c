@@ -17233,6 +17233,12 @@ static int parse_secondary_index_part_prefix_length(
     const char *column_name,
     int64_t *out_prefix_length
 );
+static const char *index_part_unsupported_message(
+    const struct mylite_sql_ast_node *part,
+    const char *default_message
+);
+static bool secondary_index_part_is_multi_valued(const struct mylite_sql_ast_node *part);
+static bool secondary_index_part_is_functional(const struct mylite_sql_ast_node *part);
 static const struct mylite_sql_ast_node *secondary_index_part_column_node(
     const struct mylite_sql_ast_node *part
 );

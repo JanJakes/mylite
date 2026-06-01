@@ -1953,6 +1953,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
     struct mylite_sql_ast_node *prefix_length,
     struct mylite_sql_ast_node *direction
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_functional_index_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *direction
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_multi_valued_index_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_token cast_token,
+    struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_node_kind cast_target,
+    struct mylite_sql_token right_cast_paren,
+    struct mylite_sql_token right_part_paren,
+    struct mylite_sql_ast_node *direction
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,

@@ -445,7 +445,13 @@ static int apply_create_table_primary_key_definition(
         enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
 
         if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            set_unsupported_error(database, "PRIMARY KEY supports only unqualified key columns");
+            set_unsupported_error(
+                database,
+                index_part_unsupported_message(
+                    part,
+                    "PRIMARY KEY supports only unqualified key columns"
+                )
+            );
             return MYLITE_ERROR;
         }
         rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
@@ -776,7 +782,10 @@ static int resolve_create_table_secondary_index_first_column(
         message_index.is_unique = is_unique;
         set_unsupported_error(
             database,
-            planned_secondary_index_unqualified_column_message(&message_index)
+            index_part_unsupported_message(
+                first_part,
+                planned_secondary_index_unqualified_column_message(&message_index)
+            )
         );
         return MYLITE_ERROR;
     }
@@ -3497,7 +3506,13 @@ static int append_planned_secondary_index_part(
     int rc = MYLITE_OK;
 
     if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, planned_secondary_index_unqualified_column_message(index));
+        set_unsupported_error(
+            database,
+            index_part_unsupported_message(
+                part,
+                planned_secondary_index_unqualified_column_message(index)
+            )
+        );
         return MYLITE_ERROR;
     }
 
@@ -4288,6 +4303,41 @@ static int parse_secondary_index_part_prefix_length(
 
     *out_prefix_length = (int64_t)prefix;
     return MYLITE_OK;
+}
+
+static const char *index_part_unsupported_message(
+    const struct mylite_sql_ast_node *part,
+    const char *default_message
+) {
+    if (secondary_index_part_is_multi_valued(part)) {
+        return "Multi-valued indexes are not yet supported";
+    }
+    if (secondary_index_part_is_functional(part)) {
+        return "Functional key parts are not yet supported";
+    }
+    return default_message;
+}
+
+static bool secondary_index_part_is_multi_valued(const struct mylite_sql_ast_node *part) {
+    const struct mylite_sql_ast_node *first_child = NULL;
+
+    if (part == NULL || part->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
+        return false;
+    }
+
+    first_child = child_at(part, 0U);
+    return first_child != NULL && first_child->kind == MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART;
+}
+
+static bool secondary_index_part_is_functional(const struct mylite_sql_ast_node *part) {
+    const struct mylite_sql_ast_node *first_child = NULL;
+
+    if (part == NULL || part->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
+        return false;
+    }
+
+    first_child = child_at(part, 0U);
+    return first_child != NULL && first_child->kind != MYLITE_SQL_AST_IDENTIFIER;
 }
 
 static const struct mylite_sql_ast_node *secondary_index_part_column_node(
@@ -9562,7 +9612,13 @@ static int append_alter_table_primary_key_parts_from_ast(
         char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 
         if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            set_unsupported_error(database, "PRIMARY KEY supports only unqualified key columns");
+            set_unsupported_error(
+                database,
+                index_part_unsupported_message(
+                    part,
+                    "PRIMARY KEY supports only unqualified key columns"
+                )
+            );
             rc = MYLITE_ERROR;
             break;
         }
@@ -10227,7 +10283,13 @@ static int plan_alter_table_add_index_name_from_parts(
     int rc = MYLITE_OK;
 
     if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, add_index_unqualified_column_error(nodes->kind));
+        set_unsupported_error(
+            database,
+            index_part_unsupported_message(
+                first_part,
+                add_index_unqualified_column_error(nodes->kind)
+            )
+        );
         return MYLITE_ERROR;
     }
 
@@ -11104,7 +11166,10 @@ static int append_loaded_add_index_part(
     int rc = MYLITE_OK;
 
     if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, add_index_unqualified_column_error(plan->kind));
+        set_unsupported_error(
+            database,
+            index_part_unsupported_message(part, add_index_unqualified_column_error(plan->kind))
+        );
         return MYLITE_ERROR;
     }
 

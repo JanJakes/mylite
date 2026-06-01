@@ -106,6 +106,7 @@ static int execute_parsed_statement(
         return execute_non_prepared_statement(database, context, statement, out_result);
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART:
     case MYLITE_SQL_AST_QUALIFIED_WILDCARD:
     case MYLITE_SQL_AST_GROUP_BY_ITEM_LIST:
     case MYLITE_SQL_AST_SOUNDEX_FUNCTION:
@@ -532,6 +533,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
+    case MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART:
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
     case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
     case MYLITE_SQL_AST_FOREIGN_KEY_INDEX_NAME:

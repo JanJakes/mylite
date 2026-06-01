@@ -1113,6 +1113,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "secondary_index_part_list";
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
         return "secondary_index_part";
+    case MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART:
+        return "multi_valued_index_part";
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
         return "foreign_key_definition";
     case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:

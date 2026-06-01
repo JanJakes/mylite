@@ -77,6 +77,15 @@ TABLE action families, physical rebuild helpers, and LOAD DATA target
 planning. The split keeps static helper visibility unchanged while making each
 DDL family separately reviewable.
 
+The eleventh split applies the same mechanical treatment to the SQL builder
+fragment. The former 18k-line SQL builder fragment contained physical-name
+rendering, DDL/admin SQL rendering, INSERT and INSERT ... SELECT SQL, SELECT
+and row-scalar rendering, aggregate and predicate rendering, DELETE/UPDATE
+rendering, SQLite execution helpers, duplicate-key and foreign-key write
+helpers, parameter binding, selected-row extraction, and parser helper tails.
+The split keeps these helpers in the execution translation unit and preserves
+the exact renderer/binder order.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -360,8 +369,41 @@ The fragments are:
   value conversion, UPDATE validation, and UPDATE LIMIT planning helpers.
 - `mylite_execution_show_helpers.inc`: `SHOW` filtering, sorting, and display
   formatting helpers.
-- `mylite_execution_sql_builders.inc`: physical SQLite SQL rendering, statement
-  preparation, binding, stepping, and result extraction helpers.
+- `mylite_execution_sql_builders.inc`: physical table/view/index/check names,
+  CREATE/DROP/ALTER/TRUNCATE SQL rendering, CREATE TABLE constraints/indexes,
+  ALTER TABLE rebuild SQL, key-part rendering, and quoted default helpers.
+- `mylite_execution_insert_sql_builders.inc`: INSERT, INSERT ... SELECT,
+  REPLACE ... SELECT, temporary materialization, compound branch, validation,
+  and CREATE TABLE ... SELECT SQL rendering.
+- `mylite_execution_select_sql_builders.inc`: SELECT statement SQL,
+  projection, FROM/JOIN rendering, source aliases, and row-scalar SELECT
+  wrapper SQL.
+- `mylite_execution_row_scalar_sql_core.inc`: generic row-scalar expression
+  rendering, window functions, RAND, conversion, integer arithmetic,
+  concatenation, FIELD/GREATEST/LEAST/INTERVAL, and shared stack helpers.
+- `mylite_execution_row_scalar_sql_functions.inc`: row-scalar temporal,
+  string, regexp, UUID, UNHEX, Base64, character, and registered-function SQL
+  rendering.
+- `mylite_execution_row_scalar_sql_json_control.inc`: row-scalar JSON,
+  control-flow, substring/slice, HEX, and related argument SQL rendering.
+- `mylite_execution_aggregate_predicate_sql_builders.inc`: FOUND_ROWS,
+  COUNT, column aggregates, GROUP BY aggregate SQL, SELECT predicates,
+  EXISTS/IN subquery SQL, ORDER BY, and LIMIT rendering.
+- `mylite_execution_dml_sql_builders.inc`: DELETE and UPDATE SQL rendering,
+  joined/limited rowid filters, update assignment SQL, auto-update column
+  rendering, and changed-row predicates.
+- `mylite_execution_sqlite_write_helpers.inc`: SQLite schema/control
+  execution, statement preparation/finalization, INSERT stepping, duplicate-key
+  handling, foreign-key validation, unique-key conflict SQL, and duplicate-key
+  display formatting.
+- `mylite_execution_row_scalar_parameter_binding.inc`: SELECT, INSERT SELECT,
+  and row-scalar expression parameter binding for scalar, temporal, string,
+  JSON, control-flow, UUID, and character expressions.
+- `mylite_execution_predicate_dml_parameter_binding.inc`: predicate, aggregate,
+  DELETE, UPDATE, changed-condition, and planned-value parameter binding.
+- `mylite_execution_sqlite_result_extraction.inc`: selected SQLite row/value
+  extraction, rowid alias selection, AST child helper tails, script statement
+  counting, and parse-error mapping.
 - `mylite_execution_diagnostics.inc`: MySQL-compatible diagnostics, warnings,
   notes, and parse-status mapping helpers.
 

@@ -172,4 +172,22 @@
       and fragment naming.
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
-- [ ] Commit and push the tenth split.
+- [x] Commit and push the tenth split.
+
+## Round 11
+
+- [x] Reinspect the remaining oversized SQL builder fragment after the DDL
+      planning split.
+- [x] Select coarse DDL/admin, INSERT, SELECT, row-scalar, aggregate/predicate,
+      DML, SQLite write-helper, parameter-binding, and result-extraction
+      fragments.
+- [x] Split SQL rendering, write helpers, parameter binding, selected-row
+      extraction, and parser helper tails into named fragments.
+- [x] Preserve same-translation-unit static linkage and original function
+      ordering.
+- [x] Run focused build and runtime tests.
+- [x] Review the split for missing includes, ordering drift, behavior changes,
+      and fragment naming.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [ ] Commit and push the eleventh split.

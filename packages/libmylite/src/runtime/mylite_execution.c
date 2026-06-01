@@ -27953,4 +27953,26 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_sql_builders.inc"
 
+#include "mylite_execution_insert_sql_builders.inc"
+
+#include "mylite_execution_select_sql_builders.inc"
+
+#include "mylite_execution_row_scalar_sql_core.inc"
+
+#include "mylite_execution_row_scalar_sql_functions.inc"
+
+#include "mylite_execution_row_scalar_sql_json_control.inc"
+
+#include "mylite_execution_aggregate_predicate_sql_builders.inc"
+
+#include "mylite_execution_dml_sql_builders.inc"
+
+#include "mylite_execution_sqlite_write_helpers.inc"
+
+#include "mylite_execution_row_scalar_parameter_binding.inc"
+
+#include "mylite_execution_predicate_dml_parameter_binding.inc"
+
+#include "mylite_execution_sqlite_result_extraction.inc"
+
 #include "mylite_execution_diagnostics.inc"

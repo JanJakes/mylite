@@ -362,6 +362,16 @@ statement-summary collection, live statement-type rows, latency or row
 counters, sys helper-function execution, privilege/definer enforcement, and
 broader sys view execution out of scope.
 
+The `baseline-sys-innodb-buffer-stats-by-schema-views` slice refines
+`sys.innodb_buffer_stats_by_schema` and
+`sys.x$innodb_buffer_stats_by_schema` with direct read-only empty placeholder
+rows plus MySQL-observed view status fields, column metadata, view definition
+metadata, dependencies on `INFORMATION_SCHEMA.INNODB_BUFFER_PAGE`, and empty
+routine dependency metadata. It keeps live InnoDB buffer-pool page inventory,
+schema page accounting, byte totals, cached-row estimates, sys
+helper-function execution, privilege/definer enforcement, and broader sys view
+execution out of scope.
+
 The `baseline-sys-io-by-thread-by-latency-views` slice refines
 `sys.io_by_thread_by_latency` and `sys.x$io_by_thread_by_latency` with direct
 read-only empty placeholder rows plus MySQL-observed view status fields,

@@ -593,6 +593,7 @@ enum {
     sys_host_summary_by_stages_column_count = 5,
     sys_host_summary_by_statement_latency_column_count = 10,
     sys_host_summary_by_statement_type_column_count = 11,
+    sys_innodb_buffer_stats_by_schema_column_count = 7,
     sys_innodb_lock_waits_column_count = 30,
     sys_io_by_thread_by_latency_column_count = 8,
     sys_io_global_by_file_by_bytes_column_count = 9,
@@ -4631,6 +4632,8 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STATEMENT_LATENCY = 153,
     INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STATEMENT_TYPE = 154,
     INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE = 155,
+    INFORMATION_SCHEMA_TABLE_SYS_INNODB_BUFFER_STATS_BY_SCHEMA = 156,
+    INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA = 157,
 };
 
 struct information_schema_column_definition {
@@ -15489,6 +15492,139 @@ static const char *const sys_host_summary_by_statement_type_column_privileges
 };
 
 static const struct information_schema_column_definition
+    sys_innodb_buffer_stats_by_schema_columns[sys_innodb_buffer_stats_by_schema_column_count] = {
+        {"object_schema",
+         NULL,
+         "YES",
+         "text",
+         "65535",
+         "65535",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "text"},
+        {"allocated",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"data",
+         NULL,
+         "YES",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(11)"},
+        {"pages", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"pages_hashed", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"pages_old", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"rows_cached",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "45",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(45,0)"},
+};
+
+static const struct information_schema_column_definition
+    sys_x_innodb_buffer_stats_by_schema_columns[sys_innodb_buffer_stats_by_schema_column_count] = {
+        {"object_schema",
+         NULL,
+         "YES",
+         "text",
+         "65535",
+         "65535",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "text"},
+        {"allocated",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "44",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(44,0)"},
+        {"data", NULL, "YES", "decimal", NULL, NULL, "44", "0", NULL, NULL, NULL, "decimal(44,0)"},
+        {"pages", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"pages_hashed", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"pages_old", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"rows_cached",
+         "0",
+         "NO",
+         "decimal",
+         NULL,
+         NULL,
+         "45",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(45,0)"},
+};
+
+static const char *const
+    sys_innodb_buffer_stats_by_schema_column_keys[sys_innodb_buffer_stats_by_schema_column_count] =
+        {
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+};
+
+static const char *const sys_innodb_buffer_stats_by_schema_column_extras
+    [sys_innodb_buffer_stats_by_schema_column_count] = {
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+};
+
+static const char *const sys_innodb_buffer_stats_by_schema_column_privileges
+    [sys_innodb_buffer_stats_by_schema_column_count] = {
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+        "select,insert,update,references",
+};
+
+static const struct information_schema_column_definition
     sys_innodb_lock_waits_columns[sys_innodb_lock_waits_column_count] = {
         {"wait_started",
          NULL,
@@ -20625,6 +20761,78 @@ static const char sys_x_host_summary_by_statement_type_show_create_qualified_vie
 #undef SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
 #undef SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
 
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS                                             \
+    "(`object_schema`,`allocated`,`data`,`pages`,`pages_hashed`,`pages_old`,`rows_cached`)"
+
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_OBJECT_EXPR                                              \
+    "if((locate('.',`ibp`.`TABLE_NAME`) = 0),'InnoDB System',"                                     \
+    "replace(substring_index(`ibp`.`TABLE_NAME`,'.',1),'`',''))"
+
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_ALLOCATED_EXPR                                           \
+    "sum(if((`ibp`.`COMPRESSED_SIZE` = 0),16384,`ibp`.`COMPRESSED_SIZE`))"
+
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_PREFIX                                            \
+    "select " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_OBJECT_EXPR " AS `object_schema`,"
+
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_SUFFIX                                            \
+    "`ibp`.`DATA_SIZE`)) AS `data`,count(`ibp`.`PAGE_NUMBER`) AS `pages`,"                         \
+    "count(if((`ibp`.`IS_HASHED` = 'YES'),1,NULL)) AS `pages_hashed`,"                             \
+    "count(if((`ibp`.`IS_OLD` = 'YES'),1,NULL)) AS `pages_old`,"
+
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_FROM_SUFFIX                                              \
+    " from `information_schema`.`INNODB_BUFFER_PAGE` `ibp` where (`ibp`.`TABLE_NAME` is not null)" \
+    " group by `object_schema` order by " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_ALLOCATED_EXPR " desc"
+
+#define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION                                          \
+    SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_PREFIX                                                \
+    "format_bytes(" SYS_INNODB_BUFFER_STATS_BY_SCHEMA_ALLOCATED_EXPR ") AS `allocated`,"           \
+    "format_bytes(sum(" SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_SUFFIX                            \
+    "round((sum(`ibp`.`NUMBER_RECORDS`) / count(distinct `ibp`.`INDEX_NAME`)),0) AS "              \
+    "`rows_cached`" SYS_INNODB_BUFFER_STATS_BY_SCHEMA_FROM_SUFFIX
+
+#define SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION                                        \
+    SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_PREFIX                                                \
+    SYS_INNODB_BUFFER_STATS_BY_SCHEMA_ALLOCATED_EXPR                                               \
+    " AS `allocated`,sum(" SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_SUFFIX                         \
+    "round(ifnull((sum(`ibp`.`NUMBER_RECORDS`) / nullif(count(distinct "                           \
+    "`ibp`.`INDEX_NAME`),0)),0),"                                                                  \
+    "0) AS `rows_cached`" SYS_INNODB_BUFFER_STATS_BY_SCHEMA_FROM_SUFFIX
+
+static const char sys_innodb_buffer_stats_by_schema_view_definition[] =
+    SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
+
+static const char sys_innodb_buffer_stats_by_schema_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
+    " AS " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
+
+static const char sys_innodb_buffer_stats_by_schema_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
+    " AS " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
+
+static const char sys_x_innodb_buffer_stats_by_schema_view_definition[] =
+    SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
+
+static const char sys_x_innodb_buffer_stats_by_schema_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
+    " AS " SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
+
+static const char sys_x_innodb_buffer_stats_by_schema_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
+    " AS " SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
+
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_OBJECT_EXPR
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_ALLOCATED_EXPR
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_PREFIX
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_SELECT_SUFFIX
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_FROM_SUFFIX
+#undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION
+#undef SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION
+
 #define SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS                                                         \
     "(`wait_started`,`wait_age`,`wait_age_secs`,`locked_table`,`locked_table_schema`,"             \
     "`locked_table_name`,`locked_table_partition`,`locked_table_subpartition`,`locked_index`,"     \
@@ -21864,6 +22072,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_host_summary_by_statement_type_view_definition,
      sys_host_summary_by_statement_type_show_create_view_sql,
      sys_host_summary_by_statement_type_show_create_qualified_view_sql},
+    {"innodb_buffer_stats_by_schema",
+     sys_innodb_buffer_stats_by_schema_view_definition,
+     sys_innodb_buffer_stats_by_schema_show_create_view_sql,
+     sys_innodb_buffer_stats_by_schema_show_create_qualified_view_sql},
     {"innodb_lock_waits",
      sys_innodb_lock_waits_view_definition,
      sys_innodb_lock_waits_show_create_view_sql,
@@ -21960,6 +22172,10 @@ static const struct builtin_sys_view_definition builtin_sys_view_definitions[] =
      sys_x_host_summary_by_statement_type_view_definition,
      sys_x_host_summary_by_statement_type_show_create_view_sql,
      sys_x_host_summary_by_statement_type_show_create_qualified_view_sql},
+    {"x$innodb_buffer_stats_by_schema",
+     sys_x_innodb_buffer_stats_by_schema_view_definition,
+     sys_x_innodb_buffer_stats_by_schema_show_create_view_sql,
+     sys_x_innodb_buffer_stats_by_schema_show_create_qualified_view_sql},
     {"x$innodb_lock_waits",
      sys_x_innodb_lock_waits_view_definition,
      sys_x_innodb_lock_waits_show_create_view_sql,
@@ -24889,6 +25105,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      NULL,
      0U},
     {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_INNODB_BUFFER_STATS_BY_SCHEMA,
+      "innodb_buffer_stats_by_schema",
+      sys_innodb_buffer_stats_by_schema_columns,
+      sys_innodb_buffer_stats_by_schema_column_count},
+     sys_innodb_buffer_stats_by_schema_column_keys,
+     sys_innodb_buffer_stats_by_schema_column_extras,
+     sys_innodb_buffer_stats_by_schema_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
      {INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS,
       "innodb_lock_waits",
       sys_innodb_lock_waits_columns,
@@ -25218,6 +25448,20 @@ static const struct mysql_system_table_definition mysql_system_table_definitions
      sys_host_summary_by_statement_type_column_keys,
      sys_host_summary_by_statement_type_column_extras,
      sys_host_summary_by_statement_type_column_privileges,
+     NULL,
+     NULL,
+     0U,
+     NULL,
+     NULL,
+     0U},
+    {"sys",
+     {INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA,
+      "x$innodb_buffer_stats_by_schema",
+      sys_x_innodb_buffer_stats_by_schema_columns,
+      sys_innodb_buffer_stats_by_schema_column_count},
+     sys_innodb_buffer_stats_by_schema_column_keys,
+     sys_innodb_buffer_stats_by_schema_column_extras,
+     sys_innodb_buffer_stats_by_schema_column_privileges,
      NULL,
      NULL,
      0U,
@@ -28511,6 +28755,12 @@ static int append_sys_schema_system_table_rows(
     const struct mysql_system_table_definition *definition,
     struct information_schema_row_set *rows
 );
+static bool append_sys_schema_summary_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows,
+    int *out_status
+);
 static int append_sys_schema_x_system_table_rows(
     struct mylite_db *database,
     const struct mysql_system_table_definition *definition,
@@ -28567,6 +28817,10 @@ static int append_sys_host_summary_by_statement_latency_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_sys_host_summary_by_statement_type_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_innodb_buffer_stats_by_schema_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -64496,6 +64750,8 @@ static int append_sys_schema_system_table_rows(
     const struct mysql_system_table_definition *definition,
     struct information_schema_row_set *rows
 ) {
+    int status = MYLITE_OK;
+
     if (strcmp(definition->query_definition.name, "sys_config") == 0) {
         return append_sys_sys_config_system_rows(database, rows);
     }
@@ -64505,23 +64761,8 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
-    if (strcmp(definition->query_definition.name, "host_summary") == 0) {
-        return append_sys_host_summary_system_rows(database, rows);
-    }
-    if (strcmp(definition->query_definition.name, "host_summary_by_file_io") == 0) {
-        return append_sys_host_summary_by_file_io_system_rows(database, rows);
-    }
-    if (strcmp(definition->query_definition.name, "host_summary_by_file_io_type") == 0) {
-        return append_sys_host_summary_by_file_io_type_system_rows(database, rows);
-    }
-    if (strcmp(definition->query_definition.name, "host_summary_by_stages") == 0) {
-        return append_sys_host_summary_by_stages_system_rows(database, rows);
-    }
-    if (strcmp(definition->query_definition.name, "host_summary_by_statement_latency") == 0) {
-        return append_sys_host_summary_by_statement_latency_system_rows(database, rows);
-    }
-    if (strcmp(definition->query_definition.name, "host_summary_by_statement_type") == 0) {
-        return append_sys_host_summary_by_statement_type_system_rows(database, rows);
+    if (append_sys_schema_summary_system_table_rows(database, definition, rows, &status)) {
+        return status;
     }
     if (strcmp(definition->query_definition.name, "io_by_thread_by_latency") == 0) {
         return append_sys_io_by_thread_by_latency_system_rows(database, rows);
@@ -64575,6 +64816,44 @@ static int append_sys_schema_system_table_rows(
     return append_sys_schema_x_system_table_rows(database, definition, rows);
 }
 
+static bool append_sys_schema_summary_system_table_rows(
+    struct mylite_db *database,
+    const struct mysql_system_table_definition *definition,
+    struct information_schema_row_set *rows,
+    int *out_status
+) {
+    if (strcmp(definition->query_definition.name, "host_summary") == 0) {
+        *out_status = append_sys_host_summary_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "host_summary_by_file_io") == 0) {
+        *out_status = append_sys_host_summary_by_file_io_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "host_summary_by_file_io_type") == 0) {
+        *out_status = append_sys_host_summary_by_file_io_type_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "host_summary_by_stages") == 0) {
+        *out_status = append_sys_host_summary_by_stages_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "host_summary_by_statement_latency") == 0) {
+        *out_status = append_sys_host_summary_by_statement_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "host_summary_by_statement_type") == 0) {
+        *out_status = append_sys_host_summary_by_statement_type_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "innodb_buffer_stats_by_schema") == 0) {
+        *out_status = append_sys_innodb_buffer_stats_by_schema_system_rows(database, rows);
+        return true;
+    }
+
+    return false;
+}
+
 static int append_sys_schema_x_system_table_rows(
     struct mylite_db *database,
     const struct mysql_system_table_definition *definition,
@@ -64603,6 +64882,9 @@ static int append_sys_schema_x_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$host_summary_by_statement_type") == 0) {
         return append_sys_host_summary_by_statement_type_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$innodb_buffer_stats_by_schema") == 0) {
+        return append_sys_innodb_buffer_stats_by_schema_system_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "x$io_by_thread_by_latency") == 0) {
         return append_sys_io_by_thread_by_latency_system_rows(database, rows);
@@ -64929,6 +65211,17 @@ static int append_sys_host_summary_by_statement_type_system_rows(
 ) {
     if (rows->definition->column_count != sys_host_summary_by_statement_type_column_count) {
         set_runtime_error(database, "invalid sys.host_summary_by_statement_type columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_innodb_buffer_stats_by_schema_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_innodb_buffer_stats_by_schema_column_count) {
+        set_runtime_error(database, "invalid sys.innodb_buffer_stats_by_schema columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
@@ -68004,6 +68297,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STAGES:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STATEMENT_TYPE:
+    case INFORMATION_SCHEMA_TABLE_SYS_INNODB_BUFFER_STATS_BY_SCHEMA:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -68028,6 +68322,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STAGES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STATEMENT_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -68185,6 +68480,7 @@ static int append_information_schema_view_table_usage_system_rows(
         {"host_summary_by_statement_type",
          "performance_schema",
          "events_statements_summary_by_host_by_event_name"},
+        {"innodb_buffer_stats_by_schema", "information_schema", "INNODB_BUFFER_PAGE"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -68248,6 +68544,7 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$host_summary_by_statement_type",
          "performance_schema",
          "events_statements_summary_by_host_by_event_name"},
+        {"x$innodb_buffer_stats_by_schema", "information_schema", "INNODB_BUFFER_PAGE"},
         {"x$innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"x$innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"x$innodb_lock_waits", "performance_schema", "data_locks"},
@@ -68458,6 +68755,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STAGES:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_HOST_SUMMARY_BY_STATEMENT_TYPE:
+    case INFORMATION_SCHEMA_TABLE_SYS_INNODB_BUFFER_STATS_BY_SCHEMA:
     case INFORMATION_SCHEMA_TABLE_SYS_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_IO_GLOBAL_BY_FILE_BY_BYTES:
@@ -68482,6 +68780,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STAGES:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STATEMENT_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE:
+    case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA:
     case INFORMATION_SCHEMA_TABLE_SYS_X_INNODB_LOCK_WAITS:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_BY_THREAD_BY_LATENCY:
     case INFORMATION_SCHEMA_TABLE_SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES:

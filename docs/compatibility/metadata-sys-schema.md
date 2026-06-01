@@ -57,6 +57,9 @@ limited read-only empty `sys.host_summary_by_statement_latency` /
 `sys.x$host_summary_by_statement_latency` synthetic host statement-latency
 placeholders, limited read-only empty `sys.host_summary_by_statement_type` /
 `sys.x$host_summary_by_statement_type` synthetic host statement-type
+placeholders, limited read-only empty
+`sys.innodb_buffer_stats_by_schema` /
+`sys.x$innodb_buffer_stats_by_schema` synthetic InnoDB buffer-stats-by-schema
 placeholders,
 limited read-only empty `sys.io_by_thread_by_latency` /
 `sys.x$io_by_thread_by_latency` synthetic thread file-I/O latency
@@ -84,8 +87,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$host_summary_by_statement_latency` | 🟡 | Limited read-only empty raw host statement-latency view with the same metadata and unsupported behavior as `sys.host_summary_by_statement_latency`, except latency values expose raw numeric metadata |
 | `sys.host_summary_by_statement_type` | 🟡 | Limited read-only empty formatted host statement-type view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.events_statements_summary_by_host_by_event_name`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema host statement-summary collection, live statement-type rows, latency or row counters, full-scan totals, sys helper-function execution, true updatable-view writes, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$host_summary_by_statement_type` | 🟡 | Limited read-only empty raw host statement-type view with the same metadata and unsupported behavior as `sys.host_summary_by_statement_type`, except latency values expose raw numeric metadata |
-| `sys.innodb_buffer_stats_by_schema` | ❌ | View shape and diagnostics |
-| `sys.x$innodb_buffer_stats_by_schema` | ❌ | View shape and diagnostics |
+| `sys.innodb_buffer_stats_by_schema` | 🟡 | Limited read-only empty formatted InnoDB buffer-stats-by-schema view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `information_schema.INNODB_BUFFER_PAGE`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no live InnoDB buffer-pool page inventory, schema page accounting, byte totals, cached-row estimates, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$innodb_buffer_stats_by_schema` | 🟡 | Limited read-only empty raw InnoDB buffer-stats-by-schema view with the same metadata and unsupported behavior as `sys.innodb_buffer_stats_by_schema`, except byte totals expose raw decimal metadata and `rows_cached` is non-null with default `0` |
 | `sys.innodb_buffer_stats_by_table` | ❌ | View shape and diagnostics |
 | `sys.x$innodb_buffer_stats_by_table` | ❌ | View shape and diagnostics |
 | `sys.innodb_lock_waits` | 🟡 | Limited read-only empty formatted InnoDB row-lock wait view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `INFORMATION_SCHEMA.INNODB_TRX`, `performance_schema.data_lock_waits`, `performance_schema.data_locks`, and `sys.sys_config`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependencies on `sys.format_statement` and `sys.quote_identifier`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no live InnoDB lock-wait collection, Performance Schema data-lock rows, sys helper-function execution, `KILL` behavior, privilege/definer enforcement, physical sys views, or broader sys view execution |

@@ -3196,6 +3196,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
@@ -3222,6 +3223,8 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -3246,6 +3249,8 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -4158,6 +4163,27 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_period_add",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_period_diff",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_convert_tz",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
@@ -4247,6 +4273,20 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_base64_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_weight_string",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_weight_string_binary",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -4438,6 +4478,9 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -4472,6 +4515,8 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -4517,6 +4562,8 @@ static const char *row_scalar_conversion_sql_function_name(
     return NULL;
 }
 
+// Row-scalar SQL generation walks expression trees recursively through helper-specific nodes.
+// NOLINTNEXTLINE(misc-no-recursion)
 static int append_row_scalar_non_concat_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -4604,6 +4651,41 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
         return append_row_scalar_uuid_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_period_add",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_period_diff",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_convert_tz",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_weight_string",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_weight_string_binary",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -4723,6 +4805,9 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -4757,6 +4842,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
@@ -5235,6 +5322,44 @@ static int append_row_scalar_base64_expression_sql(
     return rc;
 }
 
+// Registered scalar functions delegate argument rendering back to the general row-scalar walker.
+// NOLINTNEXTLINE(misc-no-recursion)
+static int append_row_scalar_registered_function_expression_sql(
+    struct mylite_dynamic_string *string,
+    const char *function_name,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || expression == NULL ||
+        (expression->argument_count != 0U && expression->arguments == NULL)) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -5324,6 +5449,9 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -5358,6 +5486,8 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -5458,6 +5588,9 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -5492,6 +5625,8 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -5550,6 +5685,9 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -5584,6 +5722,8 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -6987,6 +7127,9 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -7020,6 +7163,8 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -7085,6 +7230,9 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -7116,6 +7264,8 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -7387,6 +7537,9 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -7421,6 +7574,8 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -7606,6 +7761,9 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -7640,6 +7798,8 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -7702,6 +7862,9 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -7736,6 +7899,8 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -8131,6 +8296,9 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -8165,6 +8333,8 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -8231,6 +8401,9 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -8265,6 +8438,8 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -14827,6 +15002,14 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+        return bind_row_scalar_registered_function_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return bind_row_scalar_string_slice_expression_parameters(
             statement,
@@ -14985,6 +15168,13 @@ static int bind_row_scalar_expression_parameters(
         return bind_row_scalar_base64_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return bind_row_scalar_unhex_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+        return bind_row_scalar_registered_function_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -15103,6 +15293,9 @@ static int bind_row_scalar_conversion_base_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -15137,6 +15330,8 @@ static int bind_row_scalar_conversion_base_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -15155,6 +15350,8 @@ static int bind_row_scalar_conversion_base_expression_parameters(
     return MYLITE_ERROR;
 }
 
+// Row-scalar parameter binding follows the same recursive expression tree as SQL generation.
+// NOLINTNEXTLINE(misc-no-recursion)
 static int bind_row_scalar_non_concat_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -15246,6 +15443,16 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
         return bind_row_scalar_uuid_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+        return bind_row_scalar_registered_function_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -15343,6 +15550,9 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -15377,6 +15587,8 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -16259,6 +16471,9 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -16292,6 +16507,8 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -16369,6 +16586,9 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -16400,6 +16620,8 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -16578,6 +16800,9 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -16612,6 +16837,8 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -16774,6 +17001,9 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -16808,6 +17038,8 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -16865,6 +17097,9 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -16899,6 +17134,8 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -17017,21 +17254,15 @@ static int bind_row_scalar_hex_expression_parameters(
     int *parameter_index
 ) {
     const struct planned_row_scalar_expression *argument = NULL;
-    bool argument_is_integer = false;
     int rc = MYLITE_OK;
 
     if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
         return MYLITE_ERROR;
     }
     argument = &expression->arguments[0];
-    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-        if (strcmp(argument->column.physical_type, "INTEGER") == 0) {
-            argument_is_integer = true;
-        }
-    }
 
     rc = bind_row_scalar_non_concat_expression_parameters(statement, argument, parameter_index);
-    if (rc == MYLITE_OK && argument_is_integer) {
+    if (rc == MYLITE_OK) {
         rc = bind_row_scalar_non_concat_expression_parameters(statement, argument, parameter_index);
     }
     return rc;
@@ -17065,6 +17296,29 @@ static int bind_row_scalar_base64_expression_parameters(
         &expression->arguments[0],
         parameter_index
     );
+}
+
+// Registered scalar functions delegate argument binding back to the general row-scalar walker.
+// NOLINTNEXTLINE(misc-no-recursion)
+static int bind_row_scalar_registered_function_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || (expression->argument_count != 0U && expression->arguments == NULL)) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_row_scalar_uuid_expression_parameters(
@@ -17146,6 +17400,9 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -17180,6 +17437,8 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
@@ -17266,6 +17525,9 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
@@ -17300,6 +17562,8 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:

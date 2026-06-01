@@ -6780,16 +6780,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_functional_index_part(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_multi_valued_index_part(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token left_paren,
-    struct mylite_sql_token cast_token,
+    struct mylite_sql_multi_valued_index_part_tokens tokens,
     struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_node_kind cast_target,
-    struct mylite_sql_token right_cast_paren,
-    struct mylite_sql_token right_part_paren,
     struct mylite_sql_ast_node *direction
 ) {
     struct mylite_sql_source_span span =
-        span_join(span_from_token(&left_paren), span_from_token(&right_part_paren));
+        span_join(span_from_token(&tokens.left_paren), span_from_token(&tokens.right_part_paren));
     struct mylite_sql_ast_node *multi_valued = NULL;
     struct mylite_sql_ast_node *cast_type = NULL;
     struct mylite_sql_ast_node *part = NULL;
@@ -6806,7 +6803,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_multi_valued_index_part(
     cast_type = make_node(
         state,
         cast_target,
-        span_join(span_from_token(&cast_token), span_from_token(&right_cast_paren))
+        span_join(span_from_token(&tokens.cast_token), span_from_token(&tokens.right_cast_paren))
     );
     if (cast_type == NULL) {
         return NULL;
@@ -8074,6 +8071,7 @@ static bool map_keyword_token(
         {"AS", MYLITE_SQL_PARSE_AS},
         {"CAST", MYLITE_SQL_PARSE_CAST},
         {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
+        {"CONVERT_TZ", MYLITE_SQL_PARSE_CONVERT_TZ},
         {"EXCEPT", MYLITE_SQL_PARSE_EXCEPT},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"INTERSECT", MYLITE_SQL_PARSE_INTERSECT},
@@ -8245,6 +8243,8 @@ static bool map_keyword_token(
         {"MAKEDATE", MYLITE_SQL_PARSE_MAKEDATE},
         {"MAKETIME", MYLITE_SQL_PARSE_MAKETIME},
         {"MONTHNAME", MYLITE_SQL_PARSE_MONTHNAME},
+        {"PERIOD_ADD", MYLITE_SQL_PARSE_PERIOD_ADD},
+        {"PERIOD_DIFF", MYLITE_SQL_PARSE_PERIOD_DIFF},
         {"QUARTER", MYLITE_SQL_PARSE_QUARTER},
         {"SECOND_MICROSECOND", MYLITE_SQL_PARSE_SECOND_MICROSECOND},
         {"SQL_TSI_DAY", MYLITE_SQL_PARSE_SQL_TSI_DAY},
@@ -8533,6 +8533,7 @@ static bool map_keyword_token(
         {"USER", MYLITE_SQL_PARSE_USER},
         {"UTC", MYLITE_SQL_PARSE_UTC},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
+        {"WEIGHT_STRING", MYLITE_SQL_PARSE_WEIGHT_STRING},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
         {"ROW_NUMBER", MYLITE_SQL_PARSE_ROW_NUMBER},
         {"SEPARATOR", MYLITE_SQL_PARSE_SEPARATOR},

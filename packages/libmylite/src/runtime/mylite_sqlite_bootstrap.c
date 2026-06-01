@@ -2,12 +2,14 @@
 
 #include "mylite_bitwise_aggregate.h"
 #include "mylite_cast_convert.h"
+#include "mylite_convert_tz.h"
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
 #include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
+#include "mylite_period_functions.h"
 #include "mylite_rand.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
@@ -34,6 +36,7 @@
 #include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
 #include "mylite_uuid.h"
+#include "mylite_weight_string.h"
 #include "sqlite3.h"
 
 #include <stddef.h>
@@ -242,6 +245,12 @@ static int initialize_function_registration_surface(
         rc = mylite_sqlite_register_temporal_constructor_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_period_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_convert_tz_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_timestampdiff_function(sqlite);
     }
     if (rc == MYLITE_OK) {
@@ -321,6 +330,9 @@ static int initialize_string_function_registration_surface(sqlite3 *sqlite) {
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_unhex_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_weight_string_functions(sqlite);
     }
     return rc;
 }

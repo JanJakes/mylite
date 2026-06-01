@@ -14803,6 +14803,8 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
@@ -14902,6 +14904,19 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
         populate_scalar_json_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+        populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_scalar_bigint_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
         return populate_row_scalar_date_interval_second_result_column_descriptor(
@@ -18270,6 +18285,8 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_REGEXP_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
@@ -18375,7 +18392,18 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
     case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
     case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_scalar_bigint_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
         return MYLITE_OK;
     case MYLITE_SQL_AST_SYSDATE_FUNCTION:
         populate_scalar_datetime_result_column_descriptor(descriptor);

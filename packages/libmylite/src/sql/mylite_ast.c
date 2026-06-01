@@ -1115,6 +1115,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "secondary_index_part";
     case MYLITE_SQL_AST_MULTI_VALUED_INDEX_PART:
         return "multi_valued_index_part";
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
+        return "convert_tz_function";
+    case MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR:
+        return "convert_tz_argument_count_error";
+    case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
+        return "period_add_function";
+    case MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR:
+        return "period_add_argument_count_error";
+    case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
+        return "period_diff_function";
+    case MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR:
+        return "period_diff_argument_count_error";
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+        return "weight_string_function";
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+        return "weight_string_binary_function";
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
         return "foreign_key_definition";
     case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:

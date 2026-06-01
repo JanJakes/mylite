@@ -41,6 +41,7 @@ add_library(mylite STATIC
   src/runtime/mylite_cast_convert.c
   src/runtime/mylite_catalog.c
   src/runtime/mylite_connection.c
+  src/runtime/mylite_convert_tz.c
   src/runtime/mylite_date_format.c
   src/runtime/mylite_date_interval_second.c
   src/runtime/mylite_datediff.c
@@ -53,6 +54,7 @@ add_library(mylite STATIC
   src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_json.c
   src/runtime/mylite_json_functions.c
+  src/runtime/mylite_period_functions.c
   src/runtime/mylite_rand.c
   src/runtime/mylite_regexp.c
   src/runtime/mylite_result.c
@@ -84,6 +86,7 @@ add_library(mylite STATIC
   src/runtime/mylite_timestampdiff.c
   src/runtime/mylite_unix_timestamp.c
   src/runtime/mylite_uuid.c
+  src/runtime/mylite_weight_string.c
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
@@ -1092,6 +1095,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_temporal_constructor_functions_test)
+
+  add_executable(mylite_runtime_scalar_period_timezone_weight_functions_test
+    tests/runtime_scalar_period_timezone_weight_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_scalar_period_timezone_weight_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_scalar_period_timezone_weight_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_scalar_period_timezone_weight_functions_test)
 
   add_executable(mylite_runtime_temporal_extract_functions_test
     tests/runtime_temporal_extract_functions_test.c
@@ -5563,6 +5577,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.temporal_constructor_functions
     COMMAND mylite_runtime_temporal_constructor_functions_test
+  )
+  add_test(
+    NAME libmylite.runtime.scalar_period_timezone_weight_functions
+    COMMAND mylite_runtime_scalar_period_timezone_weight_functions_test
   )
 
   add_test(

@@ -4676,6 +4676,19 @@ expression(A) ::= DATEDIFF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R)
         state, T, MYLITE_SQL_AST_DATEDIFF_FUNCTION, B, C, R);
 }
 expression(A) ::=
+    CONVERT_TZ(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_CONVERT_TZ_FUNCTION, B, C, D, R);
+}
+expression(A) ::= PERIOD_ADD(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_PERIOD_ADD_FUNCTION, B, C, R);
+}
+expression(A) ::= PERIOD_DIFF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION, B, C, R);
+}
+expression(A) ::=
     TIMESTAMPDIFF(T) LPAREN timestampdiff_unit(U) COMMA expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_three_argument_function(
         state, T, MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION, U, B, C, R);
@@ -5332,6 +5345,16 @@ expression(A) ::= CRC32(T) LPAREN expression(B) RPAREN(R). {
 expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
+}
+expression(A) ::= WEIGHT_STRING(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION, B, R);
+}
+expression(A) ::= WEIGHT_STRING(T) LPAREN expression(B) AS BINARY LPAREN INTEGER(N) RPAREN RPAREN(R). {
+    struct mylite_sql_ast_node *length =
+        mylite_sql_parser_make_literal(state, N, MYLITE_SQL_AST_LITERAL_INTEGER);
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION, B, length, R);
 }
 expression(A) ::= TO_BASE64(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
@@ -6328,6 +6351,57 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= CONVERT_TZ(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= CONVERT_TZ(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= CONVERT_TZ(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::=
+    CONVERT_TZ(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) COMMA function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR, E, R);
+}
+expression(A) ::= PERIOD_ADD(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= PERIOD_ADD(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    PERIOD_ADD(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= PERIOD_DIFF(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= PERIOD_DIFF(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    PERIOD_DIFF(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= ADDTIME(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -7551,6 +7625,15 @@ identifier(A) ::= STR_TO_DATE(T). {
 identifier(A) ::= DATEDIFF(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= CONVERT_TZ(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PERIOD_ADD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PERIOD_DIFF(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= TIMESTAMPDIFF(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -7657,6 +7740,9 @@ identifier(A) ::= UNKNOWN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONNECTION_ID(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= WEIGHT_STRING(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CURRENT_ROLE(T). {
@@ -8579,7 +8665,17 @@ functional_index_part(A) ::= LPAREN(L) expression(B) RPAREN(R) index_key_directi
 multi_valued_index_part(A) ::=
     LPAREN(L) CAST(T) LPAREN expression(B) AS cast_basic_target(K) ARRAY RPAREN(C) RPAREN(R)
     index_key_direction_opt(D). {
-    A = mylite_sql_parser_make_multi_valued_index_part(state, L, T, B, K, C, R, D);
+    A = mylite_sql_parser_make_multi_valued_index_part(
+        state,
+        (struct mylite_sql_multi_valued_index_part_tokens){
+            .left_paren = L,
+            .cast_token = T,
+            .right_cast_paren = C,
+            .right_part_paren = R,
+        },
+        B,
+        K,
+        D);
 }
 
 index_key_direction_opt(A) ::= . {

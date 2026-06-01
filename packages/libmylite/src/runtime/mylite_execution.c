@@ -3,6 +3,7 @@
 #include "mylite_ast.h"
 #include "mylite_catalog.h"
 #include "mylite_connection.h"
+#include "mylite_convert_tz.h"
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
@@ -14,6 +15,7 @@
 #include "mylite_json.h"
 #include "mylite_mysql_server_identity.h"
 #include "mylite_parser.h"
+#include "mylite_period_functions.h"
 #include "mylite_rand.h"
 #include "mylite_regexp.h"
 #include "mylite_result.h"
@@ -42,6 +44,7 @@
 #include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
 #include "mylite_uuid.h"
+#include "mylite_weight_string.h"
 #include "sqlite3.h"
 
 #include <ctype.h>
@@ -2507,6 +2510,11 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE = 74,
     PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX = 75,
     PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION = 76,
+    PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD = 77,
+    PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF = 78,
+    PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ = 79,
+    PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING = 80,
+    PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY = 81,
 };
 
 enum {
@@ -12538,6 +12546,16 @@ static int temporal_constructor_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int period_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int convert_tz_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_sec_to_time_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -12572,6 +12590,14 @@ static int evaluate_temporal_constructor_scalar_argument(
     const struct mylite_sql_ast_node *expression,
     const char *function_name,
     int64_t *out_value,
+    bool *out_is_null
+);
+static int evaluate_convert_tz_scalar_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    char **out_text,
+    size_t *out_text_length,
     bool *out_is_null
 );
 static int temporal_constructor_scalar_integer_literal_value(
@@ -13632,6 +13658,25 @@ static int hex_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int weight_string_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int weight_string_binary_length_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_length
+);
+static int weight_string_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
 static int to_base64_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -13727,6 +13772,12 @@ static int hex_literal_argument_bytes(
     char **out_owned_bytes
 );
 static int hex_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+);
+static int hex_non_weight_string_scalar_argument_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell,
@@ -15530,6 +15581,7 @@ static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *exp
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base64_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_weight_string_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_uuid_value_projection_argument_supported(
     const struct mylite_sql_ast_node *expression
@@ -22828,6 +22880,36 @@ static bool unhex_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_weight_string_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_weight_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_weight_string_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool weight_string_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_uuid_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -23557,6 +23639,49 @@ static int plan_row_scalar_datediff_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_period_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static const char *period_function_name(enum mylite_sql_ast_node_kind ast_kind);
+static enum planned_row_scalar_expression_kind period_planned_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static int plan_row_scalar_convert_tz_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_convert_tz_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    bool temporal_argument,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_convert_tz_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    bool temporal_argument,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_datediff_argument(
@@ -25650,6 +25775,12 @@ static int append_row_scalar_base64_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_registered_function_expression_sql(
+    struct mylite_dynamic_string *string,
+    const char *function_name,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -26991,6 +27122,11 @@ static int bind_row_scalar_unhex_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_base64_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_registered_function_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index

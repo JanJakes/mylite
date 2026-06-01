@@ -74,6 +74,13 @@ struct mylite_sql_spatial_type_tokens {
     enum mylite_sql_ast_spatial_type spatial_type;
 };
 
+struct mylite_sql_multi_valued_index_part_tokens {
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token cast_token;
+    struct mylite_sql_token right_cast_paren;
+    struct mylite_sql_token right_part_paren;
+};
+
 struct mylite_sql_bit_type_tokens {
     struct mylite_sql_token type_token;
     struct mylite_sql_token length_token;
@@ -1962,12 +1969,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_functional_index_part(
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_multi_valued_index_part(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token left_paren,
-    struct mylite_sql_token cast_token,
+    struct mylite_sql_multi_valued_index_part_tokens tokens,
     struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_node_kind cast_target,
-    struct mylite_sql_token right_cast_paren,
-    struct mylite_sql_token right_part_paren,
     struct mylite_sql_ast_node *direction
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(

@@ -102,6 +102,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_MAKEDATE_FUNCTION:
     case MYLITE_SQL_AST_MAKETIME_FUNCTION:
         return temporal_constructor_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
+        return period_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
+        return convert_tz_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FROM_DAYS");
         return MYLITE_ERROR;
@@ -110,6 +115,15 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "MAKETIME");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "PERIOD_ADD");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "PERIOD_DIFF");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "CONVERT_TZ");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIME_TO_SEC");
@@ -397,6 +411,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "HEX");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+        return weight_string_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
         return to_base64_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
@@ -6911,6 +6928,168 @@ static int temporal_constructor_function_value(
     return rc;
 }
 
+static int period_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const char *function_name = NULL;
+    int64_t first_value = 0;
+    int64_t second_value = 0;
+    int64_t result = 0;
+    bool first_is_null = false;
+    bool second_is_null = false;
+    bool result_is_null = false;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_PERIOD_ADD_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION) ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, "PERIOD_ADD");
+        return MYLITE_ERROR;
+    }
+
+    function_name =
+        expression->kind == MYLITE_SQL_AST_PERIOD_ADD_FUNCTION ? "PERIOD_ADD" : "PERIOD_DIFF";
+    rc = evaluate_temporal_constructor_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        function_name,
+        &first_value,
+        &first_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_temporal_constructor_scalar_argument(
+            database,
+            child_at(expression, 1U),
+            function_name,
+            &second_value,
+            &second_is_null
+        );
+    }
+    if (rc == MYLITE_OK && expression->kind == MYLITE_SQL_AST_PERIOD_ADD_FUNCTION) {
+        rc = mylite_period_add_value(
+            database,
+            first_value,
+            first_is_null,
+            second_value,
+            second_is_null,
+            &result,
+            &result_is_null
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_period_diff_value(
+            database,
+            first_value,
+            first_is_null,
+            second_value,
+            second_is_null,
+            &result,
+            &result_is_null
+        );
+    }
+    if (rc != MYLITE_OK || result_is_null) {
+        return rc;
+    }
+
+    written = snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRId64, result);
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format period function value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int convert_tz_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    char *datetime_text = NULL;
+    char *from_tz_text = NULL;
+    char *to_tz_text = NULL;
+    size_t datetime_length = 0U;
+    size_t from_tz_length = 0U;
+    size_t to_tz_length = 0U;
+    bool datetime_is_null = false;
+    bool from_tz_is_null = false;
+    bool to_tz_is_null = false;
+    bool result_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_TZ_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 3U) {
+        set_native_function_parameter_count_error(database, "CONVERT_TZ");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_convert_tz_scalar_text_argument(
+        database,
+        child_at(expression, 0U),
+        "CONVERT_TZ",
+        &datetime_text,
+        &datetime_length,
+        &datetime_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_convert_tz_scalar_text_argument(
+            database,
+            child_at(expression, 1U),
+            "CONVERT_TZ",
+            &from_tz_text,
+            &from_tz_length,
+            &from_tz_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_convert_tz_scalar_text_argument(
+            database,
+            child_at(expression, 2U),
+            "CONVERT_TZ",
+            &to_tz_text,
+            &to_tz_length,
+            &to_tz_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_convert_tz_value(
+            database,
+            datetime_text,
+            datetime_length,
+            datetime_is_null,
+            from_tz_text,
+            from_tz_length,
+            from_tz_is_null,
+            to_tz_text,
+            to_tz_length,
+            to_tz_is_null,
+            &out_cell->owned_text,
+            &result_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !result_is_null) {
+        out_cell->value = out_cell->owned_text;
+    }
+
+    free(datetime_text);
+    free(from_tz_text);
+    free(to_tz_text);
+    return rc;
+}
+
 static int evaluate_from_unixtime_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -7105,6 +7284,77 @@ static int evaluate_temporal_constructor_scalar_argument(
         function_name,
         out_value
     );
+}
+
+static int evaluate_convert_tz_scalar_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char unsupported_message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || out_text == NULL || out_text_length == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    written = snprintf(
+        unsupported_message,
+        sizeof(unsupported_message),
+        "%s() supports only string and NULL literal arguments",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(unsupported_message)) {
+        set_runtime_error(database, "failed to format CONVERT_TZ() unsupported message");
+        return MYLITE_ERROR;
+    }
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        unsupported_message,
+        "CONVERT_TZ() literals do not support NUL bytes",
+        out_text,
+        out_text_length
+    );
+    if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
+        set_unsupported_error(database, "CONVERT_TZ() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    return rc;
 }
 
 static int temporal_constructor_scalar_integer_literal_value(
@@ -17830,6 +18080,7 @@ static int hex_function_value(
     struct session_scalar_cell *out_cell
 ) {
     const struct mylite_sql_ast_node *argument = NULL;
+    struct session_scalar_cell argument_cell = {0};
     const unsigned char *bytes = NULL;
     char *owned_bytes = NULL;
     size_t byte_count = 0U;
@@ -17874,18 +18125,186 @@ static int hex_function_value(
         return rc;
     }
 
-    rc = hex_argument_bytes(database, argument, out_cell, &bytes, &byte_count, &owned_bytes);
+    rc = hex_argument_bytes(database, argument, &argument_cell, &bytes, &byte_count, &owned_bytes);
     if (rc != MYLITE_OK || bytes == NULL) {
         free(owned_bytes);
+        session_scalar_cell_deinit(&argument_cell);
         return rc;
     }
 
     rc = format_hex_bytes(database, bytes, byte_count, &out_cell->owned_text);
     free(owned_bytes);
+    session_scalar_cell_deinit(&argument_cell);
     if (rc == MYLITE_OK) {
         out_cell->value = out_cell->owned_text;
     }
     return rc;
+}
+
+static int weight_string_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    struct session_scalar_cell argument_cell = {0};
+    const unsigned char *bytes = NULL;
+    unsigned char *result = NULL;
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    size_t result_size = 0U;
+    bool is_null = false;
+    int64_t binary_length = 0;
+    bool has_binary_length = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION)) {
+        set_unsupported_error(database, "WEIGHT_STRING() expression is unsupported");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "WEIGHT_STRING() expression is unsupported");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "WEIGHT_STRING() AS BINARY expression is unsupported");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    rc = weight_string_argument_bytes(
+        database,
+        argument,
+        &argument_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc == MYLITE_OK && expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION) {
+        has_binary_length = true;
+        rc = weight_string_binary_length_value(database, child_at(expression, 1U), &binary_length);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_weight_string_value(
+            database,
+            bytes,
+            byte_count,
+            is_null,
+            has_binary_length,
+            binary_length,
+            &result,
+            &result_size,
+            &is_null
+        );
+    }
+    free(owned_bytes);
+    session_scalar_cell_deinit(&argument_cell);
+    if (rc != MYLITE_OK || is_null) {
+        free(result);
+        return rc;
+    }
+
+    out_cell->owned_text = (char *)result;
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = result_size;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
+}
+
+static int weight_string_binary_length_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_length
+) {
+    uint64_t length = 0U;
+
+    if (out_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_length = 0;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&expression->span, &length) != MYLITE_OK ||
+        length > (uint64_t)INT64_MAX) {
+        set_unsupported_error(database, "WEIGHT_STRING() AS BINARY length must fit signed 64-bit");
+        return MYLITE_ERROR;
+    }
+    *out_length = (int64_t)length;
+    return MYLITE_OK;
+}
+
+static int weight_string_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    bool handled_scalar = false;
+    int rc = MYLITE_OK;
+
+    if (cell == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_owned_bytes = NULL;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_base64_argument_unsupported_error(database, "WEIGHT_STRING");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return base64_literal_argument_bytes(
+            database,
+            expression,
+            "WEIGHT_STRING",
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return base64_unary_argument_bytes(
+            database,
+            expression,
+            "WEIGHT_STRING",
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+
+    rc = hex_non_weight_string_scalar_argument_value(database, expression, cell, &handled_scalar);
+    if (rc != MYLITE_OK || handled_scalar) {
+        if (rc == MYLITE_OK && cell->value == NULL) {
+            *out_is_null = true;
+        } else if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)cell->value;
+            *out_byte_count = cell->has_value_size ? cell->value_size : strlen(cell->value);
+        }
+        return rc;
+    }
+
+    set_base64_argument_unsupported_error(database, "WEIGHT_STRING");
+    return MYLITE_ERROR;
 }
 
 static int unhex_function_value(
@@ -18722,7 +19141,7 @@ static int hex_argument_bytes(
     if (rc != MYLITE_OK || handled_scalar) {
         if (rc == MYLITE_OK && cell->value != NULL) {
             *out_bytes = (const unsigned char *)cell->value;
-            *out_byte_count = strlen(cell->value);
+            *out_byte_count = cell->has_value_size ? cell->value_size : strlen(cell->value);
         }
         return rc;
     }
@@ -18774,6 +19193,29 @@ static int hex_literal_argument_bytes(
 }
 
 static int hex_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+) {
+    int rc =
+        hex_non_weight_string_scalar_argument_value(database, expression, out_cell, out_handled);
+
+    if (rc != MYLITE_OK || out_handled == NULL || *out_handled) {
+        return rc;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+        *out_handled = true;
+        return weight_string_function_value(database, expression, out_cell);
+    default:
+        break;
+    }
+    return MYLITE_OK;
+}
+
+static int hex_non_weight_string_scalar_argument_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell,
@@ -29257,6 +29699,12 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_MAKETIME_FUNCTION:
     case MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
+    case MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
     case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
@@ -29285,6 +29733,8 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_USER_VARIABLE:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
         return true;
     default:
@@ -30428,6 +30878,7 @@ static bool is_binary_string_projection_expression(const struct mylite_sql_ast_n
     return (is_hex_projection_expression(expression) ||
             is_base64_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
+            is_weight_string_projection_expression(expression) ||
             is_uuid_projection_expression(expression) ||
             is_char_projection_expression(expression)) != 0;
 }
@@ -30495,6 +30946,8 @@ static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
@@ -30633,6 +31086,73 @@ static bool is_base64_projection_expression(const struct mylite_sql_ast_node *ex
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_weight_string_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION)) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        return false;
+    }
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument == NULL) {
+        return false;
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(argument, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+
+    switch (argument->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return true;
     default:
         return false;

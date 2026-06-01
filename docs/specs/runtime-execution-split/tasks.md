@@ -136,3 +136,21 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the eighth split.
+
+## Round 9
+
+- [x] Reinspect the remaining oversized DML planning fragment after the
+      metadata-query split.
+- [x] Select coarse INSERT, INSERT SELECT, UPDATE, SELECT, aggregate, VALUES,
+      scalar projection, and warning-helper fragments.
+- [x] Split INSERT execution, INSERT SELECT, UPDATE planning/execution, SELECT
+      planning/execution, aggregate planning/execution, scalar projection
+      queries, and related warning helpers into named fragments.
+- [x] Preserve same-translation-unit static linkage and original function
+      ordering.
+- [x] Run focused build and runtime tests.
+- [x] Review the split for missing includes, ordering drift, behavior changes,
+      and fragment naming.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [ ] Commit and push the ninth split.

@@ -62,6 +62,13 @@ mysql/sys virtual rows, INFORMATION_SCHEMA row synthesis and filtering, table
 maintenance, SHOW execution families, SHOW CREATE rendering, and result
 completion helpers.
 
+The ninth split applies the same approach to the DML planning fragment. The
+former 19k-line `mylite_execution_dml_planning.inc` also contained INSERT
+execution, INSERT ... SELECT, UPDATE execution, SELECT planning, aggregate
+planning/execution, VALUES, scalar projection SELECT execution, and scalar
+warning helpers. The split keeps those routines in the execution translation
+unit but gives each family a named fragment.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -217,8 +224,37 @@ The fragments are:
   finalization helpers.
 - `mylite_execution_ddl_planning.inc`: DDL planning, table/index/constraint
   validation, and catalog mutation helpers.
-- `mylite_execution_dml_planning.inc`: DML planning, value conversion, insert
-  row execution, duplicate-key handling, and DML validation.
+- `mylite_execution_dml_planning.inc`: INSERT/REPLACE target planning,
+  duplicate-key assignment planning, AUTO_INCREMENT planning, and planned value
+  cleanup.
+- `mylite_execution_insert_execution.inc`: INSERT/REPLACE row execution,
+  LOAD DATA row import and conversion, unique/foreign-key conflict handling,
+  and REPLACE conflicting-row deletion.
+- `mylite_execution_insert_select.inc`: INSERT ... SELECT and REPLACE ...
+  SELECT planning, materialization, row validation, and source compatibility
+  checks.
+- `mylite_execution_update_planning.inc`: single-table and joined UPDATE
+  planning, assignment planning, target validation, and executable update
+  plan setup.
+- `mylite_execution_update_execution.inc`: UPDATE execution, matched-row
+  accounting, non-strict adjustment diagnostics, parent foreign-key update
+  actions, arithmetic assignment preparation, and table AUTO_INCREMENT/mtime
+  maintenance.
+- `mylite_execution_select_planning_core.inc`: SELECT source planning, joined
+  SELECT planning, index-hint validation, row-scalar SELECT planning, and
+  SELECT plan cleanup.
+- `mylite_execution_grouped_aggregate_planning.inc`: grouped aggregate
+  planning, grouped HAVING/ORDER handling, and temporal literal conversion
+  helpers shared by grouped predicates.
+- `mylite_execution_select_execution.inc`: SELECT and row-scalar SELECT
+  execution, row-scalar result metadata, FOUND_ROWS accounting, and row-scalar
+  JSON error mapping.
+- `mylite_execution_aggregate_execution.inc`: COUNT, column aggregate, and
+  grouped aggregate execution, aggregate result metadata, and aggregate
+  result formatting.
+- `mylite_execution_scalar_projection_queries.inc`: scalar projection SELECT,
+  VALUES statement execution, scalar result metadata, session scalar warning
+  emission, SELECT modifier warnings, and function argument-count diagnostics.
 - `mylite_execution_scalar.inc`: scalar dispatch, `LAST_INSERT_ID`, `RAND`,
   and current date/time scalar core support.
 - `mylite_execution_scalar_string_core.inc`: basic string length, codepoint,

@@ -27859,6 +27859,24 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_dml_planning.inc"
 
+#include "mylite_execution_insert_execution.inc"
+
+#include "mylite_execution_insert_select.inc"
+
+#include "mylite_execution_update_planning.inc"
+
+#include "mylite_execution_update_execution.inc"
+
+#include "mylite_execution_select_planning_core.inc"
+
+#include "mylite_execution_grouped_aggregate_planning.inc"
+
+#include "mylite_execution_select_execution.inc"
+
+#include "mylite_execution_aggregate_execution.inc"
+
+#include "mylite_execution_scalar_projection_queries.inc"
+
 #include "mylite_execution_scalar.inc"
 
 #include "mylite_execution_scalar_string_core.inc"

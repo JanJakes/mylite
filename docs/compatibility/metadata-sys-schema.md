@@ -62,6 +62,9 @@ placeholders, limited read-only empty
 `sys.x$innodb_buffer_stats_by_schema` synthetic InnoDB buffer-stats-by-schema
 placeholders, limited read-only empty `sys.innodb_buffer_stats_by_table` /
 `sys.x$innodb_buffer_stats_by_table` synthetic InnoDB buffer-stats-by-table
+placeholders, limited read-only empty
+`sys.memory_by_host_by_current_bytes` /
+`sys.x$memory_by_host_by_current_bytes` synthetic host memory-allocation
 placeholders,
 limited read-only empty `sys.io_by_thread_by_latency` /
 `sys.x$io_by_thread_by_latency` synthetic thread file-I/O latency
@@ -107,8 +110,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$io_global_by_wait_by_latency` | 🟡 | Limited read-only empty raw global file-I/O wait-by-event latency view with the same metadata and unsupported behavior as `sys.io_global_by_wait_by_latency`, except latency and byte totals expose raw numeric metadata |
 | `sys.latest_file_io` | 🟡 | Limited read-only empty formatted latest file-I/O view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependencies on `INFORMATION_SCHEMA.PROCESSLIST`, `performance_schema.events_waits_history_long`, `performance_schema.global_variables`, and `performance_schema.threads`, `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` dependency on `sys.format_path`, empty constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema file-I/O wait collection, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$latest_file_io` | 🟡 | Limited read-only empty raw latest file-I/O view with the same metadata and unsupported behavior as `sys.latest_file_io`, except `latency` and `requested` expose raw numeric metadata and its dependencies omit `performance_schema.global_variables` and `sys.format_path` |
-| `sys.memory_by_host_by_current_bytes` | ❌ | View shape and diagnostics |
-| `sys.x$memory_by_host_by_current_bytes` | ❌ | View shape and diagnostics |
+| `sys.memory_by_host_by_current_bytes` | 🟡 | Limited read-only empty formatted host memory-allocation view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.memory_summary_by_host_by_event_name`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema memory-summary collection, live host memory rows, current or cumulative allocation counters, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$memory_by_host_by_current_bytes` | 🟡 | Limited read-only empty raw host memory-allocation view with the same metadata and unsupported behavior as `sys.memory_by_host_by_current_bytes`, except memory byte counters expose raw numeric metadata and `current_avg_alloc` is non-null with default `0.0000` |
 | `sys.memory_by_thread_by_current_bytes` | ❌ | View shape and diagnostics |
 | `sys.x$memory_by_thread_by_current_bytes` | ❌ | View shape and diagnostics |
 | `sys.memory_by_user_by_current_bytes` | ❌ | View shape and diagnostics |

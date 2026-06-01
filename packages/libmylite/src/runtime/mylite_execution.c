@@ -27871,6 +27871,24 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_query_planning.inc"
 
+#include "mylite_execution_row_scalar_string_planning.inc"
+
+#include "mylite_execution_row_scalar_json_planning.inc"
+
+#include "mylite_execution_row_scalar_value_planning.inc"
+
+#include "mylite_execution_row_scalar_temporal_planning.inc"
+
+#include "mylite_execution_row_scalar_misc_planning.inc"
+
+#include "mylite_execution_select_column_planning.inc"
+
+#include "mylite_execution_select_predicate_planning.inc"
+
+#include "mylite_execution_select_order_planning.inc"
+
+#include "mylite_execution_update_planning_helpers.inc"
+
 #include "mylite_execution_show_helpers.inc"
 
 #include "mylite_execution_sql_builders.inc"

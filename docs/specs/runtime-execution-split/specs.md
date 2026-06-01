@@ -50,6 +50,11 @@ scalar file. This is a mechanical split only: it preserves static linkage,
 include order, helper visibility, and runtime behavior while replacing the last
 37k-line scalar fragment with files sized for review.
 
+The seventh split applies the same approach to the query-planning fragment. It
+keeps row-scalar and SELECT/UPDATE planning in the execution translation unit,
+but divides the former 28k-line `mylite_execution_query_planning.inc` into
+coarse planner fragments with the original order and static helper visibility.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -212,8 +217,30 @@ The fragments are:
   fragment.
 - `mylite_execution_catalog_loading.inc`: runtime catalog table/column/index,
   foreign-key, and check-constraint loading helpers.
-- `mylite_execution_query_planning.inc`: row-scalar, predicate, ordering,
-  aggregate, and query planning helpers.
+- `mylite_execution_query_planning.inc`: row-scalar planning core, special
+  expression dispatch, window functions, integer arithmetic planning, temporal
+  dispatch, and JSON dispatch.
+- `mylite_execution_row_scalar_string_planning.inc`: row-scalar string and
+  regexp function planning.
+- `mylite_execution_row_scalar_json_planning.inc`: row-scalar JSON function and
+  JSON operator planning.
+- `mylite_execution_row_scalar_value_planning.inc`: row-scalar HEX, UNHEX,
+  Base64, UUID, binary string, `CHAR`, charset/collation, control-flow,
+  conversion, literal, column, concat, and `CONCAT_WS` planning.
+- `mylite_execution_row_scalar_temporal_planning.inc`: row-scalar date/time
+  formatting, temporal arithmetic, temporal extraction, constructor, period,
+  time zone, difference, UNIX timestamp, and timestamp planning.
+- `mylite_execution_row_scalar_misc_planning.inc`: row-scalar `FIELD`,
+  `GREATEST`, `LEAST`, `INTERVAL`, row-scalar cleanup, descriptor checks, and
+  expression containment helpers.
+- `mylite_execution_select_column_planning.inc`: SELECT result-column planning
+  and result metadata descriptor population.
+- `mylite_execution_select_predicate_planning.inc`: SELECT predicate planning,
+  subquery predicates, predicate conversion, and predicate value normalization.
+- `mylite_execution_select_order_planning.inc`: SELECT ORDER BY, SELECT LIMIT,
+  and DELETE LIMIT planning helpers.
+- `mylite_execution_update_planning_helpers.inc`: UPDATE assignment, UPDATE
+  value conversion, UPDATE validation, and UPDATE LIMIT planning helpers.
 - `mylite_execution_show_helpers.inc`: `SHOW` filtering, sorting, and display
   formatting helpers.
 - `mylite_execution_sql_builders.inc`: physical SQLite SQL rendering, statement

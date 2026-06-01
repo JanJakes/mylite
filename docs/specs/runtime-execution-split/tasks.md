@@ -99,3 +99,22 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the sixth split.
+
+## Round 7
+
+- [x] Reinspect the remaining oversized query-planning fragment after the
+      scalar split.
+- [x] Select coarse row-scalar and SELECT/UPDATE planning fragments as the next
+      behavior-preserving split.
+- [x] Split row-scalar string, JSON, value, temporal, and misc planning into
+      named fragments.
+- [x] Split SELECT column, predicate, order/limit, and UPDATE helper planning
+      into named fragments.
+- [x] Preserve same-translation-unit static linkage and original function
+      ordering.
+- [x] Run focused build and runtime tests.
+- [x] Review the split for missing includes, ordering drift, behavior changes,
+      and fragment naming.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the seventh split.

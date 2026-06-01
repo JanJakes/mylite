@@ -36,6 +36,13 @@ module family. The catalog data is immutable and has a narrow accessor surface,
 so this split can use true translation-unit boundaries without changing runtime
 execution state, planner helper linkage, or SQLite integration behavior.
 
+The fifth split moves JSON session-scalar built-in function evaluation from the
+scalar implementation fragment into `mylite_execution_scalar_json`. This is the
+first true module extraction from the scalar fragment. It uses a deliberately
+small internal scalar execution header for the shared scalar cell type, JSON
+mutation kind, JSON scalar entry points, and execution helper wrappers needed
+for AST traversal, nested scalar evaluation, and MySQL-compatible diagnostics.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -182,6 +189,39 @@ Fragment boundaries should remain coarse and logical. New work may move a
 fragment into a real `.c` module only after the required private helper surface
 is narrow enough to be reviewed as an intentional internal API.
 
+### `mylite_execution_scalar_json`
+
+The JSON scalar module owns session-scalar implementations for:
+
+- `JSON_VALID`
+- `JSON_EXTRACT`
+- `JSON_VALUE`
+- `JSON_CONTAINS`
+- `JSON_CONTAINS_PATH`
+- `JSON_LENGTH`
+- `JSON_KEYS`
+- `JSON_TYPE`
+- `JSON_QUOTE`
+- `JSON_UNQUOTE`
+- `JSON_ARRAY`
+- `JSON_OBJECT`
+- `JSON_SET`
+- `JSON_INSERT`
+- `JSON_REPLACE`
+- `JSON_REMOVE`
+
+The module may call a small internal execution helper surface for:
+
+- AST child access and parenthesis unwrapping.
+- Generic nested scalar expression evaluation.
+- Unsigned integer literal parsing used by JSON constructor integer support.
+- MySQL-compatible diagnostics and JSON warning/error mapping.
+
+The module must not own row-scalar SQL rendering, row-scalar planning, generic
+session-scalar dispatch, or non-JSON scalar function families. The exported
+entry points are internal to the `mylite` static library and remain outside the
+public MyLite ABI.
+
 ## Compatibility requirements
 
 - Existing MySQL 8.4.9-shaped metadata must be byte-for-byte equivalent at the
@@ -198,6 +238,9 @@ is narrow enough to be reviewed as an intentional internal API.
 - Metadata SELECT and SHOW result columns, row order, warnings, errors,
   SQLSTATEs, and placeholder rows must remain identical to the previous runtime
   behavior.
+- JSON scalar function result values, NULL handling, unsupported-shape errors,
+  warnings, SQLSTATEs, and parameter-count diagnostics must remain identical to
+  the previous scalar fragment behavior.
 
 ## Implementation plan
 

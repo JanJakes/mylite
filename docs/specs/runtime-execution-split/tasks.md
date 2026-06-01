@@ -62,5 +62,23 @@
 - [x] Review the split for behavior preservation, module ownership, and
       maintenance risk.
 - [x] Fix review findings.
-- [ ] Run `git diff --check`, staged diff check, and full check workflow.
-- [ ] Commit and push the fourth split.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fourth split.
+
+## Round 5
+
+- [x] Reinspect true-module candidates after the parser test split.
+- [x] Select JSON session-scalar functions as a narrow first scalar extraction.
+- [x] Add an internal scalar execution header for scalar cells, JSON mutation
+      kinds, JSON scalar entry points, and helper wrappers.
+- [x] Move JSON session-scalar function implementations into
+      `mylite_execution_scalar_json`.
+- [x] Keep non-JSON scalar dispatch and row-scalar planning in the existing
+      scalar fragment.
+- [x] Register the JSON scalar source in CMake.
+- [x] Run focused build and JSON/runtime tests.
+- [x] Review the split for helper-surface width, behavior preservation, and
+      compile/tidy impact.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifth split.

@@ -6550,7 +6550,7 @@ static int plan_row_scalar_json_valid_argument(
         session_scalar_cell_deinit(&cell);
         return rc;
     }
-    if (!json_valid_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_scalar_json_valid_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "JSON_VALID() supports only string, integer, boolean, NULL, limited binary cast, and "
@@ -6710,7 +6710,7 @@ static int plan_row_scalar_json_contains_path_expression(
         set_native_function_parameter_count_error(database, "JSON_CONTAINS_PATH");
         return MYLITE_ERROR;
     }
-    rc = collect_json_function_arguments(
+    rc = mylite_execution_scalar_json_collect_function_arguments(
         database,
         expression,
         "JSON_CONTAINS_PATH",
@@ -7167,7 +7167,7 @@ static int plan_row_scalar_json_array_expression(
         set_native_function_parameter_count_error(database, "JSON_ARRAY");
         return MYLITE_ERROR;
     }
-    rc = collect_json_function_arguments(
+    rc = mylite_execution_scalar_json_collect_function_arguments(
         database,
         expression,
         "JSON_ARRAY",
@@ -7237,7 +7237,7 @@ static int plan_row_scalar_json_object_expression(
         set_native_function_parameter_count_error(database, "JSON_OBJECT");
         return MYLITE_ERROR;
     }
-    rc = collect_json_function_arguments(
+    rc = mylite_execution_scalar_json_collect_function_arguments(
         database,
         expression,
         "JSON_OBJECT",
@@ -7313,7 +7313,7 @@ static int plan_row_scalar_json_set_expression(
         set_native_function_parameter_count_error(database, function_name);
         return MYLITE_ERROR;
     }
-    rc = collect_json_function_arguments(
+    rc = mylite_execution_scalar_json_collect_function_arguments(
         database,
         expression,
         function_name,
@@ -7323,7 +7323,7 @@ static int plan_row_scalar_json_set_expression(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = require_json_mutation_argument_count(
+    rc = mylite_execution_scalar_json_require_mutation_argument_count(
         database,
         argument_count,
         function_name,
@@ -8302,7 +8302,7 @@ static int plan_row_scalar_json_path_argument(
     rc = plan_row_scalar_literal_value(database, expression, &planned);
     if (rc == MYLITE_OK && !planned.value.is_null) {
         rc = mylite_json_path_validate(planned.value.text, planned.value.text_length, &result);
-        rc = finish_json_path_scalar_result(database, rc, &result);
+        rc = mylite_execution_scalar_json_finish_path_result(database, rc, &result);
     }
     if (rc == MYLITE_OK) {
         *out_expression = planned;
@@ -8336,7 +8336,7 @@ static int plan_row_scalar_json_value_path_argument(
     rc = plan_row_scalar_literal_value(database, expression, &planned);
     if (rc == MYLITE_OK) {
         rc = mylite_json_path_validate(planned.value.text, planned.value.text_length, &result);
-        rc = finish_json_path_scalar_result(database, rc, &result);
+        rc = mylite_execution_scalar_json_finish_path_result(database, rc, &result);
     }
     if (rc == MYLITE_OK) {
         *out_expression = planned;
@@ -8517,7 +8517,7 @@ static int plan_row_scalar_json_length_path_argument(
     rc = plan_row_scalar_literal_value(database, expression, &planned);
     if (rc == MYLITE_OK && !planned.value.is_null) {
         rc = mylite_json_path_validate(planned.value.text, planned.value.text_length, &result);
-        rc = finish_json_length_path_scalar_result(database, rc, &result);
+        rc = mylite_execution_scalar_json_finish_length_path_result(database, rc, &result);
     }
     if (rc == MYLITE_OK) {
         *out_expression = planned;
@@ -8552,7 +8552,7 @@ static int plan_row_scalar_json_keys_path_argument(
     rc = plan_row_scalar_literal_value(database, expression, &planned);
     if (rc == MYLITE_OK && !planned.value.is_null) {
         rc = mylite_json_path_validate(planned.value.text, planned.value.text_length, &result);
-        rc = finish_json_keys_path_scalar_result(database, rc, &result);
+        rc = mylite_execution_scalar_json_finish_keys_path_result(database, rc, &result);
     }
     if (rc == MYLITE_OK) {
         *out_expression = planned;

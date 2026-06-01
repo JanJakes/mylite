@@ -10,6 +10,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_scalar.h"
 #include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
@@ -284,7 +285,7 @@ enum {
     temporal_predicate_offset_text_length = 6,
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
-    integer_text_capacity = 32,
+    integer_text_capacity = mylite_execution_scalar_integer_text_capacity,
     index_display_group_primary = 0,
     index_display_group_not_null_unique = 1,
     index_display_group_nullable_unique = 2,
@@ -295,7 +296,7 @@ enum {
     update_unique_internal_key_alias_capacity = sizeof("_mylite_key_") + integer_text_capacity,
     duplicate_key_value_display_length = 64,
     literal_projection_max_significant_digits = 81,
-    literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
+    literal_projection_text_capacity = mylite_execution_scalar_literal_projection_text_capacity,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
     generated_default_display_text_capacity = (MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY * 2) + 16,
     base64_invalid_message_capacity = 64,
@@ -320,7 +321,7 @@ enum {
     date_second_separator_offset = 7,
     date_day_text_offset = 8,
     date_day_text_length = 2,
-    datetime_text_length = 19,
+    datetime_text_length = mylite_execution_scalar_datetime_text_length,
     datetime_date_text_length = 10,
     timestamp_2_text_length = 22,
     datetime_date_time_separator_offset = 10,
@@ -676,7 +677,7 @@ enum {
     base_conversion_octal_base = 8,
     base_conversion_hexadecimal_base = 16,
     base_conversion_max_base = 36,
-    base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
+    base_conversion_text_capacity = mylite_execution_scalar_base_conversion_text_capacity,
     mysql_collation_binary_id = 63,
     mysql_collation_utf8mb3_general_ci_id = 33,
     mysql_collation_utf8mb3_bin_id = 83,
@@ -707,7 +708,7 @@ enum {
     mysql_calendar_name_function_display_length = 9,
     mysql_regexp_string_function_display_length = 4096,
     double_text_max_significant_digits = 17,
-    double_text_capacity = 32,
+    double_text_capacity = mylite_execution_scalar_double_text_capacity,
     scalar_exact_decimal_part_capacity = literal_projection_max_significant_digits + 1,
     scalar_format_max_decimals = 30,
     crc32_bits_per_byte = 8,
@@ -2621,13 +2622,6 @@ enum {
     string_bitmask_make_set_min_argument_count = 2,
 };
 
-enum planned_json_mutation_kind {
-    PLANNED_JSON_MUTATION_SET = 0,
-    PLANNED_JSON_MUTATION_REPLACE = 1,
-    PLANNED_JSON_MUTATION_INSERT = 2,
-    PLANNED_JSON_MUTATION_REMOVE = 3,
-};
-
 enum planned_charset_collation_function_kind {
     PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
     PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
@@ -3615,28 +3609,6 @@ struct collect_drop_schema_tables_context {
     struct planned_drop_schema *plan;
 };
 
-struct session_scalar_cell {
-    const char *value;
-    char *owned_text;
-    size_t value_size;
-    size_t staged_division_by_zero_warning_count;
-    size_t staged_invalid_logarithm_warning_count;
-    const char *staged_truncated_integer_text;
-    size_t staged_signed_complement_warning_count;
-    size_t staged_unsigned_complement_warning_count;
-    bool has_value_size;
-    bool has_staged_truncated_integer_warning;
-    bool has_staged_truncated_decimal_warning;
-    bool has_staged_unhex_incorrect_string_warning;
-    char datetime_text[datetime_text_length + 1U];
-    char integer_text[integer_text_capacity];
-    char double_text[double_text_capacity];
-    char base_conversion_text[base_conversion_text_capacity];
-    char literal_text[literal_projection_text_capacity];
-    char staged_truncated_decimal_text[literal_projection_text_capacity];
-    char staged_unhex_incorrect_string_text[literal_projection_text_capacity];
-};
-
 struct string_bitmask_scalar_text_argument {
     struct mylite_string_bitmask_slice slice;
     struct session_scalar_cell cell;
@@ -3654,32 +3626,6 @@ struct prepared_statement_expanded_sql {
     char *text;
     size_t text_size;
     size_t parameter_count;
-};
-
-struct json_object_function_buffers {
-    struct mylite_json_sql_value *keys;
-    struct mylite_json_sql_value *values;
-    char **owned_texts;
-    size_t owned_text_count;
-};
-
-struct json_set_function_buffers {
-    char **owned_paths;
-    const char **paths;
-    size_t *path_lengths;
-    struct mylite_json_sql_value *values;
-    char **owned_value_texts;
-    size_t pair_count;
-    bool force_null;
-};
-
-struct json_contains_path_scalar_buffers {
-    char **owned_paths;
-    const char **paths;
-    size_t *path_lengths;
-    size_t path_count;
-    size_t admitted_path_count;
-    bool force_null;
 };
 
 struct scalar_exact_decimal {
@@ -12013,385 +11959,6 @@ static int utc_timestamp_scalar_value(
 );
 static int utc_date_scalar_value(struct mylite_db *database, struct session_scalar_cell *out_cell);
 static int utc_time_scalar_value(struct mylite_db *database, struct session_scalar_cell *out_cell);
-static int json_valid_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_json_valid_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null,
-    bool *out_is_binary
-);
-static bool json_valid_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static int json_extract_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_value_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_contains_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_contains_path_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int allocate_json_contains_path_scalar_buffers(
-    struct mylite_db *database,
-    size_t path_count,
-    struct json_contains_path_scalar_buffers *out_buffers
-);
-static int decode_json_contains_path_scalar_paths(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *first_path,
-    struct json_contains_path_scalar_buffers *buffers
-);
-static int format_json_search_scalar_result(
-    struct mylite_db *database,
-    int64_t contains,
-    const char *failure_message,
-    struct session_scalar_cell *out_cell
-);
-static void json_contains_path_scalar_buffers_deinit(
-    struct json_contains_path_scalar_buffers *buffers
-);
-static int json_length_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_keys_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_type_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_quote_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_unquote_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_mutation_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    enum mylite_sql_ast_node_kind expected_kind,
-    const char *function_name,
-    enum planned_json_mutation_kind mutation_kind,
-    struct session_scalar_cell *out_cell
-);
-static int require_json_mutation_argument_count(
-    struct mylite_db *database,
-    size_t argument_count,
-    const char *function_name,
-    enum planned_json_mutation_kind mutation_kind
-);
-static size_t json_mutation_path_count(
-    enum planned_json_mutation_kind mutation_kind,
-    size_t argument_count
-);
-static int evaluate_json_mutation_scalar_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *first_argument,
-    const char *function_name,
-    enum planned_json_mutation_kind mutation_kind,
-    struct json_set_function_buffers *buffers
-);
-static int apply_json_mutation_scalar_function(
-    enum planned_json_mutation_kind mutation_kind,
-    struct json_set_function_buffers *buffers,
-    const char *document,
-    size_t document_length,
-    char **out_result_text,
-    size_t *out_result_length,
-    struct mylite_json_normalize_result *out_result
-);
-static int json_set_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_insert_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_replace_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_remove_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static bool is_json_mutation_function_expression(const struct mylite_sql_ast_node *expression);
-static int json_mutation_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_set_document_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_array_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int json_object_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int allocate_json_object_function_buffers(
-    struct mylite_db *database,
-    size_t argument_count,
-    size_t pair_count,
-    struct json_object_function_buffers *out_buffers
-);
-static void free_json_object_function_buffers(struct json_object_function_buffers *buffers);
-static int evaluate_json_object_scalar_pairs(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *arguments,
-    size_t pair_count,
-    struct json_object_function_buffers *buffers
-);
-static int allocate_json_set_function_buffers(
-    struct mylite_db *database,
-    size_t pair_count,
-    struct json_set_function_buffers *out_buffers
-);
-static int evaluate_json_set_scalar_pairs(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *first_pair_argument,
-    size_t pair_count,
-    const char *function_name,
-    struct json_set_function_buffers *buffers
-);
-static int evaluate_json_remove_scalar_paths(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *first_path_argument,
-    size_t path_count,
-    const char *function_name,
-    struct json_set_function_buffers *buffers
-);
-static int json_set_path_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_json_set_scalar_value_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct mylite_json_sql_value *out_value,
-    char **out_owned_text
-);
-static int evaluate_json_set_json_function_value_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct mylite_json_sql_value *out_value,
-    char **out_owned_text
-);
-static int json_set_json_extract_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static void free_json_set_function_buffers(struct json_set_function_buffers *buffers);
-static int collect_json_function_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    const struct mylite_sql_ast_node **out_arguments,
-    size_t *out_argument_count
-);
-static int evaluate_json_constructor_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct mylite_json_sql_value *out_value,
-    char **out_owned_text
-);
-static int json_constructor_integer_literal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_value
-);
-static int json_extract_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_introspection_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    const char *function_name,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_path_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_value_path_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length
-);
-static int json_contains_path_one_or_all_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool *out_require_all,
-    bool *out_is_null
-);
-static int json_length_path_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_keys_path_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_unquote_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int json_quote_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int finish_json_extract_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_value_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result,
-    bool allow_invalid_document_warning
-);
-static int finish_json_length_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_keys_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_type_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_path_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_contains_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_contains_path_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_set_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result,
-    const char *function_name
-);
-static int finish_json_length_path_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_keys_path_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_unquote_scalar_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
-static int finish_json_construction_result(
-    struct mylite_db *database,
-    int rc,
-    const struct mylite_json_normalize_result *result
-);
 static int string_length_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -28093,6 +27660,173 @@ static int finish_parse_failure(
 
     snapshot_rc = snapshot_current_diagnostics(database);
     return snapshot_rc == MYLITE_OK ? rc : snapshot_rc;
+}
+
+const struct mylite_sql_ast_node *mylite_execution_child_at(
+    const struct mylite_sql_ast_node *node,
+    size_t index
+) {
+    return child_at(node, index);
+}
+
+const struct mylite_sql_ast_node *mylite_execution_unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    return unwrap_parenthesized_expression(expression);
+}
+
+int mylite_execution_parse_unsigned_integer_literal(
+    const struct mylite_sql_source_span *span,
+    uint64_t *out_value
+) {
+    return parse_unsigned_integer_literal(span, out_value);
+}
+
+int mylite_execution_decode_sql_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    const char *unsupported_message,
+    const char *nul_message,
+    char **out_text,
+    size_t *out_text_length
+) {
+    return decode_sql_string_literal(
+        database,
+        literal_node,
+        unsupported_message,
+        nul_message,
+        out_text,
+        out_text_length
+    );
+}
+
+int mylite_execution_cast_binary_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return cast_binary_value(database, expression, out_cell);
+}
+
+int mylite_execution_convert_binary_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return convert_binary_type_value(database, expression, out_cell);
+}
+
+int mylite_execution_convert_using_binary_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return convert_using_binary_value(database, expression, out_cell);
+}
+
+void mylite_execution_set_parse_error(struct mylite_db *database) {
+    set_parse_error(database, NULL);
+}
+
+void mylite_execution_set_unsupported_error(struct mylite_db *database, const char *message) {
+    set_unsupported_error(database, message);
+}
+
+void mylite_execution_set_native_function_parameter_count_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    set_native_function_parameter_count_error(database, function_name);
+}
+
+void mylite_execution_set_invalid_json_function_text_error(
+    struct mylite_db *database,
+    size_t position
+) {
+    set_invalid_json_function_text_error(database, position);
+}
+
+int mylite_execution_append_invalid_json_value_warning(
+    struct mylite_db *database,
+    const struct mylite_json_normalize_result *result
+) {
+    return append_invalid_json_value_warning(database, result);
+}
+
+void mylite_execution_set_invalid_json_path_error(struct mylite_db *database, size_t position) {
+    set_invalid_json_path_error(database, position);
+}
+
+void mylite_execution_set_json_path_not_allowed_error(struct mylite_db *database) {
+    set_json_path_not_allowed_error(database);
+}
+
+void mylite_execution_set_invalid_json_data_type_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    set_invalid_json_data_type_error(database, function_name);
+}
+
+void mylite_execution_set_invalid_json_one_or_all_error(struct mylite_db *database) {
+    set_invalid_json_one_or_all_error(database);
+}
+
+void mylite_execution_set_json_unquote_incorrect_type_error(struct mylite_db *database) {
+    set_json_unquote_incorrect_type_error(database);
+}
+
+void mylite_execution_set_json_quote_incorrect_type_error(struct mylite_db *database) {
+    set_json_quote_incorrect_type_error(database);
+}
+
+void mylite_execution_set_json_binary_charset_error(struct mylite_db *database) {
+    set_json_binary_charset_error(database);
+}
+
+void mylite_execution_set_json_null_member_name_error(struct mylite_db *database) {
+    set_json_null_member_name_error(database);
+}
+
+bool mylite_execution_text_equals_ascii_case_insensitive(const char *left, const char *right) {
+    return text_equals_ascii_case_insensitive(left, right);
+}
+
+int mylite_execution_set_unknown_column_reference_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            column_name,
+            sizeof(column_name)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    set_unknown_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
+void mylite_execution_set_nomem_error(struct mylite_db *database) {
+    set_nomem_error(database);
+}
+
+void mylite_execution_set_runtime_error(struct mylite_db *database, const char *message) {
+    set_runtime_error(database, message);
+}
+
+void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cell) {
+    session_scalar_cell_deinit(cell);
 }
 
 #include "mylite_execution_statement_core.inc"

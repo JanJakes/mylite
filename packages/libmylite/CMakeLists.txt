@@ -3013,6 +3013,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_diagnostics_count_variables_test)
 
+  add_executable(mylite_runtime_diagnostics_code_order_test
+    tests/runtime_diagnostics_code_order_test.c
+  )
+  target_link_libraries(mylite_runtime_diagnostics_code_order_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_diagnostics_code_order_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_diagnostics_code_order_test)
+
   add_executable(mylite_runtime_autocommit_system_variable_test
     tests/runtime_autocommit_system_variable_test.c
   )
@@ -6234,6 +6245,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.diagnostics_count_variables
     COMMAND mylite_runtime_diagnostics_count_variables_test
+  )
+  add_test(
+    NAME libmylite.runtime.diagnostics_code_order
+    COMMAND mylite_runtime_diagnostics_code_order_test
   )
   add_test(
     NAME libmylite.runtime.autocommit_system_variable

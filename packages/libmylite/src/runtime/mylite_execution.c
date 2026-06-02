@@ -13,6 +13,7 @@
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_scalar.h"
+#include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
@@ -40,6 +41,7 @@
 #include "mylite_string_substring_index.h"
 #include "mylite_string_trim.h"
 #include "mylite_string_unhex.h"
+#include "mylite_temporal_arithmetic.h"
 #include "mylite_temporal_constructor.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_timediff.h"
@@ -3464,32 +3466,6 @@ struct greatest_least_scalar_selection {
     size_t argument_count;
     enum planned_row_scalar_field_domain domain;
     bool is_greatest;
-};
-
-struct date_add_datetime_parts {
-    int64_t year;
-    uint32_t month;
-    uint32_t day;
-    uint32_t hour;
-    uint32_t minute;
-    uint32_t second;
-};
-
-struct date_add_day_second {
-    int64_t days;
-    int64_t day_seconds;
-};
-
-enum scalar_time_arithmetic_input_kind {
-    SCALAR_TIME_ARITHMETIC_INPUT_NULL = 0,
-    SCALAR_TIME_ARITHMETIC_INPUT_TIME = 1,
-    SCALAR_TIME_ARITHMETIC_INPUT_DATETIME = 2,
-};
-
-struct scalar_time_arithmetic_input {
-    enum scalar_time_arithmetic_input_kind kind;
-    int64_t time_seconds;
-    struct date_add_datetime_parts datetime;
 };
 
 struct scalar_arithmetic_operation {
@@ -12214,358 +12190,6 @@ static int format_unsigned_magnitude_value(
     struct session_scalar_cell *out_cell
 );
 static bool scalar_integer_cast_is_ascii_space(unsigned char byte);
-static int date_interval_second_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int date_interval_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int addtime_subtime_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int date_format_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int get_format_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int time_format_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int str_to_date_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int date_format_function_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_value,
-    size_t *out_value_length,
-    bool *out_value_is_null,
-    char **out_format,
-    size_t *out_format_length,
-    bool *out_format_is_null
-);
-static int time_format_function_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_value,
-    size_t *out_value_length,
-    bool *out_value_is_null,
-    char **out_format,
-    size_t *out_format_length,
-    bool *out_format_is_null
-);
-static int str_to_date_function_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_value,
-    size_t *out_value_length,
-    bool *out_value_is_null,
-    char **out_format,
-    size_t *out_format_length,
-    bool *out_format_is_null
-);
-static int date_format_string_or_null_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_message,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int get_format_string_or_null_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_message,
-    const char *literal_nul_message,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int get_format_literal_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int get_format_copy_mapped_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *class_node,
-    const char *format_text,
-    size_t format_text_length,
-    struct session_scalar_cell *out_cell
-);
-static const char *get_format_lookup(
-    const struct mylite_sql_source_span *class_span,
-    const char *format_text,
-    size_t format_text_length
-);
-static size_t get_format_class_index(const struct mylite_sql_source_span *class_span);
-static size_t get_format_name_index(const char *format_text, size_t format_text_length);
-static bool span_text_equals_ascii_case_insensitive(
-    const struct mylite_sql_source_span *span,
-    const char *text
-);
-static bool bytes_text_equals_ascii_case_insensitive(
-    const char *left,
-    size_t left_length,
-    const char *right
-);
-static int str_to_date_string_or_null_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_message,
-    const char *literal_nul_message,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression);
-static bool str_to_date_child_is_identifier_reference(const struct mylite_sql_ast_node *expression);
-static int str_to_date_set_unknown_identifier_reference(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static int time_format_string_or_null_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_message,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int date_format_numeric_equal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static bool is_date_format_numeric_equal_expression(const struct mylite_sql_ast_node *expression);
-static int date_format_numeric_literal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    double *out_value
-);
-static bool date_format_numeric_equal_format_is_supported(const char *format, size_t format_length);
-static bool is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind kind);
-static const char *date_interval_second_function_name(enum mylite_sql_ast_node_kind kind);
-static bool date_interval_second_function_subtracts(enum mylite_sql_ast_node_kind kind);
-static int validate_date_interval_second_function_shape(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name
-);
-static int timestampadd_second_unit_from_ast(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *unit
-);
-static int date_interval_unit_from_ast(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *unit_node,
-    const char *function_name,
-    enum mylite_date_interval_unit *out_unit
-);
-static const struct mylite_sql_ast_node *date_interval_second_temporal_node(
-    const struct mylite_sql_ast_node *expression
-);
-static const struct mylite_sql_ast_node *date_interval_second_interval_node(
-    const struct mylite_sql_ast_node *expression
-);
-static const struct mylite_sql_ast_node *date_interval_unit_node(
-    const struct mylite_sql_ast_node *expression
-);
-static int set_date_interval_second_unsupported_error(
-    struct mylite_db *database,
-    const char *function_name,
-    const char *suffix
-);
-static int set_date_interval_second_unsupported_shape_error(
-    struct mylite_db *database,
-    const char *function_name
-);
-static bool date_interval_second_message(
-    char *buffer,
-    size_t buffer_size,
-    const char *function_name,
-    const char *suffix
-);
-static bool is_time_arithmetic_function_kind(enum mylite_sql_ast_node_kind kind);
-static const char *time_arithmetic_function_name(enum mylite_sql_ast_node_kind kind);
-static bool time_arithmetic_function_subtracts(enum mylite_sql_ast_node_kind kind);
-static int set_time_arithmetic_unsupported_error(
-    struct mylite_db *database,
-    const char *function_name,
-    const char *suffix
-);
-static bool time_arithmetic_message(
-    char *buffer,
-    size_t buffer_size,
-    const char *function_name,
-    const char *suffix
-);
-static int time_arithmetic_first_argument(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_time_arithmetic_input *out_input
-);
-static int time_arithmetic_second_argument(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_time_arithmetic_input *out_input
-);
-static int time_arithmetic_decode_string_argument(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_suffix,
-    char **out_text,
-    size_t *out_text_length
-);
-static int time_arithmetic_apply_datetime(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct scalar_time_arithmetic_input *first,
-    int64_t second_seconds,
-    struct session_scalar_cell *out_cell
-);
-static int time_arithmetic_apply_time(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct scalar_time_arithmetic_input *first,
-    int64_t second_seconds,
-    struct session_scalar_cell *out_cell
-);
-static int time_arithmetic_format_time(
-    struct mylite_db *database,
-    const char *function_name,
-    int64_t seconds,
-    struct session_scalar_cell *out_cell
-);
-static bool time_arithmetic_seconds_in_range(int64_t seconds);
-static int date_interval_second_temporal_argument(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct mylite_sql_ast_node *expression,
-    struct date_add_datetime_parts *out_datetime,
-    bool *out_has_time,
-    bool *out_is_null
-);
-static int date_interval_second_interval_argument(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct mylite_sql_ast_node *expression,
-    enum mylite_date_interval_unit unit,
-    int64_t *out_interval,
-    bool *out_is_null
-);
-static const char *date_interval_literal_support_text(const char *function_name);
-static int set_date_interval_argument_support_error(
-    struct mylite_db *database,
-    const char *function_name,
-    enum mylite_date_interval_unit unit
-);
-static int set_date_interval_argument_range_error(
-    struct mylite_db *database,
-    const char *function_name,
-    enum mylite_date_interval_unit unit
-);
-static bool date_add_parse_datetime_text(
-    const char *text,
-    size_t text_length,
-    struct date_add_datetime_parts *out_datetime
-);
-static int date_interval_apply(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct date_add_datetime_parts *input,
-    int64_t interval_value,
-    enum mylite_date_interval_unit unit,
-    struct date_add_datetime_parts *out_datetime
-);
-static int date_interval_apply_calendar_months(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct date_add_datetime_parts *input,
-    int64_t interval_months,
-    struct date_add_datetime_parts *out_datetime
-);
-static int date_interval_second_apply(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct date_add_datetime_parts *input,
-    int64_t interval_seconds,
-    struct date_add_datetime_parts *out_datetime
-);
-static int date_interval_format(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct date_add_datetime_parts *datetime,
-    bool result_has_time,
-    struct session_scalar_cell *out_cell
-);
-static int date_interval_second_format(
-    struct mylite_db *database,
-    const char *function_name,
-    const struct date_add_datetime_parts *datetime,
-    struct session_scalar_cell *out_cell
-);
-static int date_add_signed_integer_expression(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    int64_t *out_value,
-    bool *out_matched,
-    bool *out_out_of_range
-);
-static bool date_add_signed_integer_literal(
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_value,
-    bool *out_out_of_range
-);
-static int date_add_signed_integer_string_literal(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_value,
-    bool *out_matched,
-    bool *out_out_of_range
-);
-static int date_add_set_unknown_identifier_error(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static bool date_add_copy_identifier_span_text(
-    const struct mylite_sql_source_span *span,
-    char *destination,
-    size_t destination_size
-);
-static bool date_add_checked_add_int64(int64_t left, int64_t right, int64_t *out_value);
-static bool date_add_checked_multiply_int64(int64_t left, int64_t right, int64_t *out_value);
-static bool date_interval_add_calendar_months(
-    const struct date_add_datetime_parts *input,
-    int64_t interval_months,
-    struct date_add_datetime_parts *out_datetime
-);
-static uint32_t date_interval_days_in_month(int64_t year, uint32_t month);
-static int64_t date_add_seconds_per_day(void);
-static int64_t date_add_days_from_datetime(const struct date_add_datetime_parts *datetime);
-static void date_add_civil_from_days(int64_t days, struct date_add_datetime_parts *out_datetime);
-static struct date_add_day_second date_add_floor_divmod_seconds(int64_t total_seconds);
 static int evaluate_bit_count_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -17308,7 +16932,6 @@ static bool predicate_timestamp_text_admitted(
     const char *text,
     size_t text_length
 );
-static bool date_text_is_canonical_valid(const char *text, size_t text_length);
 static bool date_text_has_canonical_shape(const char *text, size_t text_length);
 static bool date_text_is_zero_date(const char *text, size_t text_length);
 static bool time_text_is_canonical_valid(const char *text, size_t text_length);
@@ -18875,11 +18498,14 @@ static bool normalize_z_temporal_predicate_text(
 );
 static bool parse_temporal_predicate_offset(const char *text, int *out_offset_minutes);
 static bool shift_datetime_parts_by_minutes(
-    const struct date_add_datetime_parts *parts,
+    const struct mylite_temporal_datetime_parts *parts,
     int delta_minutes,
     char *out_text
 );
-static bool format_datetime_parts_text(const struct date_add_datetime_parts *parts, char *out_text);
+static bool format_datetime_parts_text(
+    const struct mylite_temporal_datetime_parts *parts,
+    char *out_text
+);
 static int convert_integer_for_predicate(
     struct mylite_db *database,
     uint64_t magnitude,
@@ -21583,11 +21209,6 @@ static int plan_row_scalar_timestampdiff_string_literal(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static bool row_scalar_date_format_numeric_equal_sides(
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node **out_date_format,
-    const struct mylite_sql_ast_node **out_numeric
-);
 static int plan_row_scalar_unix_timestamp_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -21816,7 +21437,6 @@ static enum planned_row_scalar_expression_kind temporal_constructor_planned_kind
 );
 static bool is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_date_format_equal_attempt(const struct mylite_sql_ast_node *expression);
-static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_node *expression);
 static int plan_row_scalar_date_format_numeric_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -26200,7 +25820,53 @@ int mylite_execution_date_add_set_unknown_identifier_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 ) {
-    return date_add_set_unknown_identifier_error(database, expression);
+    const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
+    const char *source = NULL;
+    size_t source_size = 0U;
+    size_t destination_index = 0U;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+
+    if (span == NULL || span->text == NULL || span->length == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    source = span->text;
+    source_size = span->length;
+    if (source[0] != '`' && source[0] != '"') {
+        if (source_size >= sizeof(column_name)) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        memcpy(column_name, source, source_size);
+        column_name[source_size] = '\0';
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (source_size < 2U || source[source_size - 1U] != source[0]) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    for (size_t source_index = 1U; source_index + 1U < source_size; ++source_index) {
+        if (destination_index + 1U >= sizeof(column_name)) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        if (source[source_index] == source[0] && source[source_index + 1U] == source[0]) {
+            column_name[destination_index] = source[0];
+            ++source_index;
+        } else {
+            column_name[destination_index] = source[source_index];
+        }
+        ++destination_index;
+    }
+    if (destination_index == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    column_name[destination_index] = '\0';
+    set_unknown_column_error(database, column_name);
+    return MYLITE_ERROR;
 }
 
 size_t mylite_execution_temporal_constructor_function_argument_count(

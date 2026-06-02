@@ -5516,7 +5516,7 @@ static bool normalize_iso_temporal_predicate_text(
     const struct temporal_predicate_normalization_input *input,
     char *out_text
 ) {
-    struct date_add_datetime_parts parts = {0};
+    struct mylite_temporal_datetime_parts parts = {0};
     int source_offset_minutes = 0;
 
     if (input == NULL || input->text == NULL || out_text == NULL) {
@@ -5538,7 +5538,7 @@ static bool normalize_iso_temporal_predicate_text(
     memcpy(out_text, input->text, datetime_text_length);
     out_text[datetime_date_time_separator_offset] = ' ';
     out_text[datetime_text_length] = '\0';
-    if (!date_add_parse_datetime_text(out_text, datetime_text_length, &parts)) {
+    if (!mylite_temporal_arithmetic_parse_datetime_text(out_text, datetime_text_length, &parts)) {
         return false;
     }
     if (!parse_temporal_predicate_offset(
@@ -5625,13 +5625,13 @@ static bool parse_temporal_predicate_offset(const char *text, int *out_offset_mi
 }
 
 static bool shift_datetime_parts_by_minutes(
-    const struct date_add_datetime_parts *parts,
+    const struct mylite_temporal_datetime_parts *parts,
     int delta_minutes,
     char *out_text
 ) {
-    const int64_t seconds_per_day = date_add_seconds_per_day();
-    struct date_add_day_second shifted = {0};
-    struct date_add_datetime_parts output = {0};
+    const int64_t seconds_per_day = mylite_temporal_arithmetic_seconds_per_day();
+    struct mylite_temporal_day_second shifted = {0};
+    struct mylite_temporal_datetime_parts output = {0};
     int64_t days = 0;
     int64_t day_seconds = 0;
     int64_t base_seconds = 0;
@@ -5642,12 +5642,12 @@ static bool shift_datetime_parts_by_minutes(
         return false;
     }
 
-    days = date_add_days_from_datetime(parts);
+    days = mylite_temporal_arithmetic_days_from_datetime(parts);
     day_seconds = ((int64_t)parts->hour * (int64_t)time_second_per_hour) +
                   ((int64_t)parts->minute * (int64_t)time_second_per_minute) +
                   (int64_t)parts->second;
     base_seconds = (days * seconds_per_day) + day_seconds;
-    if (!date_add_checked_add_int64(
+    if (!mylite_temporal_arithmetic_checked_add_int64(
             base_seconds,
             (int64_t)delta_minutes * time_zone_seconds_per_minute,
             &shifted_seconds
@@ -5655,8 +5655,8 @@ static bool shift_datetime_parts_by_minutes(
         return false;
     }
 
-    shifted = date_add_floor_divmod_seconds(shifted_seconds);
-    date_add_civil_from_days(shifted.days, &output);
+    shifted = mylite_temporal_arithmetic_floor_divmod_seconds(shifted_seconds);
+    mylite_temporal_arithmetic_civil_from_days(shifted.days, &output);
     if (output.year < date_minimum_year || output.year > date_maximum_year) {
         return false;
     }
@@ -5670,7 +5670,7 @@ static bool shift_datetime_parts_by_minutes(
 }
 
 static bool format_datetime_parts_text(
-    const struct date_add_datetime_parts *parts,
+    const struct mylite_temporal_datetime_parts *parts,
     char *out_text
 ) {
     int written = 0;

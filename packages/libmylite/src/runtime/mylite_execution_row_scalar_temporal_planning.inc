@@ -58,7 +58,7 @@ static int plan_row_scalar_get_format_expression(
     struct planned_row_scalar_expression *out_expression
 ) {
     struct session_scalar_cell cell = {0};
-    int rc = get_format_function_value(database, expression, &cell);
+    int rc = mylite_execution_scalar_get_format_function_value(database, expression, &cell);
 
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
@@ -269,7 +269,7 @@ static int plan_row_scalar_get_format_format_argument(
         return MYLITE_MISUSE;
     }
 
-    rc = get_format_function_value(database, expression, &cell);
+    rc = mylite_execution_scalar_get_format_function_value(database, expression, &cell);
     if (rc == MYLITE_OK && cell.value == NULL) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
@@ -612,14 +612,14 @@ static int plan_row_scalar_str_to_date_null_short_circuit(
         return MYLITE_MISUSE;
     }
     *out_handled = false;
-    if (!str_to_date_child_is_null_literal(value_expression) &&
-        !str_to_date_child_is_null_literal(format_expression)) {
+    if (!mylite_execution_str_to_date_child_is_null_literal(value_expression) &&
+        !mylite_execution_str_to_date_child_is_null_literal(format_expression)) {
         return MYLITE_OK;
     }
 
-    if (str_to_date_child_is_null_literal(value_expression)) {
+    if (mylite_execution_str_to_date_child_is_null_literal(value_expression)) {
         reference_expression = format_expression;
-    } else if (str_to_date_child_is_null_literal(format_expression)) {
+    } else if (mylite_execution_str_to_date_child_is_null_literal(format_expression)) {
         reference_expression = value_expression;
     }
     if (reference_expression != NULL) {
@@ -712,7 +712,7 @@ static int plan_row_scalar_str_to_date_resolve_short_circuit_references(
         if (current == NULL) {
             continue;
         }
-        if (str_to_date_child_is_identifier_reference(current)) {
+        if (mylite_execution_str_to_date_child_is_identifier_reference(current)) {
             rc = plan_row_scalar_str_to_date_resolve_short_circuit_reference(
                 database,
                 current,
@@ -905,7 +905,7 @@ static int plan_row_scalar_date_format_numeric_equal_expression(
     const struct mylite_sql_ast_node *numeric = NULL;
     int rc = MYLITE_OK;
 
-    if (!row_scalar_date_format_numeric_equal_sides(expression, &date_format, &numeric)) {
+    if (!mylite_execution_date_format_numeric_equal_sides(expression, &date_format, &numeric)) {
         set_unsupported_error(
             database,
             "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) = "
@@ -950,37 +950,6 @@ static int plan_row_scalar_date_format_numeric_equal_expression(
     return rc;
 }
 
-static bool row_scalar_date_format_numeric_equal_sides(
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node **out_date_format,
-    const struct mylite_sql_ast_node **out_numeric
-) {
-    const struct mylite_sql_ast_node *left = NULL;
-    const struct mylite_sql_ast_node *right = NULL;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (out_date_format == NULL || out_numeric == NULL || expression == NULL ||
-        expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
-        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
-        return false;
-    }
-    left = unwrap_parenthesized_expression(child_at(expression, 0U));
-    right = unwrap_parenthesized_expression(child_at(expression, 1U));
-    if (left != NULL && left->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION &&
-        date_format_numeric_literal_expression(right)) {
-        *out_date_format = left;
-        *out_numeric = right;
-        return true;
-    }
-    if (right != NULL && right->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION &&
-        date_format_numeric_literal_expression(left)) {
-        *out_date_format = right;
-        *out_numeric = left;
-        return true;
-    }
-    return false;
-}
-
 static bool row_scalar_date_format_equal_attempt(const struct mylite_sql_ast_node *expression) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;
@@ -994,25 +963,6 @@ static bool row_scalar_date_format_equal_attempt(const struct mylite_sql_ast_nod
     right = unwrap_parenthesized_expression(child_at(expression, 1U));
     return ((left != NULL && left->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION) ||
             (right != NULL && right->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION)) != 0;
-}
-
-static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_node *expression) {
-    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
-
-    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
-
-        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-            return false;
-        }
-        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
-    }
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
-        return false;
-    }
-    return (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER ||
-            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_DECIMAL) != 0;
 }
 
 static int plan_row_scalar_date_format_numeric_literal(
@@ -1036,7 +986,9 @@ static int plan_row_scalar_date_format_numeric_literal(
         }
         literal = unwrap_parenthesized_expression(child_at(literal, 0U));
     }
-    if (!date_format_numeric_literal_expression(expression) || literal == NULL) {
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL)) {
         set_unsupported_error(database, "DATE_FORMAT() numeric comparison requires a literal");
         return MYLITE_ERROR;
     }
@@ -1079,19 +1031,19 @@ static int plan_row_scalar_date_interval_second_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || !is_date_interval_second_function_kind(expression->kind)) {
+    if (expression == NULL || !mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
         set_native_function_parameter_count_error(database, function_name);
         return MYLITE_ERROR;
     }
-    function_name = date_interval_second_function_name(expression->kind);
-    rc = validate_date_interval_second_function_shape(database, expression, function_name);
+    function_name = mylite_execution_date_interval_second_function_name(expression->kind);
+    rc = mylite_execution_validate_date_interval_second_function_shape(database, expression, function_name);
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (expression->kind != MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
-        rc = date_interval_unit_from_ast(
+        rc = mylite_execution_date_interval_unit_from_ast(
             database,
-            date_interval_unit_node(expression),
+            mylite_execution_date_interval_unit_node(expression),
             function_name,
             &unit
         );
@@ -1119,7 +1071,7 @@ static int plan_row_scalar_date_interval_second_expression(
 
     rc = plan_row_scalar_date_interval_second_temporal_argument(
         database,
-        date_interval_second_temporal_node(expression),
+        mylite_execution_date_interval_second_temporal_node(expression),
         function_name,
         has_source,
         source_context,
@@ -1136,7 +1088,7 @@ static int plan_row_scalar_date_interval_second_expression(
     if (rc == MYLITE_OK) {
         rc = plan_row_scalar_date_interval_second_interval_argument(
             database,
-            date_interval_second_interval_node(expression),
+            mylite_execution_date_interval_second_interval_node(expression),
             function_name,
             unit,
             &out_expression->arguments[2]
@@ -1147,7 +1099,7 @@ static int plan_row_scalar_date_interval_second_expression(
         out_expression->arguments[3].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     }
     if (rc == MYLITE_OK) {
-        if (date_interval_second_function_subtracts(expression->kind)) {
+        if (mylite_execution_date_interval_second_function_subtracts(expression->kind)) {
             subtract_flag = 1;
         }
         out_expression->arguments[4].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
@@ -1305,14 +1257,14 @@ static int plan_row_scalar_date_interval_second_literal(
             "columns, string descriptor columns, and NULL"
         );
     }
-    if (!date_interval_second_message(
+    if (!mylite_execution_date_interval_second_message(
             unsupported_message,
             sizeof(unsupported_message),
             function_name,
             "supports only string temporal literals, DATE, DATETIME, TIMESTAMP descriptor "
             "columns, string descriptor columns, and NULL"
         ) ||
-        !date_interval_second_message(
+        !mylite_execution_date_interval_second_message(
             nul_message,
             sizeof(nul_message),
             function_name,
@@ -1361,7 +1313,7 @@ static int plan_row_scalar_date_interval_second_interval_argument(
 ) {
     int64_t interval_seconds = 0;
     bool interval_is_null = false;
-    int rc = date_interval_second_interval_argument(
+    int rc = mylite_execution_date_interval_second_interval_argument(
         database,
         function_name,
         expression,
@@ -1390,7 +1342,7 @@ static int set_row_scalar_date_interval_second_unsupported_error(
 ) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
 
-    if (!date_interval_second_message(message, sizeof(message), function_name, suffix)) {
+    if (!mylite_execution_date_interval_second_message(message, sizeof(message), function_name, suffix)) {
         set_runtime_error(database, "failed to format temporal function diagnostic");
         return MYLITE_ERROR;
     }
@@ -2808,7 +2760,7 @@ static bool planned_date_format_numeric_equal_format_is_supported(
         return false;
     }
 
-    return date_format_numeric_equal_format_is_supported(
+    return mylite_execution_date_format_numeric_equal_format_is_supported(
         format->value.text,
         format->value.text_length
     );

@@ -588,4 +588,30 @@
       ownership.
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
-- [ ] Commit and push the thirtieth split.
+- [x] Commit and push the thirtieth split.
+
+## Round 31
+
+- [x] Reinspect scalar temporal format/date-interval execution and identify
+      its shared calendar arithmetic dependency.
+- [x] Add `mylite_temporal_arithmetic.h/.c` for canonical datetime parsing,
+      checked temporal arithmetic, calendar-month application, and day/second
+      conversion helpers.
+- [x] Add `mylite_execution_scalar_temporal_format.c` for `DATE_FORMAT`,
+      `GET_FORMAT`, `TIME_FORMAT`, `STR_TO_DATE`, `DATE_ADD`/`DATE_SUB`,
+      `ADDDATE`/`SUBDATE`, `TIMESTAMPADD`, `ADDTIME`, and `SUBTIME` scalar
+      execution.
+- [x] Move DATE_FORMAT numeric-comparison execution and the small planner
+      helper surface for STR_TO_DATE child classification and date-interval
+      function shape parsing into prefixed internal scalar helpers.
+- [x] Add a dedicated `mylite_execution_scalar_temporal_format.h` boundary and
+      keep DATE_FORMAT numeric-comparison side detection inside the temporal
+      format module instead of depending back on row-scalar planning internals.
+- [x] Replace `mylite_execution_scalar_temporal_format.inc` with a tombstone
+      include and register the new runtime sources in CMake.
+- [x] Run focused scalar temporal format build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-first split.

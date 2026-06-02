@@ -166,7 +166,7 @@ static int plan_row_scalar_special_expression(
     if (handled) {
         return rc;
     }
-    if (is_date_format_numeric_equal_expression(expression)) {
+    if (mylite_execution_scalar_is_date_format_numeric_equal_expression(expression)) {
         return plan_row_scalar_date_format_numeric_equal_expression(
             database,
             expression,
@@ -1720,7 +1720,7 @@ static int plan_row_scalar_date_function_expression(
             out_expression
         );
     }
-    if (is_date_interval_second_function_kind(expression->kind)) {
+    if (mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
         return plan_row_scalar_date_interval_second_expression(
             database,
             expression,

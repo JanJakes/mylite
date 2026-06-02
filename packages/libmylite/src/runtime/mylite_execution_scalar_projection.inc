@@ -229,7 +229,7 @@ static bool is_json_scalar_function_projection_expression(
             is_json_quote_projection_expression(expression) ||
             is_json_set_projection_expression(expression) ||
             is_json_construction_projection_expression(expression) ||
-            is_date_format_numeric_equal_expression(expression)) != 0;
+            mylite_execution_scalar_is_date_format_numeric_equal_expression(expression)) != 0;
 }
 
 static bool is_scalar_conversion_projection_expression(
@@ -1400,7 +1400,7 @@ static bool is_date_interval_second_projection_expression(
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
-    if (expression == NULL || !is_date_interval_second_function_kind(expression->kind)) {
+    if (expression == NULL || !mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
         return false;
     }
     if (expression->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
@@ -1424,7 +1424,7 @@ static bool is_time_arithmetic_projection_expression(const struct mylite_sql_ast
                                expression->kind == MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR)) {
         return true;
     }
-    if (expression == NULL || !is_time_arithmetic_function_kind(expression->kind)) {
+    if (expression == NULL || !mylite_execution_is_time_arithmetic_function_kind(expression->kind)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 2U) {

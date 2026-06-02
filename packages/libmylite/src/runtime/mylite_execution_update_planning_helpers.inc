@@ -215,35 +215,35 @@ static int plan_update_date_interval_assignment(
         return MYLITE_MISUSE;
     }
     value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
-    if (value_node == NULL || !is_date_interval_second_function_kind(value_node->kind) ||
+    if (value_node == NULL || !mylite_execution_is_date_interval_second_function_kind(value_node->kind) ||
         value_node->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
         return MYLITE_OK;
     }
 
-    function_name = date_interval_second_function_name(value_node->kind);
-    rc = validate_date_interval_second_function_shape(database, value_node, function_name);
+    function_name = mylite_execution_date_interval_second_function_name(value_node->kind);
+    rc = mylite_execution_validate_date_interval_second_function_shape(database, value_node, function_name);
     if (rc == MYLITE_OK) {
         rc = plan_update_date_interval_source_column(
             database,
-            date_interval_second_temporal_node(value_node),
+            mylite_execution_date_interval_second_temporal_node(value_node),
             table_columns,
             table_column_count,
             &out_plan->assignment_column
         );
     }
     if (rc == MYLITE_OK) {
-        rc = date_interval_unit_from_ast(
+        rc = mylite_execution_date_interval_unit_from_ast(
             database,
-            date_interval_unit_node(value_node),
+            mylite_execution_date_interval_unit_node(value_node),
             function_name,
             &out_plan->date_interval_unit
         );
     }
     if (rc == MYLITE_OK) {
-        rc = date_interval_second_interval_argument(
+        rc = mylite_execution_date_interval_second_interval_argument(
             database,
             function_name,
-            date_interval_second_interval_node(value_node),
+            mylite_execution_date_interval_second_interval_node(value_node),
             out_plan->date_interval_unit,
             &out_plan->date_interval_value,
             &out_plan->date_interval_is_null
@@ -255,7 +255,7 @@ static int plan_update_date_interval_assignment(
     if (rc == MYLITE_OK) {
         out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL;
         out_plan->date_interval_subtract =
-            date_interval_second_function_subtracts(value_node->kind);
+            mylite_execution_date_interval_second_function_subtracts(value_node->kind);
     }
     return rc;
 }

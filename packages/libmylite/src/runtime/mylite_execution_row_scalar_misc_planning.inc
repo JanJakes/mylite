@@ -1304,7 +1304,7 @@ static bool row_scalar_expression_contains_date_interval_second_function(
         if (current == NULL) {
             continue;
         }
-        if (is_date_interval_second_function_kind(current->kind)) {
+        if (mylite_execution_is_date_interval_second_function_kind(current->kind)) {
             found = true;
             break;
         }

@@ -487,10 +487,10 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
-        return date_interval_second_value(database, expression, out_cell);
+        return mylite_execution_scalar_date_interval_second_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_SUBTIME_FUNCTION:
-        return addtime_subtime_value(database, expression, out_cell);
+        return mylite_execution_scalar_addtime_subtime_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "ADDTIME");
         return MYLITE_ERROR;
@@ -587,13 +587,13 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "INSTR");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
-        return date_format_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_date_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
-        return get_format_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_get_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
-        return time_format_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_time_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
-        return str_to_date_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_str_to_date_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "ELT");
         return MYLITE_ERROR;

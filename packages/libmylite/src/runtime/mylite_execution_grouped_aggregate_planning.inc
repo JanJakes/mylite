@@ -3666,30 +3666,6 @@ static int make_timestamp_zero_with_warning(
     return make_zero_timestamp_value(database, out_value);
 }
 
-static bool date_text_is_canonical_valid(const char *text, size_t text_length) {
-    uint32_t year = 0U;
-    uint32_t month = 0U;
-    uint32_t day = 0U;
-
-    if (!date_text_has_canonical_shape(text, text_length)) {
-        return false;
-    }
-    if (date_text_is_zero_date(text, text_length)) {
-        return false;
-    }
-    if (!date_component_text_to_u32(text + date_year_text_offset, date_year_text_length, &year) ||
-        !date_component_text_to_u32(
-            text + date_month_text_offset,
-            date_month_text_length,
-            &month
-        ) ||
-        !date_component_text_to_u32(text + date_day_text_offset, date_day_text_length, &day)) {
-        return false;
-    }
-
-    return date_year_month_day_valid(year, month, day);
-}
-
 static bool date_text_has_canonical_shape(const char *text, size_t text_length) {
     if (text == NULL || text_length != date_text_length ||
         text[date_first_separator_offset] != '-' || text[date_second_separator_offset] != '-') {

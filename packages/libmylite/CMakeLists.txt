@@ -86,6 +86,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_json_mutation.c
   src/runtime/mylite_execution_scalar_string.c
   src/runtime/mylite_execution_scalar_temporal.c
+  src/runtime/mylite_execution_scalar_temporal_format.c
   src/runtime/mylite_execution_system_variables.c
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c
@@ -121,6 +122,7 @@ add_library(mylite STATIC
   src/runtime/mylite_string_substring_index.c
   src/runtime/mylite_string_trim.c
   src/runtime/mylite_string_unhex.c
+  src/runtime/mylite_temporal_arithmetic.c
   src/runtime/mylite_temporal_constructor.c
   src/runtime/mylite_temporal_extract.c
   src/runtime/mylite_temporary_catalog.c

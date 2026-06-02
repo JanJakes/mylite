@@ -675,8 +675,10 @@ The fragments are:
   rounding, `FORMAT`, and `TRUNCATE` scalar support.
 - `mylite_execution_scalar_conversion.inc`: scalar `CAST`, `CONVERT`, and
   `COLLATE` support.
-- `mylite_execution_scalar_temporal_format.inc`: date/time formatting, parsing,
-  interval, and time arithmetic scalar support.
+- `mylite_execution_scalar_temporal_format.inc`: tombstone include; scalar
+  temporal formatting, interval, and time arithmetic support lives in
+  `mylite_execution_scalar_temporal_format.c` with internal declarations in
+  `mylite_execution_scalar_temporal_format.h`.
 - `mylite_execution_scalar_expression_eval.inc`: scalar arithmetic, logical,
   comparison, and bitwise expression evaluators.
 - `mylite_execution_scalar_control.inc`: IF/CASE scalar control flow,
@@ -823,10 +825,58 @@ temporal extract kind detection, `TIMESTAMPDIFF` unit parsing, and
 The module must not own row-scalar temporal planning, predicate planning,
 date-format execution, date-interval execution, time arithmetic, generic scalar
 dispatch, SQL mode storage, session timestamp state, or loaded time-zone table
-data. The `DATE_FORMAT`, `GET_FORMAT`, `TIME_FORMAT`, `STR_TO_DATE`,
+data. `DATE_FORMAT`, `GET_FORMAT`, `TIME_FORMAT`, `STR_TO_DATE`,
 `DATE_ADD`/`DATE_SUB`, `ADDDATE`/`SUBDATE`, `TIMESTAMPADD`, `ADDTIME`, and
-`SUBTIME` fragment remains in the execution runtime until its shared calendar
-arithmetic helper boundary is split deliberately.
+`SUBTIME` belong to `mylite_execution_scalar_temporal_format`.
+
+### `mylite_temporal_arithmetic`
+
+The temporal arithmetic helper module owns reusable, diagnostic-free calendar
+arithmetic primitives used by temporal scalar execution and temporal predicate
+normalization:
+
+- canonical `YYYY-MM-DD` and `YYYY-MM-DD HH:MM:SS` parsing into date/time
+  parts.
+- checked signed 64-bit addition and multiplication with success/failure
+  polarity suitable for temporal range checks.
+- calendar-month addition with MySQL-compatible end-of-month clipping for the
+  currently supported range.
+- conversion between civil date parts and day counts, including floor
+  day/second division.
+
+The module must not own MySQL diagnostics, SQL AST traversal, function
+argument parsing, session state, or result formatting. Callers keep MySQL
+compatibility policy and use this module only for pure arithmetic.
+
+### `mylite_execution_scalar_temporal_format`
+
+The scalar temporal format module owns session-scalar implementations for:
+
+- `DATE_FORMAT`
+- `GET_FORMAT`
+- `TIME_FORMAT`
+- `STR_TO_DATE`
+- `DATE_ADD` and `DATE_SUB`
+- `ADDDATE` and `SUBDATE`
+- `TIMESTAMPADD`
+- `ADDTIME` and `SUBTIME`
+- the DATE_FORMAT numeric-comparison special case used by scalar projection
+  planning.
+
+The module may call the shared internal execution helper surface for AST child
+access, parenthesis unwrapping, literal decoding, identifier copying,
+MySQL-compatible diagnostics, and scalar cell cleanup. It may call
+`mylite_temporal_arithmetic` for pure calendar math. It also exposes narrow
+internal helpers for planner code that already shared temporal-format
+classification: STR_TO_DATE NULL/identifier child checks, DATE_FORMAT
+numeric-comparison side detection and numeric-format admission, date-interval
+function shape/unit parsing, and ADDTIME/SUBTIME kind detection. Those helpers
+belong in `mylite_execution_scalar_temporal_format.h`; the catch-all scalar
+header should not grow this planner-specific temporal-format surface.
+
+The module must not own row-scalar temporal planning, predicate SQL rendering,
+generic scalar dispatch, SQL mode storage, loaded time-zone table data, or
+current timestamp/session state.
 
 ## Compatibility requirements
 
@@ -853,6 +903,10 @@ arithmetic helper boundary is split deliberately.
 - Scalar temporal function result values, NULL propagation, unsupported-shape
   diagnostics, parameter-count errors, and planner classification behavior must
   remain identical to the previous scalar fragment behavior.
+- Scalar temporal formatting, date-interval, and time arithmetic function
+  values, NULL propagation, unsupported-shape diagnostics, and planner helper
+  behavior must remain identical to the previous scalar temporal format
+  fragment behavior.
 
 ## Implementation plan
 
@@ -896,3 +950,5 @@ arithmetic helper boundary is split deliberately.
 - Splitting catalog modules does not introduce generated sources, dynamic
   catalog loading, or runtime table materialization.
 - Tests prove behavior preservation.
+- Shared temporal arithmetic helpers remain pure and do not emit diagnostics,
+  allocate result cells, or inspect SQL AST nodes.

@@ -12,6 +12,26 @@ struct mylite_catalog_generation_change {
     uint64_t next_generation;
 };
 
+struct mylite_catalog_column_values {
+    const char *name;
+    const char *logical_type;
+    const char *physical_type;
+    bool is_nullable;
+    bool is_visible;
+    bool is_auto_increment;
+    enum mylite_catalog_column_default_kind default_kind;
+    int64_t default_integer;
+    const char *default_text;
+    bool on_update_current_timestamp;
+    const char *character_set_name;
+    const char *collation_name;
+    const char *comment;
+    bool is_generated;
+    enum mylite_catalog_generated_column_kind generated_kind;
+    const char *generation_expression;
+    const char *sqlite_generation_expression;
+};
+
 struct mylite_catalog_table_descriptor_input {
     int64_t schema_id;
     const char *name;
@@ -90,6 +110,24 @@ int mylite_catalog_checked_column_text(
 int mylite_catalog_u64_to_i64(uint64_t value, int64_t *out_value);
 int mylite_catalog_i64_to_u32(int64_t value, uint32_t *out_value);
 int mylite_catalog_i64_to_u64(int64_t value, uint64_t *out_value);
+int mylite_catalog_validate_column_values(
+    const struct mylite_catalog_column_values *values,
+    bool use_logical_object_name
+);
+int mylite_catalog_bind_column_insert_values(
+    sqlite3_stmt *statement,
+    int64_t table_id,
+    int64_t ordinal_position,
+    const struct mylite_catalog_column_values *values,
+    uint64_t generation
+);
+int mylite_catalog_bind_column_replace_values(
+    sqlite3_stmt *statement,
+    int64_t table_id,
+    int64_t column_id,
+    const struct mylite_catalog_column_values *values,
+    uint64_t generation
+);
 int mylite_catalog_validate_table_descriptor_input(
     const struct mylite_catalog_table_descriptor_input *input
 );

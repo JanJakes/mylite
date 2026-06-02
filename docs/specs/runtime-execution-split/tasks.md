@@ -339,3 +339,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the nineteenth split.
+
+## Round 20
+
+- [x] Reinspect mutable catalog write-side helper clusters after the catalog
+      read/materialization split.
+- [x] Select column descriptor value handling as the next true module boundary.
+- [x] Move column insert/replace bind indexes and bind helpers into
+      `mylite_catalog_column_values`.
+- [x] Move column default-kind storage predicates and default/generated-column
+      validation into `mylite_catalog_column_values`.
+- [x] Expose only the column value struct, three column-value private entry
+      points, and two shared default-kind predicates through
+      `mylite_catalog_internal.h`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog column descriptor tests.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      function ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twentieth split.

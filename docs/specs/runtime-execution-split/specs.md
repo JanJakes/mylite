@@ -146,10 +146,16 @@ unchanged.
 The nineteenth split extracts mutable catalog read and descriptor
 materialization logic into `mylite_catalog_read.c`. The new module owns catalog
 SELECT queries, public read/iteration APIs, next-id reads, post-insert
-descriptor reads, and descriptor materializers. `mylite_catalog.c` keeps
-descriptor mutation, write bind helpers, delete/update helpers, and
-write-side value validation. Shared validation and SQLite-level lookup helpers
-use a small private surface in `mylite_catalog_internal.h`.
+descriptor reads, and descriptor materializers. Shared validation and
+SQLite-level lookup helpers use a small private surface in
+`mylite_catalog_internal.h`.
+
+The twentieth split moves column descriptor value handling into
+`mylite_catalog_column_values.c`. The new module owns column insert/replace
+bind helpers, column default-kind storage predicates, and validation for column
+defaults and generated-column expression metadata. `mylite_catalog.c` keeps
+descriptor mutation orchestration, table descriptor validation, delete/update
+helpers, and SQL statements that mutate private catalog tables.
 
 ## Goals
 
@@ -268,9 +274,12 @@ small enough to keep internal helper exports narrow.
 
 The mutable catalog module family includes:
 
-- `mylite_catalog.c`: descriptor create/update/delete/mutation APIs, write
-  bind helpers, delete helpers, and catalog value validation that depends on
-  mutation-private structs.
+- `mylite_catalog.c`: descriptor create/update/delete/mutation APIs, table
+  descriptor validation, delete/update helpers, and SQL statements that mutate
+  private catalog rows.
+- `mylite_catalog_column_values.c`: column descriptor value structs,
+  insert/replace bind helpers, default-kind storage predicates, and
+  default/generated-column validation.
 - `mylite_catalog_read.c`: public catalog read/iteration APIs, SQLite-level
   one-row lookup helpers used by mutation code, next-id reads, post-insert
   descriptor reads, and descriptor materializers.

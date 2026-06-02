@@ -832,3 +832,22 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-first split.
+
+## Round 42
+
+- [x] Reinspect the remaining largest runtime fragments after the
+      INFORMATION_SCHEMA row split.
+- [x] Identify `mylite_execution_row_scalar_string_planning.inc` as a
+      row-scalar string-family same-translation-unit split candidate.
+- [x] Split basic string, string shape, bitmask/search, string edit,
+      transform/quote, compare/set, and REGEXP row-scalar planning into named
+      fragments.
+- [x] Remove `mylite_execution_row_scalar_string_planning.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused row-scalar string, string function, REGEXP, SELECT, and
+      parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-second split.

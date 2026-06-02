@@ -835,8 +835,20 @@ The fragments are:
 - `mylite_execution_query_planning.inc`: row-scalar planning core, special
   expression dispatch, window functions, integer arithmetic planning, temporal
   dispatch, and JSON dispatch.
-- `mylite_execution_row_scalar_string_planning.inc`: row-scalar string and
-  regexp function planning.
+- `mylite_execution_row_scalar_string_basic_planning.inc`: row-scalar string
+  length, codepoint, and case function planning.
+- `mylite_execution_row_scalar_string_shape_planning.inc`: row-scalar string
+  trim, slice, and padding function planning.
+- `mylite_execution_row_scalar_string_bitmask_search_planning.inc`:
+  row-scalar string bitmask and search function planning.
+- `mylite_execution_row_scalar_string_edit_planning.inc`: row-scalar
+  `REPLACE` and `INSERT` string function planning.
+- `mylite_execution_row_scalar_string_transform_planning.inc`: row-scalar
+  `REVERSE`, `SOUNDEX`, and `QUOTE` planning.
+- `mylite_execution_row_scalar_string_compare_set_planning.inc`: row-scalar
+  `SUBSTRING_INDEX`, `FIND_IN_SET`, and `STRCMP` planning.
+- `mylite_execution_row_scalar_string_regexp_planning.inc`: row-scalar
+  REGEXP predicate/string function planning.
 - `mylite_execution_row_scalar_json_planning.inc`: row-scalar JSON function and
   JSON operator planning.
 - `mylite_execution_row_scalar_value_planning.inc`: row-scalar HEX, UNHEX,
@@ -1309,6 +1321,9 @@ current timestamp/session state.
     synthesis fragment into ordered same-translation-unit COLUMNS, InnoDB
     virtual/column/table/index/foreign, constraint, key/referential, and
     statistics row fragments.
+18. Split the oversized row-scalar string planning fragment into ordered
+    same-translation-unit basic string, shape, bitmask/search, edit,
+    transform/quote, compare/set, and REGEXP planning fragments.
 
 ## Review checklist
 
@@ -1357,3 +1372,7 @@ current timestamp/session state.
   ownership and same-translation-unit helper linkage; the split must not
   change MySQL 8.4-shaped column, InnoDB, constraint, key usage, referential
   constraint, or statistics metadata.
+- Row-scalar string planning fragments preserve the existing planner
+  ownership and same-translation-unit helper linkage; the split must not
+  change accepted row-scalar string argument families, column diagnostics,
+  unsupported-function messages, or REGEXP pattern validation behavior.

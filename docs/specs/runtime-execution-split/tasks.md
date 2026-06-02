@@ -703,3 +703,23 @@
 - [x] Run focused tidy.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-fifth split.
+
+## Round 36
+
+- [x] Reinspect the remaining largest runtime fragments after diagnostics
+      extraction.
+- [x] Identify the misnamed catalog-loading bucket as a same-translation-unit
+      DML/conversion split candidate rather than a clean true-module boundary.
+- [x] Split descriptor helpers, INSERT row planning, INSERT value
+      conversion, DML default materialization, integer conversion, ENUM/SET
+      conversion, string/binary/bit conversion, decimal/approximate conversion,
+      temporal default values, value helper, string validation, implicit-value,
+      and row-scalar select-item code into named fragments.
+- [x] Remove `mylite_execution_catalog_loading.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused DML, type, scalar, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-sixth split.

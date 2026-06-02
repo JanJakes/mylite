@@ -25150,7 +25150,31 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_column_planning.inc"
 
-#include "mylite_execution_catalog_loading.inc"
+#include "mylite_execution_descriptor_helpers.inc"
+
+#include "mylite_execution_insert_row_planning.inc"
+
+#include "mylite_execution_insert_value_conversion.inc"
+
+#include "mylite_execution_dml_default_values.inc"
+
+#include "mylite_execution_dml_integer_conversion.inc"
+
+#include "mylite_execution_dml_enum_set_conversion.inc"
+
+#include "mylite_execution_dml_string_binary_conversion.inc"
+
+#include "mylite_execution_dml_decimal_approx_conversion.inc"
+
+#include "mylite_execution_dml_temporal_defaults.inc"
+
+#include "mylite_execution_dml_value_helpers.inc"
+
+#include "mylite_execution_dml_string_validation.inc"
+
+#include "mylite_execution_dml_implicit_values.inc"
+
+#include "mylite_execution_row_scalar_select_items.inc"
 
 #include "mylite_execution_query_planning.inc"
 

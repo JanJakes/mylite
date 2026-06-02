@@ -1103,6 +1103,11 @@ current timestamp/session state.
 - Runtime diagnostics must preserve existing MySQL error/warning/note numeric
   codes, SQLSTATEs, formatted messages, warning ordering, parser-status
   translation, and MyLite public status-code returns.
+- DML descriptor helper and reference resolution, insert row planning, value
+  conversion, default materialization, implicit value creation, and row-scalar
+  select-item planning must remain in the original call order and preserve all
+  previous MySQL-compatible values, warnings, errors, SQLSTATEs, and ownership
+  rules.
 
 ## Implementation plan
 
@@ -1130,6 +1135,10 @@ current timestamp/session state.
 11. Extract execution diagnostics into a true C module, keeping short-name
     aliases only as a temporary compatibility bridge for remaining include-based
     runtime fragments.
+12. Split the misnamed catalog-loading implementation fragment into cohesive
+    same-translation-unit descriptor-helper, INSERT planning, DML conversion,
+    default, validation, implicit-value, and row-scalar select-item fragments
+    without exporting a new helper surface.
 
 ## Review checklist
 
@@ -1155,3 +1164,6 @@ current timestamp/session state.
   execution modules decide which diagnostic applies.
 - Internal diagnostic symbols use prefixed names even when the remaining
   include-based runtime fragments still use short-name aliases.
+- The old catalog-loading bucket no longer hides unrelated DML conversion and
+  row-scalar planning code; new fragments are named by behavior and remain
+  private includes until narrower true-module boundaries are designed.

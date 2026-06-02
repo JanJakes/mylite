@@ -138,6 +138,20 @@ bool mylite_catalog_column_default_kind_stores_text(
     enum mylite_catalog_column_default_kind default_kind
 );
 
+int mylite_catalog_delete_foreign_keys_for_related_table_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t table_id
+);
+int mylite_catalog_delete_foreign_keys_for_schema_from_sqlite(sqlite3 *sqlite, int64_t schema_id);
+int mylite_catalog_delete_check_constraints_for_table_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t table_id
+);
+int mylite_catalog_delete_check_constraints_for_schema_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t schema_id
+);
+
 int mylite_catalog_read_schema_by_name_from_sqlite(
     sqlite3 *sqlite,
     const char *name,

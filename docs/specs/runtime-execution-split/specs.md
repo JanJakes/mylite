@@ -173,6 +173,14 @@ static column definitions and table-definition provider. The provider list
 preserves the existing `INFORMATION_SCHEMA` table order around the existing
 InnoDB provider.
 
+The twenty-third split continues reducing the mutable catalog module by moving
+key and constraint mutation ownership into `mylite_catalog_key_constraints.c`.
+The new module owns index, index-column, foreign-key, foreign-key-column, and
+check-constraint insert/update/delete APIs plus their SQL bind indexes and row
+helpers. `mylite_catalog.c` retains table, column, view, schema, and lifecycle
+mutation orchestration; it reaches key/constraint cleanup only through a small
+private SQLite-level helper surface used by table and schema deletion.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -316,11 +324,14 @@ small enough to keep internal helper exports narrow.
 The mutable catalog module family includes:
 
 - `mylite_catalog.c`: descriptor create/update/delete/mutation APIs, table
-  descriptor validation, delete/update helpers, and SQL statements that mutate
-  private catalog rows.
+  descriptor validation, table/column/view/schema mutation APIs, and SQL
+  statements that mutate private catalog rows.
 - `mylite_catalog_column_values.c`: column descriptor value structs,
   insert/replace bind helpers, default-kind storage predicates, and
   default/generated-column validation.
+- `mylite_catalog_key_constraints.c`: index, index-column, foreign-key,
+  foreign-key-column, and check-constraint mutation APIs plus table/schema
+  key/constraint cleanup helpers.
 - `mylite_catalog_read.c`: public catalog read/iteration APIs, SQLite-level
   one-row lookup helpers used by mutation code, next-id reads, post-insert
   descriptor reads, and descriptor materializers.

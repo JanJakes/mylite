@@ -412,3 +412,26 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-second split.
+
+## Round 23
+
+- [x] Reinspect mutable catalog key and constraint mutation ownership.
+- [x] Select index, index-column, foreign-key, foreign-key-column, and
+      check-constraint mutation APIs as the next true module boundary.
+- [x] Move key/constraint mutation bind indexes and helpers into
+      `mylite_catalog_key_constraints`.
+- [x] Move index and index-column mutation APIs into
+      `mylite_catalog_key_constraints`.
+- [x] Move foreign-key and foreign-key-column mutation APIs into
+      `mylite_catalog_key_constraints`.
+- [x] Move check-constraint mutation APIs into
+      `mylite_catalog_key_constraints`.
+- [x] Expose only table/schema key-constraint cleanup helpers through the
+      private catalog internal header.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog key/constraint mutation tests.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-third split.

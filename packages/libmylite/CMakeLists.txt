@@ -41,6 +41,7 @@ add_library(mylite STATIC
   src/runtime/mylite_cast_convert.c
   src/runtime/mylite_catalog.c
   src/runtime/mylite_catalog_column_values.c
+  src/runtime/mylite_catalog_key_constraints.c
   src/runtime/mylite_catalog_migrations.c
   src/runtime/mylite_catalog_read.c
   src/runtime/mylite_catalog_sqlite.c

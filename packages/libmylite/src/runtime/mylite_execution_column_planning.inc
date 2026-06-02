@@ -2351,7 +2351,8 @@ static int parse_column_default_integer_string(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
-    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
     int rc = decode_sql_string_literal(
         database,
         literal,
@@ -2365,8 +2366,13 @@ static int parse_column_default_integer_string(
         return rc;
     }
 
-    parse_result = parse_signed_integer_text(text, text_length, out_magnitude, out_is_negative);
-    if (parse_result != DML_NUMERIC_STRING_PARSE_OK) {
+    parse_result = mylite_execution_parse_signed_integer_text(
+        text,
+        text_length,
+        out_magnitude,
+        out_is_negative
+    );
+    if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK) {
         rc = MYLITE_ERROR;
     }
 

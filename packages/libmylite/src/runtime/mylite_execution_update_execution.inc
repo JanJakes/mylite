@@ -478,7 +478,8 @@ static int append_update_integer_string_adjustment_diagnostic(
     bool is_negative = false;
     bool exceeds_range = false;
     uint64_t magnitude = 0U;
-    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
     int rc = MYLITE_OK;
 
     if (session_sql_mode_is_strict(database) && !ignore_errors) {
@@ -497,10 +498,15 @@ static int append_update_integer_string_adjustment_diagnostic(
         return rc;
     }
 
-    parse_result = parse_dml_integer_string_text(text, text_length, &magnitude, &is_negative);
-    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+    parse_result = mylite_execution_parse_dml_integer_string_text(
+        text,
+        text_length,
+        &magnitude,
+        &is_negative
+    );
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         rc = append_incorrect_integer_value_warning(database, text, column->name, row_number);
-    } else if (parse_result == DML_NUMERIC_STRING_PARSE_OVERFLOW) {
+    } else if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OVERFLOW) {
         rc = append_out_of_range_warning(database, column->name, row_number);
     } else {
         rc = dml_integer_value_exceeds_column_range(
@@ -512,7 +518,9 @@ static int append_update_integer_string_adjustment_diagnostic(
         );
         if (rc == MYLITE_OK && exceeds_range) {
             rc = append_out_of_range_warning(database, column->name, row_number);
-        } else if (rc == MYLITE_OK && parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED) {
+        } else if (
+            rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
+        ) {
             rc = append_data_truncated_warning(database, column->name, row_number);
         }
     }

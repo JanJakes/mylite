@@ -746,11 +746,16 @@ static int convert_load_data_integer_field(
     bool is_negative = false;
     bool strict_mode = session_sql_mode_is_strict(database);
     uint64_t magnitude = 0U;
-    enum dml_numeric_string_parse_result parse_result =
-        parse_dml_integer_string_text(field->text, field->text_length, &magnitude, &is_negative);
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        mylite_execution_parse_dml_integer_string_text(
+            field->text,
+            field->text_length,
+            &magnitude,
+            &is_negative
+        );
     int rc = MYLITE_OK;
 
-    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         if (strict_mode) {
             set_incorrect_integer_value_error(database, field->text, column->name, row_number);
             return MYLITE_ERROR;
@@ -762,7 +767,7 @@ static int convert_load_data_integer_field(
         }
         return rc;
     }
-    if (parse_result == DML_NUMERIC_STRING_PARSE_OVERFLOW) {
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OVERFLOW) {
         if (strict_mode) {
             set_out_of_range_error(database, column->name, row_number);
             return MYLITE_ERROR;
@@ -785,7 +790,8 @@ static int convert_load_data_integer_field(
         column,
         &exceeds_range
     );
-    if (rc == MYLITE_OK && parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED && !exceeds_range) {
+    if (rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED &&
+        !exceeds_range) {
         if (strict_mode) {
             set_data_truncated_error(database, column->name, row_number);
             return MYLITE_ERROR;

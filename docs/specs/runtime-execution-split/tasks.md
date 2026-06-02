@@ -495,3 +495,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-sixth split.
+
+## Round 27
+
+- [x] Reinspect `mylite_execution_catalog_loading.inc` after loaded-catalog
+      extraction and identify DML numeric string scanning as a true-module
+      boundary.
+- [x] Add `mylite_execution_dml_numeric.h/.c` for DML numeric parse-result
+      types, scanned token shape, integer-string parsing, signed-integer
+      parsing, and numeric token scanning.
+- [x] Move reusable DML numeric scanner/parser helpers out of
+      `mylite_execution.c` and `mylite_execution_catalog_loading.inc`.
+- [x] Keep DML value conversion, DECIMAL metadata/canonicalization,
+      approximate-number conversion, diagnostics, and warning policy in
+      execution fragments.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused DML/type build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-seventh split.

@@ -208,6 +208,13 @@ leaving column-reference resolution, INSERT planning, DML value coercion, and
 row-scalar select-item planning in the existing execution fragments until their
 own dependency surfaces are designed.
 
+The twenty-seventh split targets DML numeric string parsing support. The shared
+integer-string parser, signed-integer parser, and numeric token scanner used by
+INSERT, UPDATE, column defaults, DECIMAL conversion, and approximate numeric
+conversion move into `mylite_execution_dml_numeric.h/.c`. DML value conversion,
+decimal type metadata, range diagnostics, warnings, and value materialization
+remain in execution fragments.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -458,6 +465,26 @@ The loaded catalog execution module does not own:
 - DML value conversion, default materialization, SQL literal decoding, or UTF-8
   validation.
 - SQL statement execution or SQLite write helpers.
+
+### `mylite_execution_dml_numeric`
+
+The DML numeric execution helper module owns MySQL-compatible scanning of
+quoted numeric strings used by DML coercion and column default parsing.
+
+The DML numeric module includes:
+
+- `mylite_execution_dml_numeric.h`: parse-result enum, scanned numeric token
+  shape, and parser/scanner declarations.
+- `mylite_execution_dml_numeric.c`: integer-string parsing with decimal/exponent
+  rounding, exact signed-integer parsing, numeric token scanning, whitespace and
+  truncation detection, and overflow classification.
+
+The DML numeric module does not own:
+
+- Column descriptor range checks, strict-mode behavior, or MySQL diagnostics.
+- DECIMAL type metadata, DECIMAL canonicalization, or approximate-number
+  storage conversion.
+- INSERT/UPDATE/LOAD DATA row planning or value materialization.
 
 ### `mylite_execution_system_variables`
 
@@ -753,6 +780,9 @@ public MyLite ABI.
 - JSON scalar function result values, NULL handling, unsupported-shape errors,
   warnings, SQLSTATEs, and parameter-count diagnostics must remain identical to
   the previous scalar fragment behavior.
+- DML numeric string parsing must continue to return the same OK, invalid,
+  truncated, and overflow classifications so INSERT, UPDATE, LOAD DATA, and
+  default-expression diagnostics remain unchanged.
 
 ## Implementation plan
 

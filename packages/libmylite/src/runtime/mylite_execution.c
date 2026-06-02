@@ -10,6 +10,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_system_variables.h"
@@ -3315,44 +3316,6 @@ struct set_predicate_member_text_request {
 enum enum_string_trailing_space_policy {
     ENUM_STRING_PRESERVE_TRAILING_SPACES,
     ENUM_STRING_TRIM_TRAILING_SPACES,
-};
-
-enum dml_numeric_string_parse_result {
-    DML_NUMERIC_STRING_PARSE_OK,
-    DML_NUMERIC_STRING_PARSE_INVALID,
-    DML_NUMERIC_STRING_PARSE_TRUNCATED,
-    DML_NUMERIC_STRING_PARSE_OVERFLOW,
-};
-
-struct dml_integer_decimal_scan {
-    size_t mantissa_start;
-    size_t mantissa_end;
-    size_t token_end;
-    size_t digit_count;
-    size_t leading_zero_count;
-    size_t digits_after_dot;
-    int64_t exponent;
-    bool is_negative;
-};
-
-struct dml_integer_decimal_exponent_scan {
-    size_t start;
-    size_t end;
-    bool is_negative;
-};
-
-struct dml_numeric_token_scan {
-    size_t token_start;
-    size_t token_end;
-    size_t mantissa_start;
-    size_t mantissa_end;
-    size_t integer_digit_count;
-    size_t digit_count;
-    size_t first_nonzero_digit_index;
-    size_t last_nonzero_digit_index;
-    int64_t exponent;
-    bool has_nonzero_digits;
-    bool is_negative;
 };
 
 enum information_schema_predicate_eval_action {
@@ -18316,116 +18279,12 @@ static int convert_integer_string_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
-static enum dml_numeric_string_parse_result parse_dml_integer_string_text(
-    const char *text,
-    size_t text_length,
-    uint64_t *out_magnitude,
-    bool *out_is_negative
-);
-static enum dml_numeric_string_parse_result scan_dml_integer_decimal_token(
-    const char *text,
-    size_t text_length,
-    size_t token_start,
-    struct dml_integer_decimal_scan *out_scan
-);
-static size_t scan_dml_integer_decimal_mantissa(
-    const char *text,
-    size_t text_length,
-    struct dml_integer_decimal_scan *inout_scan
-);
-static void record_dml_integer_decimal_mantissa_digit(
-    struct dml_integer_decimal_scan *inout_scan,
-    unsigned char byte,
-    bool has_dot,
-    bool *inout_has_nonzero_digit
-);
-static void scan_dml_integer_decimal_exponent_suffix(
-    const char *text,
-    size_t text_length,
-    struct dml_integer_decimal_scan *inout_scan
-);
-static int64_t scan_dml_integer_decimal_exponent(
-    const char *text,
-    const struct dml_integer_decimal_exponent_scan *exponent_scan
-);
-static int64_t dml_integer_decimal_shift(const struct dml_integer_decimal_scan *scan);
-static enum dml_numeric_string_parse_result round_dml_integer_decimal_scan(
-    const char *text,
-    const struct dml_integer_decimal_scan *scan,
-    uint64_t *out_magnitude,
-    bool *out_is_negative
-);
-static bool append_dml_integer_decimal_scan_digits(
-    const char *text,
-    const struct dml_integer_decimal_scan *scan,
-    size_t integer_digit_count,
-    uint64_t *inout_magnitude
-);
-static bool dml_integer_decimal_scan_digit_at(
-    const char *text,
-    const struct dml_integer_decimal_scan *scan,
-    size_t digit_offset,
-    unsigned int *out_digit
-);
-static bool append_uint64_decimal_digit(uint64_t *inout_value, unsigned int digit);
-static bool checked_uint64_increment(uint64_t *inout_value);
-static bool dml_integer_decimal_token_has_only_zero_digits(
-    const struct dml_integer_decimal_scan *scan
-);
-static bool dml_numeric_suffix_is_truncated(const char *text, size_t text_length, size_t token_end);
 static bool ascii_decimal_digit(unsigned char byte);
-static bool ascii_numeric_whitespace(unsigned char byte);
-static enum dml_numeric_string_parse_result scan_dml_numeric_string_text(
-    const char *text,
-    size_t text_length,
-    struct dml_numeric_token_scan *out_scan
-);
-static enum dml_numeric_string_parse_result scan_dml_numeric_token(
-    const char *text,
-    size_t text_length,
-    size_t token_start,
-    struct dml_numeric_token_scan *out_scan
-);
-static size_t scan_dml_numeric_optional_sign(
-    const char *text,
-    size_t index,
-    struct dml_numeric_token_scan *scan
-);
-static bool scan_dml_numeric_mantissa(
-    const char *text,
-    size_t text_length,
-    size_t *inout_index,
-    struct dml_numeric_token_scan *scan
-);
-static void scan_dml_numeric_mantissa_digit(
-    struct dml_numeric_token_scan *scan,
-    unsigned char byte,
-    bool saw_dot
-);
-static void scan_dml_numeric_exponent_suffix(
-    const char *text,
-    size_t text_length,
-    size_t index,
-    struct dml_numeric_token_scan *scan
-);
-static int64_t scan_dml_numeric_exponent(
-    const char *text,
-    size_t start,
-    size_t end,
-    bool is_negative
-);
-static bool dml_numeric_scan_has_nonzero_digits(const struct dml_numeric_token_scan *scan);
 static int copy_dml_numeric_scan_digits(
     struct mylite_db *database,
     const char *text,
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     char **out_digits
-);
-static enum dml_numeric_string_parse_result parse_signed_integer_text(
-    const char *text,
-    size_t text_length,
-    uint64_t *out_magnitude,
-    bool *out_is_negative
 );
 static int dml_integer_value_exceeds_column_range(
     struct mylite_db *database,
@@ -18589,7 +18448,7 @@ static int convert_decimal_string_literal(
 static int convert_decimal_scanned_string_literal(
     struct mylite_db *database,
     const char *text,
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     bool truncated,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
@@ -18600,27 +18459,29 @@ static int convert_decimal_scanned_string_literal(
 static int build_decimal_text_from_numeric_scan(
     struct mylite_db *database,
     const char *text,
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     const struct decimal_type_info *info,
     char **out_text,
     bool *out_is_out_of_range
 );
-static int64_t dml_numeric_scan_decimal_position(const struct dml_numeric_token_scan *scan);
+static int64_t dml_numeric_scan_decimal_position(
+    const struct mylite_execution_dml_numeric_token_scan *scan
+);
 static bool dml_numeric_scan_exceeds_decimal_range(
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     const struct decimal_type_info *info
 );
 static size_t dml_numeric_scan_decimal_text_size(
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     const struct decimal_type_info *info
 );
 static char dml_numeric_scan_virtual_digit(
     const char *digits,
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     int64_t digit_index
 );
 static bool dml_numeric_scan_has_nonzero_virtual_digit_at_or_after(
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     int64_t digit_index
 );
 static int convert_approximate_literal(
@@ -18643,7 +18504,7 @@ static int convert_approximate_string_literal(
 static int convert_approximate_scanned_string_literal(
     struct mylite_db *database,
     const char *text,
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     bool truncated,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
@@ -18654,7 +18515,7 @@ static int convert_approximate_scanned_string_literal(
 static int parse_approximate_scanned_value(
     struct mylite_db *database,
     const char *text,
-    const struct dml_numeric_token_scan *scan,
+    const struct mylite_execution_dml_numeric_token_scan *scan,
     double *out_value,
     bool *out_is_out_of_range
 );

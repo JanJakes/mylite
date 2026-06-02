@@ -1151,7 +1151,7 @@ static int plan_row_scalar_charset_collation_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_CHARSET_COLLATION_FUNCTION_NONE
-                                       : charset_collation_function_kind(expression->kind);
+                                       : mylite_execution_charset_collation_function_kind(expression->kind);
     if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(
@@ -1165,7 +1165,7 @@ static int plan_row_scalar_charset_collation_expression(
     if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
                              argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         if (!has_source) {
-            return set_unknown_column_for_reference(database, argument);
+            return mylite_execution_set_unknown_column_reference_error(database, argument);
         }
         return plan_row_scalar_charset_collation_column(
             database,
@@ -1179,11 +1179,11 @@ static int plan_row_scalar_charset_collation_expression(
         );
     }
     if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY &&
-        coercibility_binary_wrapper_column_reference(argument, &binary_column_argument)) {
+        mylite_execution_coercibility_binary_wrapper_column_reference(argument, &binary_column_argument)) {
         struct mylite_catalog_column_descriptor column = {0};
 
         if (!has_source) {
-            return set_unknown_column_for_reference(database, binary_column_argument);
+            return mylite_execution_set_unknown_column_reference_error(database, binary_column_argument);
         }
         rc = resolve_descriptor_column_reference(
             database,
@@ -1203,7 +1203,7 @@ static int plan_row_scalar_charset_collation_expression(
         return copy_text_value(database, "2", &out_expression->value);
     }
 
-    rc = charset_collation_scalar_result(database, function_kind, argument, &result);
+    rc = mylite_execution_charset_collation_scalar_result(database, function_kind, argument, &result);
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         rc = copy_text_value(database, result, &out_expression->value);
@@ -1269,7 +1269,7 @@ static int charset_collation_column_result(
         charset = "binary";
         collation = "binary";
     }
-    return charset_collation_select_result(function_kind, charset, collation, out_result);
+    return mylite_execution_charset_collation_select_result(function_kind, charset, collation, out_result);
 }
 
 static int coercibility_column_result(

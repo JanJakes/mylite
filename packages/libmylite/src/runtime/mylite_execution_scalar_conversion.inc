@@ -384,7 +384,7 @@ static int collate_expression_value(
     }
     *out_cell = (struct session_scalar_cell){0};
 
-    rc = scalar_collation_info_for_expression(database, expression, &collation_info);
+    rc = mylite_execution_scalar_collation_info_for_expression(database, expression, &collation_info);
     if (rc != MYLITE_OK) {
         return rc;
     }

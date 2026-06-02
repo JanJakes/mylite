@@ -1014,14 +1014,14 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
             is_temporal_extract_function_kind(current->kind) ||
-            is_string_length_function_kind(current->kind) ||
-            is_string_codepoint_function_kind(current->kind) ||
-            is_string_case_function_kind(current->kind) ||
-            is_string_trim_function_kind(current->kind) ||
-            is_string_slice_function_kind(current->kind) ||
-            is_string_padding_function_kind(current->kind) ||
-            is_string_bitmask_function_kind(current->kind) ||
-            is_string_search_function_kind(current->kind) ||
+            mylite_execution_is_string_length_function_kind(current->kind) ||
+            mylite_execution_is_string_codepoint_function_kind(current->kind) ||
+            mylite_execution_is_string_case_function_kind(current->kind) ||
+            mylite_execution_is_string_trim_function_kind(current->kind) ||
+            mylite_execution_is_string_slice_function_kind(current->kind) ||
+            mylite_execution_is_string_padding_function_kind(current->kind) ||
+            mylite_execution_is_string_bitmask_function_kind(current->kind) ||
+            mylite_execution_is_string_search_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR ||
             row_scalar_expression_is_window_function(current) ||
@@ -1086,7 +1086,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_CHAR_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION ||
-            is_charset_collation_function_kind(current->kind)) {
+            mylite_execution_is_charset_collation_function_kind(current->kind)) {
             found = true;
             break;
         }

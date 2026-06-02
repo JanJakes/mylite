@@ -2514,85 +2514,6 @@ enum planned_row_scalar_field_domain {
     PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER = 2,
 };
 
-enum planned_string_length_function_kind {
-    PLANNED_STRING_LENGTH_FUNCTION_NONE = 0,
-    PLANNED_STRING_LENGTH_FUNCTION_BYTE = 1,
-    PLANNED_STRING_LENGTH_FUNCTION_BIT = 2,
-    PLANNED_STRING_LENGTH_FUNCTION_CHARACTER = 3,
-};
-
-enum planned_string_case_function_kind {
-    PLANNED_STRING_CASE_FUNCTION_NONE = 0,
-    PLANNED_STRING_CASE_FUNCTION_LOWER = 1,
-    PLANNED_STRING_CASE_FUNCTION_UPPER = 2,
-};
-
-enum planned_string_codepoint_function_kind {
-    PLANNED_STRING_CODEPOINT_FUNCTION_NONE = 0,
-    PLANNED_STRING_CODEPOINT_FUNCTION_ASCII = 1,
-    PLANNED_STRING_CODEPOINT_FUNCTION_ORD = 2,
-};
-
-enum planned_string_trim_function_kind {
-    PLANNED_STRING_TRIM_FUNCTION_NONE = 0,
-    PLANNED_STRING_TRIM_FUNCTION_BOTH = 1,
-    PLANNED_STRING_TRIM_FUNCTION_LEADING = 2,
-    PLANNED_STRING_TRIM_FUNCTION_TRAILING = 3,
-};
-
-enum planned_string_slice_function_kind {
-    PLANNED_STRING_SLICE_FUNCTION_NONE = 0,
-    PLANNED_STRING_SLICE_FUNCTION_LEFT = 1,
-    PLANNED_STRING_SLICE_FUNCTION_RIGHT = 2,
-    PLANNED_STRING_SLICE_FUNCTION_SUBSTRING = 3,
-};
-
-enum planned_string_search_function_kind {
-    PLANNED_STRING_SEARCH_FUNCTION_NONE = 0,
-    PLANNED_STRING_SEARCH_FUNCTION_LOCATE = 1,
-    PLANNED_STRING_SEARCH_FUNCTION_INSTR = 2,
-    PLANNED_STRING_SEARCH_FUNCTION_POSITION = 3,
-};
-
-enum planned_regexp_string_function_kind {
-    PLANNED_REGEXP_STRING_FUNCTION_NONE = 0,
-    PLANNED_REGEXP_STRING_FUNCTION_INSTR = 1,
-    PLANNED_REGEXP_STRING_FUNCTION_SUBSTR = 2,
-    PLANNED_REGEXP_STRING_FUNCTION_REPLACE = 3,
-};
-
-struct regexp_string_function_call_shape {
-    enum planned_regexp_string_function_kind kind;
-    size_t child_count;
-};
-
-enum planned_string_padding_function_kind {
-    PLANNED_STRING_PADDING_FUNCTION_NONE = 0,
-    PLANNED_STRING_PADDING_FUNCTION_LPAD = 1,
-    PLANNED_STRING_PADDING_FUNCTION_RPAD = 2,
-    PLANNED_STRING_PADDING_FUNCTION_REPEAT = 3,
-    PLANNED_STRING_PADDING_FUNCTION_SPACE = 4,
-};
-
-enum planned_string_bitmask_function_kind {
-    PLANNED_STRING_BITMASK_FUNCTION_NONE = 0,
-    PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET = 1,
-    PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET = 2,
-};
-
-enum {
-    string_bitmask_export_set_min_argument_count = 3,
-    string_bitmask_export_set_max_argument_count = 5,
-    string_bitmask_make_set_min_argument_count = 2,
-};
-
-enum planned_charset_collation_function_kind {
-    PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
-    PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
-    PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION = 2,
-    PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY = 3,
-};
-
 enum planned_row_scalar_conversion_kind {
     PLANNED_ROW_SCALAR_CONVERSION_NONE = 0,
     PLANNED_ROW_SCALAR_CONVERSION_BINARY = 1,
@@ -3525,26 +3446,6 @@ struct scalar_text_conversion_messages {
     const char *signed_value;
     const char *string_unsupported;
     const char *embedded_nul;
-};
-
-enum scalar_convert_charset_warning {
-    SCALAR_CONVERT_CHARSET_WARNING_NONE,
-    SCALAR_CONVERT_CHARSET_WARNING_UTF8_ALIAS,
-    SCALAR_CONVERT_CHARSET_WARNING_UTF8MB3_DEPRECATED,
-};
-
-struct scalar_convert_charset_info {
-    const char *charset;
-    const char *collation;
-    bool ascii_only_value;
-    enum scalar_convert_charset_warning warning;
-};
-
-struct regexp_like_text_argument_messages {
-    const char *unsupported;
-    const char *string_unsupported;
-    const char *embedded_nul;
-    const char *non_ascii;
 };
 
 struct field_scalar_argument {
@@ -11773,99 +11674,6 @@ static int utc_timestamp_scalar_value(
 );
 static int utc_date_scalar_value(struct mylite_db *database, struct session_scalar_cell *out_cell);
 static int utc_time_scalar_value(struct mylite_db *database, struct session_scalar_cell *out_cell);
-static int string_length_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_length_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int string_length_session_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static enum planned_string_length_function_kind string_length_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_string_length_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int string_codepoint_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_codepoint_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    bool *out_is_binary,
-    bool *out_is_null
-);
-static bool string_codepoint_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
-);
-static enum planned_string_codepoint_function_kind string_codepoint_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static enum mylite_string_codepoint_kind string_codepoint_function_to_value_kind(
-    enum planned_string_codepoint_function_kind function_kind
-);
-static bool is_string_codepoint_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int string_case_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_case_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool string_case_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static enum planned_string_case_function_kind string_case_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_string_case_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static enum mylite_string_case_kind string_case_function_to_value_kind(
-    enum planned_string_case_function_kind function_kind
-);
-static int string_trim_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_trim_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool string_trim_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static enum planned_string_trim_function_kind string_trim_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_string_trim_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static enum mylite_string_trim_kind string_trim_function_to_value_kind(
-    enum planned_string_trim_function_kind function_kind
-);
 static int unix_timestamp_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -12052,648 +11860,6 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
 static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static const char *calendar_date_argument_count_error_function_name(
     enum mylite_sql_ast_node_kind ast_kind
-);
-static int string_slice_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_slice_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_string_slice_length_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_length,
-    bool *out_is_null
-);
-static int evaluate_string_slice_position_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_position,
-    bool *out_is_null
-);
-static int slice_utf8_text_value(
-    struct mylite_db *database,
-    enum planned_string_slice_function_kind function_kind,
-    const char *text,
-    size_t text_length,
-    int64_t requested_length,
-    struct session_scalar_cell *out_cell
-);
-static int substring_utf8_text_value(
-    struct mylite_db *database,
-    const struct substring_text_bounds *bounds,
-    struct session_scalar_cell *out_cell
-);
-static int string_slice_empty_result(
-    struct mylite_db *database,
-    struct session_scalar_cell *out_cell
-);
-static int find_left_slice_end(
-    const char *text,
-    size_t text_length,
-    uint64_t requested_length,
-    size_t *out_end
-);
-static int find_right_slice_start(
-    const char *text,
-    const struct string_slice_right_bounds *bounds,
-    size_t *out_start
-);
-static bool string_slice_scalar_text_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
-);
-static bool string_slice_length_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static int string_slice_signed_length_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_value,
-    bool *out_is_null
-);
-static int string_slice_signed_position_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_value,
-    bool *out_is_null
-);
-static int string_slice_signed_integer_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_message,
-    const char *range_message,
-    int64_t *out_value,
-    bool *out_is_null
-);
-static enum planned_string_slice_function_kind string_slice_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int string_padding_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_pad_string_padding_function(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    enum planned_string_padding_function_kind function_kind,
-    char **out_result,
-    size_t *out_result_length,
-    bool *out_is_null
-);
-static int evaluate_repeat_string_padding_function(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_result,
-    size_t *out_result_length,
-    bool *out_is_null
-);
-static int evaluate_space_string_padding_function(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_result,
-    size_t *out_result_length,
-    bool *out_is_null
-);
-static int evaluate_string_padding_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_string_padding_count_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_count,
-    bool *out_is_null
-);
-static int string_padding_set_owned_result(
-    struct mylite_db *database,
-    int rc,
-    char *value,
-    size_t value_length,
-    bool is_null,
-    struct session_scalar_cell *out_cell
-);
-static enum planned_string_padding_function_kind string_padding_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static enum mylite_string_padding_side string_padding_function_to_side(
-    enum planned_string_padding_function_kind function_kind
-);
-static bool is_string_padding_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int string_bitmask_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_export_set_string_bitmask_function(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_result,
-    size_t *out_result_length,
-    bool *out_is_null
-);
-static int evaluate_make_set_string_bitmask_function(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    char **out_result,
-    size_t *out_result_length,
-    bool *out_is_null
-);
-static int evaluate_string_bitmask_integer_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *unsupported_message,
-    const char *range_message,
-    int64_t *out_value,
-    bool *out_is_null
-);
-static int evaluate_string_bitmask_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct string_bitmask_scalar_text_argument *out_argument
-);
-static int string_bitmask_set_owned_result(
-    struct mylite_db *database,
-    int rc,
-    char *value,
-    size_t value_length,
-    bool is_null,
-    struct session_scalar_cell *out_cell
-);
-static void string_bitmask_scalar_text_argument_deinit(
-    struct string_bitmask_scalar_text_argument *argument
-);
-static enum planned_string_bitmask_function_kind string_bitmask_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_string_bitmask_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int string_search_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_search_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_string_search_position_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_position,
-    bool *out_is_null
-);
-static int format_string_search_result(
-    struct mylite_db *database,
-    int64_t result,
-    struct session_scalar_cell *out_cell
-);
-static enum planned_string_search_function_kind string_search_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_string_search_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int concat_ws_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_concat_ws_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool concat_ws_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static int string_replace_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int string_insert_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int string_reverse_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int soundex_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int quote_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int substring_index_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_string_replace_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool string_replace_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
-);
-static int evaluate_string_insert_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_string_insert_position_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_position,
-    bool *out_is_null
-);
-static int evaluate_string_insert_length_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_length,
-    bool *out_is_null
-);
-static int evaluate_string_reverse_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool string_reverse_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
-);
-static int evaluate_soundex_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool soundex_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static int evaluate_quote_scalar_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool quote_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
-static int evaluate_substring_index_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_substring_index_count_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_count,
-    bool *out_is_null
-);
-static int find_in_set_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int strcmp_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int regexp_like_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int regexp_string_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int validate_regexp_string_function_argument_count(
-    struct mylite_db *database,
-    const struct regexp_string_function_call_shape *shape
-);
-static enum planned_regexp_string_function_kind regexp_string_function_kind(
-    enum mylite_sql_ast_node_kind kind
-);
-static const char *regexp_string_function_name(enum planned_regexp_string_function_kind kind);
-static const char *regexp_string_function_argument_count_error_name(
-    enum mylite_sql_ast_node_kind kind
-);
-static const struct mylite_sql_ast_node *regexp_string_function_arguments(
-    const struct mylite_sql_ast_node *expression
-);
-static size_t regexp_string_function_argument_count(const struct mylite_sql_ast_node *expression);
-static const struct mylite_sql_ast_node *regexp_string_function_argument_at(
-    const struct mylite_sql_ast_node *expression,
-    size_t index
-);
-static int evaluate_find_in_set_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_strcmp_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_regexp_like_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool allow_session_scalar,
-    const struct regexp_like_text_argument_messages *messages,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static bool regexp_like_literal_or_unary_expression_is_admitted(
-    const struct mylite_sql_ast_node *expression
-);
-static int evaluate_regexp_like_literal_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct regexp_like_text_argument_messages *messages,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int regexp_like_cell_text_result(
-    struct session_scalar_cell *inout_cell,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-static int evaluate_regexp_like_match_type_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool *out_is_null,
-    bool *out_case_sensitive
-);
-static int regexp_like_case_sensitive_from_match_type(
-    struct mylite_db *database,
-    const char *text,
-    size_t text_length,
-    bool *out_case_sensitive
-);
-static int validate_regexp_like_pattern(
-    struct mylite_db *database,
-    const char *pattern,
-    size_t pattern_length,
-    bool case_sensitive,
-    const char *unsupported_message
-);
-static int set_regexp_like_compile_error(
-    struct mylite_db *database,
-    enum mylite_regexp_compile_status status,
-    const char *unsupported_message
-);
-static int match_regexp_like_value(
-    struct mylite_db *database,
-    const char *value,
-    size_t value_length,
-    const char *pattern,
-    size_t pattern_length,
-    bool case_sensitive,
-    bool *out_matches
-);
-static int regexp_string_find_match(
-    struct mylite_db *database,
-    const char *value,
-    size_t value_length,
-    const char *pattern,
-    size_t pattern_length,
-    struct mylite_regexp_match *out_match
-);
-static int regexp_string_compile_error(
-    struct mylite_db *database,
-    enum mylite_regexp_compile_status status
-);
-static int regexp_string_match_error(
-    struct mylite_db *database,
-    enum mylite_regexp_match_status status
-);
-static int regexp_string_result_value(
-    struct mylite_db *database,
-    enum planned_regexp_string_function_kind kind,
-    const char *value,
-    size_t value_length,
-    bool value_is_null,
-    const char *pattern,
-    size_t pattern_length,
-    bool pattern_is_null,
-    const char *replacement,
-    size_t replacement_length,
-    bool replacement_is_null,
-    struct session_scalar_cell *out_cell
-);
-static int regexp_instr_or_substr_result_value(
-    struct mylite_db *database,
-    enum planned_regexp_string_function_kind kind,
-    const char *value,
-    size_t value_length,
-    const char *pattern,
-    size_t pattern_length,
-    struct session_scalar_cell *out_cell
-);
-static int regexp_substr_result_value(
-    struct mylite_db *database,
-    const char *value,
-    const struct mylite_regexp_match *match,
-    struct session_scalar_cell *out_cell
-);
-static int regexp_replace_result_value(
-    struct mylite_db *database,
-    const char *value,
-    size_t value_length,
-    const char *pattern,
-    size_t pattern_length,
-    const char *replacement,
-    size_t replacement_length,
-    struct session_scalar_cell *out_cell
-);
-static int regexp_replace_append(
-    struct mylite_db *database,
-    struct session_scalar_cell *out_cell,
-    const char *text,
-    size_t text_length
-);
-static int charset_collation_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int charset_collation_scalar_result(
-    struct mylite_db *database,
-    enum planned_charset_collation_function_kind function_kind,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int coercibility_scalar_result(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int coercibility_non_concat_scalar_result(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int coercibility_concat_scalar_result(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int apply_coercibility_concat_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *argument,
-    const char **inout_result,
-    bool *inout_has_non_null_argument,
-    const struct mylite_execution_catalog_scalar_collation **inout_explicit_collation
-);
-static int coercibility_binary_wrapper_result(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int coercibility_validate_binary_wrapper_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *argument
-);
-static int coercibility_literal_result(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static const char *coercibility_concat_argument_result(const char *argument_result);
-static bool coercibility_binary_wrapper_column_reference(
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node **out_column_reference
-);
-static int set_unknown_column_for_reference(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static int charset_collation_concat_scalar_result(
-    struct mylite_db *database,
-    enum planned_charset_collation_function_kind function_kind,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int validate_charset_collation_concat_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool *out_is_binary_string_argument,
-    const struct mylite_execution_catalog_scalar_collation **out_explicit_collation
-);
-static int merge_concat_explicit_collation(
-    struct mylite_db *database,
-    const struct mylite_execution_catalog_scalar_collation **inout_explicit_collation,
-    const struct mylite_execution_catalog_scalar_collation *argument_collation
-);
-static int charset_collation_collate_expression_result(
-    struct mylite_db *database,
-    enum planned_charset_collation_function_kind function_kind,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int charset_collation_convert_using_charset_result(
-    struct mylite_db *database,
-    enum planned_charset_collation_function_kind function_kind,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-static int charset_collation_rand_result(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_charset,
-    const char **out_collation
-);
-static int scalar_expression_charset_collation_metadata(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_charset,
-    const char **out_collation
-);
-static int scalar_expression_base_charset_collation_metadata(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_charset,
-    const char **out_collation
-);
-static int scalar_collation_info_for_expression(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_execution_catalog_scalar_collation **out_info
-);
-static const struct mylite_execution_catalog_scalar_collation *scalar_collation_info_by_name(
-    const char *collation_name
-);
-static enum planned_charset_collation_function_kind charset_collation_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-static bool is_charset_collation_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static int charset_collation_select_result(
-    enum planned_charset_collation_function_kind function_kind,
-    const char *charset,
-    const char *collation,
-    const char **out_result
 );
 static int scalar_subquery_value(
     struct mylite_db *database,
@@ -27186,6 +26352,50 @@ int mylite_execution_collate_expression_value(
     return collate_expression_value(database, expression, out_cell);
 }
 
+int mylite_execution_scalar_convert_charset_info_for_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_convert_charset_info *out_info
+) {
+    return scalar_convert_charset_info_for_expression(database, expression, out_info);
+}
+
+int mylite_execution_rand_seed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed
+) {
+    return rand_seed_value(database, expression, out_seed);
+}
+
+int mylite_execution_copy_table_option_name_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option_name_node,
+    char *destination,
+    size_t destination_size,
+    const char *identifier_kind,
+    const char *nul_message
+) {
+    return copy_table_option_name_text(
+        database,
+        option_name_node,
+        destination,
+        destination_size,
+        (struct table_option_name_policy){
+            .identifier_kind = identifier_kind,
+            .nul_message = nul_message,
+        }
+    );
+}
+
+const char *mylite_execution_national_character_set_name(void) {
+    return national_character_set_name;
+}
+
+const char *mylite_execution_national_collation_name(void) {
+    return national_collation_name;
+}
+
 void mylite_execution_set_parse_error(struct mylite_db *database) {
     set_parse_error(database, NULL);
 }
@@ -27270,6 +26480,59 @@ bool mylite_execution_text_equals_ascii_case_insensitive(const char *left, const
     return text_equals_ascii_case_insensitive(left, right);
 }
 
+bool mylite_execution_text_value_is_supported_string_key(const char *text, size_t text_length) {
+    return text_value_is_supported_string_key(text, text_length);
+}
+
+const char *mylite_execution_scalar_pi_text(void) {
+    return scalar_pi_text;
+}
+
+int mylite_execution_scalar_rand_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return rand_function_value(database, expression, out_cell);
+}
+
+int mylite_execution_literal_projection_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return literal_projection_value(database, expression, out_cell);
+}
+
+int mylite_execution_format_session_scalar_uint64_value(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+) {
+    return format_session_scalar_uint64_value(database, value, out_cell);
+}
+
+int mylite_execution_validate_utf8_text(
+    const char *text,
+    size_t text_length,
+    size_t *out_character_count
+) {
+    return validate_utf8_text(text, text_length, out_character_count);
+}
+
+int mylite_execution_utf8_sequence_width(
+    const char *text,
+    size_t text_length,
+    size_t index,
+    size_t *out_width
+) {
+    return utf8_sequence_width(text, text_length, index, out_width);
+}
+
+bool mylite_execution_is_session_scalar_expression(const struct mylite_sql_ast_node *expression) {
+    return is_session_scalar_expression(expression);
+}
+
 int mylite_execution_set_unknown_column_reference_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -27295,12 +26558,51 @@ int mylite_execution_set_unknown_column_reference_error(
     return MYLITE_ERROR;
 }
 
+void mylite_execution_set_illegal_mix_of_collations_error(
+    struct mylite_db *database,
+    const char *first_collation,
+    const char *second_collation,
+    const char *operation
+) {
+    set_illegal_mix_of_collations_error(database, first_collation, second_collation, operation);
+}
+
+void mylite_execution_set_unknown_collation_error(
+    struct mylite_db *database,
+    const char *collation_name
+) {
+    set_unknown_collation_error(database, collation_name);
+}
+
+void mylite_execution_set_collation_not_valid_for_charset_error(
+    struct mylite_db *database,
+    const char *collation_name,
+    const char *charset_name
+) {
+    set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
+}
+
 void mylite_execution_set_nomem_error(struct mylite_db *database) {
     set_nomem_error(database);
 }
 
 void mylite_execution_set_runtime_error(struct mylite_db *database, const char *message) {
     set_runtime_error(database, message);
+}
+
+void mylite_execution_set_regexp_illegal_argument_error(struct mylite_db *database) {
+    set_regexp_illegal_argument_error(database);
+}
+
+void mylite_execution_set_regexp_error(struct mylite_db *database, const char *message) {
+    set_regexp_error(database, message);
+}
+
+void mylite_execution_set_regexp_character_range_error(
+    struct mylite_db *database,
+    const char *message
+) {
+    set_regexp_character_range_error(database, message);
 }
 
 void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cell) {

@@ -2704,7 +2704,7 @@ static int plan_row_scalar_weight_string_argument(
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
-            return set_unknown_column_for_reference(database, expression);
+            return mylite_execution_set_unknown_column_reference_error(database, expression);
         }
         return plan_row_scalar_weight_string_column(
             database,

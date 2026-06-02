@@ -1469,7 +1469,7 @@ static int plan_where_scalar_literal_value(
 ) {
     int64_t value = 0;
     bool is_null = false;
-    int rc = string_slice_signed_integer_value(
+    int rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "WHERE scalar literal predicates support only integer, boolean, and NULL literals",
@@ -1631,7 +1631,7 @@ static bool predicate_node_is_string_length_expression(
     const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
-    return (predicate_node != NULL && is_string_length_function_kind(predicate_node->kind)) != 0;
+    return (predicate_node != NULL && mylite_execution_is_string_length_function_kind(predicate_node->kind)) != 0;
 }
 
 static bool predicate_node_is_substring_expression(
@@ -2189,7 +2189,7 @@ static int plan_string_length_predicate_value(
         return MYLITE_ERROR;
     }
 
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "string length predicates support only integer, boolean, and NULL comparison literals",
@@ -2504,7 +2504,7 @@ static int plan_find_in_set_predicate_integer_value(
     int64_t value = 0;
     int64_t planned_integer = 0;
     bool is_null = false;
-    int rc = string_slice_signed_integer_value(
+    int rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "FIND_IN_SET() predicates support only integer and boolean comparison literals",
@@ -2688,7 +2688,7 @@ static int plan_regexp_like_predicate_integer_value(
 ) {
     int64_t value = 0;
     bool is_null = false;
-    int rc = string_slice_signed_integer_value(
+    int rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "REGEXP_LIKE() predicates support only integer and boolean comparison literals",
@@ -2869,7 +2869,7 @@ static int plan_json_valid_predicate_integer_value(
 ) {
     int64_t value = 0;
     bool is_null = false;
-    int rc = string_slice_signed_integer_value(
+    int rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "JSON_VALID() predicates support only integer and boolean comparison literals",
@@ -3050,7 +3050,7 @@ static int plan_json_contains_predicate_integer_value(
 ) {
     int64_t value = 0;
     bool is_null = false;
-    int rc = string_slice_signed_integer_value(
+    int rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "JSON_CONTAINS() predicates support only integer and boolean comparison literals",

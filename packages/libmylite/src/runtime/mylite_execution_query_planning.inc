@@ -232,7 +232,7 @@ static int plan_row_scalar_special_expression(
             out_expression
         );
     }
-    if (is_charset_collation_function_kind(expression->kind)) {
+    if (mylite_execution_is_charset_collation_function_kind(expression->kind)) {
         return plan_row_scalar_charset_collation_expression(
             database,
             expression,
@@ -1765,10 +1765,10 @@ static const char *calendar_date_argument_count_error_function_name(
 }
 
 static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_kind kind) {
-    if (is_string_length_function_kind(kind) || is_string_codepoint_function_kind(kind) ||
-        is_string_case_function_kind(kind) || is_string_trim_function_kind(kind) ||
-        is_string_slice_function_kind(kind) || is_string_padding_function_kind(kind) ||
-        is_string_bitmask_function_kind(kind) || is_string_search_function_kind(kind)) {
+    if (mylite_execution_is_string_length_function_kind(kind) || mylite_execution_is_string_codepoint_function_kind(kind) ||
+        mylite_execution_is_string_case_function_kind(kind) || mylite_execution_is_string_trim_function_kind(kind) ||
+        mylite_execution_is_string_slice_function_kind(kind) || mylite_execution_is_string_padding_function_kind(kind) ||
+        mylite_execution_is_string_bitmask_function_kind(kind) || mylite_execution_is_string_search_function_kind(kind)) {
         return true;
     }
 
@@ -1804,7 +1804,7 @@ static int plan_row_scalar_string_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    if (is_string_length_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_length_function_kind(expression->kind)) {
         return plan_row_scalar_string_length_expression(
             database,
             expression,
@@ -1816,7 +1816,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_codepoint_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_codepoint_function_kind(expression->kind)) {
         return plan_row_scalar_string_codepoint_expression(
             database,
             expression,
@@ -1827,7 +1827,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_case_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_case_function_kind(expression->kind)) {
         return plan_row_scalar_string_case_expression(
             database,
             expression,
@@ -1838,7 +1838,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_trim_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_trim_function_kind(expression->kind)) {
         return plan_row_scalar_string_trim_expression(
             database,
             expression,
@@ -1849,7 +1849,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_slice_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_slice_function_kind(expression->kind)) {
         return plan_row_scalar_string_slice_expression(
             database,
             expression,
@@ -1861,7 +1861,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_padding_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_padding_function_kind(expression->kind)) {
         return plan_row_scalar_string_padding_expression(
             database,
             expression,
@@ -1872,7 +1872,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_bitmask_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_bitmask_function_kind(expression->kind)) {
         return plan_row_scalar_string_bitmask_expression(
             database,
             expression,
@@ -1883,7 +1883,7 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (is_string_search_function_kind(expression->kind)) {
+    if (mylite_execution_is_string_search_function_kind(expression->kind)) {
         return plan_row_scalar_string_search_expression(
             database,
             expression,
@@ -1987,14 +1987,14 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (regexp_string_function_argument_count_error_name(expression->kind) != NULL) {
+    if (mylite_execution_regexp_string_function_argument_count_error_name(expression->kind) != NULL) {
         set_native_function_parameter_count_error(
             database,
-            regexp_string_function_argument_count_error_name(expression->kind)
+            mylite_execution_regexp_string_function_argument_count_error_name(expression->kind)
         );
         return MYLITE_ERROR;
     }
-    if (regexp_string_function_kind(expression->kind) != PLANNED_REGEXP_STRING_FUNCTION_NONE) {
+    if (mylite_execution_regexp_string_function_kind(expression->kind) != PLANNED_REGEXP_STRING_FUNCTION_NONE) {
         return plan_row_scalar_regexp_string_expression(
             database,
             expression,

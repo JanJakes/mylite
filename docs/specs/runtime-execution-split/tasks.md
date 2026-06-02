@@ -540,4 +540,29 @@
       ownership.
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
-- [ ] Commit and push the twenty-eighth split.
+- [x] Commit and push the twenty-eighth split.
+
+## Round 29
+
+- [x] Reinspect scalar string core/extended fragments and identify scalar
+      string, REGEXP, and charset/collation execution as a true-module
+      boundary.
+- [x] Add `mylite_execution_scalar_string.c` for core string functions,
+      extended string functions, REGEXP scalar functions, and scalar
+      charset/collation/coercibility metadata execution.
+- [x] Move string-specific argument normalization, UTF-8 slice validation,
+      signed slice argument parsing, REGEXP pattern validation, collation
+      metadata classification, and function-family dispatch out of the
+      string `.inc` fragments.
+- [x] Keep row-scalar planning, predicate planning, scalar projection
+      descriptor construction, generic session-scalar dispatch, table-option
+      validation, shared diagnostics, and session state in execution fragments
+      behind explicit internal scalar helper wrappers.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused scalar string, REGEXP, charset/collation, JSON quote, and
+      string predicate tests.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-ninth split.

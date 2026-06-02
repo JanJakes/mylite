@@ -1566,7 +1566,12 @@ static int populate_scalar_charset_collation_result_column_descriptor(
         return MYLITE_MISUSE;
     }
 
-    rc = scalar_expression_charset_collation_metadata(database, expression, &charset, &collation);
+    rc = mylite_execution_scalar_expression_charset_collation_metadata(
+        database,
+        expression,
+        &charset,
+        &collation
+    );
     if (rc == MYLITE_OK) {
         rc = session_scalar_value(database, expression, &cell);
     }

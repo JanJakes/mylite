@@ -13,7 +13,7 @@ static int plan_row_scalar_string_length_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_LENGTH_FUNCTION_NONE
-                                       : string_length_function_kind(expression->kind);
+                                       : mylite_execution_string_length_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_LENGTH_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string length functions support exactly one argument");
@@ -103,7 +103,7 @@ static int plan_row_scalar_string_length_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_length_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_length_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string length functions support only string, integer, boolean, NULL, session "
@@ -198,7 +198,7 @@ static int plan_row_scalar_string_codepoint_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_CODEPOINT_FUNCTION_NONE
-                                       : string_codepoint_function_kind(expression->kind);
+                                       : mylite_execution_string_codepoint_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_CODEPOINT_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string codepoint functions support exactly one argument");
@@ -265,7 +265,7 @@ static int plan_row_scalar_string_codepoint_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_codepoint_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_codepoint_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string codepoint functions support only string, hex, integer, boolean, NULL, "
@@ -441,7 +441,7 @@ static int plan_row_scalar_string_case_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_CASE_FUNCTION_NONE
-                                       : string_case_function_kind(expression->kind);
+                                       : mylite_execution_string_case_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_CASE_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string case functions support exactly one argument");
@@ -528,7 +528,7 @@ static int plan_row_scalar_string_case_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_case_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_case_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string case functions support only string, integer, boolean, NULL, session "
@@ -625,7 +625,7 @@ static int plan_row_scalar_string_trim_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_TRIM_FUNCTION_NONE
-                                       : string_trim_function_kind(expression->kind);
+                                       : mylite_execution_string_trim_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if (function_kind == PLANNED_STRING_TRIM_FUNCTION_NONE ||
         (argument_count != 1U && argument_count != 2U)) {
@@ -728,7 +728,7 @@ static int plan_row_scalar_string_trim_value_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_trim_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_trim_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "trim functions support only string, integer, boolean, NULL, session scalar, system "
@@ -753,7 +753,7 @@ static int plan_row_scalar_string_trim_remove_argument(
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER ||
-        !string_trim_scalar_argument_is_admitted(expression)) {
+        !mylite_execution_string_trim_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "trim functions support only scalar string, integer, boolean, NULL, session scalar, "
@@ -851,7 +851,7 @@ static int plan_row_scalar_string_slice_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_SLICE_FUNCTION_NONE
-                                       : string_slice_function_kind(expression->kind);
+                                       : mylite_execution_string_slice_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if (function_kind == PLANNED_STRING_SLICE_FUNCTION_NONE) {
         set_unsupported_error(database, "string slice functions support exactly two arguments");
@@ -971,7 +971,7 @@ static int plan_row_scalar_string_slice_value_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string slice functions support only string, integer, boolean, NULL, session "
@@ -998,14 +998,14 @@ static int plan_row_scalar_string_slice_length_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string slice functions support only integer, boolean, and NULL length literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_length_value(database, expression, &value, &is_null);
+    rc = mylite_execution_string_slice_signed_length_value(database, expression, &value, &is_null);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1025,14 +1025,14 @@ static int plan_row_scalar_string_slice_position_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string slice functions support only integer, boolean, and NULL position literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_position_value(database, expression, &value, &is_null);
+    rc = mylite_execution_string_slice_signed_position_value(database, expression, &value, &is_null);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1123,7 +1123,7 @@ static int plan_row_scalar_string_padding_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_PADDING_FUNCTION_NONE
-                                       : string_padding_function_kind(expression->kind);
+                                       : mylite_execution_string_padding_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if ((function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
          function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) &&
@@ -1258,7 +1258,7 @@ static int plan_row_scalar_string_padding_value_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_replace_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_replace_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -1281,7 +1281,7 @@ static int plan_row_scalar_string_padding_count_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string padding functions support only integer, boolean, and NULL length/count "
@@ -1289,7 +1289,7 @@ static int plan_row_scalar_string_padding_count_argument(
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "string padding functions support only integer, boolean, and NULL length/count literals",
@@ -1387,7 +1387,7 @@ static int plan_row_scalar_string_bitmask_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_BITMASK_FUNCTION_NONE
-                                       : string_bitmask_function_kind(expression->kind);
+                                       : mylite_execution_string_bitmask_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_BITMASK_FUNCTION_NONE || expression == NULL ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string bitmask functions support EXPORT_SET and MAKE_SET");
@@ -1605,7 +1605,7 @@ static int plan_row_scalar_string_bitmask_bit_argument(
             out_expression
         );
     }
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "string bitmask functions support only signed integer, boolean, NULL, and integer "
@@ -1613,7 +1613,7 @@ static int plan_row_scalar_string_bitmask_bit_argument(
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "string bitmask functions support only signed integer, boolean, NULL, and integer "
@@ -1663,14 +1663,14 @@ static int plan_row_scalar_string_bitmask_count_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals",
@@ -1752,7 +1752,7 @@ static int plan_row_scalar_string_search_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     function_kind = expression == NULL ? PLANNED_STRING_SEARCH_FUNCTION_NONE
-                                       : string_search_function_kind(expression->kind);
+                                       : mylite_execution_string_search_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_NONE ||
         (argument_count != 2U && argument_count != 3U) ||
@@ -1878,7 +1878,7 @@ static int plan_row_scalar_string_search_text_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -1901,14 +1901,14 @@ static int plan_row_scalar_string_search_position_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "LOCATE() position supports only integer, boolean, and NULL literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "LOCATE() position supports only integer, boolean, and NULL literals",
@@ -2180,7 +2180,7 @@ static int plan_row_scalar_string_replace_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_replace_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_replace_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -2248,7 +2248,7 @@ static int plan_row_scalar_string_insert_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_replace_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_replace_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -2271,14 +2271,14 @@ static int plan_row_scalar_string_insert_position_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "INSERT() position supports only integer, boolean, and NULL literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "INSERT() position supports only integer, boolean, and NULL literals",
@@ -2305,14 +2305,14 @@ static int plan_row_scalar_string_insert_length_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "INSERT() length supports only integer, boolean, and NULL literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "INSERT() length supports only integer, boolean, and NULL literals",
@@ -2562,7 +2562,7 @@ static int plan_row_scalar_string_reverse_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_reverse_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_reverse_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "REVERSE() supports only string, integer, boolean, NULL, session scalar, "
@@ -2744,7 +2744,7 @@ static int plan_row_scalar_soundex_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!soundex_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_soundex_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "SOUNDEX() supports only string, integer, boolean, NULL, session scalar, "
@@ -2926,7 +2926,7 @@ static int plan_row_scalar_string_quote_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!quote_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_quote_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "QUOTE() supports only string, integer, DECIMAL, boolean, NULL, session scalar, "
@@ -3199,7 +3199,7 @@ static int plan_row_scalar_substring_index_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_replace_scalar_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_replace_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -3222,14 +3222,14 @@ static int plan_row_scalar_substring_index_count_argument(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (!string_slice_length_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "SUBSTRING_INDEX() count supports only integer, boolean, and NULL literals"
         );
         return MYLITE_ERROR;
     }
-    rc = string_slice_signed_integer_value(
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
         "SUBSTRING_INDEX() count supports only integer, boolean, and NULL literals",
@@ -3422,7 +3422,7 @@ static int plan_row_scalar_find_in_set_text_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -3611,7 +3611,7 @@ static int plan_row_scalar_strcmp_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
@@ -3728,7 +3728,7 @@ static int plan_row_scalar_regexp_like_expression(
         &value_argument
     );
     if (rc == MYLITE_OK && child_count == 3U) {
-        rc = evaluate_regexp_like_match_type_argument(
+        rc = mylite_execution_evaluate_regexp_like_match_type_argument(
             database,
             child_at(expression, 2U),
             &match_type_is_null,
@@ -3749,7 +3749,7 @@ static int plan_row_scalar_regexp_like_expression(
         );
     }
     if (rc == MYLITE_OK && !pattern_argument.value.is_null) {
-        rc = validate_regexp_like_pattern(
+        rc = mylite_execution_validate_regexp_like_pattern(
             database,
             pattern_argument.value.text,
             pattern_argument.value.text_length,
@@ -3840,7 +3840,7 @@ static int plan_row_scalar_regexp_like_value_argument(
         );
         return MYLITE_ERROR;
     }
-    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+    if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
             "REGEXP_LIKE() supports only string, integer, boolean, NULL, session scalar, "
@@ -3887,7 +3887,7 @@ static int plan_row_scalar_regexp_like_pattern_argument(
     const char *text = NULL;
     size_t text_length = 0U;
     bool is_null = false;
-    int rc = evaluate_regexp_like_text_argument(
+    int rc = mylite_execution_evaluate_regexp_like_text_argument(
         database,
         expression,
         false,
@@ -3980,13 +3980,13 @@ static int plan_row_scalar_regexp_string_expression(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    kind = regexp_string_function_kind(expression->kind);
+    kind = mylite_execution_regexp_string_function_kind(expression->kind);
     if (kind == PLANNED_REGEXP_STRING_FUNCTION_NONE) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
     expected_argument_count = kind == PLANNED_REGEXP_STRING_FUNCTION_REPLACE ? 3U : 2U;
-    child_count = regexp_string_function_argument_count(expression);
+    child_count = mylite_execution_regexp_string_function_argument_count(expression);
     if (child_count != expected_argument_count) {
         if (child_count > expected_argument_count) {
             set_unsupported_error(
@@ -3994,7 +3994,7 @@ static int plan_row_scalar_regexp_string_expression(
                 "REGEXP string function optional arguments are not supported"
             );
         } else {
-            set_native_function_parameter_count_error(database, regexp_string_function_name(kind));
+            set_native_function_parameter_count_error(database, mylite_execution_regexp_string_function_name(kind));
         }
         return MYLITE_ERROR;
     }
@@ -4017,7 +4017,7 @@ static int plan_row_scalar_regexp_string_expression(
 
     rc = plan_row_scalar_regexp_string_argument(
         database,
-        regexp_string_function_argument_at(expression, 0U),
+        mylite_execution_regexp_string_function_argument_at(expression, 0U),
         has_source,
         source_context,
         table_columns,
@@ -4029,7 +4029,7 @@ static int plan_row_scalar_regexp_string_expression(
     if (rc == MYLITE_OK) {
         rc = plan_row_scalar_regexp_like_pattern_argument(
             database,
-            regexp_string_function_argument_at(expression, 1U),
+            mylite_execution_regexp_string_function_argument_at(expression, 1U),
             &out_expression->arguments[1]
         );
     }
@@ -4039,7 +4039,7 @@ static int plan_row_scalar_regexp_string_expression(
     if (rc == MYLITE_OK && kind == PLANNED_REGEXP_STRING_FUNCTION_REPLACE) {
         rc = plan_row_scalar_regexp_string_argument(
             database,
-            regexp_string_function_argument_at(expression, 2U),
+            mylite_execution_regexp_string_function_argument_at(expression, 2U),
             has_source,
             source_context,
             table_columns,
@@ -4089,7 +4089,7 @@ static int validate_row_scalar_regexp_string_pattern(
         set_regexp_illegal_argument_error(database);
         return MYLITE_ERROR;
     }
-    return validate_regexp_like_pattern(
+    return mylite_execution_validate_regexp_like_pattern(
         database,
         pattern_argument->value.text,
         pattern_argument->value.text_length,

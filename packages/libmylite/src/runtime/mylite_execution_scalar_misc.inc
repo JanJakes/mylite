@@ -404,7 +404,7 @@ static int evaluate_concat_operator_scalar_argument(
     } else if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         rc = scalar_subquery_value(database, expression, inout_cell);
     } else {
-        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+        rc = mylite_execution_string_length_session_scalar_argument_value(database, expression, inout_cell);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -513,7 +513,7 @@ static bool concat_operator_scalar_argument_is_admitted(
     if (concat_operator_scalar_argument_is_integer_arithmetic_expression(expression)) {
         return true;
     }
-    return string_length_scalar_argument_is_admitted(expression);
+    return mylite_execution_string_length_scalar_argument_is_admitted(expression);
 }
 
 static bool concat_operator_scalar_argument_is_integer_arithmetic_expression(

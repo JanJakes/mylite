@@ -1194,7 +1194,7 @@ static uint32_t result_metadata_collation_id(const char *collation_name) {
     struct mylite_sql_source_span id_span = {0};
     uint64_t id = 0U;
 
-    scalar_collation = scalar_collation_info_by_name(collation_name);
+    scalar_collation = mylite_execution_scalar_collation_info_by_name(collation_name);
     if (scalar_collation != NULL) {
         return scalar_collation->id;
     }

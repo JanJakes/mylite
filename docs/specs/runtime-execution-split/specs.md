@@ -231,6 +231,23 @@ intentionally reads borrowed session scalar identity values for `DATABASE()`,
 last-insert-id argument conversion paths; it does not own or mutate session
 state.
 
+The twenty-ninth split targets scalar string, regular-expression, and
+charset/collation function execution. Core string scalar functions
+(`LENGTH()`, `BIT_LENGTH()`, `CHAR_LENGTH()`, `ASCII()`, `ORD()`, `LOWER()`,
+`UPPER()`, `TRIM()` variants, `LEFT()`, `RIGHT()`, and `SUBSTRING()`),
+extended string functions (`LPAD()`, `RPAD()`, `REPEAT()`, `SPACE()`,
+`EXPORT_SET()`, `MAKE_SET()`, `LOCATE()`, `INSTR()`, `POSITION()`,
+`CONCAT_WS()`, `REPLACE()`, `INSERT()`, `REVERSE()`, `SOUNDEX()`, `QUOTE()`,
+`SUBSTRING_INDEX()`, `FIND_IN_SET()`, and `STRCMP()`), REGEXP scalar
+functions, and scalar `CHARSET()`, `COLLATION()`, and `COERCIBILITY()`
+metadata execution move into `mylite_execution_scalar_string.c`. The new module
+owns string-specific argument normalization, UTF-8 slice validation, pattern
+validation, collation/coercibility metadata classification, and function-family
+dispatch helpers. Row-scalar planning, predicate planning, scalar projection
+descriptor construction, generic session-scalar dispatch, table-option
+validation, shared diagnostics, and session state remain in the execution
+runtime and call the module through explicit internal scalar helper wrappers.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

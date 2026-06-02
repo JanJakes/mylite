@@ -932,3 +932,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-sixth split.
+
+## Round 47
+
+- [x] Reinspect the remaining largest runtime fragments after the row-scalar
+      value split.
+- [x] Identify `mylite_execution_mysql_system_queries.inc` as a mysql/sys
+      system query-family same-translation-unit split candidate.
+- [x] Split dispatch/static rows, sys auto-increment rows, sys statistics rows,
+      sys table/index-health rows, sys object-overview rows, and mysql InnoDB
+      stats rows into named fragments.
+- [x] Remove `mylite_execution_mysql_system_queries.inc` and replace it with
+      the ordered fragment include sequence.
+- [x] Run focused mysql/sys system table, sys view, InnoDB stats, table/index
+      metadata, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-seventh split.

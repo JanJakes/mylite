@@ -633,9 +633,22 @@ The fragments are:
 - `mylite_execution_metadata_queries.inc`: `DO`, high-level `SELECT`
   dispatch, compound SELECT execution, selected metadata target detection, and
   scalar/row-scalar SELECT routing.
-- `mylite_execution_mysql_system_queries.inc`: mysql/sys virtual table SELECT
-  execution, built-in row synthesis, mysql system table metadata row helpers,
-  and sys view placeholder rows.
+- `mylite_execution_mysql_system_query_dispatch.inc`: mysql/sys virtual table
+  SELECT execution, system-row dispatch, static mysql rows, and static sys
+  placeholder row validation.
+- `mylite_execution_mysql_system_sys_auto_increment_rows.inc`: sys
+  `schema_auto_increment_columns` catalog row synthesis and default ordering.
+- `mylite_execution_mysql_system_sys_statistics_rows.inc`: sys
+  index-statistics, table-statistics, and `x$ps_schema_table_statistics_io`
+  row synthesis.
+- `mylite_execution_mysql_system_sys_table_index_health_rows.inc`: sys
+  redundant-index, `x$schema_flattened_keys`, unused-index, table-lock-wait,
+  and full-table-scan row synthesis.
+- `mylite_execution_mysql_system_sys_object_overview_rows.inc`: sys
+  `schema_object_overview` grouping and row synthesis.
+- `mylite_execution_mysql_system_innodb_stats_rows.inc`: mysql system table
+  column metadata helpers plus mysql `innodb_index_stats` and
+  `innodb_table_stats` row synthesis.
 - `mylite_execution_information_schema_queries.inc`: INFORMATION_SCHEMA SELECT
   query execution, row-set ownership, static metadata rows, catalog table rows,
   table-status values, and built-in schema table metadata rows.
@@ -1400,6 +1413,10 @@ current timestamp/session state.
 22. Split the oversized row-scalar value planning fragment into ordered
     same-translation-unit binary/encoding/UUID, CHAR/charset, control-flow,
     conversion/value/column, and concat planning fragments.
+23. Split the oversized mysql/sys system query fragment into ordered
+    same-translation-unit dispatch/static-row, sys auto-increment, sys
+    statistics, sys table/index-health, sys object-overview, and mysql InnoDB
+    stats row fragments.
 
 ## Review checklist
 
@@ -1469,3 +1486,8 @@ current timestamp/session state.
   and same-translation-unit helper linkage; the split must not change accepted
   binary, UUID, CHAR, charset/collation, control-flow, conversion, literal,
   column, CONCAT, or CONCAT_WS argument families or diagnostics.
+- mysql/sys system query fragments preserve the existing virtual metadata
+  SELECT execution ownership, row-set construction, and same-translation-unit
+  helper linkage; the split must not introduce a second metadata query engine,
+  materialize catalog tables, change sys placeholder behavior, or alter mysql
+  InnoDB stats row synthesis.

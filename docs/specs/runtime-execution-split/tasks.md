@@ -191,3 +191,20 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the eleventh split.
+
+## Round 12
+
+- [x] Reinspect the remaining catalog system-table monolith after the SQL
+      builder split.
+- [x] Select immutable sys built-in view definitions as the next true module
+      boundary.
+- [x] Move sys view SQL definitions, SHOW CREATE text, and lookup/count
+      accessors into `mylite_execution_catalog_sys_views`.
+- [x] Keep the unified mysql/sys system-table descriptor array in
+      `mylite_execution_catalog_system_tables`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog/sys metadata tests.
+- [x] Review the split for behavior preservation, order, and module ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twelfth split.

@@ -86,6 +86,13 @@ helpers, parameter binding, selected-row extraction, and parser helper tails.
 The split keeps these helpers in the execution translation unit and preserves
 the exact renderer/binder order.
 
+The twelfth split resumes true module extraction in the catalog module family.
+It moves immutable `sys` built-in view SQL definitions, SHOW CREATE text, and
+view lookup/count accessors out of the combined mysql/sys system-table catalog
+module. The remaining system-table module keeps mysql/sys table column
+metadata, sys configuration trigger metadata, and the unified ordered
+system-table descriptor array.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -159,9 +166,11 @@ uses these true C modules:
 - `mylite_execution_catalog_information_schema.c`: `INFORMATION_SCHEMA`
   keyword rows, table definitions, column definitions, and accessors.
 - `mylite_execution_catalog_system_tables.c`: `mysql` and `sys` system table
-  definitions, sys configuration trigger metadata, and built-in sys view
-  definitions. The `mysql` and `sys` definitions intentionally stay together
-  for now because the public accessor returns one ordered system-table catalog.
+  definitions and sys configuration trigger metadata. The `mysql` and `sys`
+  definitions intentionally stay together for now because the public accessor
+  returns one ordered system-table catalog.
+- `mylite_execution_catalog_sys_views.c`: built-in sys view definitions,
+  SHOW CREATE text, and sys view lookup/count accessors.
 - `mylite_execution_catalog_builtin.c`: built-in schema descriptors, built-in
   table directories, and placeholder rows for static metadata tables.
 

@@ -51,6 +51,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_builtin.c
   src/runtime/mylite_execution_catalog_charsets.c
   src/runtime/mylite_execution_catalog_information_schema.c
+  src/runtime/mylite_execution_catalog_sys_views.c
   src/runtime/mylite_execution_catalog_system_tables.c
   src/runtime/mylite_execution_scalar_json.c
   src/runtime/mylite_execution_system_variables.c

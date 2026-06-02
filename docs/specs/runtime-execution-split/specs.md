@@ -1043,9 +1043,31 @@ The fragments are:
   probing, lookup SQL rendering, conflict SQL rendering, and parameter binding.
 - `mylite_execution_key_tuple_formatting.inc`: SQLite/current-row key tuple
   formatting and MySQL duplicate-key display value formatting.
-- `mylite_execution_row_scalar_parameter_binding.inc`: SELECT, INSERT SELECT,
-  and row-scalar expression parameter binding for scalar, temporal, string,
-  JSON, control-flow, UUID, and character expressions.
+- `mylite_execution_row_scalar_select_parameter_binding.inc`: SELECT,
+  tableless row-scalar SELECT, ORDER BY, LIMIT/OFFSET, and INSERT ... SELECT
+  source parameter binding.
+- `mylite_execution_row_scalar_expression_parameter_dispatch.inc`: central
+  row-scalar expression parameter dispatch.
+- `mylite_execution_row_scalar_window_parameter_binding.inc`: row-scalar window
+  function argument parameter binding.
+- `mylite_execution_row_scalar_conversion_parameter_binding.inc`: RAND seed,
+  conversion, and conversion-base expression parameter binding.
+- `mylite_execution_row_scalar_arithmetic_parameter_binding.inc`: generic
+  non-CONCAT recursion, integer arithmetic stack binding, FIELD, and reversed
+  argument binding.
+- `mylite_execution_row_scalar_temporal_string_parameter_binding.inc`: temporal
+  interval/difference/constructor binding plus basic one-argument string
+  helper binding.
+- `mylite_execution_row_scalar_string_regexp_parameter_binding.inc`: string
+  slice, padding, bitmask, search, edit, quote, FIND_IN_SET, STRCMP, and REGEXP
+  parameter binding.
+- `mylite_execution_row_scalar_json_parameter_binding.inc`: JSON search,
+  extract, introspection, mutation, and constructor parameter binding.
+- `mylite_execution_row_scalar_control_flow_parameter_binding.inc`: IF,
+  IFNULL, COALESCE, NULLIF, and ISNULL nested parameter binding.
+- `mylite_execution_row_scalar_encoding_uuid_char_parameter_binding.inc`:
+  LEFT/RIGHT, SUBSTRING, HEX/UNHEX/Base64, registered functions, UUID, and CHAR
+  parameter binding.
 - `mylite_execution_predicate_dml_parameter_binding.inc`: predicate, aggregate,
   DELETE, UPDATE, changed-condition, and planned-value parameter binding.
 - `mylite_execution_sqlite_result_extraction.inc`: selected SQLite row/value
@@ -1477,6 +1499,10 @@ current timestamp/session state.
     charset-conversion, table-option actions, modify-column resolution,
     modify-column execution, check rebuild SQL, and rename/check-constraint
     collision fragments.
+27. Split the oversized row-scalar parameter-binding fragment into ordered
+    same-translation-unit SELECT/source, expression dispatch, window,
+    conversion/RAND, arithmetic/generic recursion, temporal/basic string,
+    string/REGEXP, JSON, control-flow, and encoding/UUID/CHAR fragments.
 
 ## Review checklist
 
@@ -1565,3 +1591,7 @@ current timestamp/session state.
   introduce alternate ALTER TABLE execution paths, duplicate rebuild SQL
   generation, or change MODIFY/CHANGE, default, visibility, charset, ORDER BY,
   FORCE, key-maintenance, CHECK rebuild, or rename collision behavior.
+- Row-scalar parameter-binding fragments preserve the existing recursive
+  binding order and same-translation-unit helper linkage; the split must not
+  change placeholder numbering, tableless SELECT handling, JSON/control-flow
+  traversal, UUID/CHAR binding, or expression-family diagnostics.

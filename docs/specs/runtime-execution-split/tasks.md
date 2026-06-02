@@ -1014,3 +1014,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fiftieth split.
+
+## Round 51
+
+- [x] Reinspect the remaining largest runtime fragments after the ALTER TABLE
+      option split.
+- [x] Identify `mylite_execution_row_scalar_parameter_binding.inc` as a
+      row-scalar binding same-translation-unit split candidate.
+- [x] Split SELECT/source binding, expression dispatch, window binding,
+      conversion/RAND binding, arithmetic/generic recursion, temporal/basic
+      string binding, string/REGEXP binding, JSON binding, control-flow
+      binding, and encoding/UUID/CHAR binding into named fragments.
+- [x] Remove `mylite_execution_row_scalar_parameter_binding.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused row-scalar, SELECT, INSERT SELECT, JSON, control-flow,
+      UUID/CHAR, string, temporal, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-first split.

@@ -25436,7 +25436,25 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_key_tuple_formatting.inc"
 
-#include "mylite_execution_row_scalar_parameter_binding.inc"
+#include "mylite_execution_row_scalar_select_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_expression_parameter_dispatch.inc"
+
+#include "mylite_execution_row_scalar_window_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_conversion_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_arithmetic_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_temporal_string_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_string_regexp_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_json_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_control_flow_parameter_binding.inc"
+
+#include "mylite_execution_row_scalar_encoding_uuid_char_parameter_binding.inc"
 
 #include "mylite_execution_predicate_dml_parameter_binding.inc"
 

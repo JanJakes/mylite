@@ -85,6 +85,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_json.c
   src/runtime/mylite_execution_scalar_json_mutation.c
   src/runtime/mylite_execution_scalar_string.c
+  src/runtime/mylite_execution_scalar_temporal.c
   src/runtime/mylite_execution_system_variables.c
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c

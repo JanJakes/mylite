@@ -1415,7 +1415,13 @@ static int plan_row_scalar_temporal_extract_expression(
     int mode = 0;
     int rc = MYLITE_OK;
 
-    rc = resolve_temporal_extract_call(database, expression, &extract_kind, &argument, &mode);
+    rc = mylite_execution_resolve_temporal_extract_call(
+        database,
+        expression,
+        &extract_kind,
+        &argument,
+        &mode
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -2083,7 +2089,12 @@ static int plan_row_scalar_from_unixtime_integer_value(
         return MYLITE_ERROR;
     }
 
-    rc = from_unixtime_scalar_integer_literal_value(database, literal, is_negative, &value);
+    rc = mylite_execution_from_unixtime_scalar_integer_literal_value(
+        database,
+        literal,
+        is_negative,
+        &value
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3287,7 +3298,11 @@ static int plan_row_scalar_timestampdiff_expression(
         return MYLITE_ERROR;
     }
 
-    rc = timestampdiff_function_unit_from_ast(database, child_at(expression, 0U), &unit);
+    rc = mylite_execution_timestampdiff_function_unit_from_ast(
+        database,
+        child_at(expression, 0U),
+        &unit
+    );
     if (rc == MYLITE_OK && unit == MYLITE_TIMESTAMPDIFF_UNIT_MICROSECOND) {
         set_unsupported_error(database, "TIMESTAMPDIFF() does not yet support MICROSECOND");
         rc = MYLITE_ERROR;

@@ -1013,7 +1013,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
-            is_temporal_extract_function_kind(current->kind) ||
+            mylite_execution_is_temporal_extract_function_kind(current->kind) ||
             mylite_execution_is_string_length_function_kind(current->kind) ||
             mylite_execution_is_string_codepoint_function_kind(current->kind) ||
             mylite_execution_is_string_case_function_kind(current->kind) ||

@@ -1656,9 +1656,9 @@ static bool predicate_node_is_temporal_extract_expression(
     const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
-    return (predicate_node != NULL && (predicate_node->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
-                                       is_temporal_extract_function_kind(predicate_node->kind))) !=
-           0;
+    return (predicate_node != NULL &&
+            (predicate_node->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
+             mylite_execution_is_temporal_extract_function_kind(predicate_node->kind))) != 0;
 }
 
 static bool predicate_node_is_date_format_numeric_predicate_expression(
@@ -1856,7 +1856,13 @@ static int plan_temporal_extract_predicate_expression(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_temporal_extract_call(database, expression, &extract_kind, &argument, &mode);
+    rc = mylite_execution_resolve_temporal_extract_call(
+        database,
+        expression,
+        &extract_kind,
+        &argument,
+        &mode
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }

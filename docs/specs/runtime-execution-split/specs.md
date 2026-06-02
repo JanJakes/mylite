@@ -662,19 +662,17 @@ The fragments are:
   emission, SELECT modifier warnings, and function argument-count diagnostics.
 - `mylite_execution_scalar.inc`: scalar dispatch, `LAST_INSERT_ID`, `RAND`,
   and current date/time scalar core support.
-- `mylite_execution_scalar_string_core.inc`: basic string length, codepoint,
-  case, and trim scalar support.
-- `mylite_execution_scalar_temporal_core.inc`: UNIX timestamp, timestamp
-  difference, temporal constructor, period, time zone, and temporal extraction
-  scalar support.
-- `mylite_execution_scalar_string_extended.inc`: string slice, padding,
-  bitmask, search, replacement, regular expression, character set, collation,
-  and coercibility scalar support.
+- `mylite_execution_scalar_string_core.inc`: tombstone include; scalar string
+  core support lives in `mylite_execution_scalar_string.c`.
+- `mylite_execution_scalar_temporal_core.inc`: tombstone include; scalar
+  temporal core support lives in `mylite_execution_scalar_temporal.c`.
+- `mylite_execution_scalar_string_extended.inc`: tombstone include; scalar
+  string extended, REGEXP, and charset/collation support lives in
+  `mylite_execution_scalar_string.c`.
 - `mylite_execution_scalar_misc.inc`: scalar subquery, concatenation,
   `ELT`, `FIELD`, `GREATEST`, `LEAST`, and `INTERVAL` scalar support.
-- `mylite_execution_scalar_numeric.inc`: numeric, bitwise, base conversion,
-  UUID, Base64, `HEX`, `UNHEX`, `CHAR`, `FORMAT`, and `TRUNCATE` scalar
-  support.
+- `mylite_execution_scalar_numeric.inc`: numeric arithmetic, bitwise,
+  rounding, `FORMAT`, and `TRUNCATE` scalar support.
 - `mylite_execution_scalar_conversion.inc`: scalar `CAST`, `CONVERT`, and
   `COLLATE` support.
 - `mylite_execution_scalar_temporal_format.inc`: date/time formatting, parsing,
@@ -794,6 +792,42 @@ session-scalar dispatch, or non-JSON scalar function families. The exported
 entry points are internal to the `mylite` static library and remain outside the
 public MyLite ABI.
 
+### `mylite_execution_scalar_temporal`
+
+The scalar temporal module owns session-scalar implementations for the temporal
+function families whose execution can be isolated from row-scalar SQL
+rendering:
+
+- `UNIX_TIMESTAMP`
+- `TIMESTAMP`
+- `DATEDIFF`
+- `TIMESTAMPDIFF`
+- `TIMEDIFF`
+- calendar extraction functions, including `EXTRACT`
+- `SEC_TO_TIME`
+- `FROM_UNIXTIME`
+- `FROM_DAYS`, `MAKEDATE`, and `MAKETIME`
+- `PERIOD_ADD` and `PERIOD_DIFF`
+- `CONVERT_TZ`
+
+The module may call a small internal execution helper surface for AST child
+access, parenthesis unwrapping, literal decoding, identifier copying, current
+timestamp epoch lookup, MySQL-compatible diagnostics, and temporal constructor
+function metadata shared with row-scalar planning.
+
+The module also exposes narrow internal helpers for planner code that already
+shared temporal execution classification: temporal extract call resolution,
+temporal extract kind detection, `TIMESTAMPDIFF` unit parsing, and
+`FROM_UNIXTIME` integer-literal parsing.
+
+The module must not own row-scalar temporal planning, predicate planning,
+date-format execution, date-interval execution, time arithmetic, generic scalar
+dispatch, SQL mode storage, session timestamp state, or loaded time-zone table
+data. The `DATE_FORMAT`, `GET_FORMAT`, `TIME_FORMAT`, `STR_TO_DATE`,
+`DATE_ADD`/`DATE_SUB`, `ADDDATE`/`SUBDATE`, `TIMESTAMPADD`, `ADDTIME`, and
+`SUBTIME` fragment remains in the execution runtime until its shared calendar
+arithmetic helper boundary is split deliberately.
+
 ## Compatibility requirements
 
 - Existing MySQL 8.4.9-shaped metadata must be byte-for-byte equivalent at the
@@ -816,6 +850,9 @@ public MyLite ABI.
 - DML numeric string parsing must continue to return the same OK, invalid,
   truncated, and overflow classifications so INSERT, UPDATE, LOAD DATA, and
   default-expression diagnostics remain unchanged.
+- Scalar temporal function result values, NULL propagation, unsupported-shape
+  diagnostics, parameter-count errors, and planner classification behavior must
+  remain identical to the previous scalar fragment behavior.
 
 ## Implementation plan
 

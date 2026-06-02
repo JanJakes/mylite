@@ -67,46 +67,50 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "SYSDATE");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
-        return unix_timestamp_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_unix_timestamp_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
-        return timestamp_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_timestamp_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIMESTAMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
-        return datediff_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_datediff_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "DATEDIFF");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
-        return timestampdiff_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_timestampdiff_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
-        return timediff_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_timediff_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIMEDIFF");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
-        return sec_to_time_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_sec_to_time_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "SEC_TO_TIME");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
-        return from_unixtime_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_from_unixtime_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_FROM_DAYS_FUNCTION:
     case MYLITE_SQL_AST_MAKEDATE_FUNCTION:
     case MYLITE_SQL_AST_MAKETIME_FUNCTION:
-        return temporal_constructor_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_temporal_constructor_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
     case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
-        return period_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_period_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
-        return convert_tz_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_convert_tz_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FROM_DAYS");
         return MYLITE_ERROR;
@@ -553,7 +557,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
     case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
     case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
-        return temporal_extract_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_temporal_extract_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "LOWER");
         return MYLITE_ERROR;

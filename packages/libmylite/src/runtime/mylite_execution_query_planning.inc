@@ -1642,7 +1642,7 @@ static int plan_row_scalar_temporal_function_expression(
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_EXTRACT_FUNCTION ||
-        is_temporal_extract_function_kind(expression->kind)) {
+        mylite_execution_is_temporal_extract_function_kind(expression->kind)) {
         *out_handled = true;
         return plan_row_scalar_temporal_extract_expression(
             database,

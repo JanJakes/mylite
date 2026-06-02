@@ -566,3 +566,26 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-ninth split.
+
+## Round 30
+
+- [x] Reinspect scalar temporal core and temporal format/date-add fragments,
+      identifying scalar temporal core as the next true-module boundary.
+- [x] Add `mylite_execution_scalar_temporal.c` for `UNIX_TIMESTAMP`,
+      `TIMESTAMP`, `DATEDIFF`, `TIMESTAMPDIFF`, `TIMEDIFF`, temporal extract,
+      `SEC_TO_TIME`, `FROM_UNIXTIME`, temporal constructor, period, and
+      `CONVERT_TZ` scalar execution.
+- [x] Move temporal-core argument decoding, unit parsing, integer-literal
+      parsing, unsupported diagnostics, NULL propagation, and function-family
+      dispatch out of `mylite_execution_scalar_temporal_core.inc`.
+- [x] Keep row-scalar temporal planning, predicate planning, date-format
+      execution, date-interval execution, time arithmetic, shared calendar
+      arithmetic, generic scalar dispatch, diagnostics, and session state in
+      execution fragments behind explicit internal scalar helper wrappers.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused scalar temporal build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [ ] Commit and push the thirtieth split.

@@ -2,6 +2,8 @@
 #define MYLITE_RUNTIME_MYLITE_EXECUTION_SCALAR_H
 
 #include "mylite_ast.h"
+#include "mylite_temporal_extract.h"
+#include "mylite_timestampdiff.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -257,6 +259,80 @@ int mylite_execution_scalar_charset_collation_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_unix_timestamp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_timestamp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_datediff_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_timestampdiff_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_timediff_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_temporal_extract_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_sec_to_time_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_from_unixtime_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_temporal_constructor_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_period_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_convert_tz_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_timestampdiff_function_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit,
+    enum mylite_timestampdiff_unit *out_unit
+);
+int mylite_execution_resolve_temporal_extract_call(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_temporal_extract_kind *out_extract_kind,
+    const struct mylite_sql_ast_node **out_argument,
+    int *out_mode
+);
+int mylite_execution_from_unixtime_scalar_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    int64_t *out_seconds
+);
+bool mylite_execution_is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 int mylite_execution_scalar_expression_charset_collation_metadata(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -737,6 +813,12 @@ int mylite_execution_copy_source_span_text(
     const struct mylite_sql_source_span *span,
     char **out_text
 );
+int mylite_execution_copy_identifier_text(
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size,
+    struct mylite_db *database
+);
 int mylite_execution_normalize_decimal_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -790,6 +872,18 @@ int mylite_execution_rand_seed_value(
     const struct mylite_sql_ast_node *expression,
     uint32_t *out_seed
 );
+int64_t mylite_execution_current_timestamp_epoch(const struct mylite_db *database);
+int mylite_execution_date_add_set_unknown_identifier_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+size_t mylite_execution_temporal_constructor_function_argument_count(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+const char *mylite_execution_temporal_constructor_function_name(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+bool mylite_execution_is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 int mylite_execution_copy_table_option_name_text(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *option_name_node,

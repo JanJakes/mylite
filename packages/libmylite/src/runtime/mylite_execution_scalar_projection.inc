@@ -1462,7 +1462,7 @@ static bool is_temporal_extract_projection_expression(
         }
         return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
     }
-    if (!is_temporal_extract_function_kind(expression->kind)) {
+    if (!mylite_execution_is_temporal_extract_function_kind(expression->kind)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {

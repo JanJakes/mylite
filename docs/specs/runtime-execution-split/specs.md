@@ -134,6 +134,15 @@ transaction lifecycle, and catalog-generation transitions into
 generation-change helper surface instead of owning catalog-global transaction
 details directly.
 
+The eighteenth split continues true-module extraction for immutable
+`INFORMATION_SCHEMA` catalog metadata. Keyword rows move into
+`mylite_execution_catalog_information_schema_keywords.c`; InnoDB table column
+definitions and table definitions move into
+`mylite_execution_catalog_information_schema_innodb.c`. The original
+`mylite_execution_catalog_information_schema.c` remains the public-order
+aggregator for non-InnoDB definitions and keeps public lookup behavior
+unchanged.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -204,8 +213,15 @@ uses these true C modules:
 
 - `mylite_execution_catalog_charsets.c`: supported character sets, collations,
   scalar collation metadata, and their lookup/accessor functions.
-- `mylite_execution_catalog_information_schema.c`: `INFORMATION_SCHEMA`
-  keyword rows, table definitions, column definitions, and accessors.
+- `mylite_execution_catalog_information_schema.c`: non-InnoDB
+  `INFORMATION_SCHEMA` table definitions and column definitions, public-order
+  provider aggregation, and table-definition lookup accessors.
+- `mylite_execution_catalog_information_schema_internal.h`: private provider
+  API for information-schema metadata owner modules.
+- `mylite_execution_catalog_information_schema_keywords.c`:
+  `INFORMATION_SCHEMA.KEYWORDS` rows and keyword lookup/count accessors.
+- `mylite_execution_catalog_information_schema_innodb.c`: InnoDB
+  `INFORMATION_SCHEMA` column definitions and table-definition provider.
 - `mylite_execution_catalog_system_tables.c`: `mysql` and `sys` system table
   descriptor provider aggregation and public ordered system-table lookup
   accessors.

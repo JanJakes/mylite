@@ -1,0 +1,13 @@
+#ifndef MYLITE_EXECUTION_CATALOG_INFORMATION_SCHEMA_INTERNAL_H
+#define MYLITE_EXECUTION_CATALOG_INFORMATION_SCHEMA_INTERNAL_H
+
+#include "mylite_execution_catalog.h"
+
+#include <stddef.h>
+
+size_t mylite_execution_catalog_information_schema_innodb_table_definition_count(void);
+const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_innodb_table_definition_at(
+    size_t index
+);
+
+#endif

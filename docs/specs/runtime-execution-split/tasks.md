@@ -296,3 +296,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the seventeenth split.
+
+## Round 18
+
+- [x] Reinspect immutable `INFORMATION_SCHEMA` catalog metadata after the
+      catalog state split.
+- [x] Select keyword rows and InnoDB metadata as the next true module
+      boundaries.
+- [x] Add a private information-schema catalog provider header.
+- [x] Move keyword rows and accessors into
+      `mylite_execution_catalog_information_schema_keywords`.
+- [x] Move InnoDB column definitions and table definitions into
+      `mylite_execution_catalog_information_schema_innodb`.
+- [x] Preserve the existing public table-definition order through an
+      aggregator provider list.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused build and information-schema catalog tests.
+- [x] Review the split for behavior preservation, descriptor order, and
+      helper-surface width.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the eighteenth split.

@@ -157,6 +157,13 @@ defaults and generated-column expression metadata. `mylite_catalog.c` keeps
 descriptor mutation orchestration, table descriptor validation, delete/update
 helpers, and SQL statements that mutate private catalog tables.
 
+The twenty-first split reduces the sys summary metadata module into a small
+ordered aggregator plus family owners. Host summary, InnoDB summary, IO/latest
+file summary, memory summary, and instrumentation-check descriptors each live in
+their own true C module. The existing `mylite_execution_catalog_sys_summary_tables.c`
+entry point preserves normal and `x$` sys table ordering through private
+provider arrays.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -253,8 +260,20 @@ uses these true C modules:
   cost/server, time-zone, and InnoDB stats descriptors.
 - `mylite_execution_catalog_sys_core_tables.c`: `sys.sys_config`,
   `sys.version`, and sys configuration trigger metadata/accessors.
-- `mylite_execution_catalog_sys_summary_tables.c`: sys host, IO, memory,
-  InnoDB, latest-file, and instrumentation summary descriptors.
+- `mylite_execution_catalog_sys_summary_tables.c`: ordered provider aggregator
+  for normal and `x$` sys summary table descriptors.
+- `mylite_execution_catalog_sys_summary_host_tables.c`: sys host-summary table
+  descriptors and `x$` variants.
+- `mylite_execution_catalog_sys_summary_innodb_tables.c`: sys InnoDB summary
+  table descriptors and `x$` variants.
+- `mylite_execution_catalog_sys_summary_io_tables.c`: sys IO and latest-file
+  summary table descriptors and `x$` variants.
+- `mylite_execution_catalog_sys_summary_memory_tables.c`: sys memory summary
+  table descriptors and `x$` variants.
+- `mylite_execution_catalog_sys_summary_instrumentation_tables.c`:
+  `sys.ps_check_lost_instrumentation` descriptor ownership.
+- `mylite_execution_catalog_sys_summary_tables_internal.h`: private sys summary
+  family provider API.
 - `mylite_execution_catalog_sys_schema_tables.c`: sys schema/statistics table
   descriptors.
 - `mylite_execution_catalog_sys_views.c`: built-in sys view definitions,

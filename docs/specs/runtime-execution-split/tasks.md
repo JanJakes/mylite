@@ -359,3 +359,29 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twentieth split.
+
+## Round 21
+
+- [x] Reinspect the remaining sys summary catalog descriptor monolith.
+- [x] Select host, InnoDB, IO/latest-file, memory, and instrumentation families
+      as the next true module boundaries.
+- [x] Add a private sys summary family provider header.
+- [x] Move sys host summary descriptors and `x$` variants into
+      `mylite_execution_catalog_sys_summary_host_tables`.
+- [x] Move sys InnoDB summary descriptors and `x$` variants into
+      `mylite_execution_catalog_sys_summary_innodb_tables`.
+- [x] Move sys IO/latest-file descriptors and `x$` variants into
+      `mylite_execution_catalog_sys_summary_io_tables`.
+- [x] Move sys memory summary descriptors and `x$` variants into
+      `mylite_execution_catalog_sys_summary_memory_tables`.
+- [x] Move `ps_check_lost_instrumentation` descriptor ownership into
+      `mylite_execution_catalog_sys_summary_instrumentation_tables`.
+- [x] Preserve normal and `x$` sys summary public order through the existing
+      sys summary aggregator entry points.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused build and sys summary catalog tests.
+- [x] Review the split for behavior preservation, descriptor order, and
+      helper-surface width.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-first split.

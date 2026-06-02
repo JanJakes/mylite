@@ -64,6 +64,11 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_mysql_replication_tables.c
   src/runtime/mylite_execution_catalog_mysql_misc_tables.c
   src/runtime/mylite_execution_catalog_sys_core_tables.c
+  src/runtime/mylite_execution_catalog_sys_summary_host_tables.c
+  src/runtime/mylite_execution_catalog_sys_summary_innodb_tables.c
+  src/runtime/mylite_execution_catalog_sys_summary_instrumentation_tables.c
+  src/runtime/mylite_execution_catalog_sys_summary_io_tables.c
+  src/runtime/mylite_execution_catalog_sys_summary_memory_tables.c
   src/runtime/mylite_execution_catalog_sys_summary_tables.c
   src/runtime/mylite_execution_catalog_sys_schema_tables.c
   src/runtime/mylite_execution_catalog_sys_views.c

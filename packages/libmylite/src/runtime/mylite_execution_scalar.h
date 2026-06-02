@@ -10,7 +10,6 @@
 #include <stdint.h>
 
 struct mylite_db;
-struct mylite_execution_catalog_scalar_collation;
 struct mylite_json_normalize_result;
 struct mylite_sql_ast_node;
 struct mylite_sql_source_span;
@@ -70,13 +69,6 @@ enum planned_string_search_function_kind {
     PLANNED_STRING_SEARCH_FUNCTION_POSITION = 3,
 };
 
-enum planned_regexp_string_function_kind {
-    PLANNED_REGEXP_STRING_FUNCTION_NONE = 0,
-    PLANNED_REGEXP_STRING_FUNCTION_INSTR = 1,
-    PLANNED_REGEXP_STRING_FUNCTION_SUBSTR = 2,
-    PLANNED_REGEXP_STRING_FUNCTION_REPLACE = 3,
-};
-
 enum planned_string_padding_function_kind {
     PLANNED_STRING_PADDING_FUNCTION_NONE = 0,
     PLANNED_STRING_PADDING_FUNCTION_LPAD = 1,
@@ -89,13 +81,6 @@ enum planned_string_bitmask_function_kind {
     PLANNED_STRING_BITMASK_FUNCTION_NONE = 0,
     PLANNED_STRING_BITMASK_FUNCTION_EXPORT_SET = 1,
     PLANNED_STRING_BITMASK_FUNCTION_MAKE_SET = 2,
-};
-
-enum planned_charset_collation_function_kind {
-    PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
-    PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
-    PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION = 2,
-    PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY = 3,
 };
 
 enum {
@@ -150,13 +135,6 @@ struct scalar_convert_charset_info {
     const char *collation;
     bool ascii_only_value;
     enum scalar_convert_charset_warning warning;
-};
-
-struct regexp_like_text_argument_messages {
-    const char *unsupported;
-    const char *string_unsupported;
-    const char *embedded_nul;
-    const char *non_ascii;
 };
 
 int mylite_execution_scalar_string_length_function_value(
@@ -244,21 +222,6 @@ int mylite_execution_scalar_strcmp_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
-int mylite_execution_scalar_regexp_like_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-int mylite_execution_scalar_regexp_string_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-int mylite_execution_scalar_charset_collation_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
 int mylite_execution_scalar_unix_timestamp_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -333,37 +296,6 @@ int mylite_execution_from_unixtime_scalar_integer_literal_value(
     int64_t *out_seconds
 );
 bool mylite_execution_is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-int mylite_execution_scalar_expression_charset_collation_metadata(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_charset,
-    const char **out_collation
-);
-int mylite_execution_charset_collation_scalar_result(
-    struct mylite_db *database,
-    enum planned_charset_collation_function_kind function_kind,
-    const struct mylite_sql_ast_node *expression,
-    const char **out_result
-);
-int mylite_execution_charset_collation_select_result(
-    enum planned_charset_collation_function_kind function_kind,
-    const char *charset,
-    const char *collation,
-    const char **out_result
-);
-int mylite_execution_scalar_collation_info_for_expression(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_execution_catalog_scalar_collation **out_info
-);
-const struct mylite_execution_catalog_scalar_collation *mylite_execution_scalar_collation_info_by_name(
-    const char *collation_name
-);
-bool mylite_execution_coercibility_binary_wrapper_column_reference(
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node **out_column_reference
-);
-
 enum planned_string_length_function_kind mylite_execution_string_length_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
@@ -454,51 +386,6 @@ bool mylite_execution_soundex_scalar_argument_is_admitted(
 bool mylite_execution_quote_scalar_argument_is_admitted(
     const struct mylite_sql_ast_node *expression
 );
-int mylite_execution_evaluate_regexp_like_text_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool allow_session_scalar,
-    const struct regexp_like_text_argument_messages *messages,
-    struct session_scalar_cell *inout_cell,
-    char **out_owned_text,
-    const char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
-);
-int mylite_execution_evaluate_regexp_like_match_type_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool *out_is_null,
-    bool *out_case_sensitive
-);
-int mylite_execution_validate_regexp_like_pattern(
-    struct mylite_db *database,
-    const char *pattern,
-    size_t pattern_length,
-    bool case_sensitive,
-    const char *unsupported_message
-);
-enum planned_regexp_string_function_kind mylite_execution_regexp_string_function_kind(
-    enum mylite_sql_ast_node_kind kind
-);
-const char *mylite_execution_regexp_string_function_name(
-    enum planned_regexp_string_function_kind kind
-);
-const char *mylite_execution_regexp_string_function_argument_count_error_name(
-    enum mylite_sql_ast_node_kind kind
-);
-size_t mylite_execution_regexp_string_function_argument_count(
-    const struct mylite_sql_ast_node *expression
-);
-const struct mylite_sql_ast_node *mylite_execution_regexp_string_function_argument_at(
-    const struct mylite_sql_ast_node *expression,
-    size_t index
-);
-enum planned_charset_collation_function_kind mylite_execution_charset_collation_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
-);
-bool mylite_execution_is_charset_collation_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-
 int mylite_execution_scalar_base_conversion_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -884,9 +771,9 @@ const char *mylite_execution_temporal_constructor_function_name(
     enum mylite_sql_ast_node_kind ast_kind
 );
 bool mylite_execution_is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-int mylite_execution_copy_table_option_name_text(
+int mylite_execution_copy_identifier_name_text(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *option_name_node,
+    const struct mylite_sql_ast_node *name_node,
     char *destination,
     size_t destination_size,
     const char *identifier_kind,

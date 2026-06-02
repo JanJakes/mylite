@@ -13,6 +13,8 @@
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_scalar.h"
+#include "mylite_execution_scalar_charset_collation.h"
+#include "mylite_execution_scalar_regexp.h"
 #include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"
@@ -25887,9 +25889,9 @@ bool mylite_execution_is_temporal_constructor_function_kind(
     return is_temporal_constructor_function_kind(ast_kind);
 }
 
-int mylite_execution_copy_table_option_name_text(
+int mylite_execution_copy_identifier_name_text(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *option_name_node,
+    const struct mylite_sql_ast_node *name_node,
     char *destination,
     size_t destination_size,
     const char *identifier_kind,
@@ -25897,7 +25899,7 @@ int mylite_execution_copy_table_option_name_text(
 ) {
     return copy_table_option_name_text(
         database,
-        option_name_node,
+        name_node,
         destination,
         destination_size,
         (struct table_option_name_policy){

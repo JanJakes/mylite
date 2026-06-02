@@ -615,3 +615,25 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-first split.
+
+## Round 32
+
+- [x] Reinspect `mylite_execution_scalar_string.c` and identify REGEXP and
+      charset/collation/coercibility as independent scalar submodules.
+- [x] Add `mylite_execution_scalar_regexp.h/.c` for `REGEXP_LIKE`,
+      `REGEXP_INSTR`, `REGEXP_SUBSTR`, `REGEXP_REPLACE`, REGEXP argument
+      classification, match-type decoding, and pattern validation helpers.
+- [x] Add `mylite_execution_scalar_charset_collation.h/.c` for `CHARSET`,
+      `COLLATION`, `COERCIBILITY`, scalar collation lookup, and scalar
+      charset/collation metadata helpers.
+- [x] Move REGEXP and charset/collation helper declarations out of the
+      catch-all scalar header into dedicated internal headers included by the
+      execution monolith boundary.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused scalar string, REGEXP, charset/collation, coercibility, and
+      string predicate build/tests/tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-second split.

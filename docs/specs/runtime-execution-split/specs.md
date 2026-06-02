@@ -164,6 +164,15 @@ their own true C module. The existing `mylite_execution_catalog_sys_summary_tabl
 entry point preserves normal and `x$` sys table ordering through private
 provider arrays.
 
+The twenty-second split reduces the remaining non-InnoDB
+`INFORMATION_SCHEMA` metadata monolith into ordered owner modules. The public
+lookup module keeps only the provider aggregator and case-insensitive lookup
+helpers. Extension/prefix tables, core metadata tables, routine/operational
+metadata, access/constraint metadata, and trigger/view metadata each own their
+static column definitions and table-definition provider. The provider list
+preserves the existing `INFORMATION_SCHEMA` table order around the existing
+InnoDB provider.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -235,14 +244,27 @@ uses these true C modules:
 - `mylite_execution_catalog_charsets.c`: supported character sets, collations,
   scalar collation metadata, and their lookup/accessor functions.
 - `mylite_execution_catalog_information_schema.c`: non-InnoDB
-  `INFORMATION_SCHEMA` table definitions and column definitions, public-order
-  provider aggregation, and table-definition lookup accessors.
+  `INFORMATION_SCHEMA` public-order provider aggregation and table-definition
+  lookup accessors.
 - `mylite_execution_catalog_information_schema_internal.h`: private provider
   API for information-schema metadata owner modules.
 - `mylite_execution_catalog_information_schema_keywords.c`:
   `INFORMATION_SCHEMA.KEYWORDS` rows and keyword lookup/count accessors.
+- `mylite_execution_catalog_information_schema_extension_tables.c`:
+  extension/prefix `INFORMATION_SCHEMA` descriptors that precede the InnoDB
+  provider in public order.
 - `mylite_execution_catalog_information_schema_innodb.c`: InnoDB
   `INFORMATION_SCHEMA` column definitions and table-definition provider.
+- `mylite_execution_catalog_information_schema_metadata_tables.c`: core
+  metadata descriptors in the first post-InnoDB ordered provider block.
+- `mylite_execution_catalog_information_schema_routine_tables.c`:
+  routine, event, optimizer, partition, plugin, process, and profiling
+  metadata descriptors.
+- `mylite_execution_catalog_information_schema_access_tables.c`: role,
+  privilege, constraint, key, statistic, spatial, resource-group, and
+  referential metadata descriptors.
+- `mylite_execution_catalog_information_schema_view_tables.c`: trigger,
+  user-attribute, view, and view-usage metadata descriptors.
 - `mylite_execution_catalog_system_tables.c`: `mysql` and `sys` system table
   descriptor provider aggregation and public ordered system-table lookup
   accessors.

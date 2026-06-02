@@ -385,3 +385,30 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-first split.
+
+## Round 22
+
+- [x] Reinspect the remaining non-InnoDB information-schema catalog metadata
+      monolith.
+- [x] Select extension, metadata, routine, access/constraint, and view metadata
+      families as the next true module boundaries.
+- [x] Move extension/prefix descriptors into
+      `mylite_execution_catalog_information_schema_extension_tables`.
+- [x] Move first post-InnoDB metadata descriptors into
+      `mylite_execution_catalog_information_schema_metadata_tables`.
+- [x] Move routine and operational descriptors into
+      `mylite_execution_catalog_information_schema_routine_tables`.
+- [x] Move role, privilege, constraint, statistic, spatial, resource, and
+      referential descriptors into
+      `mylite_execution_catalog_information_schema_access_tables`.
+- [x] Move trigger, user, view, and view-usage descriptors into
+      `mylite_execution_catalog_information_schema_view_tables`.
+- [x] Preserve public `INFORMATION_SCHEMA` table-definition order through the
+      existing aggregator entry points.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused build and information-schema catalog tests.
+- [x] Review the split for behavior preservation, descriptor order, and
+      helper-surface width.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-second split.

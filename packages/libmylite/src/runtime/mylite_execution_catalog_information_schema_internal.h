@@ -5,8 +5,33 @@
 
 #include <stddef.h>
 
+size_t mylite_execution_catalog_information_schema_extension_table_definition_count(void);
+const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_extension_table_definition_at(
+    size_t index
+);
+
 size_t mylite_execution_catalog_information_schema_innodb_table_definition_count(void);
 const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_innodb_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_information_schema_metadata_table_definition_count(void);
+const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_metadata_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_information_schema_routine_table_definition_count(void);
+const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_routine_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_information_schema_access_table_definition_count(void);
+const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_access_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_information_schema_view_table_definition_count(void);
+const struct mylite_execution_catalog_table_definition *mylite_execution_catalog_information_schema_view_table_definition_at(
     size_t index
 );
 

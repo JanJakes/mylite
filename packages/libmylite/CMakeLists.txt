@@ -57,8 +57,13 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_builtin.c
   src/runtime/mylite_execution_catalog_charsets.c
   src/runtime/mylite_execution_catalog_information_schema.c
+  src/runtime/mylite_execution_catalog_information_schema_access_tables.c
+  src/runtime/mylite_execution_catalog_information_schema_extension_tables.c
   src/runtime/mylite_execution_catalog_information_schema_innodb.c
   src/runtime/mylite_execution_catalog_information_schema_keywords.c
+  src/runtime/mylite_execution_catalog_information_schema_metadata_tables.c
+  src/runtime/mylite_execution_catalog_information_schema_routine_tables.c
+  src/runtime/mylite_execution_catalog_information_schema_view_tables.c
   src/runtime/mylite_execution_catalog_mysql_auth_tables.c
   src/runtime/mylite_execution_catalog_mysql_service_tables.c
   src/runtime/mylite_execution_catalog_mysql_replication_tables.c

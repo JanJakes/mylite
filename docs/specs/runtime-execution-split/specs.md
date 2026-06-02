@@ -181,6 +181,14 @@ helpers. `mylite_catalog.c` retains table, column, view, schema, and lifecycle
 mutation orchestration; it reaches key/constraint cleanup only through a small
 private SQLite-level helper surface used by table and schema deletion.
 
+The twenty-fourth split targets the standalone JSON runtime module, which had
+become the slowest single clang-tidy translation unit. Public JSON entry points
+remain in `mylite_json.c`; private JSON value/parser/writer structures and
+helpers move behind `mylite_json_internal.h`. Document parsing, validation,
+path lookup, containment checks, mutation application, and DOM/emission helpers
+each move into focused runtime modules without changing the public JSON API,
+diagnostics, path support, normalization order, or memory ownership rules.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -350,6 +358,38 @@ The mutable catalog module family does not own:
 - Runtime result-row construction.
 - Static MySQL `INFORMATION_SCHEMA`, `mysql`, or `sys` compatibility metadata.
 - SQLite fork patches or SQLite virtual table hooks.
+
+### `mylite_json`
+
+The JSON runtime module family owns MySQL-compatible JSON document parsing,
+normalization, path lookup, containment, mutation, construction, quoting, and
+validation. It uses true C modules because the JSON value model is standalone
+and has a small private helper surface.
+
+The JSON runtime module family includes:
+
+- `mylite_json.c`: public JSON API entry points, SQL-value conversion for JSON
+  array/object constructors, and public error-message text.
+- `mylite_json_internal.h`: private JSON value, parser, path, mutation, and
+  writer types plus the helper surface shared by JSON runtime modules.
+- `mylite_json_dom.c`: JSON value ownership, array/object storage helpers,
+  member ordering/lookups, result text copying, parser primitives, and writer
+  lifecycle.
+- `mylite_json_parse.c`: iterative JSON document parsing and decoded string,
+  literal, integer-number, object, and array materialization.
+- `mylite_json_validate.c`: allocation-free JSON document validation.
+- `mylite_json_path.c`: JSON path lookup parsing, mutable mutation path
+  parsing, and path lifetime cleanup.
+- `mylite_json_contains.c`: JSON containment comparison traversal.
+- `mylite_json_mutation.c`: JSON_SET, JSON_INSERT, JSON_REPLACE, and
+  JSON_REMOVE path application. Mutation result emission stays with the public
+  JSON API entry points in `mylite_json.c`.
+
+The JSON runtime module family does not own:
+
+- SQL parser or scalar-function dispatch.
+- MySQL diagnostic text rendering beyond JSON parser result details.
+- SQLite function registration wrappers.
 
 ### `mylite_execution_system_variables`
 

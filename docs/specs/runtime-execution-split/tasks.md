@@ -435,3 +435,26 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-third split.
+
+## Round 24
+
+- [x] Reinspect the standalone JSON runtime monolith and clang-tidy timing.
+- [x] Select public API, DOM/emitter, parser, validator, path, containment, and
+      mutation families as true module boundaries.
+- [x] Add a private JSON internal header for shared value, parser, writer, path,
+      and mutation types.
+- [x] Move DOM ownership, array/object storage, writer, copy, lookup, and parser
+      primitive helpers into `mylite_json_dom`.
+- [x] Move iterative document parsing into `mylite_json_parse`.
+- [x] Move allocation-free document validation into `mylite_json_validate`.
+- [x] Move path lookup and mutation path parsing into `mylite_json_path`.
+- [x] Move containment traversal into `mylite_json_contains`.
+- [x] Move JSON mutation application into `mylite_json_mutation`.
+- [x] Keep public JSON API wrappers and SQL-value conversion in `mylite_json.c`.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused JSON build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-fourth split.

@@ -890,3 +890,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-fourth split.
+
+## Round 45
+
+- [x] Reinspect the remaining largest runtime fragments after the DDL statement
+      split.
+- [x] Identify `mylite_execution_show_helpers.inc` as a SHOW helper-family
+      same-translation-unit split candidate.
+- [x] Split SHOW TABLES, SHOW TABLE STATUS row, SHOW TABLE STATUS WHERE, SHOW
+      COLUMNS, SHOW INDEX row, SHOW INDEX WHERE, column-display, SHOW
+      DATABASES, filter, result-name, table-status-count, and LIKE pattern
+      helpers into named fragments.
+- [x] Remove `mylite_execution_show_helpers.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused SHOW, table status, columns, indexes, databases, LIKE/WHERE,
+      metadata, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-fifth split.

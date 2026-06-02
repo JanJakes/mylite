@@ -25338,7 +25338,29 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_update_planning_helpers.inc"
 
-#include "mylite_execution_show_helpers.inc"
+#include "mylite_execution_show_tables_helpers.inc"
+
+#include "mylite_execution_show_table_status_rows_helpers.inc"
+
+#include "mylite_execution_show_table_status_where_helpers.inc"
+
+#include "mylite_execution_show_columns_helpers.inc"
+
+#include "mylite_execution_show_index_rows_helpers.inc"
+
+#include "mylite_execution_show_index_where_helpers.inc"
+
+#include "mylite_execution_show_column_display_helpers.inc"
+
+#include "mylite_execution_show_databases_helpers.inc"
+
+#include "mylite_execution_show_filter_helpers.inc"
+
+#include "mylite_execution_show_result_name_helpers.inc"
+
+#include "mylite_execution_show_table_status_count_helpers.inc"
+
+#include "mylite_execution_show_like_pattern_helpers.inc"
 
 #include "mylite_execution_sql_builders.inc"
 

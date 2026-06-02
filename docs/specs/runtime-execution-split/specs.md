@@ -923,8 +923,31 @@ The fragments are:
   and DELETE LIMIT planning helpers.
 - `mylite_execution_update_planning_helpers.inc`: UPDATE assignment, UPDATE
   value conversion, UPDATE validation, and UPDATE LIMIT planning helpers.
-- `mylite_execution_show_helpers.inc`: `SHOW` filtering, sorting, and display
-  formatting helpers.
+- `mylite_execution_show_tables_helpers.inc`: `SHOW TABLES` row append and
+  output-column WHERE predicate evaluation helpers.
+- `mylite_execution_show_table_status_rows_helpers.inc`: `SHOW TABLE STATUS`
+  row append and built-in table status timestamp helpers.
+- `mylite_execution_show_table_status_where_helpers.inc`: `SHOW TABLE STATUS`
+  output-column WHERE predicate evaluation and comparison helpers.
+- `mylite_execution_show_columns_helpers.inc`: `SHOW COLUMNS`/`SHOW FULL
+  COLUMNS` row append and output-column WHERE predicate helpers.
+- `mylite_execution_show_index_rows_helpers.inc`: `SHOW INDEX` row append and
+  index-part display helpers.
+- `mylite_execution_show_index_where_helpers.inc`: `SHOW INDEX` output-column
+  WHERE predicate evaluation, shared SHOW metadata REGEXP matching, and index
+  comparison helpers.
+- `mylite_execution_show_column_display_helpers.inc`: shared `SHOW COLUMNS`
+  type and collation display helpers.
+- `mylite_execution_show_databases_helpers.inc`: `SHOW DATABASES` collection,
+  sorting, deduplication, and output-column WHERE predicate helpers.
+- `mylite_execution_show_filter_helpers.inc`: shared `SHOW LIKE` filter
+  construction, deinit, and matching helpers.
+- `mylite_execution_show_result_name_helpers.inc`: `SHOW DATABASES` and `SHOW
+  TABLES` dynamic result column-name builders.
+- `mylite_execution_show_table_status_count_helpers.inc`: shared table-status
+  row-count SQL and integer-format helpers.
+- `mylite_execution_show_like_pattern_helpers.inc`: `SHOW LIKE` pattern
+  decoding and ASCII pattern matching helpers.
 - `mylite_execution_sql_builders.inc`: physical table/view/index/check names,
   CREATE/DROP/ALTER/TRUNCATE SQL rendering, CREATE TABLE constraints/indexes,
   ALTER TABLE rebuild SQL, key-part rendering, and quoted default helpers.
@@ -1362,6 +1385,10 @@ current timestamp/session state.
     same-translation-unit create-table, create-view, create-schema/index,
     drop/existence, table-action, index/constraint, column, schema/table-option,
     and table-maintenance fragments.
+21. Split the oversized SHOW helper fragment into ordered
+    same-translation-unit table, table-status row, table-status WHERE, column,
+    index-row, index-WHERE, column-display, database, filter, result-name,
+    table-status-count, and LIKE pattern helper fragments.
 
 ## Review checklist
 
@@ -1422,3 +1449,8 @@ current timestamp/session state.
   in `mylite_execution.c`; the split must not introduce separate schema
   mutation paths, duplicate DDL completion/result handling, or change implicit
   commit, temporary-table, existence, ALTER TABLE, or warning behavior.
+- SHOW helper fragments preserve the existing SHOW statement ownership,
+  output-column predicate evaluation, LIKE/REGEXP behavior, table-status
+  counting, and display formatting; the split must not introduce a second
+  metadata query engine, materialize catalog data, or change sorting,
+  deduplication, or MySQL-shaped result metadata.

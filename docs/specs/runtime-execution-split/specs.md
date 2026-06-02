@@ -860,9 +860,28 @@ The fragments are:
 - `mylite_execution_aggregate_execution.inc`: COUNT, column aggregate, and
   grouped aggregate execution, aggregate result metadata, and aggregate
   result formatting.
-- `mylite_execution_scalar_projection_queries.inc`: scalar projection SELECT,
-  VALUES statement execution, scalar result metadata, session scalar warning
-  emission, SELECT modifier warnings, and function argument-count diagnostics.
+- `mylite_execution_scalar_projection_classification.inc`: scalar projection
+  SELECT recognition, row-function projection recognition, no-source/DUAL
+  classification, bare native function identifier rejection, and scalar
+  projection attempt detection.
+- `mylite_execution_values_statement.inc`: VALUES statement validation,
+  ORDER BY/LIMIT handling, result-column synthesis, literal row emission, and
+  VALUES literal cell conversion.
+- `mylite_execution_scalar_projection_select_execution.inc`: scalar projection
+  SELECT execution, result row construction, SELECT modifier warning entry
+  points, session scalar evaluation, and scalar result-column append entry.
+- `mylite_execution_scalar_result_metadata.inc`: shared scalar result
+  descriptor inference for literals, scalar functions, JSON, temporal,
+  charset/collation, connection strings, UUIDs, and numeric shapes.
+- `mylite_execution_session_scalar_result_helpers.inc`: session-scalar
+  result-cell conversion and scalar projection column-name rendering helpers.
+- `mylite_execution_session_scalar_warnings.inc`: DO/SELECT scalar warning
+  traversal, SELECT modifier deprecation warnings shared by scalar and
+  non-scalar SELECT paths, charset alias/deprecation warnings, staged scalar
+  warning accumulation, and warning row emission.
+- `mylite_execution_scalar_projection_argument_diagnostics.inc`: function
+  argument-count diagnostic function-name lookup for DO and scalar projection
+  SELECT expressions.
 - `mylite_execution_scalar.inc`: scalar dispatch, `LAST_INSERT_ID`, `RAND`,
   and current date/time scalar core support.
 - `mylite_execution_scalar_string_core.inc`: tombstone include; scalar string
@@ -1598,6 +1617,11 @@ current timestamp/session state.
     same-translation-unit planning, table execution, row-scalar execution,
     table row execution, value materialization, validation core, string
     validation, and type validation fragments.
+33. Split the oversized scalar projection query fragment into ordered
+    same-translation-unit scalar SELECT classification, VALUES execution,
+    scalar SELECT execution, shared scalar result metadata, session scalar
+    result helper, session scalar warning, and argument-count diagnostic
+    fragments.
 
 ## Review checklist
 
@@ -1717,3 +1741,9 @@ current timestamp/session state.
   warnings, AUTO_INCREMENT counter handling, duplicate-key update behavior,
   source-target compatibility diagnostics, or strict/non-strict conversion
   behavior.
+- Scalar projection query fragments preserve the existing scalar SELECT/VALUES
+  ownership and same-translation-unit helper linkage; the split must not change
+  scalar projection classification, row-function detection, VALUES ORDER/LIMIT
+  diagnostics, result metadata shapes, last-insert-id rollback on scalar SELECT
+  failure, warning emission order, staged warning counts, or function
+  argument-count diagnostic names.

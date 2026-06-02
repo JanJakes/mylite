@@ -25272,7 +25272,19 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_aggregate_execution.inc"
 
-#include "mylite_execution_scalar_projection_queries.inc"
+#include "mylite_execution_scalar_projection_classification.inc"
+
+#include "mylite_execution_values_statement.inc"
+
+#include "mylite_execution_scalar_projection_select_execution.inc"
+
+#include "mylite_execution_scalar_result_metadata.inc"
+
+#include "mylite_execution_session_scalar_result_helpers.inc"
+
+#include "mylite_execution_session_scalar_warnings.inc"
+
+#include "mylite_execution_scalar_projection_argument_diagnostics.inc"
 
 #include "mylite_execution_scalar.inc"
 

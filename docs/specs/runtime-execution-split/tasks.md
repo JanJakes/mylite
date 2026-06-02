@@ -1135,3 +1135,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-sixth split.
+
+## Round 57
+
+- [x] Reinspect the remaining largest runtime fragments after the INSERT
+      SELECT split.
+- [x] Identify `mylite_execution_scalar_projection_queries.inc` as a scalar
+      projection query same-translation-unit split candidate.
+- [x] Split scalar projection classification, VALUES execution, scalar SELECT
+      execution, shared scalar result metadata, session scalar result helpers,
+      session scalar warnings, and argument-count diagnostics into named
+      fragments.
+- [x] Remove `mylite_execution_scalar_projection_queries.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused scalar projection, VALUES, DO, scalar warning, result
+      metadata, parser-adjacent, and argument-count diagnostic build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-seventh split.

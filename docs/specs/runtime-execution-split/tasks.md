@@ -723,3 +723,29 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-sixth split.
+
+## Round 37
+
+- [x] Reinspect the remaining largest runtime fragments after the DML
+      conversion split.
+- [x] Identify `mylite_execution_statement_core.inc` as a statement-entry,
+      transaction/session-control, prepared-statement, and SET/system-variable
+      same-translation-unit split candidate.
+- [x] Split statement entry/completion/dispatch, session statement handlers,
+      prepared statement execution, transaction characteristics, statement
+      transaction boundaries, transaction statements, lock table handling,
+      statement implicit commits, session savepoints, SQLite transaction
+      helpers, connection character-set handling, SET assignment/user-variable
+      handling, prepared statement support, SET session snapshots,
+      system-variable dispatch, boolean setters, numeric/transaction setters,
+      limit/size/expiry setters, timeout setters, and SQL
+      mode/timestamp/time-zone setters into named fragments.
+- [x] Remove `mylite_execution_statement_core.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused statement, prepared statement, transaction, SET/system
+      variable, DML, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, dispatch boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-seventh split.

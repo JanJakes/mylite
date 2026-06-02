@@ -25054,7 +25054,45 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
     session_scalar_cell_deinit(cell);
 }
 
-#include "mylite_execution_statement_core.inc"
+#include "mylite_execution_statement_entry.inc"
+
+#include "mylite_execution_statement_session_handlers.inc"
+
+#include "mylite_execution_prepared_statement_execution.inc"
+
+#include "mylite_execution_transaction_characteristics.inc"
+
+#include "mylite_execution_statement_transaction_boundaries.inc"
+
+#include "mylite_execution_transaction_statements.inc"
+
+#include "mylite_execution_lock_tables.inc"
+
+#include "mylite_execution_statement_implicit_commits.inc"
+
+#include "mylite_execution_session_savepoints.inc"
+
+#include "mylite_execution_statement_sqlite_transactions.inc"
+
+#include "mylite_execution_set_connection_charset.inc"
+
+#include "mylite_execution_set_assignments.inc"
+
+#include "mylite_execution_prepared_statement_support.inc"
+
+#include "mylite_execution_set_session_snapshot.inc"
+
+#include "mylite_execution_set_system_variable_dispatch.inc"
+
+#include "mylite_execution_set_boolean_variables.inc"
+
+#include "mylite_execution_set_numeric_transaction_variables.inc"
+
+#include "mylite_execution_set_limit_size_expiry_variables.inc"
+
+#include "mylite_execution_set_timeout_variables.inc"
+
+#include "mylite_execution_set_sql_mode_timestamp_time_zone.inc"
 
 #include "mylite_execution_ddl_statements.inc"
 

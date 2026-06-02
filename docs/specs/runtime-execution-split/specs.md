@@ -565,9 +565,46 @@ working files.
 
 The fragments are:
 
-- `mylite_execution_statement_core.inc`: statement completion, dispatch,
-  session state, prepared statements, SET, transaction, savepoint, and lock
-  handling.
+- `mylite_execution_statement_entry.inc`: top-level statement entry,
+  completion, affected/found-row bookkeeping, and statement dispatch.
+- `mylite_execution_statement_session_handlers.inc`: lightweight session
+  statement handlers such as `DO`, `RESET`, `FLUSH`, and `KILL`.
+- `mylite_execution_prepared_statement_execution.inc`: PREPARE, EXECUTE, and
+  DEALLOCATE statement execution entry points.
+- `mylite_execution_transaction_characteristics.inc`: transaction access mode
+  and isolation-level parsing and session-state mutation.
+- `mylite_execution_statement_transaction_boundaries.inc`: statement-level
+  implicit transaction boundary helpers.
+- `mylite_execution_transaction_statements.inc`: START TRANSACTION, BEGIN,
+  COMMIT, ROLLBACK, and related transaction statements.
+- `mylite_execution_lock_tables.inc`: LOCK TABLES and UNLOCK TABLES session
+  state handling.
+- `mylite_execution_statement_implicit_commits.inc`: statement classes that
+  require implicit commit behavior.
+- `mylite_execution_session_savepoints.inc`: SAVEPOINT, ROLLBACK TO
+  SAVEPOINT, and RELEASE SAVEPOINT handling.
+- `mylite_execution_statement_sqlite_transactions.inc`: SQLite transaction
+  helpers used by statement execution.
+- `mylite_execution_set_connection_charset.inc`: SET NAMES and connection
+  character-set/collation handling.
+- `mylite_execution_set_assignments.inc`: SET assignment dispatch and user
+  variable mutation.
+- `mylite_execution_prepared_statement_support.inc`: prepared-statement
+  metadata, parameter binding, and value conversion support.
+- `mylite_execution_set_session_snapshot.inc`: statement-local SET session
+  snapshot capture and restore helpers.
+- `mylite_execution_set_system_variable_dispatch.inc`: system-variable SET
+  validation and setter dispatch.
+- `mylite_execution_set_boolean_variables.inc`: boolean system-variable
+  setters.
+- `mylite_execution_set_numeric_transaction_variables.inc`: numeric and
+  transaction-related system-variable setters.
+- `mylite_execution_set_limit_size_expiry_variables.inc`: limit, size, packet,
+  cache, and expiry system-variable setters.
+- `mylite_execution_set_timeout_variables.inc`: timeout system-variable
+  setters.
+- `mylite_execution_set_sql_mode_timestamp_time_zone.inc`: SQL mode,
+  timestamp, and time-zone system-variable setters.
 - `mylite_execution_ddl_statements.inc`: high-level DDL/schema statement
   execution.
 - `mylite_execution_dml_statements.inc`: high-level INSERT/REPLACE/LOAD
@@ -1108,6 +1145,10 @@ current timestamp/session state.
   select-item planning must remain in the original call order and preserve all
   previous MySQL-compatible values, warnings, errors, SQLSTATEs, and ownership
   rules.
+- Statement dispatch, prepared statements, transaction/savepoint/lock control,
+  connection character-set handling, `SET` assignment application, session
+  snapshotting, and system-variable setters must remain behavior-preserving
+  private execution fragments with no new exported runtime surface.
 
 ## Implementation plan
 
@@ -1139,6 +1180,13 @@ current timestamp/session state.
     same-translation-unit descriptor-helper, INSERT planning, DML conversion,
     default, validation, implicit-value, and row-scalar select-item fragments
     without exporting a new helper surface.
+13. Split the oversized statement-core implementation fragment into ordered
+    same-translation-unit statement entry/completion, session handlers,
+    prepared-statement execution and support, transaction characteristics,
+    statement transaction boundaries, transaction statements, lock handling,
+    statement implicit commits, session savepoints, SQLite transaction helpers,
+    connection character-set handling, SET assignment, session-snapshot,
+    system-variable dispatch, and focused system-variable setter fragments.
 
 ## Review checklist
 
@@ -1167,3 +1215,7 @@ current timestamp/session state.
 - The old catalog-loading bucket no longer hides unrelated DML conversion and
   row-scalar planning code; new fragments are named by behavior and remain
   private includes until narrower true-module boundaries are designed.
+- Statement-core fragments preserve the central dispatch and session mutation
+  ownership in `mylite_execution.c`; the split must not create a second
+  dispatcher, duplicate session state, or export transaction/system-variable
+  mutation helpers.

@@ -7,7 +7,7 @@ static int plan_load_data_infile(
     const struct mylite_sql_ast_node *table_name = child_at(statement, 1U);
     const struct mylite_sql_ast_node *ignore_lines = NULL;
     const struct mylite_sql_ast_node *column_list = NULL;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_load_data_infile){0};
@@ -44,7 +44,7 @@ static int plan_load_data_infile(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->insert.table.table_id,
             &out_plan->insert.columns,
@@ -52,7 +52,7 @@ static int plan_load_data_infile(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             out_plan->insert.table.table_id,
             out_plan->insert.columns,
@@ -67,7 +67,7 @@ static int plan_load_data_infile(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->insert.table.table_id,
             out_plan->insert.columns,
@@ -116,7 +116,7 @@ static int plan_load_data_infile(
         );
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     return rc;
 }
 

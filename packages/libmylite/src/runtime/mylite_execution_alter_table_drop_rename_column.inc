@@ -21,7 +21,7 @@ static int plan_alter_table_drop_primary_key_with_options(
     struct planned_alter_table_drop_primary_key *out_plan
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -55,10 +55,10 @@ static int plan_alter_table_drop_primary_key_with_options(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             out_plan->table.table_id,
             columns,
@@ -97,7 +97,7 @@ static int plan_alter_table_drop_primary_key_with_options(
         rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     free(columns);
     return rc;
 }
@@ -128,7 +128,7 @@ static int validate_alter_table_drop_primary_key_auto_increment(
         return MYLITE_OK;
     }
 
-    rc = load_table_index_infos(
+    rc = mylite_execution_load_table_index_infos(
         database,
         plan->table.table_id,
         columns,
@@ -146,7 +146,7 @@ static int validate_alter_table_drop_primary_key_auto_increment(
             break;
         }
     }
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -349,7 +349,7 @@ static int find_alter_table_auto_increment_column(
     struct mylite_catalog_column_descriptor *columns = NULL;
     size_t column_count = 0U;
     size_t auto_increment_count = 0U;
-    int rc = load_table_columns(database, plan->table.table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, plan->table.table_id, &columns, &column_count);
 
     *out_column = (struct mylite_catalog_column_descriptor){0};
     *out_found = false;
@@ -535,14 +535,14 @@ static int plan_alter_table_drop_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = reject_check_constraint_table_alter(
+        rc = mylite_execution_reject_check_constraint_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE DROP COLUMN does not yet support CHECK-constrained tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &columns,
@@ -631,7 +631,7 @@ static int reject_drop_column_foreign_key_dependencies(
     struct loaded_foreign_key_info *parent_foreign_keys = NULL;
     size_t child_foreign_key_count = 0U;
     size_t parent_foreign_key_count = 0U;
-    int rc = load_table_foreign_key_infos(
+    int rc = mylite_execution_load_table_foreign_key_infos(
         database,
         plan->table.table_id,
         columns,
@@ -657,7 +657,7 @@ static int reject_drop_column_foreign_key_dependencies(
     }
 
     if (rc == MYLITE_OK) {
-        rc = load_parent_foreign_key_infos(
+        rc = mylite_execution_load_parent_foreign_key_infos(
             database,
             plan->table.table_id,
             &parent_foreign_keys,
@@ -681,8 +681,8 @@ static int reject_drop_column_foreign_key_dependencies(
         }
     }
 
-    loaded_foreign_key_infos_deinit(&child_foreign_keys, &child_foreign_key_count);
-    loaded_foreign_key_infos_deinit(&parent_foreign_keys, &parent_foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&child_foreign_keys, &child_foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&parent_foreign_keys, &parent_foreign_key_count);
     return rc;
 }
 
@@ -694,7 +694,7 @@ static int plan_drop_column_key_dependencies(
 ) {
     struct loaded_index_info *indexes = NULL;
     size_t index_count = 0U;
-    int rc = load_table_index_infos(
+    int rc = mylite_execution_load_table_index_infos(
         database,
         out_plan->table.table_id,
         columns,
@@ -707,7 +707,7 @@ static int plan_drop_column_key_dependencies(
         rc = append_drop_column_index_update(database, out_plan, &indexes[index]);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     return rc;
 }
 
@@ -1095,7 +1095,7 @@ static int plan_alter_table_rename_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = reject_check_constraint_table_alter(
+        rc = mylite_execution_reject_check_constraint_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE RENAME COLUMN does not yet support CHECK-constrained tables"
@@ -1104,7 +1104,7 @@ static int plan_alter_table_rename_column(
     if (rc == MYLITE_OK) {
         size_t column_count = 0U;
 
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
         if (rc == MYLITE_OK) {
             rc = plan_alter_table_rename_column_from_columns(
                 database,

@@ -9,7 +9,7 @@ static int execute_show_columns_statement(
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
     const struct mylite_execution_catalog_mysql_system_table *mysql_system_definition = NULL;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     bool missing_schema = false;
     bool mysql_system_target = false;
@@ -72,7 +72,7 @@ static int execute_show_columns_statement(
         rc = resolve_metadata_table_reference(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
         rc = load_show_columns_key_metadata(
@@ -125,15 +125,15 @@ static int execute_show_columns_statement(
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         show_like_filter_deinit(&filter);
-        primary_key_info_deinit(&primary_key);
-        loaded_index_infos_deinit(&indexes, &context.index_count);
+        mylite_execution_primary_key_info_deinit(&primary_key);
+        mylite_execution_loaded_index_infos_deinit(&indexes, &context.index_count);
         free(columns);
         return rc;
     }
 
     show_like_filter_deinit(&filter);
-    primary_key_info_deinit(&primary_key);
-    loaded_index_infos_deinit(&indexes, &context.index_count);
+    mylite_execution_primary_key_info_deinit(&primary_key);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &context.index_count);
     free(columns);
     return finish_successful_result(database, result, out_result);
 }
@@ -446,9 +446,9 @@ static int load_show_columns_key_metadata(
         return MYLITE_OK;
     }
 
-    rc = load_primary_key_info(database, table->table_id, columns, column_count, primary_key);
+    rc = mylite_execution_load_primary_key_info(database, table->table_id, columns, column_count, primary_key);
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -796,10 +796,10 @@ static int execute_show_index_statement(
         rc = resolve_readable_table(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table.table_id,
             columns,
@@ -836,12 +836,12 @@ static int execute_show_index_statement(
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
-        loaded_index_infos_deinit(&indexes, &index_count);
+        mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
         free(columns);
         return rc;
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return finish_successful_result(database, result, out_result);
 }

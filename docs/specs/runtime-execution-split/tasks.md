@@ -475,3 +475,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-fifth split.
+
+## Round 26
+
+- [x] Reinspect `mylite_execution_catalog_loading.inc` and identify that its
+      loaded-descriptor head is a true-module boundary.
+- [x] Add `mylite_execution_loaded_catalog.h/.c` for loaded table columns,
+      primary-key, index, foreign-key, and CHECK constraint descriptors.
+- [x] Move loaded descriptor structs, loader APIs, cleanup APIs, column-key
+      classification, and metadata-presence rejection helpers out of
+      `mylite_execution.c` and `mylite_execution_catalog_loading.inc`.
+- [x] Keep column-reference resolution, INSERT planning, DML value conversion,
+      literal decoding, UTF-8 validation, and row-scalar select-item planning in
+      execution fragments.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused metadata/DML build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-sixth split.

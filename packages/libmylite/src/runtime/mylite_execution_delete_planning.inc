@@ -45,7 +45,7 @@ static int plan_single_table_delete(
         &out_plan->table
     );
     if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL)) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
@@ -409,7 +409,7 @@ static int apply_parent_delete_actions(
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    rc = load_parent_foreign_key_infos(
+    rc = mylite_execution_load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
         &foreign_keys,
@@ -432,7 +432,7 @@ static int apply_parent_delete_actions(
         }
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     return rc;
 }
 

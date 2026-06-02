@@ -1777,10 +1777,10 @@ static int validate_child_foreign_keys_after_write(
         return MYLITE_OK;
     }
 
-    rc = load_table_columns(database, child_table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, child_table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             child_table_id,
             columns,
@@ -1793,7 +1793,7 @@ static int validate_child_foreign_keys_after_write(
         rc = validate_foreign_key_references(database, &foreign_keys[index], false);
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     free(columns);
     return rc;
 }
@@ -1840,11 +1840,11 @@ static int validate_parent_foreign_key_descriptor(
         return MYLITE_MISUSE;
     }
 
-    rc = load_foreign_key_info(context->database, foreign_key, NULL, 0U, &loaded);
+    rc = mylite_execution_load_foreign_key_info(context->database, foreign_key, NULL, 0U, &loaded);
     if (rc == MYLITE_OK) {
         rc = validate_foreign_key_references(context->database, &loaded, true);
     }
-    loaded_foreign_key_info_deinit(&loaded);
+    mylite_execution_loaded_foreign_key_info_deinit(&loaded);
     context->rc = rc;
     return rc;
 }

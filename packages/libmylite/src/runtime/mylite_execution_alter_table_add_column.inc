@@ -85,7 +85,7 @@ static int plan_alter_table_add_column(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK &&
         find_column_index(columns, column_count, out_plan->column.name, &duplicate_index) ==
@@ -541,7 +541,7 @@ static int plan_alter_table_add_primary_key(
     struct primary_key_definition_nodes nodes = {0};
     const struct mylite_sql_ast_node *part_list = NULL;
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct primary_key_info existing_primary_key = primary_key_info_init();
+    struct primary_key_info existing_primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -575,10 +575,10 @@ static int plan_alter_table_add_primary_key(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             out_plan->table.table_id,
             columns,
@@ -623,7 +623,7 @@ static int plan_alter_table_add_primary_key(
         rc = validate_alter_table_primary_key_key_length(database, out_plan);
     }
 
-    primary_key_info_deinit(&existing_primary_key);
+    mylite_execution_primary_key_info_deinit(&existing_primary_key);
     free(columns);
     return rc;
 }

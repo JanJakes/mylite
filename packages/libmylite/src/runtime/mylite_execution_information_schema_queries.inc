@@ -3218,7 +3218,7 @@ static int table_status_has_auto_increment(
     }
     *out_has_auto_increment = false;
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         if (column_descriptor_is_auto_increment(&columns[column_index])) {
             *out_has_auto_increment = true;

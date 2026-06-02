@@ -75,9 +75,9 @@ static int clone_create_table_like_columns(
     struct planned_create_table *out_plan
 ) {
     struct mylite_catalog_column_descriptor *source_columns = NULL;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t source_column_count = 0U;
-    int rc = load_table_columns(database, source_table_id, &source_columns, &source_column_count);
+    int rc = mylite_execution_load_table_columns(database, source_table_id, &source_columns, &source_column_count);
 
     if (rc == MYLITE_OK) {
         rc = validate_create_table_like_source_columns(
@@ -109,7 +109,7 @@ static int clone_create_table_like_columns(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             source_table_id,
             source_columns,
@@ -164,7 +164,7 @@ static int clone_create_table_like_columns(
         rc = validate_create_table_auto_increment_columns(database, out_plan, true);
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     free(source_columns);
     return rc;
 }
@@ -229,7 +229,7 @@ static int clone_create_table_like_indexes(
 ) {
     struct loaded_index_info *indexes = NULL;
     size_t index_count = 0U;
-    int rc = load_table_index_infos(
+    int rc = mylite_execution_load_table_index_infos(
         database,
         source_table_id,
         source_columns,
@@ -291,7 +291,7 @@ static int clone_create_table_like_indexes(
         ++out_plan->secondary_index_count;
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     return rc;
 }
 
@@ -302,7 +302,7 @@ static int clone_create_table_like_check_constraints(
 ) {
     struct loaded_check_constraint_info *checks = NULL;
     size_t check_count = 0U;
-    int rc = load_table_check_constraint_infos(database, source_table_id, &checks, &check_count);
+    int rc = mylite_execution_load_table_check_constraint_infos(database, source_table_id, &checks, &check_count);
 
     for (size_t index = 0U; rc == MYLITE_OK && index < check_count; ++index) {
         const struct mylite_catalog_check_constraint_descriptor *source =
@@ -344,7 +344,7 @@ static int clone_create_table_like_check_constraints(
         }
     }
 
-    loaded_check_constraint_infos_deinit(&checks, &check_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(&checks, &check_count);
     return rc;
 }
 

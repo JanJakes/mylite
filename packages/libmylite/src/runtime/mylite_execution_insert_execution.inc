@@ -1181,7 +1181,7 @@ static int validate_insert_ignore_row_foreign_key(
         const struct planned_value *child_value = NULL;
         size_t child_column_index = 0U;
 
-        rc = find_column_index_by_id(
+        rc = mylite_execution_find_column_index_by_id(
             plan->columns,
             plan->column_count,
             &child_column_index,

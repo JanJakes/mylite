@@ -2236,9 +2236,9 @@ static int validate_alter_table_multi_action_auto_increment_keys(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -2263,7 +2263,7 @@ static int validate_alter_table_multi_action_auto_increment_keys(
         }
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }

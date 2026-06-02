@@ -1605,7 +1605,7 @@ static int append_show_column(
         if (column->is_nullable) {
             values[3] = "YES";
         }
-        values[4] = column_key_text(
+        values[4] = mylite_execution_column_key_text(
             (struct loaded_index_info_span){
                 .indexes = context->indexes,
                 .count = context->index_count,
@@ -1646,7 +1646,7 @@ static int append_show_column(
     if (column->is_nullable) {
         values[2] = "YES";
     }
-    values[3] = column_key_text(
+    values[3] = mylite_execution_column_key_text(
         (struct loaded_index_info_span){
             .indexes = context->indexes,
             .count = context->index_count,

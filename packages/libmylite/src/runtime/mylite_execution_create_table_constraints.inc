@@ -659,7 +659,7 @@ static int plan_create_table_foreign_key_parent(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             foreign_key->parent_table.table_id,
             &parent_columns,
@@ -732,11 +732,11 @@ static int find_foreign_key_parent_index(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = load_table_columns(database, parent_table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, parent_table->table_id, &columns, &column_count);
 
     *out_index = (struct mylite_catalog_index_descriptor){0};
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             parent_table->table_id,
             columns,
@@ -768,7 +768,7 @@ static int find_foreign_key_parent_index(
             break;
         }
     }
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
 
     if (rc != MYLITE_OK) {
@@ -791,11 +791,11 @@ static int find_alter_table_foreign_key_parent_index(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = load_table_columns(database, plan->parent_table.table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, plan->parent_table.table_id, &columns, &column_count);
 
     *out_index = (struct mylite_catalog_index_descriptor){0};
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             plan->parent_table.table_id,
             columns,
@@ -826,7 +826,7 @@ static int find_alter_table_foreign_key_parent_index(
             break;
         }
     }
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
 
     if (rc != MYLITE_OK) {

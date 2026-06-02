@@ -27,10 +27,10 @@ static int plan_alter_table_add_index(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -122,7 +122,7 @@ static int plan_alter_table_add_index(
         rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -198,10 +198,10 @@ static int plan_create_index(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -294,7 +294,7 @@ static int plan_create_index(
         rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }

@@ -515,7 +515,7 @@ static int plan_show_create_table(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
@@ -523,7 +523,7 @@ static int plan_show_create_table(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             out_plan->columns,
@@ -533,7 +533,7 @@ static int plan_show_create_table(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             out_plan->table.table_id,
             out_plan->columns,
@@ -543,7 +543,7 @@ static int plan_show_create_table(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_check_constraint_infos(
+        rc = mylite_execution_load_table_check_constraint_infos(
             database,
             out_plan->table.table_id,
             &out_plan->check_constraints,
@@ -563,9 +563,9 @@ static void planned_show_create_table_deinit(struct planned_show_create_table *p
     }
 
     free(plan->columns);
-    loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
-    loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
-    loaded_check_constraint_infos_deinit(&plan->check_constraints, &plan->check_constraint_count);
+    mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(&plan->check_constraints, &plan->check_constraint_count);
     *plan = (struct planned_show_create_table){0};
 }
 

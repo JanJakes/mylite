@@ -5,7 +5,7 @@ static int plan_insert_select(
 ) {
     const struct mylite_sql_ast_node *column_list = child_at(statement, 1U);
     const struct mylite_sql_ast_node *source_statement = child_at(statement, 2U);
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     bool ignore = child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     enum planned_insert_select_source_kind source_kind =
         insert_select_source_kind(source_statement);
@@ -21,7 +21,7 @@ static int plan_insert_select(
     if (source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND &&
         statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
         set_unsupported_error(database, "REPLACE ... SELECT does not support UNION sources");
-        primary_key_info_deinit(&primary_key);
+        mylite_execution_primary_key_info_deinit(&primary_key);
         return MYLITE_ERROR;
     }
     rc = plan_insert_select_target(database, statement, out_plan, &primary_key);
@@ -78,7 +78,7 @@ static int plan_insert_select(
         rc = plan_insert_select_source(database, statement, source_kind, out_plan);
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     return rc;
 }
 
@@ -150,7 +150,7 @@ static int plan_insert_select_target(
     );
 
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->target.table.table_id,
             &out_plan->target.columns,
@@ -158,7 +158,7 @@ static int plan_insert_select_target(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             out_plan->target.table.table_id,
             out_plan->target.columns,
@@ -168,7 +168,7 @@ static int plan_insert_select_target(
     }
     if (rc == MYLITE_OK) {
         apply_insert_select_primary_key_info(primary_key, &out_plan->target);
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->target.table.table_id,
             out_plan->target.columns,

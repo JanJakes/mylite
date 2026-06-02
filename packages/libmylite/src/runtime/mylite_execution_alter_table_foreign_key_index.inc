@@ -173,14 +173,14 @@ static int load_alter_table_add_foreign_key_child_metadata(
     int rc = MYLITE_OK;
 
     *out_metadata = (struct alter_table_add_foreign_key_child_metadata){0};
-    rc = load_table_columns(
+    rc = mylite_execution_load_table_columns(
         database,
         plan->table.table_id,
         &out_metadata->columns,
         &out_metadata->column_count
     );
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             plan->table.table_id,
             out_metadata->columns,
@@ -190,7 +190,7 @@ static int load_alter_table_add_foreign_key_child_metadata(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             plan->table.table_id,
             out_metadata->columns,
@@ -210,8 +210,8 @@ static void alter_table_add_foreign_key_child_metadata_deinit(
         return;
     }
 
-    loaded_foreign_key_infos_deinit(&metadata->foreign_keys, &metadata->foreign_key_count);
-    loaded_index_infos_deinit(&metadata->indexes, &metadata->index_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&metadata->foreign_keys, &metadata->foreign_key_count);
+    mylite_execution_loaded_index_infos_deinit(&metadata->indexes, &metadata->index_count);
     free(metadata->columns);
     *metadata = (struct alter_table_add_foreign_key_child_metadata){0};
 }
@@ -368,7 +368,7 @@ static int plan_alter_table_add_foreign_key_parent(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->parent_table.table_id,
             &parent_columns,
@@ -770,10 +770,10 @@ static int plan_alter_table_drop_foreign_key(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -803,7 +803,7 @@ static int plan_alter_table_drop_foreign_key(
         foreign_keys[resolved_foreign_key] = (struct loaded_foreign_key_info){0};
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     free(columns);
     if (rc != MYLITE_OK) {
         planned_alter_table_drop_foreign_key_deinit(out_plan);
@@ -817,7 +817,7 @@ static void planned_alter_table_drop_foreign_key_deinit(
     if (plan == NULL) {
         return;
     }
-    loaded_foreign_key_info_deinit(&plan->foreign_key);
+    mylite_execution_loaded_foreign_key_info_deinit(&plan->foreign_key);
     *plan = (struct planned_alter_table_drop_foreign_key){0};
 }
 
@@ -963,7 +963,7 @@ static int load_alter_table_drop_constraint_context(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             context->table.table_id,
             &context->columns,
@@ -971,7 +971,7 @@ static int load_alter_table_drop_constraint_context(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             context->table.table_id,
             context->columns,
@@ -981,7 +981,7 @@ static int load_alter_table_drop_constraint_context(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             context->table.table_id,
             context->columns,
@@ -991,7 +991,7 @@ static int load_alter_table_drop_constraint_context(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_check_constraint_infos(
+        rc = mylite_execution_load_table_check_constraint_infos(
             database,
             context->table.table_id,
             &context->check_constraints,
@@ -1152,12 +1152,12 @@ static void alter_table_drop_constraint_context_deinit(
     if (context == NULL) {
         return;
     }
-    loaded_check_constraint_infos_deinit(
+    mylite_execution_loaded_check_constraint_infos_deinit(
         &context->check_constraints,
         &context->check_constraint_count
     );
-    loaded_foreign_key_infos_deinit(&context->foreign_keys, &context->foreign_key_count);
-    loaded_index_infos_deinit(&context->indexes, &context->index_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&context->foreign_keys, &context->foreign_key_count);
+    mylite_execution_loaded_index_infos_deinit(&context->indexes, &context->index_count);
     free(context->columns);
     *context = (struct alter_table_drop_constraint_context){0};
 }
@@ -1759,10 +1759,10 @@ static int plan_drop_index(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -1810,7 +1810,7 @@ static int plan_drop_index(
         rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -1819,7 +1819,7 @@ static void planned_drop_index_deinit(struct planned_drop_index *plan) {
     if (plan == NULL) {
         return;
     }
-    loaded_index_info_deinit(&plan->index);
+    mylite_execution_loaded_index_info_deinit(&plan->index);
     *plan = (struct planned_drop_index){0};
 }
 
@@ -1974,10 +1974,10 @@ static int plan_alter_table_rename_index(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -2026,7 +2026,7 @@ static int plan_alter_table_rename_index(
         indexes[resolved_index] = (struct loaded_index_info){0};
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -2049,7 +2049,7 @@ static void planned_rename_index_deinit(struct planned_rename_index *plan) {
     if (plan == NULL) {
         return;
     }
-    loaded_index_info_deinit(&plan->index);
+    mylite_execution_loaded_index_info_deinit(&plan->index);
     *plan = (struct planned_rename_index){0};
 }
 

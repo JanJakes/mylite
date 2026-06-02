@@ -1789,7 +1789,7 @@ static int validate_sql_require_primary_key_for_table_descriptor(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -1799,16 +1799,16 @@ static int validate_sql_require_primary_key_for_table_descriptor(
         return MYLITE_OK;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
+        rc = mylite_execution_load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
     }
     if (rc == MYLITE_OK && !primary_key.has_primary_key) {
         set_sql_require_primary_key_error(database);
         rc = MYLITE_ERROR;
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     free(columns);
     return rc;
 }

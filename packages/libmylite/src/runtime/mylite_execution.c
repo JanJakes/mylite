@@ -10,6 +10,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"
@@ -1428,44 +1429,6 @@ struct schema_default_option_validation {
 struct temporary_index_descriptor_positions {
     size_t index;
     size_t index_column;
-};
-
-struct loaded_index_part {
-    struct mylite_catalog_index_column_descriptor index_column;
-    struct mylite_catalog_column_descriptor column;
-    size_t column_index;
-};
-
-struct loaded_index_info {
-    struct mylite_catalog_index_descriptor index;
-    struct loaded_index_part *parts;
-    size_t part_count;
-};
-
-struct loaded_foreign_key_part {
-    struct mylite_catalog_foreign_key_column_descriptor foreign_key_column;
-    struct mylite_catalog_column_descriptor child_column;
-    struct mylite_catalog_column_descriptor parent_column;
-    size_t child_column_index;
-    size_t parent_column_index;
-};
-
-struct loaded_foreign_key_info {
-    struct mylite_catalog_foreign_key_descriptor foreign_key;
-    struct mylite_catalog_table_descriptor child_table;
-    struct mylite_catalog_table_descriptor parent_table;
-    struct mylite_catalog_index_descriptor parent_index;
-    struct loaded_foreign_key_part *parts;
-    size_t part_count;
-};
-
-struct loaded_check_constraint_info {
-    struct mylite_catalog_check_constraint_descriptor check_constraint;
-};
-
-struct loaded_index_info_span {
-    const struct loaded_index_info *indexes;
-    size_t count;
 };
 
 struct planned_create_table_like {
@@ -3140,58 +3103,11 @@ struct show_like_pattern_item_request {
     bool backslash_escapes;
 };
 
-struct load_columns_context {
-    struct mylite_catalog_column_descriptor *columns;
-    size_t count;
-    size_t capacity;
-};
-
-struct primary_key_info {
-    bool has_primary_key;
-    struct mylite_catalog_index_descriptor index;
-    struct loaded_index_part *parts;
-    size_t part_count;
-};
-
 struct result_column_metadata_context {
     struct primary_key_info primary_key;
     struct loaded_index_info *indexes;
     size_t index_count;
     bool has_single_source_metadata;
-};
-
-struct load_primary_key_column_context {
-    struct mylite_db *database;
-    const struct mylite_catalog_column_descriptor *columns;
-    size_t column_count;
-    struct loaded_index_part *parts;
-    size_t count;
-    size_t capacity;
-};
-
-struct load_index_infos_context {
-    struct mylite_db *database;
-    const struct mylite_catalog_column_descriptor *columns;
-    size_t column_count;
-    struct loaded_index_info *indexes;
-    size_t count;
-    size_t capacity;
-};
-
-struct load_foreign_key_infos_context {
-    struct mylite_db *database;
-    const struct mylite_catalog_column_descriptor *child_columns;
-    size_t child_column_count;
-    struct loaded_foreign_key_info *foreign_keys;
-    size_t count;
-    size_t capacity;
-};
-
-struct load_check_constraint_infos_context {
-    struct mylite_db *database;
-    struct loaded_check_constraint_info *check_constraints;
-    size_t count;
-    size_t capacity;
 };
 
 struct find_check_constraint_name_context {
@@ -3203,21 +3119,6 @@ struct check_constraint_name_collision_context {
     const char *name;
     int64_t excluded_table_id;
     bool found;
-};
-
-struct check_constraint_presence_context {
-    bool has_check_constraint;
-};
-
-struct load_single_foreign_key_column_context {
-    struct mylite_db *database;
-    const struct mylite_catalog_column_descriptor *child_columns;
-    size_t child_column_count;
-    const struct mylite_catalog_column_descriptor *parent_columns;
-    size_t parent_column_count;
-    struct loaded_foreign_key_part *parts;
-    size_t count;
-    size_t capacity;
 };
 
 struct validate_parent_foreign_keys_context {
@@ -3239,19 +3140,6 @@ struct loaded_index_column_lookup {
     size_t index_count;
     int64_t skipped_index_id;
     int64_t column_id;
-};
-
-struct load_single_index_column_context {
-    struct mylite_db *database;
-    const struct mylite_catalog_column_descriptor *columns;
-    size_t column_count;
-    struct loaded_index_part *parts;
-    size_t count;
-    size_t capacity;
-};
-
-struct secondary_index_presence_context {
-    bool has_secondary_index;
 };
 
 struct nonprimary_index_presence_context {
@@ -17827,176 +17715,6 @@ static bool modify_column_binary_string_replacement_supported(
 );
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node);
 
-static int load_table_columns(
-    struct mylite_db *database,
-    int64_t table_id,
-    struct mylite_catalog_column_descriptor **out_columns,
-    size_t *out_column_count
-);
-static struct primary_key_info primary_key_info_init(void);
-static void primary_key_info_deinit(struct primary_key_info *info);
-
-static int load_primary_key_info(
-    struct mylite_db *database,
-    int64_t table_id,
-    const struct mylite_catalog_column_descriptor *columns,
-    size_t column_count,
-    struct primary_key_info *out_info
-);
-static int load_table_index_infos(
-    struct mylite_db *database,
-    int64_t table_id,
-    const struct mylite_catalog_column_descriptor *columns,
-    size_t column_count,
-    struct loaded_index_info **out_indexes,
-    size_t *out_index_count
-);
-static void loaded_index_infos_deinit(struct loaded_index_info **indexes, size_t *index_count);
-static void loaded_index_info_deinit(struct loaded_index_info *index);
-static int load_table_foreign_key_infos(
-    struct mylite_db *database,
-    int64_t table_id,
-    const struct mylite_catalog_column_descriptor *child_columns,
-    size_t child_column_count,
-    struct loaded_foreign_key_info **out_foreign_keys,
-    size_t *out_foreign_key_count
-);
-static int load_parent_foreign_key_infos(
-    struct mylite_db *database,
-    int64_t parent_table_id,
-    struct loaded_foreign_key_info **out_foreign_keys,
-    size_t *out_foreign_key_count
-);
-static void loaded_foreign_key_infos_deinit(
-    struct loaded_foreign_key_info **foreign_keys,
-    size_t *foreign_key_count
-);
-static void loaded_foreign_key_info_deinit(struct loaded_foreign_key_info *foreign_key);
-static int load_table_check_constraint_infos(
-    struct mylite_db *database,
-    int64_t table_id,
-    struct loaded_check_constraint_info **out_check_constraints,
-    size_t *out_check_constraint_count
-);
-static void loaded_check_constraint_infos_deinit(
-    struct loaded_check_constraint_info **check_constraints,
-    size_t *check_constraint_count
-);
-static int append_loaded_index_info(
-    const struct mylite_catalog_index_descriptor *index,
-    void *user_data
-);
-static int append_loaded_foreign_key_info(
-    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
-    void *user_data
-);
-static int append_loaded_check_constraint_info(
-    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
-    void *user_data
-);
-static int load_index_parts(
-    struct mylite_db *database,
-    int64_t index_id,
-    const struct mylite_catalog_column_descriptor *columns,
-    size_t column_count,
-    struct loaded_index_part **out_parts,
-    size_t *out_part_count
-);
-static int append_loaded_index_part(
-    const struct mylite_catalog_index_column_descriptor *index_column,
-    void *user_data
-);
-static int load_foreign_key_parts(
-    struct mylite_db *database,
-    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
-    const struct mylite_catalog_column_descriptor *child_columns,
-    size_t child_column_count,
-    const struct mylite_catalog_column_descriptor *parent_columns,
-    size_t parent_column_count,
-    struct loaded_foreign_key_part **out_parts,
-    size_t *out_part_count
-);
-static int append_loaded_foreign_key_part(
-    const struct mylite_catalog_foreign_key_column_descriptor *foreign_key_column,
-    void *user_data
-);
-static int reserve_loaded_index_parts(
-    struct load_single_index_column_context *context,
-    size_t required_capacity
-);
-static int reserve_loaded_foreign_key_parts(
-    struct load_single_foreign_key_column_context *context,
-    size_t required_capacity
-);
-static int reserve_loaded_index_infos(
-    struct load_index_infos_context *context,
-    size_t required_capacity
-);
-static int reserve_loaded_foreign_key_infos(
-    struct load_foreign_key_infos_context *context,
-    size_t required_capacity
-);
-static int reserve_loaded_check_constraint_infos(
-    struct load_check_constraint_infos_context *context,
-    size_t required_capacity
-);
-static const char *column_key_text(
-    struct loaded_index_info_span indexes,
-    const struct primary_key_info *primary_key,
-    const struct mylite_catalog_column_descriptor *column
-);
-static bool primary_key_info_contains_column_id(
-    const struct primary_key_info *primary_key,
-    int64_t column_id
-);
-static bool column_has_unique_secondary_index(
-    struct loaded_index_info_span indexes,
-    int64_t column_id
-);
-static bool column_has_first_composite_unique_secondary_index(
-    struct loaded_index_info_span indexes,
-    int64_t column_id
-);
-static bool column_has_first_nonunique_secondary_index(
-    struct loaded_index_info_span indexes,
-    int64_t column_id
-);
-static bool column_has_nonunique_secondary_index(
-    struct loaded_index_info_span indexes,
-    int64_t column_id
-);
-static bool column_has_first_fulltext_index(
-    struct loaded_index_info_span indexes,
-    int64_t column_id
-);
-static bool column_has_spatial_index(struct loaded_index_info_span indexes, int64_t column_id);
-static bool column_is_first_not_null_unique_secondary_index(
-    struct loaded_index_info_span indexes,
-    int64_t column_id
-);
-static int reject_primary_key_table_alter(
-    struct mylite_db *database,
-    int64_t table_id,
-    const char *message
-);
-static int reject_secondary_index_table_alter(
-    struct mylite_db *database,
-    int64_t table_id,
-    const char *message
-);
-static int note_secondary_index_presence(
-    const struct mylite_catalog_index_descriptor *index,
-    void *user_data
-);
-static int reject_check_constraint_table_alter(
-    struct mylite_db *database,
-    int64_t table_id,
-    const char *message
-);
-static int note_check_constraint_presence(
-    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
-    void *user_data
-);
 static int reject_inline_primary_key_column_definition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_definition,
@@ -18014,21 +17732,6 @@ static int plan_alter_table_rename_column_from_columns(
     size_t column_count,
     const char *old_column_name
 );
-static int append_loaded_primary_key_column(
-    const struct mylite_catalog_index_column_descriptor *index_column,
-    void *user_data
-);
-static int find_column_index_by_id(
-    const struct mylite_catalog_column_descriptor *columns,
-    size_t column_count,
-    size_t *out_index,
-    int64_t column_id
-);
-static int append_loaded_column(
-    const struct mylite_catalog_column_descriptor *column,
-    void *user_data
-);
-static int load_columns_reserve(struct load_columns_context *context, size_t required_capacity);
 static int find_column_index(
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,

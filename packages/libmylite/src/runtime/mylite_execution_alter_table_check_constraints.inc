@@ -182,12 +182,12 @@ static int populate_alter_table_check_rebuild_plan(
         out_plan->table.default_collation
     );
 
-    rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
         rc = copy_alter_table_check_columns(database, columns, column_count, out_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -200,7 +200,7 @@ static int populate_alter_table_check_rebuild_plan(
         rc = copy_alter_table_check_indexes(database, indexes, index_count, out_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_check_constraint_infos(
+        rc = mylite_execution_load_table_check_constraint_infos(
             database,
             out_plan->table.table_id,
             &check_constraints,
@@ -216,8 +216,8 @@ static int populate_alter_table_check_rebuild_plan(
         );
     }
 
-    loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }

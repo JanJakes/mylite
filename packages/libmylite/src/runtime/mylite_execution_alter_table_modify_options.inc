@@ -226,7 +226,7 @@ static int plan_alter_table_set_default(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -403,7 +403,7 @@ static int plan_alter_table_drop_default(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -541,7 +541,7 @@ static int plan_alter_table_column_visibility(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -653,10 +653,10 @@ static int plan_alter_table_index_visibility(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -695,7 +695,7 @@ static int plan_alter_table_index_visibility(
         rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -744,7 +744,7 @@ static void planned_alter_table_index_visibility_deinit(
     if (plan == NULL) {
         return;
     }
-    loaded_index_info_deinit(&plan->index);
+    mylite_execution_loaded_index_info_deinit(&plan->index);
     *plan = (struct planned_alter_table_index_visibility){0};
 }
 
@@ -931,7 +931,7 @@ static int plan_alter_table_convert_character_set(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
@@ -1252,28 +1252,28 @@ static int plan_alter_table_order_by(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = reject_primary_key_table_alter(
+        rc = mylite_execution_reject_primary_key_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE ORDER BY does not yet support primary-key tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = reject_secondary_index_table_alter(
+        rc = mylite_execution_reject_secondary_index_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE ORDER BY does not yet support secondary-index tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = reject_check_constraint_table_alter(
+        rc = mylite_execution_reject_check_constraint_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE ORDER BY does not yet support CHECK-constrained tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
@@ -1438,28 +1438,28 @@ static int plan_alter_table_force(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = reject_primary_key_table_alter(
+        rc = mylite_execution_reject_primary_key_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE FORCE does not yet support primary-key tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = reject_secondary_index_table_alter(
+        rc = mylite_execution_reject_secondary_index_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE FORCE does not yet support secondary-index tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = reject_check_constraint_table_alter(
+        rc = mylite_execution_reject_check_constraint_table_alter(
             database,
             out_plan->table.table_id,
             "ALTER TABLE FORCE does not yet support CHECK-constrained tables"
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
@@ -1630,7 +1630,7 @@ static int resolve_alter_table_column_replacement_plan(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = reject_check_constraint_table_alter(
+    rc = mylite_execution_reject_check_constraint_table_alter(
         database,
         out_plan->table.table_id,
         "ALTER TABLE column replacement does not yet support CHECK-constrained tables"
@@ -1647,7 +1647,7 @@ static int resolve_alter_table_column_replacement_plan(
         return rc;
     }
 
-    rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, out_plan->lookup_column_name, &column_index);
         if (rc != MYLITE_OK) {
@@ -1687,7 +1687,7 @@ static int resolve_alter_table_column_replacement_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             columns,
@@ -2085,7 +2085,7 @@ static void planned_alter_table_modify_column_deinit(
 
     free(plan->columns);
     zero_temporal_default_warnings_deinit(&plan->zero_temporal_default_warnings);
-    loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_alter_table_modify_column){0};
 }
 
@@ -2985,7 +2985,7 @@ static int reject_rename_table_check_constraint_collisions(
     struct loaded_check_constraint_info *checks = NULL;
     size_t check_count = 0U;
     char check_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    int rc = load_table_check_constraint_infos(database, source->table_id, &checks, &check_count);
+    int rc = mylite_execution_load_table_check_constraint_infos(database, source->table_id, &checks, &check_count);
 
     for (size_t index = 0U; rc == MYLITE_OK && index < check_count; ++index) {
         rc = build_renamed_check_constraint_name(
@@ -3020,7 +3020,7 @@ static int reject_rename_table_check_constraint_collisions(
         }
     }
 
-    loaded_check_constraint_infos_deinit(&checks, &check_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(&checks, &check_count);
     return rc;
 }
 

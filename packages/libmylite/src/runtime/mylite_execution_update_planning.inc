@@ -19,7 +19,7 @@ static int plan_single_table_update(
     struct update_optional_clauses clauses = {0};
     const struct mylite_sql_ast_node *optional_clause = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -48,7 +48,7 @@ static int plan_single_table_update(
         rc = validate_update_index_hints(database, target, &out_plan->table);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
@@ -56,7 +56,7 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             out_plan->table.table_id,
             table_columns,
@@ -72,7 +72,7 @@ static int plan_single_table_update(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             table_columns,
@@ -143,7 +143,7 @@ static int plan_single_table_update(
     }
 
     free(table_columns);
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     if (rc != MYLITE_OK) {
         planned_update_deinit(out_plan);
     }
@@ -509,7 +509,7 @@ static int finish_joined_update_target_plan(
     struct mylite_db *database,
     struct planned_update *out_plan
 ) {
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     struct planned_select_source *target_source = NULL;
     int rc = MYLITE_OK;
 
@@ -524,7 +524,7 @@ static int finish_joined_update_target_plan(
 
     rc = reject_builtin_schema_joined_update_target(database, out_plan);
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
@@ -532,7 +532,7 @@ static int finish_joined_update_target_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
+        rc = mylite_execution_load_primary_key_info(
             database,
             out_plan->table.table_id,
             out_plan->columns,
@@ -548,7 +548,7 @@ static int finish_joined_update_target_plan(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             out_plan->table.table_id,
             out_plan->columns,
@@ -575,7 +575,7 @@ static int finish_joined_update_target_plan(
         );
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     return rc;
 }
 
@@ -622,7 +622,7 @@ static void planned_update_deinit(struct planned_update *plan) {
     free(plan->assignments);
     free(plan->columns);
     planned_select_order_deinit(&plan->order);
-    loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_update){0};
 }
 

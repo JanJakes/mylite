@@ -194,14 +194,14 @@ static int append_information_schema_columns_base_rows(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    struct primary_key_info primary_key = primary_key_info_init();
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
+        rc = mylite_execution_load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -222,8 +222,8 @@ static int append_information_schema_columns_base_rows(
             index_count
         );
     }
-    loaded_index_infos_deinit(&indexes, &index_count);
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     free(columns);
     return rc;
 }
@@ -236,7 +236,7 @@ static int append_information_schema_st_geometry_columns_base_rows(
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     size_t column_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         rc = append_information_schema_st_geometry_columns_column_row(
@@ -259,7 +259,7 @@ static int append_information_schema_columns_extensions_table_rows(
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     size_t column_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         rc = append_information_schema_columns_extensions_column_row(
@@ -282,8 +282,8 @@ static int append_information_schema_columns_view_rows(
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     size_t column_count = 0U;
-    struct primary_key_info primary_key = primary_key_info_init();
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         rc = append_information_schema_columns_base_column_row(
@@ -297,7 +297,7 @@ static int append_information_schema_columns_view_rows(
             0U
         );
     }
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     free(columns);
     return rc;
 }
@@ -419,7 +419,7 @@ static int append_information_schema_columns_base_column_row(
         character_metadata.character_set_name;
     values[information_schema_columns_collation_name_column] = character_metadata.collation_name;
     values[information_schema_columns_column_type_column] = column_type;
-    values[information_schema_columns_column_key_column] = column_key_text(
+    values[information_schema_columns_column_key_column] = mylite_execution_column_key_text(
         (struct loaded_index_info_span){.indexes = indexes, .count = index_count},
         primary_key,
         column
@@ -986,7 +986,7 @@ static int append_information_schema_innodb_virtual_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     for (size_t index = 0U; rc == MYLITE_OK && index < column_count; ++index) {
         const struct mylite_catalog_column_descriptor *column = &columns[index];
 
@@ -1288,7 +1288,7 @@ static int append_information_schema_innodb_columns_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     for (size_t index = 0U; rc == MYLITE_OK && index < column_count; ++index) {
         rc = append_information_schema_innodb_columns_column_row(
             database,
@@ -2085,7 +2085,7 @@ static int append_information_schema_innodb_tables_base_row(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
         rc = load_table_status_row_format(database, table, &status);
     }
@@ -2419,9 +2419,9 @@ static int append_information_schema_innodb_indexes_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -2452,7 +2452,7 @@ static int append_information_schema_innodb_indexes_base_rows(
         );
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -2664,9 +2664,9 @@ static int append_information_schema_innodb_fields_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -2679,7 +2679,7 @@ static int append_information_schema_innodb_fields_base_rows(
         rc = append_information_schema_innodb_fields_index_rows(database, rows, &indexes[index]);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -2948,9 +2948,9 @@ static int append_information_schema_innodb_foreign_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             table->table_id,
             columns,
@@ -2969,7 +2969,7 @@ static int append_information_schema_innodb_foreign_base_rows(
         );
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     free(columns);
     return rc;
 }
@@ -3079,9 +3079,9 @@ static int append_information_schema_innodb_foreign_cols_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             table->table_id,
             columns,
@@ -3099,7 +3099,7 @@ static int append_information_schema_innodb_foreign_cols_base_rows(
         );
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     free(columns);
     return rc;
 }
@@ -3295,10 +3295,10 @@ static int append_information_schema_table_constraints_base_rows(
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
     size_t check_constraint_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -3308,7 +3308,7 @@ static int append_information_schema_table_constraints_base_rows(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             table->table_id,
             columns,
@@ -3318,7 +3318,7 @@ static int append_information_schema_table_constraints_base_rows(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_check_constraint_infos(
+        rc = mylite_execution_load_table_check_constraint_infos(
             database,
             table->table_id,
             &check_constraints,
@@ -3356,9 +3356,9 @@ static int append_information_schema_table_constraints_base_rows(
         );
     }
 
-    loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -3508,10 +3508,10 @@ static int append_information_schema_table_constraints_extensions_base_rows(
     size_t column_count = 0U;
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -3521,7 +3521,7 @@ static int append_information_schema_table_constraints_extensions_base_rows(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             table->table_id,
             columns,
@@ -3552,8 +3552,8 @@ static int append_information_schema_table_constraints_extensions_base_rows(
         );
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -3663,7 +3663,7 @@ static int append_information_schema_check_constraints_base_rows(
 ) {
     struct loaded_check_constraint_info *check_constraints = NULL;
     size_t check_constraint_count = 0U;
-    int rc = load_table_check_constraint_infos(
+    int rc = mylite_execution_load_table_check_constraint_infos(
         database,
         table->table_id,
         &check_constraints,
@@ -3679,7 +3679,7 @@ static int append_information_schema_check_constraints_base_rows(
         );
     }
 
-    loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
     return rc;
 }
 
@@ -3711,10 +3711,10 @@ static int append_information_schema_key_column_usage_base_rows(
     size_t column_count = 0U;
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -3724,7 +3724,7 @@ static int append_information_schema_key_column_usage_base_rows(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             table->table_id,
             columns,
@@ -3755,8 +3755,8 @@ static int append_information_schema_key_column_usage_base_rows(
         );
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -3969,10 +3969,10 @@ static int append_information_schema_referential_constraints_base_rows(
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t foreign_key_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_foreign_key_infos(
+        rc = mylite_execution_load_table_foreign_key_infos(
             database,
             table->table_id,
             columns,
@@ -3991,7 +3991,7 @@ static int append_information_schema_referential_constraints_base_rows(
         );
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     free(columns);
     return rc;
 }
@@ -4145,10 +4145,10 @@ static int append_information_schema_statistics_base_rows(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -4167,7 +4167,7 @@ static int append_information_schema_statistics_base_rows(
         );
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }

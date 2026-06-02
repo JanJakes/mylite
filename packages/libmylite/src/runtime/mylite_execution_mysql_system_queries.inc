@@ -854,7 +854,7 @@ static int append_sys_schema_auto_increment_columns_table_rows(
         return MYLITE_OK;
     }
 
-    rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         if (!columns[column_index].is_auto_increment) {
             continue;
@@ -1231,10 +1231,10 @@ static int append_sys_schema_index_statistics_base_index_rows(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             context->database,
             table->table_id,
             columns,
@@ -1252,7 +1252,7 @@ static int append_sys_schema_index_statistics_base_index_rows(
         );
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -1716,9 +1716,9 @@ static int build_sys_flattened_key_rows(
     int rc = MYLITE_OK;
 
     *out_rows = (struct sys_flattened_key_row_set){0};
-    rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             context->database,
             table->table_id,
             columns,
@@ -1733,7 +1733,7 @@ static int build_sys_flattened_key_rows(
         }
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -2126,10 +2126,10 @@ static int append_sys_schema_unused_indexes_index_rows(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             context->database,
             table->table_id,
             columns,
@@ -2144,7 +2144,7 @@ static int append_sys_schema_unused_indexes_index_rows(
         }
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -2335,10 +2335,10 @@ static int append_sys_schema_object_overview_base_table_index_groups(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             context->database,
             table->table_id,
             columns,
@@ -2370,7 +2370,7 @@ static int append_sys_schema_object_overview_base_table_index_groups(
     }
 
     free(columns);
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     if (rc != MYLITE_OK &&
         mylite_diagnostics_errcode(mylite_connection_diagnostics(context->database)) == MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {
@@ -2798,9 +2798,9 @@ static int append_mysql_innodb_index_stats_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             table->table_id,
             columns,
@@ -2826,7 +2826,7 @@ static int append_mysql_innodb_index_stats_base_rows(
         rc = append_mysql_innodb_index_stats_generated_cluster_rows(database, rows, schema, table);
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }

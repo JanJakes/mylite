@@ -199,6 +199,15 @@ value coercion. This split preserves the existing SQL scalar function ABI,
 diagnostics, NULL propagation, unsupported-shape behavior, and JSON runtime API
 calls.
 
+The twenty-sixth split targets loaded catalog descriptor ownership. The
+loaded table-column, primary-key, secondary-index, foreign-key, and CHECK
+constraint structures and loader/deinitializer APIs move into
+`mylite_execution_loaded_catalog.h/.c`. This removes metadata loading and
+index/FK/check lifetime management from the execution translation unit while
+leaving column-reference resolution, INSERT planning, DML value coercion, and
+row-scalar select-item planning in the existing execution fragments until their
+own dependency surfaces are designed.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -426,6 +435,29 @@ The scalar JSON execution module family does not own:
   those remain in the standalone `mylite_json` module family.
 - Row-scalar planning and function-dispatch decisions.
 - Public client ABI beyond the existing internal runtime scalar declarations.
+
+### `mylite_execution_loaded_catalog`
+
+The loaded catalog execution module owns runtime materialization of table
+metadata descriptors used by execution planning, SHOW/metadata queries, and DML
+constraint checks.
+
+The loaded catalog execution module includes:
+
+- `mylite_execution_loaded_catalog.h`: internal loaded descriptor structs for
+  primary keys, indexes, foreign keys, CHECK constraints, and small spans plus
+  loader, deinitializer, column-key, and alter-rejection helper declarations.
+- `mylite_execution_loaded_catalog.c`: table column loading, primary-key
+  loading, secondary-index loading, foreign-key loading, CHECK constraint
+  loading, loaded descriptor cleanup, column-key classification, and simple
+  index/check presence rejection helpers.
+
+The loaded catalog execution module does not own:
+
+- Parser, planner, or SQL AST column-reference resolution.
+- DML value conversion, default materialization, SQL literal decoding, or UTF-8
+  validation.
+- SQL statement execution or SQLite write helpers.
 
 ### `mylite_execution_system_variables`
 

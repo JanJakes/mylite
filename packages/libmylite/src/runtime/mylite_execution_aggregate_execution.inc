@@ -250,7 +250,7 @@ static int plan_count_table_source(
     if (rc == MYLITE_OK &&
         (nodes->where_clause != NULL || out_plan->function == PLANNED_COUNT_COLUMN ||
          out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
@@ -812,7 +812,7 @@ static int plan_column_aggregate(
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,

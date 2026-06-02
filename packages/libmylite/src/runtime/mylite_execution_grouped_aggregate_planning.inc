@@ -253,7 +253,7 @@ static int plan_grouped_aggregate_source(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, out_columns, out_column_count);
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, out_columns, out_column_count);
     }
 
     return rc;
@@ -1027,7 +1027,7 @@ static int grouped_source_primary_key_is_covered(
     const struct mylite_catalog_column_descriptor *source_columns = NULL;
     size_t source_column_count = 0U;
     int64_t table_id = 0;
-    struct primary_key_info primary_key = primary_key_info_init();
+    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     int rc = MYLITE_OK;
 
     *out_covered = false;
@@ -1043,7 +1043,7 @@ static int grouped_source_primary_key_is_covered(
         return MYLITE_ERROR;
     }
 
-    rc = load_primary_key_info(
+    rc = mylite_execution_load_primary_key_info(
         database,
         table_id,
         source_columns,
@@ -1067,7 +1067,7 @@ static int grouped_source_primary_key_is_covered(
         }
     }
 
-    primary_key_info_deinit(&primary_key);
+    mylite_execution_primary_key_info_deinit(&primary_key);
     return rc;
 }
 

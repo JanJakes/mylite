@@ -583,7 +583,7 @@ static int validate_parent_update_action_child_foreign_keys(
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    rc = load_parent_foreign_key_infos(
+    rc = mylite_execution_load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
         &foreign_keys,
@@ -605,7 +605,7 @@ static int validate_parent_update_action_child_foreign_keys(
         rc = validate_child_foreign_keys_after_write(database, foreign_key->child_table.table_id);
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     return rc;
 }
 
@@ -620,7 +620,7 @@ static int apply_parent_update_actions(
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    rc = load_parent_foreign_key_infos(
+    rc = mylite_execution_load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
         &foreign_keys,
@@ -651,7 +651,7 @@ static int apply_parent_update_actions(
         }
     }
 
-    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     return rc;
 }
 
@@ -1080,10 +1080,10 @@ static int handle_parent_update_cascade_unique_conflict(
     size_t column_count = 0U;
     size_t index_count = 0U;
     int rc =
-        load_table_columns(database, foreign_key->child_table.table_id, &columns, &column_count);
+        mylite_execution_load_table_columns(database, foreign_key->child_table.table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
+        rc = mylite_execution_load_table_index_infos(
             database,
             foreign_key->child_table.table_id,
             columns,
@@ -1116,7 +1116,7 @@ static int handle_parent_update_cascade_unique_conflict(
         rc = MYLITE_ERROR;
     }
 
-    loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
 }
@@ -1169,7 +1169,7 @@ static int reject_unsupported_recursive_foreign_key_action(
         return MYLITE_ERROR;
     }
 
-    rc = load_parent_foreign_key_infos(
+    rc = mylite_execution_load_parent_foreign_key_infos(
         database,
         foreign_key->child_table.table_id,
         &child_parent_foreign_keys,
@@ -1179,7 +1179,7 @@ static int reject_unsupported_recursive_foreign_key_action(
         set_unsupported_error(database, "recursive foreign-key action is not supported");
         rc = MYLITE_ERROR;
     }
-    loaded_foreign_key_infos_deinit(&child_parent_foreign_keys, &child_parent_foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(&child_parent_foreign_keys, &child_parent_foreign_key_count);
     return rc;
 }
 

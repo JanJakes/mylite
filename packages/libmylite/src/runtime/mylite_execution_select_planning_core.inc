@@ -88,7 +88,7 @@ static int plan_select(
     }
     copy_plan_source_alias_if_present(out_plan, &source_context);
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
@@ -619,7 +619,7 @@ static int plan_joined_select_source(
         out_source->has_alias = true;
     }
 
-    return load_table_columns(
+    return mylite_execution_load_table_columns(
         database,
         out_source->table.table_id,
         &out_source->columns,
@@ -1148,7 +1148,7 @@ static int plan_row_scalar_select_source(
         out_plan->source_has_alias = true;
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(
+        rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
             out_table_columns,

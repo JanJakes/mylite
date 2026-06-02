@@ -791,3 +791,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-ninth split.
+
+## Round 40
+
+- [x] Reinspect the remaining largest runtime fragments after the SELECT
+      predicate split.
+- [x] Identify `mylite_execution_grouped_aggregate_planning.inc` as a
+      GROUP BY entry/source/group/projection/aggregate/HAVING/conversion/order
+      same-translation-unit split candidate.
+- [x] Split grouped aggregate entry, source planning, group-column planning,
+      projection planning, aggregate-function planning, HAVING planning,
+      literal conversion, and ORDER BY planning into named fragments.
+- [x] Remove `mylite_execution_grouped_aggregate_planning.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused grouped aggregate, predicate, temporal/type, and
+      parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fortieth split.

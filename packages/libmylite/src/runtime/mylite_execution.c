@@ -25156,7 +25156,21 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_select_planning_core.inc"
 
-#include "mylite_execution_grouped_aggregate_planning.inc"
+#include "mylite_execution_grouped_aggregate_entry.inc"
+
+#include "mylite_execution_grouped_aggregate_source_planning.inc"
+
+#include "mylite_execution_grouped_aggregate_group_columns.inc"
+
+#include "mylite_execution_grouped_aggregate_projection_columns.inc"
+
+#include "mylite_execution_grouped_aggregate_function_planning.inc"
+
+#include "mylite_execution_grouped_aggregate_having_planning.inc"
+
+#include "mylite_execution_grouped_aggregate_literal_conversion.inc"
+
+#include "mylite_execution_grouped_aggregate_order_planning.inc"
 
 #include "mylite_execution_select_execution.inc"
 

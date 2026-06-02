@@ -699,9 +699,30 @@ The fragments are:
 - `mylite_execution_select_planning_core.inc`: SELECT source planning, joined
   SELECT planning, index-hint validation, row-scalar SELECT planning, and
   SELECT plan cleanup.
-- `mylite_execution_grouped_aggregate_planning.inc`: grouped aggregate
-  planning, grouped HAVING/ORDER handling, and temporal literal conversion
-  helpers shared by grouped predicates.
+- `mylite_execution_grouped_aggregate_entry.inc`: GROUP BY detection,
+  grouped aggregate planning orchestration, planned aggregate cleanup, and
+  optional-clause collection.
+- `mylite_execution_grouped_aggregate_source_planning.inc`: grouped aggregate
+  table/join source planning and grouped projection reference validation.
+- `mylite_execution_grouped_aggregate_group_columns.inc`: GROUP BY key
+  resolution, SELECT-alias group-key resolution, group-key counting, and
+  group-column validation.
+- `mylite_execution_grouped_aggregate_projection_columns.inc`: grouped
+  projection planning, wildcard expansion, visible-column collection, and
+  grouped projection validity checks.
+- `mylite_execution_grouped_aggregate_function_planning.inc`: grouped
+  aggregate item planning, aggregate column resolution, GROUP_CONCAT option
+  planning, aggregate function classification, grouped key/projection lookup,
+  and source-resolution lookup.
+- `mylite_execution_grouped_aggregate_having_planning.inc`: grouped HAVING
+  predicate planning, operand resolution, aggregate operand planning, and
+  HAVING literal conversion entry points.
+- `mylite_execution_grouped_aggregate_literal_conversion.inc`: grouped HAVING
+  date, time, datetime, timestamp, YEAR, and integer literal conversion
+  helpers.
+- `mylite_execution_grouped_aggregate_order_planning.inc`: grouped ORDER BY
+  planning, item-list handling, alias lookup, aggregate alias lookup, and
+  unaliased grouped/projection column matching.
 - `mylite_execution_select_execution.inc`: SELECT and row-scalar SELECT
   execution, row-scalar result metadata, FOUND_ROWS accounting, and row-scalar
   JSON error mapping.
@@ -1261,6 +1282,9 @@ current timestamp/session state.
     temporal extractor, string function, JSON/REGEXP function, subquery
     correlation, special predicate/IN, work-helper, value-conversion, and
     temporal literal-conversion fragments.
+16. Split the oversized grouped aggregate planning implementation fragment into
+    ordered same-translation-unit entry, source, group-column, projection,
+    aggregate-function, HAVING, literal-conversion, and ORDER BY fragments.
 
 ## Review checklist
 
@@ -1301,3 +1325,7 @@ current timestamp/session state.
   iterative work-stack behavior; the split must not introduce a second
   predicate evaluator, change predicate conversion rules, or materialize
   subquery results outside the existing planned predicate structures.
+- Grouped aggregate fragments preserve the existing GROUP BY planner ownership
+  and same-translation-unit helper linkage; the split must not change GROUP
+  BY/HAVING/ORDER BY compatibility behavior or export grouped temporal literal
+  conversion as a separate API.

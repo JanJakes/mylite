@@ -1095,3 +1095,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-fourth split.
+
+## Round 55
+
+- [x] Reinspect the remaining largest runtime fragments after the SHOW general
+      split.
+- [x] Identify `mylite_execution_scalar_expression_eval.inc` as a scalar
+      expression evaluation same-translation-unit split candidate.
+- [x] Split bitwise/BIT_COUNT evaluation, logical evaluation, comparison
+      evaluation, arithmetic evaluation with checked-integer helpers, and
+      diagnostic helpers into named fragments.
+- [x] Remove `mylite_execution_scalar_expression_eval.inc` and replace it with
+      the ordered fragment include sequence.
+- [x] Run focused scalar arithmetic, modulo, DIV, bitwise, comparison, logical,
+      BIT_COUNT, diagnostics, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-fifth split.

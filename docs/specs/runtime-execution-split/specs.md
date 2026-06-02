@@ -864,8 +864,22 @@ The fragments are:
   temporal formatting, interval, and time arithmetic support lives in
   `mylite_execution_scalar_temporal_format.c` with internal declarations in
   `mylite_execution_scalar_temporal_format.h`.
-- `mylite_execution_scalar_expression_eval.inc`: scalar arithmetic, logical,
-  comparison, and bitwise expression evaluators.
+- `mylite_execution_scalar_bitwise_eval.inc`: BIT_COUNT operand conversion,
+  scalar bitwise expression evaluation, bitwise operator application, and
+  bitwise evaluation/value stacks.
+- `mylite_execution_scalar_logical_eval.inc`: scalar logical value rendering,
+  iterative logical evaluation, comparison/IS/logical frame application,
+  short-circuit handling, truth-value helpers, and logical evaluation stack.
+- `mylite_execution_scalar_comparison_eval.inc`: scalar comparison value
+  rendering, iterative comparison evaluation, NULL-safe comparison handling,
+  comparison result evaluation, and comparison evaluation stack.
+- `mylite_execution_scalar_arithmetic_eval.inc`: scalar arithmetic value
+  rendering, iterative arithmetic evaluation, DIV/modulo short-circuit
+  handling, scalar operand parsing, arithmetic operator application, and
+  arithmetic evaluation/value/node stacks plus checked signed-64-bit
+  arithmetic helpers.
+- `mylite_execution_scalar_diagnostic_helpers.inc`: scalar
+  arithmetic/bitwise/logical/comparison/numeric diagnostic helpers.
 - `mylite_execution_scalar_control_case_entry.inc`: IF/IFNULL/COALESCE/NULLIF,
   ISNULL, and CASE scalar entry points plus searched/simple CASE evaluation.
 - `mylite_execution_scalar_control_if_eval.inc`: iterative IF-family
@@ -1553,6 +1567,9 @@ current timestamp/session state.
     same-translation-unit table/status, charset/variable/status,
     SHOW VARIABLES WHERE, schema-object/processlist/privilege, replication
     metadata, and diagnostics output fragments.
+31. Split the oversized scalar expression evaluator fragment into ordered
+    same-translation-unit bitwise/BIT_COUNT, logical, comparison, arithmetic,
+    and diagnostic helper fragments.
 
 ## Review checklist
 
@@ -1661,3 +1678,8 @@ current timestamp/session state.
   output-column predicate truth semantics, processlist formatting, replication
   placeholder metadata, diagnostics LIMIT handling, or warning/error row
   ordering.
+- Scalar expression evaluator fragments preserve the existing iterative
+  evaluation stacks and same-translation-unit helper linkage; the split must
+  not change bitwise NULL/short-circuit behavior, logical truth semantics,
+  comparison NULL-safe handling, arithmetic DIV/modulo warning staging,
+  checked signed-64-bit overflow behavior, or scalar unsupported diagnostics.

@@ -25274,7 +25274,15 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_scalar_temporal_format.inc"
 
-#include "mylite_execution_scalar_expression_eval.inc"
+#include "mylite_execution_scalar_bitwise_eval.inc"
+
+#include "mylite_execution_scalar_logical_eval.inc"
+
+#include "mylite_execution_scalar_comparison_eval.inc"
+
+#include "mylite_execution_scalar_arithmetic_eval.inc"
+
+#include "mylite_execution_scalar_diagnostic_helpers.inc"
 
 #include "mylite_execution_scalar_control_case_entry.inc"
 

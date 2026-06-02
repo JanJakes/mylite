@@ -119,16 +119,6 @@ static int evaluate_bit_count_direct_literal_operand(
     return MYLITE_OK;
 }
 
-static uint64_t count_uint64_bits(uint64_t value) {
-    uint64_t count = 0U;
-
-    while (value != 0U) {
-        count += value & 1U;
-        value >>= 1U;
-    }
-    return count;
-}
-
 static int evaluate_scalar_bitwise_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

@@ -399,45 +399,45 @@ static int session_scalar_value(
         return power_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
-        return base_conversion_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_base_conversion_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONV_FUNCTION:
-        return conv_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_conv_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
-        return bit_count_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_bit_count_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CRC32_FUNCTION:
-        return crc32_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_crc32_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_HEX_FUNCTION:
-        return hex_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_hex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "HEX");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
-        return weight_string_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_weight_string_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
-        return to_base64_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_to_base64_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TO_BASE64");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
-        return from_base64_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_from_base64_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FROM_BASE64");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
-        return unhex_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_unhex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UNHEX");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UUID_FUNCTION:
-        return uuid_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UUID");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
-        return uuid_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "IS_UUID");
         return MYLITE_ERROR;
@@ -448,7 +448,7 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "BIN_TO_UUID");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CHAR_FUNCTION:
-        return char_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_char_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
         return format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:

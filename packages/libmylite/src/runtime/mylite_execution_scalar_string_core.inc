@@ -194,7 +194,7 @@ static int string_length_session_scalar_argument_value(
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
         return rand_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_FUNCTION:
-        return uuid_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UUID");
         return MYLITE_ERROR;

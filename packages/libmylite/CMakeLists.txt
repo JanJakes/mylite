@@ -81,6 +81,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_system_tables.c
   src/runtime/mylite_execution_dml_numeric.c
   src/runtime/mylite_execution_loaded_catalog.c
+  src/runtime/mylite_execution_scalar_binary.c
   src/runtime/mylite_execution_scalar_json.c
   src/runtime/mylite_execution_scalar_json_mutation.c
   src/runtime/mylite_execution_system_variables.c

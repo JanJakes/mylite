@@ -81,7 +81,7 @@ static int plan_row_scalar_hex_expression(
         set_hex_unsupported_error(database);
         return MYLITE_ERROR;
     }
-    rc = hex_function_value(database, expression, &cell);
+    rc = mylite_execution_scalar_hex_function_value(database, expression, &cell);
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         if (cell.value == NULL) {
@@ -225,7 +225,7 @@ static int plan_row_scalar_unhex_expression(
         );
         return MYLITE_ERROR;
     }
-    rc = unhex_function_value(database, expression, &cell);
+    rc = mylite_execution_scalar_unhex_function_value(database, expression, &cell);
     if (rc == MYLITE_OK && cell.has_staged_unhex_incorrect_string_warning) {
         rc = append_session_scalar_cell_warnings(database, &cell);
     }
@@ -379,12 +379,12 @@ static int plan_row_scalar_base64_expression(
     }
 
     if (!is_base64_projection_expression(expression)) {
-        set_base64_argument_unsupported_error(database, function_name);
+        mylite_execution_scalar_set_base64_argument_unsupported_error(database, function_name);
         return MYLITE_ERROR;
     }
     rc = expression->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION
-             ? to_base64_function_value(database, expression, &cell)
-             : from_base64_function_value(database, expression, &cell);
+             ? mylite_execution_scalar_to_base64_function_value(database, expression, &cell)
+             : mylite_execution_scalar_from_base64_function_value(database, expression, &cell);
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         if (cell.value == NULL) {
@@ -494,7 +494,7 @@ static int plan_row_scalar_uuid_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
-        set_uuid_unsupported_error(database, "UUID conversion");
+        mylite_execution_scalar_set_uuid_unsupported_error(database, "UUID conversion");
         return MYLITE_ERROR;
     }
     child_count = mylite_sql_ast_node_child_count(expression);
@@ -580,7 +580,7 @@ static int plan_row_scalar_uuid_source_argument_expression(
                              argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         *out_handled = true;
         if (!has_source) {
-            return uuid_unknown_column_argument(database, argument);
+            return mylite_execution_set_unknown_column_reference_error(database, argument);
         }
         return plan_row_scalar_uuid_column_expression(
             database,
@@ -637,11 +637,11 @@ static int plan_row_scalar_constant_uuid_expression(
     int rc = MYLITE_OK;
 
     if (!is_uuid_projection_expression(expression)) {
-        set_uuid_unsupported_error(database, "UUID conversion");
+        mylite_execution_scalar_set_uuid_unsupported_error(database, "UUID conversion");
         return MYLITE_ERROR;
     }
 
-    rc = uuid_function_value(database, expression, &cell);
+    rc = mylite_execution_scalar_uuid_function_value(database, expression, &cell);
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         if (cell.value == NULL) {
@@ -733,7 +733,7 @@ static int plan_row_scalar_uuid_nested_expression(
         &out_expression->arguments[0]
     );
     if (rc == MYLITE_OK && request->swap_argument != NULL) {
-        rc = uuid_swap_flag_value(database, request->swap_argument, &swap);
+        rc = mylite_execution_scalar_uuid_swap_flag_value(database, request->swap_argument, &swap);
     }
     if (rc == MYLITE_OK && request->swap_argument != NULL) {
         out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
@@ -787,7 +787,7 @@ static int plan_row_scalar_uuid_column_expression(
         return MYLITE_ERROR;
     }
     if (request->swap_argument != NULL) {
-        rc = uuid_swap_flag_value(database, request->swap_argument, &swap);
+        rc = mylite_execution_scalar_uuid_swap_flag_value(database, request->swap_argument, &swap);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -854,7 +854,7 @@ static bool uuid_column_descriptor_is_supported(
         return false;
     }
 
-    set_uuid_unsupported_error(database, "UUID conversion");
+    mylite_execution_scalar_set_uuid_unsupported_error(database, "UUID conversion");
     return false;
 }
 

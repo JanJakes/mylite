@@ -516,3 +516,28 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-seventh split.
+
+## Round 28
+
+- [x] Reinspect remaining monolith fragments and identify scalar
+      base-conversion plus binary/encoding scalar execution as a true-module
+      boundary.
+- [x] Add `mylite_execution_scalar_binary.c` for `BIN()`, `OCT()`, `CONV()`,
+      `BIT_COUNT()`, `CRC32()`, `HEX()`, `WEIGHT_STRING()`, `UNHEX()`,
+      `TO_BASE64()`, `FROM_BASE64()`, UUID conversion, `CHAR()`, and shared
+      hex-byte formatting.
+- [x] Move conversion-specific argument decoding, byte ownership, warning
+      staging, unsupported-error message formatting, UUID swap handling, CRC32,
+      and base-conversion formatting out of
+      `mylite_execution_scalar_numeric.inc`.
+- [x] Keep scalar arithmetic/bitwise evaluation, temporal scalar values,
+      system-variable scalar values, binary cast/convert, JSON scalar helpers,
+      shared diagnostic sinks, and row-scalar unknown-column behavior owned by
+      the execution runtime through narrow internal wrappers.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused scalar/binary build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [ ] Commit and push the twenty-eighth split.

@@ -3592,29 +3592,10 @@ struct scalar_time_arithmetic_input {
     struct date_add_datetime_parts datetime;
 };
 
-struct scalar_arithmetic_value {
-    bool is_null;
-    int64_t integer;
-    size_t division_by_zero_warning_count;
-};
-
 struct scalar_arithmetic_operation {
     enum mylite_sql_ast_operator operator_kind;
     int64_t left;
     int64_t right;
-};
-
-struct scalar_bitwise_value {
-    bool is_null;
-    uint64_t integer;
-    size_t division_by_zero_warning_count;
-};
-
-struct conv_input_value {
-    bool is_null;
-    bool is_negative;
-    uint64_t magnitude;
-    size_t division_by_zero_warning_count;
 };
 
 struct approximate_numeric_input_value {
@@ -3622,24 +3603,6 @@ struct approximate_numeric_input_value {
     bool is_negative;
     uint64_t magnitude;
     size_t division_by_zero_warning_count;
-};
-
-struct conv_arguments {
-    struct conv_input_value input;
-    struct scalar_arithmetic_value from_base;
-    struct scalar_arithmetic_value to_base;
-};
-
-struct conv_digit_parse {
-    uint64_t value;
-    bool saw_digit;
-    bool overflowed;
-};
-
-struct conv_output_format {
-    uint64_t value;
-    unsigned int base;
-    bool signed_output;
 };
 
 struct scalar_comparison_operation {
@@ -13014,397 +12977,6 @@ static int evaluate_rounding_direct_literal_operand(
     struct session_scalar_cell *out_cell,
     bool *out_handled
 );
-static int base_conversion_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int conv_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_conv_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    struct conv_arguments *out_arguments,
-    bool *out_is_null
-);
-static int set_conv_staged_division_by_zero_count(
-    struct mylite_db *database,
-    const struct conv_arguments *arguments,
-    bool include_from_base,
-    bool include_to_base,
-    struct session_scalar_cell *cell
-);
-static unsigned int absolute_conv_base(int64_t base);
-static int evaluate_conv_value_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct conv_input_value *out_value
-);
-static int evaluate_conv_direct_value_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct conv_input_value *out_value,
-    bool *out_handled
-);
-static int evaluate_conv_base_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
-);
-static int convert_conv_value(
-    struct mylite_db *database,
-    const struct conv_input_value *input,
-    unsigned int from_base,
-    bool signed_input,
-    struct session_scalar_cell *cell,
-    uint64_t *out_value
-);
-static int parse_conv_input_digits(
-    const char *input_text,
-    unsigned int from_base,
-    uint64_t limit,
-    struct conv_digit_parse *out_parse
-);
-static int format_conv_input_text(
-    struct mylite_db *database,
-    const struct conv_input_value *input,
-    char *buffer,
-    size_t buffer_size
-);
-static int stage_conv_truncated_decimal_warning(
-    struct mylite_db *database,
-    const char *input_text,
-    struct session_scalar_cell *cell
-);
-static int format_conv_output_value(
-    struct mylite_db *database,
-    struct conv_output_format format,
-    char *buffer,
-    size_t buffer_size
-);
-static int format_base_conversion_value(
-    struct mylite_db *database,
-    uint64_t value,
-    unsigned int base,
-    char *buffer,
-    size_t buffer_size
-);
-static int evaluate_base_conversion_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value
-);
-static int evaluate_base_conversion_direct_literal_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value,
-    bool *out_handled
-);
-static int bit_count_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int crc32_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int hex_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int weight_string_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int weight_string_binary_length_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    int64_t *out_length
-);
-static int weight_string_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int to_base64_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int from_base64_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int unhex_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int uuid_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int uuid_generate_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int is_uuid_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int uuid_to_bin_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int bin_to_uuid_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int char_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int char_function_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value
-);
-static int char_function_literal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    bool has_sign,
-    bool is_negative,
-    struct scalar_bitwise_value *out_value
-);
-static int char_function_integer_literal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    bool is_negative,
-    struct scalar_bitwise_value *out_value
-);
-static int char_function_unknown_column_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static int hex_numeric_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value,
-    bool *out_handled
-);
-static int hex_numeric_system_variable_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value,
-    bool *out_handled
-);
-static int hex_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes
-);
-static int hex_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes
-);
-static int hex_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static int hex_non_weight_string_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static int base64_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int base64_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int base64_string_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes
-);
-static int base64_unary_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int base64_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static void set_base64_argument_unsupported_error(
-    struct mylite_db *database,
-    const char *function_name
-);
-static int unhex_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int unhex_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int unhex_unary_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int unhex_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static int stage_unhex_incorrect_string_warning(
-    struct mylite_db *database,
-    struct session_scalar_cell *cell,
-    const void *input,
-    size_t input_size
-);
-static int uuid_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int uuid_direct_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int uuid_to_bin_nested_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int uuid_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int uuid_unary_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int uuid_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static int uuid_swap_flag_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool *out_swap
-);
-static int uuid_swap_flag_unary_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    bool *out_swap
-);
-static int uuid_unknown_column_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static void set_uuid_unsupported_error(struct mylite_db *database, const char *function_name);
-static int format_hex_bytes(
-    struct mylite_db *database,
-    const unsigned char *bytes,
-    size_t byte_count,
-    char **out_text
-);
-static int crc32_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes
-);
-static uint32_t crc32_checksum(const unsigned char *bytes, size_t byte_count);
 static int format_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -14024,7 +13596,6 @@ static int evaluate_bit_count_direct_literal_operand(
     struct scalar_bitwise_value *out_value,
     bool *out_handled
 );
-static uint64_t count_uint64_bits(uint64_t value);
 static int evaluate_scalar_bitwise_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -27246,6 +26817,196 @@ int mylite_execution_parse_unsigned_integer_literal(
     return parse_unsigned_integer_literal(span, out_value);
 }
 
+bool mylite_execution_is_scalar_arithmetic_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    return is_scalar_arithmetic_projection_expression(expression);
+}
+
+bool mylite_execution_is_scalar_bitwise_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    return is_scalar_bitwise_projection_expression(expression);
+}
+
+int mylite_execution_evaluate_scalar_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    return evaluate_scalar_arithmetic_expression(database, expression, out_value);
+}
+
+int mylite_execution_evaluate_scalar_bitwise_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_bitwise_value *out_value
+) {
+    return evaluate_scalar_bitwise_expression(database, expression, out_value);
+}
+
+int mylite_execution_evaluate_bit_count_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_bitwise_value *out_value
+) {
+    return evaluate_bit_count_operand(database, expression, out_value);
+}
+
+int mylite_execution_scalar_hex_numeric_runtime_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_bitwise_value *out_value,
+    bool *out_handled
+) {
+    enum mylite_execution_system_variable_kind variable = MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+    int64_t timestamp = 0;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_bitwise_value){.is_null = false, .integer = 0U};
+    *out_handled = true;
+    if (expression == NULL) {
+        *out_handled = false;
+        return MYLITE_OK;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+        out_value->integer = database->session.connection_id;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+        out_value->integer = (uint64_t)database->session.previous_row_count;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+        out_value->integer = database->session.found_rows;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+        out_value->integer = database->session.last_insert_id;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        rc = resolve_session_system_variable(database, expression, &variable);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        break;
+    default:
+        *out_handled = false;
+        return MYLITE_OK;
+    }
+
+    switch (variable) {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+        out_value->integer = auto_increment_step_system_variable_value(
+            database,
+            variable,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+        out_value->integer = timeout_system_variable_value(
+            database,
+            variable,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_value->integer = group_concat_max_len_default_value;
+        } else {
+            out_value->integer = database->session.group_concat_max_len;
+        }
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_value->integer = information_schema_stats_expiry_default_value;
+        } else {
+            out_value->integer = database->session.information_schema_stats_expiry;
+        }
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+        out_value->integer = foreign_key_checks_system_variable_uint64_value(
+            database,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES:
+        out_value->integer = big_tables_system_variable_uint64_value(
+            database,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
+        out_value->integer = 1U;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+        out_value->integer = 0U;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
+        out_value->integer = server_id_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS:
+        out_value->integer = server_id_bits_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:
+        out_value->integer = port_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
+        out_value->integer = protocol_version_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
+        out_value->integer = sql_select_limit_system_variable_value(
+            database,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP:
+        timestamp = current_timestamp_epoch(database);
+        out_value->integer = (uint64_t)timestamp;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WARNING_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_ERROR_COUNT:
+        return diagnostics_count_system_variable_value(
+            system_variable_count_diagnostics(database),
+            variable,
+            &out_value->integer
+        );
+    default:
+        break;
+    }
+
+    *out_handled = false;
+    return MYLITE_OK;
+}
+
+int mylite_execution_accumulate_staged_division_by_zero_warnings(
+    struct mylite_db *database,
+    size_t staged_count,
+    size_t *inout_warning_count
+) {
+    return accumulate_staged_division_by_zero_warnings(database, staged_count, inout_warning_count);
+}
+
 int mylite_execution_decode_sql_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
@@ -27262,6 +27023,127 @@ int mylite_execution_decode_sql_string_literal(
         out_text,
         out_text_length
     );
+}
+
+int mylite_execution_current_timestamp_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return current_timestamp_scalar_value(database, out_cell);
+}
+
+int mylite_execution_sysdate_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return sysdate_scalar_value(database, out_cell);
+}
+
+int mylite_execution_current_date_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return current_date_scalar_value(database, out_cell);
+}
+
+int mylite_execution_current_time_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return current_time_scalar_value(database, out_cell);
+}
+
+int mylite_execution_utc_date_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return utc_date_scalar_value(database, out_cell);
+}
+
+int mylite_execution_utc_time_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return utc_time_scalar_value(database, out_cell);
+}
+
+int mylite_execution_utc_timestamp_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    return utc_timestamp_scalar_value(database, out_cell);
+}
+
+int mylite_execution_system_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return system_variable_value(database, expression, out_cell);
+}
+
+int mylite_execution_decode_sql_string_literal_with_policy(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    const char *unsupported_message,
+    const char *nul_message,
+    bool allow_nul,
+    char **out_text,
+    size_t *out_text_length
+) {
+    return decode_sql_string_literal_with_policy(
+        database,
+        literal_node,
+        unsupported_message,
+        nul_message,
+        allow_nul,
+        out_text,
+        out_text_length
+    );
+}
+
+int mylite_execution_decode_binary_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    char **out_bytes,
+    size_t *out_byte_count
+) {
+    return decode_binary_hex_literal(database, literal_node, out_bytes, out_byte_count);
+}
+
+int mylite_execution_copy_source_span_text(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_text
+) {
+    return copy_source_span_text(database, span, out_text);
+}
+
+int mylite_execution_normalize_decimal_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    bool is_negative,
+    char *buffer,
+    size_t buffer_size
+) {
+    return normalize_decimal_integer_literal(database, span, is_negative, buffer, buffer_size);
+}
+
+int mylite_execution_format_uint64(
+    struct mylite_db *database,
+    uint64_t value,
+    char *buffer,
+    size_t buffer_size
+) {
+    return format_uint64(database, value, buffer, buffer_size);
+}
+
+int mylite_execution_duplicate_text(
+    struct mylite_db *database,
+    const char *source,
+    char **out_text
+) {
+    return duplicate_text(database, source, out_text);
 }
 
 int mylite_execution_cast_binary_value(
@@ -27288,6 +27170,22 @@ int mylite_execution_convert_using_binary_value(
     return convert_using_binary_value(database, expression, out_cell);
 }
 
+int mylite_execution_convert_using_charset_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return convert_using_charset_value(database, expression, out_cell);
+}
+
+int mylite_execution_collate_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return collate_expression_value(database, expression, out_cell);
+}
+
 void mylite_execution_set_parse_error(struct mylite_db *database) {
     set_parse_error(database, NULL);
 }
@@ -27301,6 +27199,22 @@ void mylite_execution_set_native_function_parameter_count_error(
     const char *function_name
 ) {
     set_native_function_parameter_count_error(database, function_name);
+}
+
+void mylite_execution_set_base_conversion_unsupported_error(struct mylite_db *database) {
+    set_base_conversion_unsupported_error(database);
+}
+
+void mylite_execution_set_bit_count_unsupported_error(struct mylite_db *database) {
+    set_bit_count_unsupported_error(database);
+}
+
+void mylite_execution_set_crc32_unsupported_error(struct mylite_db *database) {
+    set_crc32_unsupported_error(database);
+}
+
+void mylite_execution_set_hex_unsupported_error(struct mylite_db *database) {
+    set_hex_unsupported_error(database);
 }
 
 void mylite_execution_set_invalid_json_function_text_error(

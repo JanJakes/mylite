@@ -661,8 +661,12 @@ static int format_binary_default_display_text(
         char *hex_text = NULL;
         size_t hex_length = 0U;
 
-        rc =
-            format_hex_bytes(database, (const unsigned char *)bytes, display_byte_count, &hex_text);
+        rc = mylite_execution_format_hex_bytes(
+            database,
+            (const unsigned char *)bytes,
+            display_byte_count,
+            &hex_text
+        );
         if (rc == MYLITE_OK) {
             hex_length = strlen(hex_text);
             if ((hex_length + sizeof("0x")) > default_text_size) {
@@ -705,7 +709,7 @@ static int format_binary_blob_expression_default_display_text(
             memcpy(default_text, "X''", sizeof("X''"));
         }
     } else {
-        rc = format_hex_bytes(database, (const unsigned char *)bytes, byte_count, &hex_text);
+        rc = mylite_execution_format_hex_bytes(database, (const unsigned char *)bytes, byte_count, &hex_text);
         if (rc == MYLITE_OK) {
             hex_length = strlen(hex_text);
             if ((hex_length + sizeof("0x")) > default_text_size) {

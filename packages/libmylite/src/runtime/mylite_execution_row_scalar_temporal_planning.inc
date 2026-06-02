@@ -2671,7 +2671,7 @@ static int plan_row_scalar_weight_string_expression(
         return rc;
     }
 
-    rc = weight_string_function_value(database, expression, &cell);
+    rc = mylite_execution_scalar_weight_string_function_value(database, expression, &cell);
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         if (cell.value == NULL) {

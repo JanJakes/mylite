@@ -215,6 +215,22 @@ conversion move into `mylite_execution_dml_numeric.h/.c`. DML value conversion,
 decimal type metadata, range diagnostics, warnings, and value materialization
 remain in execution fragments.
 
+The twenty-eighth split targets scalar base-conversion and binary/encoding
+function execution. `BIN()`, `OCT()`, `CONV()`, `BIT_COUNT()`, `CRC32()`,
+`HEX()`, `WEIGHT_STRING()`, `UNHEX()`, `TO_BASE64()`, `FROM_BASE64()`,
+UUID conversion, `CHAR()`, and shared hex-byte formatting move into
+`mylite_execution_scalar_binary.c`. The new module keeps conversion-specific
+argument decoding, byte ownership, warning staging, UUID swap handling,
+conversion-specific unsupported-error message formatting, and CRC32/hex/base
+conversion formatting file-local. Existing scalar arithmetic, bitwise,
+temporal, system-variable, binary cast/convert, JSON, shared diagnostic sinks,
+and row-scalar unknown-column behavior remain owned by the execution runtime
+and are reached through narrow internal scalar helper wrappers. The module
+intentionally reads borrowed session scalar identity values for `DATABASE()`,
+`USER()`, `CURRENT_USER()`, `CONNECTION_ID()`, row-count, found-rows, and
+last-insert-id argument conversion paths; it does not own or mutate session
+state.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

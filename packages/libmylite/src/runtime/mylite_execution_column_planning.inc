@@ -1771,7 +1771,7 @@ static int copy_planned_binary_default_text(
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
-    rc = format_hex_bytes(
+    rc = mylite_execution_format_hex_bytes(
         database,
         (const unsigned char *)value->text,
         value->text_length,

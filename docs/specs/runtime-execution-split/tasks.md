@@ -1055,3 +1055,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-second split.
+
+## Round 53
+
+- [x] Reinspect the remaining largest runtime fragments after the scalar-control
+      split.
+- [x] Identify `mylite_execution_sql_builders.inc` as a SQL rendering
+      same-translation-unit split candidate.
+- [x] Split CREATE table/index helpers, DROP/ALTER ADD column/index SQL, ALTER
+      column default SQL, ALTER MODIFY copy SQL, and ALTER
+      ORDER/FORCE/rename/truncate SQL into named fragments.
+- [x] Remove `mylite_execution_sql_builders.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused CREATE/ALTER/TRUNCATE/index/default SQL rendering and
+      parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-third split.

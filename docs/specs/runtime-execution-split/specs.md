@@ -1015,9 +1015,23 @@ The fragments are:
   row-count SQL and integer-format helpers.
 - `mylite_execution_show_like_pattern_helpers.inc`: `SHOW LIKE` pattern
   decoding and ASCII pattern matching helpers.
-- `mylite_execution_sql_builders.inc`: physical table/view/index/check names,
-  CREATE/DROP/ALTER/TRUNCATE SQL rendering, CREATE TABLE constraints/indexes,
-  ALTER TABLE rebuild SQL, key-part rendering, and quoted default helpers.
+- `mylite_execution_sql_builder_create_table_index_helpers.inc`: physical
+  table/view/index/check names, CREATE TABLE SQL, generated-column/check
+  constraints, CREATE TABLE index SQL, loaded/planned key-part rendering, and
+  string-key collation helpers.
+- `mylite_execution_sql_builder_drop_alter_add_column_index.inc`: DROP
+  TABLE/INDEX SQL, ALTER ADD COLUMN shell SQL, ADD PRIMARY KEY
+  validation/index SQL, ADD INDEX/UNIQUE validation SQL, key-part list
+  filters, and AUTO_INCREMENT max SQL.
+- `mylite_execution_sql_builder_alter_column_defaults.inc`: ALTER ADD COLUMN
+  default SQL rendering, typed default materialization, quoted SQL text
+  helpers, and ALTER DROP/RENAME COLUMN SQL.
+- `mylite_execution_sql_builder_alter_modify_copy.inc`: ALTER MODIFY temporary
+  name, validation/create/copy/select/insert SQL, binary copy
+  materialization, row-copy execution, and rebuilt index SQL.
+- `mylite_execution_sql_builder_alter_order_force_rename_truncate.inc`: ALTER
+  ORDER BY/FORCE temporary names, create/copy SQL, column/order list rendering,
+  physical table rename SQL, and TRUNCATE backing SQL.
 - `mylite_execution_insert_sql_builders.inc`: INSERT, INSERT ... SELECT,
   REPLACE ... SELECT, temporary materialization, compound branch, validation,
   and CREATE TABLE ... SELECT SQL rendering.
@@ -1515,6 +1529,10 @@ current timestamp/session state.
 28. Split the oversized scalar-control fragment into ordered
     same-translation-unit CASE entry, IF-family evaluation, literal projection,
     system-variable value/rendering, and IF/CASE validation fragments.
+29. Split the oversized SQL builder fragment into ordered
+    same-translation-unit CREATE table/index helper, DROP/ALTER ADD
+    column/index, ALTER column default, ALTER MODIFY copy, and ALTER
+    ORDER/FORCE/rename/truncate fragments.
 
 ## Review checklist
 
@@ -1612,3 +1630,8 @@ current timestamp/session state.
   change CASE warning staging, IF-family frame evaluation, literal projection,
   system-variable value/SHOW rendering, variable lookup diagnostics, or
   IF/CASE validation behavior.
+- SQL builder fragments preserve the existing SQL rendering order and
+  same-translation-unit helper linkage; the split must not change physical name
+  formatting, CREATE/DROP/ALTER/TRUNCATE SQL text, generated/check constraint
+  SQL, key-part rendering, default quoting/materialization, ALTER MODIFY copy
+  execution, or ORDER/FORCE rebuild SQL.

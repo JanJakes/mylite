@@ -25416,7 +25416,15 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_show_like_pattern_helpers.inc"
 
-#include "mylite_execution_sql_builders.inc"
+#include "mylite_execution_sql_builder_create_table_index_helpers.inc"
+
+#include "mylite_execution_sql_builder_drop_alter_add_column_index.inc"
+
+#include "mylite_execution_sql_builder_alter_column_defaults.inc"
+
+#include "mylite_execution_sql_builder_alter_modify_copy.inc"
+
+#include "mylite_execution_sql_builder_alter_order_force_rename_truncate.inc"
 
 #include "mylite_execution_insert_sql_builders.inc"
 

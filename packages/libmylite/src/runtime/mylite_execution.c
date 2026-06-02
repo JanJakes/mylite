@@ -25186,7 +25186,23 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_delete_planning.inc"
 
-#include "mylite_execution_column_planning.inc"
+#include "mylite_execution_column_plan_entry.inc"
+
+#include "mylite_execution_column_default_finalization.inc"
+
+#include "mylite_execution_column_default_text.inc"
+
+#include "mylite_execution_column_default_integer_eval.inc"
+
+#include "mylite_execution_column_type_mapping.inc"
+
+#include "mylite_execution_column_type_predicates.inc"
+
+#include "mylite_execution_column_descriptor_parsing.inc"
+
+#include "mylite_execution_column_row_size_validation.inc"
+
+#include "mylite_execution_column_key_modify_validation.inc"
 
 #include "mylite_execution_descriptor_helpers.inc"
 

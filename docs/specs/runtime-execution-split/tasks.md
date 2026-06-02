@@ -749,3 +749,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-seventh split.
+
+## Round 38
+
+- [x] Reinspect the remaining largest runtime fragments after the
+      statement-core split.
+- [x] Identify `mylite_execution_column_planning.inc` as a
+      column-entry/default/type/descriptor/row-size same-translation-unit
+      split candidate.
+- [x] Split column entry and attributes, default finalization, default text
+      rendering, default integer evaluation, type mapping, type predicates,
+      descriptor parsing, row-size validation, and string-key/MODIFY
+      compatibility validation into named fragments.
+- [x] Remove `mylite_execution_column_planning.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused column, type, DDL, DML, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-eighth split.

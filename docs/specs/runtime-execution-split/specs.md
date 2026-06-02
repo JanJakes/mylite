@@ -745,11 +745,52 @@ The fragments are:
   parenthesis unwrapping, and source-span copying helpers.
 - `mylite_execution_delete_planning.inc`: DELETE planning and execution helpers
   that were previously housed in the scalar fragment.
-- `mylite_execution_column_planning.inc`: column planning, default handling,
-  and column descriptor helpers that were previously housed in the scalar
-  fragment.
-- `mylite_execution_catalog_loading.inc`: runtime catalog table/column/index,
-  foreign-key, and check-constraint loading helpers.
+- `mylite_execution_column_plan_entry.inc`: column planning entry,
+  column-level attribute validation, generated-column attributes,
+  charset/collation handling, and binary string normalization.
+- `mylite_execution_column_default_finalization.inc`: column default
+  validation and typed default materialization.
+- `mylite_execution_column_default_text.inc`: default expression
+  classification, default text rendering, and expression default conversion
+  helpers.
+- `mylite_execution_column_default_integer_eval.inc`: integer default literal
+  conversion and expression evaluation.
+- `mylite_execution_column_type_mapping.inc`: SQL AST column type mapping for
+  text, binary, ENUM/SET, bit, year, decimal, approximate, and integer types.
+- `mylite_execution_column_type_predicates.inc`: logical/planned/catalog
+  descriptor type predicates.
+- `mylite_execution_column_descriptor_parsing.inc`: logical descriptor parsing
+  for ENUM/SET, decimal, approximate, text, binary, and bit metadata.
+- `mylite_execution_column_row_size_validation.inc`: planned/catalog row-size
+  validation and row-size contribution accounting.
+- `mylite_execution_column_key_modify_validation.inc`: string-key validation
+  and MODIFY/CHANGE COLUMN replacement compatibility predicates.
+- `mylite_execution_descriptor_helpers.inc`: loaded descriptor lookup,
+  descriptor cleanup, and shared descriptor-copy helpers.
+- `mylite_execution_insert_row_planning.inc`: INSERT/REPLACE row planning,
+  target-column mapping, and planned-row cleanup helpers.
+- `mylite_execution_insert_value_conversion.inc`: INSERT/REPLACE planned-value
+  conversion dispatch and type-family conversion entry points.
+- `mylite_execution_dml_default_values.inc`: DML default value
+  materialization, AUTO_INCREMENT handling, and generated/default timestamp
+  helpers.
+- `mylite_execution_dml_integer_conversion.inc`: DML integer value conversion.
+- `mylite_execution_dml_enum_set_conversion.inc`: DML ENUM and SET value
+  conversion.
+- `mylite_execution_dml_string_binary_conversion.inc`: DML text, binary,
+  BIT, JSON, and spatial value conversion.
+- `mylite_execution_dml_decimal_approx_conversion.inc`: DML DECIMAL, FLOAT,
+  DOUBLE, and approximate numeric conversion.
+- `mylite_execution_dml_temporal_defaults.inc`: temporal DML default
+  materialization helpers.
+- `mylite_execution_dml_value_helpers.inc`: planned-value initialization,
+  copying, cleanup, and null/text/blob helpers.
+- `mylite_execution_dml_string_validation.inc`: DML string length, UTF-8,
+  CHAR/VARCHAR/TEXT/BINARY validation, and key-value validation helpers.
+- `mylite_execution_dml_implicit_values.inc`: implicit DML value assignment
+  helpers.
+- `mylite_execution_row_scalar_select_items.inc`: row-scalar select-item
+  append and cleanup helpers shared by DML and SELECT planning.
 - `mylite_execution_query_planning.inc`: row-scalar planning core, special
   expression dispatch, window functions, integer arithmetic planning, temporal
   dispatch, and JSON dispatch.
@@ -1187,6 +1228,10 @@ current timestamp/session state.
     statement implicit commits, session savepoints, SQLite transaction helpers,
     connection character-set handling, SET assignment, session-snapshot,
     system-variable dispatch, and focused system-variable setter fragments.
+14. Split the oversized column-planning implementation fragment into ordered
+    same-translation-unit column entry/attribute, default finalization, default
+    text, default integer evaluation, type mapping, type predicates, descriptor
+    parsing, row-size validation, and key/modify validation fragments.
 
 ## Review checklist
 
@@ -1219,3 +1264,7 @@ current timestamp/session state.
   ownership in `mylite_execution.c`; the split must not create a second
   dispatcher, duplicate session state, or export transaction/system-variable
   mutation helpers.
+- Column-planning fragments keep column descriptor planning and validation in
+  the execution translation unit; the split must not introduce separate schema
+  mutation paths, duplicate type descriptors, or materialize catalog metadata
+  outside the existing planner/runtime ownership.

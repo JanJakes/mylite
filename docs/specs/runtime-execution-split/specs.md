@@ -110,6 +110,14 @@ the versioned one-step SQL migrations and exposes a single private
 `mylite_catalog_migrate_schema_one_step` entry point through
 `mylite_catalog_internal.h`.
 
+The fifteenth split extracts the catalog SQLite helper layer into
+`mylite_catalog_sqlite.c`. The helper module owns the shared SQLite execution,
+prepare/bind/finalize, changed-row, checked-column extraction, and integer
+range conversion helpers used by catalog state, mutation, materialization, and
+migration code. Catalog object validation and descriptor mutation logic remain
+in `mylite_catalog.c`; migrations still expose only their one-step private
+entry point.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

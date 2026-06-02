@@ -1,6 +1,5 @@
 #include "mylite_catalog_internal.h"
 
-#include "mylite_sqlite_registration.h"
 #include "sqlite3.h"
 
 #include <stdint.h>
@@ -66,7 +65,6 @@ static int migrate_catalog_schema_v28_to_v29(sqlite3 *sqlite);
 static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite);
 static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite);
 static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite);
-static int execute_sql(sqlite3 *sqlite, const char *sql);
 static void rollback_catalog_transaction(sqlite3 *sqlite);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version) {
@@ -221,7 +219,7 @@ static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 2, minimum_reader_schema_version = 2;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -263,7 +261,7 @@ static int migrate_catalog_schema_v2_to_v3(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 3, minimum_reader_schema_version = 3;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -306,7 +304,7 @@ static int migrate_catalog_schema_v3_to_v4(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 4, minimum_reader_schema_version = 4;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -345,7 +343,7 @@ static int migrate_catalog_schema_v4_to_v5(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 5, minimum_reader_schema_version = 5;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -365,7 +363,7 @@ static int migrate_catalog_schema_v5_to_v6(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 6, minimum_reader_schema_version = 6;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -410,7 +408,7 @@ static int migrate_catalog_schema_v6_to_v7(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 7, minimum_reader_schema_version = 7;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -455,7 +453,7 @@ static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 8, minimum_reader_schema_version = 8;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -491,7 +489,7 @@ static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 9, minimum_reader_schema_version = 9;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -509,7 +507,7 @@ static int migrate_catalog_schema_v9_to_v10(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 10, minimum_reader_schema_version = 10;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -554,7 +552,7 @@ static int migrate_catalog_schema_v10_to_v11(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 11, minimum_reader_schema_version = 11;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -602,7 +600,7 @@ static int migrate_catalog_schema_v11_to_v12(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 12, minimum_reader_schema_version = 12;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -624,7 +622,7 @@ static int migrate_catalog_schema_v12_to_v13(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 13, minimum_reader_schema_version = 13;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -669,7 +667,7 @@ static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 14, minimum_reader_schema_version = 14;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -718,7 +716,7 @@ static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 15, minimum_reader_schema_version = 15;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -737,7 +735,7 @@ static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 16, minimum_reader_schema_version = 16;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -755,7 +753,7 @@ static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 17, minimum_reader_schema_version = 17;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -789,7 +787,7 @@ static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 18, minimum_reader_schema_version = 18;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -825,7 +823,7 @@ static int migrate_catalog_schema_v18_to_v19(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 19, minimum_reader_schema_version = 19;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -848,7 +846,7 @@ static int migrate_catalog_schema_v19_to_v20(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 20, minimum_reader_schema_version = 20;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -869,7 +867,7 @@ static int migrate_catalog_schema_v20_to_v21(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 21, minimum_reader_schema_version = 21;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -891,7 +889,7 @@ static int migrate_catalog_schema_v21_to_v22(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 22, minimum_reader_schema_version = 22;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -909,7 +907,7 @@ static int migrate_catalog_schema_v22_to_v23(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 23, minimum_reader_schema_version = 23;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -926,7 +924,7 @@ static int migrate_catalog_schema_v23_to_v24(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 24, minimum_reader_schema_version = 24;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -946,7 +944,7 @@ static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 25, minimum_reader_schema_version = 25;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -963,7 +961,7 @@ static int migrate_catalog_schema_v25_to_v26(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 26, minimum_reader_schema_version = 26;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1005,7 +1003,7 @@ static int migrate_catalog_schema_v26_to_v27(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 27, minimum_reader_schema_version = 27;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1057,7 +1055,7 @@ static int migrate_catalog_schema_v27_to_v28(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 28, minimum_reader_schema_version = 28;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1110,7 +1108,7 @@ static int migrate_catalog_schema_v28_to_v29(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 29, minimum_reader_schema_version = 29;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1135,7 +1133,7 @@ static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite) {
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 30, minimum_reader_schema_version = 30;"
                              "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1169,7 +1167,7 @@ static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite) {
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 31, minimum_reader_schema_version = 30;"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1248,7 +1246,7 @@ static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
         "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
         ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ";"
         "COMMIT;";
-    int rc = execute_sql(sqlite, sql);
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(sqlite);
@@ -1256,12 +1254,6 @@ static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
     }
 
     return MYLITE_OK;
-}
-
-static int execute_sql(sqlite3 *sqlite, const char *sql) {
-    int sqlite_rc = sqlite3_exec(sqlite, sql, NULL, NULL, NULL);
-
-    return mylite_sqlite_status_to_mylite(sqlite_rc);
 }
 
 static void rollback_catalog_transaction(sqlite3 *sqlite) {

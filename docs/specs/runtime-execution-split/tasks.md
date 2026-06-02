@@ -246,3 +246,19 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fourteenth split.
+
+## Round 15
+
+- [x] Reinspect the mutable catalog helper clusters after the migration split.
+- [x] Select shared SQLite statement helpers as the next true module boundary.
+- [x] Move catalog SQLite execution, prepare/bind/finalize, changed-row,
+      checked-column, and integer range helpers into `mylite_catalog_sqlite`.
+- [x] Expose only the private helper surface through
+      `mylite_catalog_internal.h`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog helper/runtime tests.
+- [x] Review the split for behavior preservation, helper ownership, and
+      symbol-surface width.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifteenth split.

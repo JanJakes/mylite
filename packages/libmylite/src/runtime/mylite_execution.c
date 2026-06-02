@@ -10,8 +10,10 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
+#include "mylite_execution_plan_types.h"
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_scalar_charset_collation.h"
 #include "mylite_execution_scalar_numeric.h"
@@ -22,6 +24,7 @@
 #include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
+#include "mylite_mysql_error_codes.h"
 #include "mylite_mysql_server_identity.h"
 #include "mylite_parser.h"
 #include "mylite_period_functions.h"
@@ -80,196 +83,6 @@
 #endif
 
 enum {
-    mysql_error_parse = 1064,
-    mysql_error_cant_get_stat = 13,
-    mysql_error_no_database_selected = 1046,
-    mysql_error_database_access_denied = 1044,
-    mysql_error_database_exists = 1007,
-    mysql_error_cant_drop_database = 1008,
-    mysql_error_table_storage_engine_option = 1031,
-    mysql_error_unknown_database = 1049,
-    mysql_error_table_exists = 1050,
-    mysql_error_column_ambiguous = 1052,
-    mysql_error_not_unique_table_alias = 1066,
-    mysql_error_unknown_column = 1054,
-    mysql_error_not_group_by = 1055,
-    mysql_error_incorrect_parameter_count = 1582,
-    mysql_error_bigint_out_of_range = 1690,
-    mysql_error_unknown_table = 1051,
-    mysql_error_identifier_too_long = 1059,
-    mysql_error_duplicate_column = 1060,
-    mysql_error_duplicate_key_name = 1061,
-    mysql_error_duplicate_key = 1062,
-    mysql_error_multiple_primary_key = 1068,
-    mysql_error_too_many_key_parts = 1070,
-    mysql_error_column_length_too_big = 1074,
-    mysql_error_key_column_does_not_exist = 1072,
-    mysql_error_cant_remove_all_fields = 1090,
-    mysql_error_cant_drop_field_or_key = 1091,
-    mysql_error_update_table_used = 1093,
-    mysql_error_no_tables_used = 1096,
-    mysql_error_blob_text_cant_have_default = 1101,
-    mysql_error_incorrect_database_name = 1102,
-    mysql_error_incorrect_table_name = 1103,
-    mysql_error_unknown_table_in_schema = 1109,
-    mysql_error_unknown = 1105,
-    mysql_error_column_specified_twice = 1110,
-    mysql_error_unknown_character_set = 1115,
-    mysql_error_row_size_too_large = 1118,
-    mysql_error_incorrect_column_specifier = 1063,
-    mysql_error_wrong_auto_key = 1075,
-    mysql_error_key_too_long = 1071,
-    mysql_error_column_count_mismatch = 1136,
-    mysql_error_incorrect_prefix_key = 1089,
-    mysql_error_invalid_use_of_null = 1138,
-    mysql_error_table_does_not_exist = 1146,
-    mysql_error_incorrect_column_name = 1166,
-    mysql_error_storage_engine_cant_index_column = 1167,
-    mysql_error_blob_key_without_length = 1170,
-    mysql_error_incorrect_arguments = 1210,
-    mysql_error_wrong_usage = 1221,
-    mysql_error_load_data_row_missing = 1261,
-    mysql_error_load_data_row_truncated = 1262,
-    mysql_error_load_data_null_to_not_null = 1263,
-    mysql_error_spatial_must_be_not_null = 1252,
-    mysql_error_fulltext_column = 1283,
-    mysql_error_json_used_as_key = 3152,
-    mysql_error_primary_key_part_null = 1171,
-    mysql_error_key_does_not_exist = 1176,
-    mysql_error_incorrect_foreign_key_definition = 1239,
-    mysql_error_conflicting_declarations = 1302,
-    mysql_error_row_is_referenced = 1451,
-    mysql_error_no_referenced_row = 1452,
-    mysql_error_cannot_drop_index_needed_fk = 1553,
-    mysql_error_incorrect_index_name = 1280,
-    mysql_error_unknown_system_variable = 1193,
-    mysql_error_variable_cant_be_set = 1231,
-    mysql_error_incorrect_argument_type = 1232,
-    mysql_error_session_variable_read_only = 1621,
-    mysql_error_table_comment_too_long = 1628,
-    mysql_error_column_comment_too_long = 1629,
-    mysql_error_index_comment_too_long = 1688,
-    mysql_error_spatial_index_non_geometric = 1687,
-    mysql_error_collation_not_valid_for_character_set = 1253,
-    mysql_error_illegal_mix_of_collations = 1267,
-    mysql_error_savepoint_does_not_exist = 1305,
-    mysql_error_not_supported_yet = 1235,
-    mysql_error_operand_should_contain_one_column = 1241,
-    mysql_error_subquery_returns_more_than_one_row = 1242,
-    mysql_error_unknown_prepared_statement_handler = 1243,
-    mysql_error_select_reduced = 1222,
-    mysql_error_not_view = 1347,
-    mysql_error_session_variable_only = 1238,
-    mysql_error_global_variable_only = 1229,
-    mysql_error_data_out_of_range = 1264,
-    mysql_error_data_truncated = 1265,
-    mysql_error_unknown_collation = 1273,
-    mysql_error_truncated_wrong_value_for_field = 1366,
-    mysql_warning_innodb_rebuild_fulltext = 124,
-    mysql_warning_consistent_snapshot_ignored = 138,
-    mysql_warning_deprecated_system_variable = 1287,
-    mysql_warning_found_rows_deprecated = 1287,
-    mysql_warning_information_schema_processlist_deprecated = 1287,
-    mysql_warning_information_schema_profiling_deprecated = 1287,
-    mysql_warning_sql_calc_found_rows_deprecated = 1287,
-    mysql_warning_sql_no_cache_deprecated = 1681,
-    mysql_warning_hash_index_unsupported = 3502,
-    mysql_error_invalid_default = 1067,
-    mysql_error_field_no_default = 1364,
-    mysql_error_bad_null = 1048,
-    mysql_error_generated_column_value = 3105,
-    mysql_error_default_val_generated = 3773,
-    mysql_error_database_does_not_exist = 3503,
-    mysql_error_system_schema_access = 3552,
-    mysql_error_data_dictionary_access = 3554,
-    mysql_error_primary_key_index_invisible = 3522,
-    mysql_error_spatial_column_cannot_be_null = 3673,
-    mysql_warning_spatial_index_no_srid = 3674,
-    mysql_error_spatial_unique = 3728,
-    mysql_error_spatial_index_type_not_supported = 3729,
-    mysql_error_data_too_long = 1406,
-    mysql_error_transaction_characteristics_changed = 1568,
-    mysql_error_read_only_transaction = 1792,
-    mysql_error_temporary_fulltext_index = 1796,
-    mysql_error_algorithm_not_supported = 1845,
-    mysql_error_algorithm_not_supported_reason = 1846,
-    mysql_error_key_part_length_cannot_be_zero = 1391,
-    mysql_error_decimal_scale_too_big = 1425,
-    mysql_error_decimal_precision_too_big = 1426,
-    mysql_error_decimal_must_be_greater_or_equal_to_d = 1427,
-    mysql_error_unknown_storage_engine = 1286,
-    mysql_error_display_width_out_of_range = 1439,
-    mysql_error_invalid_column_size = 3013,
-    mysql_error_invalid_json_text = 3140,
-    mysql_error_invalid_json_text_in_function = 3141,
-    mysql_error_invalid_json_path = 3143,
-    mysql_error_invalid_json_charset = 3144,
-    mysql_error_invalid_json_data = 3146,
-    mysql_error_json_path_not_allowed = 3153,
-    mysql_error_invalid_json_one_or_all = 3154,
-    mysql_error_json_null_member_name = 3158,
-    mysql_error_illegal_user_variable_name = 3061,
-    mysql_error_json_unquote_incorrect_type = 3064,
-    mysql_error_json_quote_incorrect_type = 3064,
-    mysql_error_failed_read_auto_increment = 1467,
-    mysql_error_cannot_update_table_while_creating = 1746,
-    mysql_warning_using_storage_engine = 1266,
-    mysql_error_foreign_key_cascade_duplicate = 1761,
-    mysql_error_duplicate_foreign_key = 1826,
-    mysql_error_drop_column_fk_child = 1828,
-    mysql_error_drop_column_fk_parent = 1829,
-    mysql_error_column_not_null_for_set_null = 1830,
-    mysql_error_check_constraint_non_boolean = 3812,
-    mysql_error_check_constraint_column_ref = 3813,
-    mysql_error_check_constraint_function = 3814,
-    mysql_error_check_constraint_subquery = 3815,
-    mysql_error_check_constraint_variable = 3816,
-    mysql_error_check_constraint_auto_increment = 3818,
-    mysql_error_check_constraint_violated = 3819,
-    mysql_error_check_constraint_unknown_column = 3820,
-    mysql_error_check_constraint_not_found = 3821,
-    mysql_error_duplicate_check_constraint = 3822,
-    mysql_error_drop_constraint_ambiguous = 3939,
-    mysql_error_constraint_does_not_exist = 3940,
-    mysql_error_empty_values_row = 3942,
-    mysql_error_values_default = 3943,
-    mysql_error_load_data_local_disabled = 3948,
-    mysql_error_incorrect_timestamp_value = 1525,
-    mysql_error_duplicated_value_in_enum = 1291,
-    mysql_error_duplicated_value_in_set = 1291,
-    mysql_error_unknown_or_incorrect_time_zone = 1298,
-    mysql_error_illegal_set_value = 1367,
-    mysql_error_regexp_illegal_argument = 3685,
-    mysql_error_regular_expression = 3696,
-    mysql_error_regular_expression_character_range = 3697,
-    mysql_error_prepared_command_not_supported = 1295,
-    mysql_warning_deprecated_logical_and = 1287,
-    mysql_warning_deprecated_logical_or = 1287,
-    mysql_warning_values_function_deprecated = 1287,
-    mysql_warning_truncated_incorrect_auto_increment = 1292,
-    mysql_warning_truncated_incorrect_decimal = 1292,
-    mysql_warning_truncated_incorrect_integer = 1292,
-    mysql_warning_cast_complement = 1105,
-    mysql_warning_truncated_incorrect_temporal = 1292,
-    mysql_error_incorrect_date_value = 1292,
-    mysql_error_incorrect_time_value = 1292,
-    mysql_warning_division_by_zero = 1365,
-    mysql_warning_legacy_syntax_converted = 3005,
-    mysql_warning_invalid_argument_for_logarithm = 3020,
-    mysql_warning_sql_mode_should_be_used_with_strict = 3135,
-    mysql_warning_sql_mode_pad_char_deprecated = 3090,
-    mysql_warning_integer_display_width_deprecated = 1681,
-    mysql_warning_year_display_width_deprecated = 1287,
-    mysql_warning_decimal_unsigned_deprecated = 1681,
-    mysql_warning_national_character_set_deprecated = 3720,
-    mysql_warning_utf8_alias = 3719,
-    mysql_warning_utf8mb3_deprecated = 1287,
-    mysql_error_invalid_year_display_width = 1818,
-    mysql_error_failed_to_open_referenced_table = 1824,
-    mysql_error_foreign_key_column_incompatible = 3780,
-    mysql_error_must_have_visible_column = 4028,
-    mysql_error_primary_key_required = 3750,
-    mysql_error_foreign_key_missing_unique = 6125,
     sqlite_use_nul_terminated_string = -1,
     year_conversion_incorrect_integer = 2,
     integer_even_divisor = 2,
@@ -1127,11 +940,6 @@ static const struct show_privileges_row show_privileges_rows[] = {
     {"FLUSH_TABLES", "Server Admin", ""},
 };
 
-struct table_name_resolution {
-    struct mylite_catalog_schema_descriptor schema;
-    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-};
-
 enum table_maintenance_operation {
     TABLE_MAINTENANCE_ANALYZE = 0,
     TABLE_MAINTENANCE_CHECK = 1,
@@ -1198,15 +1006,6 @@ struct select_index_hint_lookup_context {
     const char *name;
     bool exact_match;
     size_t prefix_match_count;
-};
-
-enum column_reference_diagnostic_context {
-    COLUMN_REFERENCE_FIELD = 0,
-    COLUMN_REFERENCE_WHERE = 1,
-    COLUMN_REFERENCE_ORDER = 2,
-    COLUMN_REFERENCE_GROUP = 3,
-    COLUMN_REFERENCE_HAVING = 4,
-    COLUMN_REFERENCE_ON = 5,
 };
 
 enum temporal_text_kind {
@@ -1438,23 +1237,6 @@ struct planned_create_table_like {
     struct planned_create_table create_table;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor source_table;
-};
-
-struct planned_drop_table_target {
-    struct table_name_resolution target;
-    struct mylite_catalog_table_descriptor table;
-    bool missing;
-    bool is_temporary;
-};
-
-struct planned_drop_table {
-    struct planned_drop_table_target *targets;
-    size_t target_count;
-    size_t missing_count;
-    size_t existing_count;
-    size_t temporary_existing_count;
-    size_t persistent_existing_count;
-    bool temporary_only;
 };
 
 struct planned_rename_table {
@@ -2171,11 +1953,6 @@ struct load_data_row {
     struct load_data_field *fields;
     size_t field_count;
     size_t field_capacity;
-};
-
-struct load_data_missing_warning_request {
-    size_t row_number;
-    size_t warning_count;
 };
 
 enum planned_select_predicate_kind {
@@ -4354,14 +4131,6 @@ static uint64_t big_tables_system_variable_uint64_value(
 static const char *big_tables_system_variable_show_value(
     const struct mylite_db *database,
     bool global_scope
-);
-static void set_session_read_only_system_variable_error(
-    struct mylite_db *database,
-    const char *variable_name
-);
-static void set_read_only_system_variable_error(
-    struct mylite_db *database,
-    const char *variable_name
 );
 static int apply_set_transaction_statement(
     struct mylite_db *database,
@@ -8160,22 +7929,6 @@ static int validate_sql_require_primary_key_for_table_descriptor(
     const struct mylite_catalog_table_descriptor *table
 );
 static bool sql_require_primary_key_session_enabled(const struct mylite_db *database);
-static void set_collation_not_valid_for_charset_error(
-    struct mylite_db *database,
-    const char *collation_name,
-    const char *charset_name
-);
-static void set_illegal_mix_of_collations_error(
-    struct mylite_db *database,
-    const char *first_collation,
-    const char *second_collation,
-    const char *operation
-);
-static void set_conflicting_character_set_declarations_error(
-    struct mylite_db *database,
-    const char *first_charset,
-    const char *second_charset
-);
 static int append_decoded_table_option_name_escape(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
@@ -12987,39 +12740,6 @@ static bool system_variable_component_equals(
     const char *expected
 );
 static bool system_variable_component_is_empty(const struct system_variable_component *component);
-static void set_session_variable_only_error(struct mylite_db *database, const char *variable_name);
-static void set_global_variable_only_error(struct mylite_db *database, const char *variable_name);
-static void set_global_variable_set_global_required_error(
-    struct mylite_db *database,
-    const char *variable_name
-);
-static void set_unknown_system_variable_error(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static void set_unknown_system_variable_name_error(
-    struct mylite_db *database,
-    const char *variable_name
-);
-static int copy_system_variable_name_for_error(
-    const struct mylite_sql_source_span *span,
-    char **out_name
-);
-static int copy_system_variable_component_name_for_error(
-    const struct mylite_sql_source_span *span,
-    size_t *offset,
-    char **out_name
-);
-static int copy_system_variable_raw_body_for_error(
-    const struct mylite_sql_source_span *span,
-    char **out_name
-);
-static int append_system_variable_error_name_byte(
-    char value,
-    char **name,
-    size_t *length,
-    size_t capacity
-);
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -15553,11 +15273,6 @@ static bool column_reference_qualifier_matches_source(
     const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count,
     const struct select_source_context *source_context
-);
-static void set_ambiguous_column_reference_error(
-    struct mylite_db *database,
-    enum column_reference_diagnostic_context context,
-    const char *column_name
 );
 static void set_unknown_column_reference_error(
     struct mylite_db *database,
@@ -24420,490 +24135,6 @@ static void set_parse_error(
     struct mylite_db *database,
     const struct mylite_sql_parse_result *parse_result
 );
-static void set_unsupported_error(struct mylite_db *database, const char *message);
-static void set_alter_table_instant_lock_error(struct mylite_db *database);
-static void set_alter_table_instant_algorithm_error(struct mylite_db *database);
-static void set_alter_table_add_foreign_key_instant_error(struct mylite_db *database);
-static void set_alter_table_add_foreign_key_inplace_error(struct mylite_db *database);
-static void set_alter_table_add_foreign_key_lock_none_error(
-    struct mylite_db *database,
-    enum mylite_sql_ast_alter_algorithm algorithm
-);
-static void set_alter_table_add_fulltext_instant_error(struct mylite_db *database);
-static void set_alter_table_copy_lock_none_error(struct mylite_db *database);
-static void set_alter_table_key_maintenance_lock_error(struct mylite_db *database);
-static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database);
-static void set_no_tables_used_error(struct mylite_db *database);
-static void set_in_subquery_limit_error(struct mylite_db *database);
-static void set_scalar_subquery_column_count_error(struct mylite_db *database);
-static void set_scalar_subquery_row_count_error(struct mylite_db *database);
-static void set_union_column_count_mismatch_error(struct mylite_db *database);
-static void set_update_table_used_error(struct mylite_db *database, const char *table_name);
-static void set_native_function_parameter_count_error(
-    struct mylite_db *database,
-    const char *function_name
-);
-static void set_invalid_json_function_text_error(struct mylite_db *database, size_t position);
-static int append_invalid_json_value_warning(
-    struct mylite_db *database,
-    const struct mylite_json_normalize_result *result
-);
-static void set_invalid_json_path_error(struct mylite_db *database, size_t position);
-static void set_json_path_not_allowed_error(struct mylite_db *database);
-static void set_invalid_json_data_type_error(struct mylite_db *database, const char *function_name);
-static void set_invalid_json_one_or_all_error(struct mylite_db *database);
-static void set_json_unquote_incorrect_type_error(struct mylite_db *database);
-static void set_json_quote_incorrect_type_error(struct mylite_db *database);
-static void set_json_binary_charset_error(struct mylite_db *database);
-static void set_json_null_member_name_error(struct mylite_db *database);
-static void set_no_database_error(struct mylite_db *database);
-static void set_database_access_denied_error(struct mylite_db *database, const char *schema_name);
-static void set_system_schema_access_error(struct mylite_db *database, const char *schema_name);
-static void set_mysql_data_dictionary_table_access_error(
-    struct mylite_db *database,
-    const char *table_name
-);
-static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
-static int append_database_exists_note(struct mylite_db *database, const char *schema_name);
-static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
-static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
-static void set_database_does_not_exist_error(struct mylite_db *database, const char *schema_name);
-static void set_table_exists_error(struct mylite_db *database, const char *table_name);
-static int append_table_exists_note(struct mylite_db *database, const char *table_name);
-static void set_create_table_select_locking_clause_error(
-    struct mylite_db *database,
-    const char *source_table_name,
-    const char *target_table_name
-);
-static void set_unknown_information_schema_table_error(
-    struct mylite_db *database,
-    const char *table_name
-);
-static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
-static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
-static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name);
-static void set_unknown_group_column_error(struct mylite_db *database, const char *column_name);
-static void set_unknown_having_column_error(struct mylite_db *database, const char *column_name);
-static void set_unknown_on_column_error(struct mylite_db *database, const char *column_name);
-static void set_ambiguous_order_column_error(struct mylite_db *database, const char *column_name);
-static void set_not_unique_table_alias_error(struct mylite_db *database, const char *alias);
-static void set_only_full_group_by_error(
-    struct mylite_db *database,
-    size_t expression_index,
-    const char *clause_name,
-    const struct table_name_resolution *source,
-    const struct mylite_catalog_column_descriptor *column
-);
-static void set_unknown_table_error(
-    struct mylite_db *database,
-    const char *schema_name,
-    const char *table_name
-);
-static void set_not_view_error(
-    struct mylite_db *database,
-    const char *schema_name,
-    const char *table_name
-);
-static void set_unknown_table_name_error(struct mylite_db *database, const char *table_name);
-static void set_unknown_multi_delete_table_error(
-    struct mylite_db *database,
-    const char *table_name
-);
-static void set_wrong_usage_error(struct mylite_db *database, const char *left, const char *right);
-static int set_unknown_drop_tables_error(
-    struct mylite_db *database,
-    const struct planned_drop_table *plan
-);
-static int append_unknown_table_note(
-    struct mylite_db *database,
-    const char *schema_name,
-    const char *table_name
-);
-static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name);
-static void set_table_storage_engine_option_error(
-    struct mylite_db *database,
-    const char *table_name
-);
-static int append_table_storage_engine_option_note(
-    struct mylite_db *database,
-    const char *table_name
-);
-static void set_failed_read_auto_increment_error(struct mylite_db *database);
-static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name);
-static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name);
-static void set_savepoint_does_not_exist_error(
-    struct mylite_db *database,
-    const char *savepoint_name
-);
-static void set_table_does_not_exist_error(
-    struct mylite_db *database,
-    const char *schema_name,
-    const char *table_name
-);
-static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
-static void set_duplicated_enum_value_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *value,
-    size_t value_length
-);
-static void set_duplicated_set_value_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *value,
-    size_t value_length
-);
-static void set_illegal_set_value_error(
-    struct mylite_db *database,
-    const char *value,
-    size_t value_length
-);
-static void set_sql_require_primary_key_error(struct mylite_db *database);
-static void set_multiple_primary_key_error(struct mylite_db *database);
-static void set_wrong_auto_key_error(struct mylite_db *database);
-static void set_column_length_too_big_error(
-    struct mylite_db *database,
-    const char *column_name,
-    uint64_t maximum_length
-);
-static void set_row_size_too_large_error(struct mylite_db *database);
-static void set_incorrect_column_specifier_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_key_column_missing_error(struct mylite_db *database, const char *column_name);
-static void set_invalid_use_of_null_error(struct mylite_db *database);
-static void set_primary_key_part_null_error(struct mylite_db *database);
-static void set_duplicate_key_name_error(struct mylite_db *database, const char *index_name);
-static void set_incorrect_index_name_error(struct mylite_db *database, const char *index_name);
-static void set_index_hint_use_force_error(struct mylite_db *database);
-static void set_key_does_not_exist_in_table_error(
-    struct mylite_db *database,
-    const char *index_name,
-    const char *table_name
-);
-static void set_primary_key_index_invisible_error(struct mylite_db *database);
-static void set_storage_engine_cant_index_column_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_fulltext_column_error(struct mylite_db *database, const char *column_name);
-static void set_spatial_index_non_geometric_error(struct mylite_db *database);
-static void set_spatial_index_must_be_not_null_error(struct mylite_db *database);
-static void set_spatial_unique_error(struct mylite_db *database);
-static void set_spatial_index_type_not_supported_error(
-    struct mylite_db *database,
-    const char *index_type
-);
-static void set_spatial_too_many_key_parts_error(struct mylite_db *database);
-static void set_fulltext_explicit_order_error(struct mylite_db *database);
-static void set_temporary_fulltext_index_error(struct mylite_db *database);
-static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name);
-static void set_json_key_error(struct mylite_db *database, const char *column_name);
-static void set_incorrect_prefix_key_error(struct mylite_db *database);
-static void set_key_part_length_cannot_be_zero_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes);
-static void set_table_comment_too_long_error(struct mylite_db *database, const char *table_name);
-static void set_column_comment_too_long_error(struct mylite_db *database, const char *column_name);
-static void set_index_comment_too_long_error(struct mylite_db *database, const char *index_name);
-static void set_non_ascii_string_key_error(struct mylite_db *database);
-static void set_duplicate_key_error(
-    struct mylite_db *database,
-    const char *table_name,
-    const char *index_name,
-    const char *value
-);
-static void set_no_referenced_row_error(struct mylite_db *database);
-static void set_row_is_referenced_error(struct mylite_db *database);
-static void set_cannot_drop_index_needed_foreign_key_error(
-    struct mylite_db *database,
-    const char *index_name
-);
-static void set_failed_to_open_referenced_table_error(
-    struct mylite_db *database,
-    const char *table_name
-);
-static void set_incorrect_foreign_key_definition_error(struct mylite_db *database);
-static void set_foreign_key_column_incompatible_error(struct mylite_db *database);
-static void set_foreign_key_missing_unique_error(struct mylite_db *database);
-static void set_duplicate_foreign_key_error(
-    struct mylite_db *database,
-    const char *foreign_key_name
-);
-static void set_drop_column_foreign_key_child_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *foreign_key_name
-);
-static void set_drop_column_foreign_key_parent_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *foreign_key_name,
-    const char *child_table_name
-);
-static void set_foreign_key_set_null_not_nullable_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *foreign_key_name
-);
-static void set_foreign_key_cascade_duplicate_error(
-    struct mylite_db *database,
-    const char *parent_table_name,
-    const char *record_value,
-    const char *child_table_name,
-    const char *index_name
-);
-static void set_check_constraint_non_boolean_error(struct mylite_db *database);
-static void set_check_constraint_column_ref_error(
-    struct mylite_db *database,
-    const char *constraint_name,
-    const char *column_name
-);
-static void set_check_constraint_function_error(struct mylite_db *database);
-static void set_check_constraint_subquery_error(struct mylite_db *database);
-static void set_check_constraint_variable_error(struct mylite_db *database);
-static void set_check_constraint_auto_increment_error(struct mylite_db *database);
-static void set_check_constraint_violated_error(
-    struct mylite_db *database,
-    const char *constraint_name
-);
-static void set_check_constraint_not_found_error(
-    struct mylite_db *database,
-    const char *constraint_name
-);
-static void set_drop_constraint_ambiguous_error(
-    struct mylite_db *database,
-    const char *constraint_name
-);
-static void set_constraint_does_not_exist_error(
-    struct mylite_db *database,
-    const char *constraint_name
-);
-static void set_check_constraint_unknown_column_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_alter_check_constraint_unknown_column_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *constraint_name
-);
-static void set_duplicate_check_constraint_error(
-    struct mylite_db *database,
-    const char *check_constraint_name
-);
-static int append_check_constraint_warning(struct mylite_db *database, const char *constraint_name);
-static int append_duplicate_key_warning(
-    struct mylite_db *database,
-    const char *table_name,
-    const char *index_name,
-    const char *value
-);
-static int append_no_referenced_row_warning(struct mylite_db *database);
-static void set_duplicate_table_alias_error(struct mylite_db *database, const char *table_name);
-static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name);
-static void set_cant_remove_all_fields_error(struct mylite_db *database);
-static void set_must_have_visible_column_error(struct mylite_db *database);
-static void set_unknown_column_in_table_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *table_name
-);
-static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name);
-static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
-static void set_values_empty_row_error(struct mylite_db *database);
-static void set_values_default_error(struct mylite_db *database);
-static void set_values_integer_out_of_range_error(struct mylite_db *database);
-static void set_bad_null_error(struct mylite_db *database, const char *column_name);
-static void set_load_data_file_error(
-    struct mylite_db *database,
-    const char *file_path,
-    int os_error
-);
-static void set_load_data_local_disabled_error(struct mylite_db *database);
-static void set_load_data_row_missing_error(struct mylite_db *database, size_t row_number);
-static int append_load_data_row_missing_warnings(
-    struct mylite_db *database,
-    struct load_data_missing_warning_request request
-);
-static void set_load_data_row_truncated_error(struct mylite_db *database, size_t row_number);
-static int append_load_data_row_truncated_warning(struct mylite_db *database, size_t row_number);
-static void set_load_data_null_to_not_null_error(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static int append_load_data_null_to_not_null_warning(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name);
-static void set_generated_column_value_error(
-    struct mylite_db *database,
-    const char *column_name,
-    const char *table_name
-);
-static void set_data_truncated_error(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static void set_data_too_long_error(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static void set_invalid_default_error(struct mylite_db *database, const char *column_name);
-static void set_json_cant_have_default_error(struct mylite_db *database, const char *column_name);
-static void set_invalid_json_text_error(
-    struct mylite_db *database,
-    size_t position,
-    const char *column_name
-);
-static void set_no_default_error(struct mylite_db *database, const char *column_name);
-static void set_default_function_expression_error(struct mylite_db *database);
-static void set_out_of_range_error(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static void set_invalid_column_size_error(struct mylite_db *database, const char *column_name);
-static void set_incorrect_date_value_error(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static void set_incorrect_time_value_error(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static void set_incorrect_datetime_value_error(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static void set_incorrect_integer_value_error(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static void set_incorrect_decimal_value_error(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static void set_incorrect_date_literal_error(struct mylite_db *database, const char *value_text);
-static void set_incorrect_datetime_literal_error(
-    struct mylite_db *database,
-    const char *value_text
-);
-static void set_incorrect_timestamp_value_error(struct mylite_db *database, const char *value_text);
-static int append_incorrect_datetime_predicate_warning(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name
-);
-static int append_incorrect_date_predicate_warning(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name
-);
-static int append_incorrect_date_value_note(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static int append_bad_null_warning(struct mylite_db *database, const char *column_name);
-static int append_no_default_warning(struct mylite_db *database, const char *column_name);
-static int append_out_of_range_warning(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static int append_incorrect_integer_value_warning(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static int append_incorrect_decimal_value_warning(
-    struct mylite_db *database,
-    const char *value_text,
-    const char *column_name,
-    size_t row_number
-);
-static int append_data_truncated_warning(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static int append_data_truncated_note(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static int append_data_too_long_warning(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static int append_decimal_truncated_note(
-    struct mylite_db *database,
-    const char *column_name,
-    size_t row_number
-);
-static void set_display_width_out_of_range_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_text_display_width_out_of_range_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_bit_display_width_out_of_range_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_invalid_year_display_width_error(struct mylite_db *database);
-static void set_decimal_precision_too_big_error(
-    struct mylite_db *database,
-    const char *column_name,
-    uint64_t precision
-);
-static void set_decimal_scale_too_big_error(
-    struct mylite_db *database,
-    const char *column_name,
-    uint64_t scale
-);
-static void set_decimal_scale_greater_than_precision_error(
-    struct mylite_db *database,
-    const char *column_name
-);
-static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name);
-static void set_having_out_of_range_error(struct mylite_db *database, const char *operand_name);
-static void set_limit_out_of_range_error(struct mylite_db *database);
-static void set_regexp_illegal_argument_error(struct mylite_db *database);
-static void set_regexp_error(struct mylite_db *database, const char *message);
-static void set_regexp_character_range_error(struct mylite_db *database, const char *message);
-static void set_identifier_too_long_error(struct mylite_db *database, const char *kind);
-static void set_reserved_name_error(struct mylite_db *database, const char *kind, const char *name);
-static void set_nomem_error(struct mylite_db *database);
-static void set_physical_sqlite_error(struct mylite_db *database);
-static void set_physical_sqlite_row_error(struct mylite_db *database);
-static void set_runtime_error(struct mylite_db *database, const char *message);
-static void set_internal_error_if_clear(struct mylite_db *database, int rc, const char *message);
-static int status_from_parse_status(enum mylite_sql_parse_status status);
 
 int mylite_execute(
     mylite_db *database,
@@ -25966,5 +25197,3 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_predicate_dml_parameter_binding.inc"
 
 #include "mylite_execution_sqlite_result_extraction.inc"
-
-#include "mylite_execution_diagnostics.inc"

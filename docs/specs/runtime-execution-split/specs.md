@@ -774,8 +774,9 @@ The fragments are:
 - `mylite_execution_sqlite_result_extraction.inc`: selected SQLite row/value
   extraction, rowid alias selection, AST child helper tails, script statement
   counting, and parse-error mapping.
-- `mylite_execution_diagnostics.inc`: MySQL-compatible diagnostics, warnings,
-  notes, and parse-status mapping helpers.
+- `mylite_execution_diagnostics.h/.c`: MySQL-compatible diagnostics, warnings,
+  notes, and parse-status mapping helpers, with short-name aliases for
+  remaining include-based runtime fragments.
 
 Fragment boundaries should remain coarse and logical. New work may move a
 fragment into a real `.c` module only after the required private helper surface
@@ -953,6 +954,30 @@ The module must not own generic scalar dispatch, scalar arithmetic/logical
 expression evaluators, row-scalar planning, predicate SQL rendering, catalog
 loading policy, system-variable state, or session-state mutation.
 
+### `mylite_execution_diagnostics`
+
+The execution diagnostics module owns MySQL-compatible runtime diagnostics for
+the execution layer:
+
+- MySQL numeric error, warning, and note codes used by execution diagnostics
+- formatted error, warning, and note messages for runtime, DDL, DML, scalar,
+  parser-status, and metadata paths
+- conversion from parser status codes to MyLite public status codes
+- small diagnostic-message helpers for system-variable source spans and
+  multi-table DROP diagnostics.
+
+The module exposes prefixed internal functions in
+`mylite_execution_diagnostics.h`. While `mylite_execution.c` still includes
+runtime fragments, the header may provide short-name aliases for the existing
+fragment call sites; those aliases must stay local to internal runtime code and
+must not become public ABI. The module may depend on shared planning/diagnostic
+types in `mylite_execution_plan_types.h` and shared MySQL diagnostic constants
+in `mylite_mysql_error_codes.h`.
+
+The module must not own statement execution, planner decisions, catalog
+mutation, SQL mode storage, warning-count staging, or scalar/result value
+evaluation. It formats diagnostics from already-classified runtime facts.
+
 ### `mylite_execution_scalar_temporal`
 
 The scalar temporal module owns session-scalar implementations for the temporal
@@ -1075,6 +1100,9 @@ current timestamp/session state.
   unsupported-shape diagnostics, approximate double formatting, and
   catalog-loading numeric normalization must remain identical to the previous
   scalar numeric fragment behavior.
+- Runtime diagnostics must preserve existing MySQL error/warning/note numeric
+  codes, SQLSTATEs, formatted messages, warning ordering, parser-status
+  translation, and MyLite public status-code returns.
 
 ## Implementation plan
 
@@ -1099,6 +1127,9 @@ current timestamp/session state.
 10. Split the execution catalog data into a small family of true C modules:
     character sets/collations, `INFORMATION_SCHEMA`, `mysql`/`sys` system
     tables, and built-in static placeholder catalogs.
+11. Extract execution diagnostics into a true C module, keeping short-name
+    aliases only as a temporary compatibility bridge for remaining include-based
+    runtime fragments.
 
 ## Review checklist
 
@@ -1120,3 +1151,7 @@ current timestamp/session state.
 - Tests prove behavior preservation.
 - Shared temporal arithmetic helpers remain pure and do not emit diagnostics,
   allocate result cells, or inspect SQL AST nodes.
+- Diagnostics helpers remain a formatting/reporting service; planner and
+  execution modules decide which diagnostic applies.
+- Internal diagnostic symbols use prefixed names even when the remaining
+  include-based runtime fragments still use short-name aliases.

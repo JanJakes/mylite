@@ -1,4 +1,51 @@
-static void set_unsupported_error(struct mylite_db *database, const char *message) {
+#define MYLITE_EXECUTION_DIAGNOSTICS_NO_SHORT_NAMES
+
+#include "mylite_execution_diagnostics.h"
+
+#include "mylite_connection.h"
+#include "mylite_diagnostics.h"
+#include "mylite_dynamic_string.h"
+#include "mylite_mysql_error_codes.h"
+
+#include <inttypes.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+enum {
+    system_variable_body_offset = 2,
+};
+
+static bool diagnostics_text_equals_ascii_case_insensitive(const char *left, const char *right);
+static unsigned char diagnostics_ascii_lower(unsigned char value);
+static int mylite_execution_diagnostics_copy_system_variable_name_for_error(
+    const struct mylite_sql_source_span *span,
+    char **out_name
+);
+static int mylite_execution_diagnostics_copy_system_variable_component_name_for_error(
+    const struct mylite_sql_source_span *span,
+    size_t *offset,
+    char **out_name
+);
+static int mylite_execution_diagnostics_copy_system_variable_raw_body_for_error(
+    const struct mylite_sql_source_span *span,
+    char **out_name
+);
+static int mylite_execution_diagnostics_append_system_variable_error_name_byte(
+    char value,
+    char **name,
+    size_t *length,
+    size_t capacity
+);
+
+void mylite_execution_diagnostics_set_unsupported_error(
+    struct mylite_db *database,
+    const char *message
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_parse,
@@ -7,7 +54,7 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
     );
 }
 
-static void set_alter_table_instant_lock_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_instant_lock_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_wrong_usage,
@@ -16,7 +63,9 @@ static void set_alter_table_instant_lock_error(struct mylite_db *database) {
     );
 }
 
-static void set_alter_table_instant_algorithm_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported,
@@ -25,7 +74,9 @@ static void set_alter_table_instant_algorithm_error(struct mylite_db *database) 
     );
 }
 
-static void set_alter_table_add_foreign_key_instant_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_add_foreign_key_instant_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported_reason,
@@ -35,7 +86,9 @@ static void set_alter_table_add_foreign_key_instant_error(struct mylite_db *data
     );
 }
 
-static void set_alter_table_add_foreign_key_inplace_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_add_foreign_key_inplace_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported_reason,
@@ -45,12 +98,12 @@ static void set_alter_table_add_foreign_key_inplace_error(struct mylite_db *data
     );
 }
 
-static void set_alter_table_add_foreign_key_lock_none_error(
+void mylite_execution_diagnostics_set_alter_table_add_foreign_key_lock_none_error(
     struct mylite_db *database,
     enum mylite_sql_ast_alter_algorithm algorithm
 ) {
     if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
-        set_alter_table_copy_lock_none_error(database);
+        mylite_execution_diagnostics_set_alter_table_copy_lock_none_error(database);
         return;
     }
 
@@ -63,7 +116,9 @@ static void set_alter_table_add_foreign_key_lock_none_error(
     );
 }
 
-static void set_alter_table_add_fulltext_instant_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_add_fulltext_instant_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported_reason,
@@ -73,7 +128,7 @@ static void set_alter_table_add_fulltext_instant_error(struct mylite_db *databas
     );
 }
 
-static void set_alter_table_copy_lock_none_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_copy_lock_none_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported_reason,
@@ -82,7 +137,9 @@ static void set_alter_table_copy_lock_none_error(struct mylite_db *database) {
     );
 }
 
-static void set_alter_table_key_maintenance_lock_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_key_maintenance_lock_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported,
@@ -91,7 +148,9 @@ static void set_alter_table_key_maintenance_lock_error(struct mylite_db *databas
     );
 }
 
-static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_alter_table_add_fulltext_lock_none_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_algorithm_not_supported_reason,
@@ -101,7 +160,7 @@ static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *datab
     );
 }
 
-static void set_no_tables_used_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_no_tables_used_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_no_tables_used,
@@ -110,7 +169,7 @@ static void set_no_tables_used_error(struct mylite_db *database) {
     );
 }
 
-static void set_in_subquery_limit_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_in_subquery_limit_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_not_supported_yet,
@@ -119,7 +178,9 @@ static void set_in_subquery_limit_error(struct mylite_db *database) {
     );
 }
 
-static void set_scalar_subquery_column_count_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_scalar_subquery_column_count_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_operand_should_contain_one_column,
@@ -128,7 +189,7 @@ static void set_scalar_subquery_column_count_error(struct mylite_db *database) {
     );
 }
 
-static void set_scalar_subquery_row_count_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_scalar_subquery_row_count_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_subquery_returns_more_than_one_row,
@@ -137,7 +198,9 @@ static void set_scalar_subquery_row_count_error(struct mylite_db *database) {
     );
 }
 
-static void set_union_column_count_mismatch_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_union_column_count_mismatch_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_select_reduced,
@@ -146,7 +209,10 @@ static void set_union_column_count_mismatch_error(struct mylite_db *database) {
     );
 }
 
-static void set_update_table_used_error(struct mylite_db *database, const char *table_name) {
+void mylite_execution_diagnostics_set_update_table_used_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -166,7 +232,10 @@ static void set_update_table_used_error(struct mylite_db *database, const char *
     );
 }
 
-static void set_session_variable_only_error(struct mylite_db *database, const char *variable_name) {
+void mylite_execution_diagnostics_set_session_variable_only_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Variable '%s' is a SESSION variable", variable_name);
@@ -183,7 +252,10 @@ static void set_session_variable_only_error(struct mylite_db *database, const ch
     );
 }
 
-static void set_global_variable_only_error(struct mylite_db *database, const char *variable_name) {
+void mylite_execution_diagnostics_set_global_variable_only_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Variable '%s' is a GLOBAL variable", variable_name);
@@ -200,7 +272,7 @@ static void set_global_variable_only_error(struct mylite_db *database, const cha
     );
 }
 
-static void set_global_variable_set_global_required_error(
+void mylite_execution_diagnostics_set_global_variable_set_global_required_error(
     struct mylite_db *database,
     const char *variable_name
 ) {
@@ -224,7 +296,7 @@ static void set_global_variable_set_global_required_error(
     );
 }
 
-static void set_session_read_only_system_variable_error(
+void mylite_execution_diagnostics_set_session_read_only_system_variable_error(
     struct mylite_db *database,
     const char *variable_name
 ) {
@@ -248,7 +320,7 @@ static void set_session_read_only_system_variable_error(
     );
 }
 
-static void set_read_only_system_variable_error(
+void mylite_execution_diagnostics_set_read_only_system_variable_error(
     struct mylite_db *database,
     const char *variable_name
 ) {
@@ -268,7 +340,7 @@ static void set_read_only_system_variable_error(
     );
 }
 
-static void set_unknown_system_variable_error(
+void mylite_execution_diagnostics_set_unknown_system_variable_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 ) {
@@ -278,7 +350,10 @@ static void set_unknown_system_variable_error(
     int written = 0;
 
     if (expression != NULL) {
-        (void)copy_system_variable_name_for_error(&expression->span, &variable_name);
+        (void)mylite_execution_diagnostics_copy_system_variable_name_for_error(
+            &expression->span,
+            &variable_name
+        );
     }
     if (variable_name != NULL) {
         display_name = variable_name;
@@ -298,7 +373,7 @@ static void set_unknown_system_variable_error(
     );
 }
 
-static void set_unknown_system_variable_name_error(
+void mylite_execution_diagnostics_set_unknown_system_variable_name_error(
     struct mylite_db *database,
     const char *variable_name
 ) {
@@ -318,7 +393,7 @@ static void set_unknown_system_variable_name_error(
     );
 }
 
-static int copy_system_variable_name_for_error(
+static int mylite_execution_diagnostics_copy_system_variable_name_for_error(
     const struct mylite_sql_source_span *span,
     char **out_name
 ) {
@@ -335,35 +410,43 @@ static int copy_system_variable_name_for_error(
         return MYLITE_ERROR;
     }
 
-    rc = copy_system_variable_component_name_for_error(span, &offset, &first);
+    rc = mylite_execution_diagnostics_copy_system_variable_component_name_for_error(
+        span,
+        &offset,
+        &first
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
 
     if (offset < span->length && span->text[offset] == '.') {
         ++offset;
-        rc = copy_system_variable_component_name_for_error(span, &offset, &second);
+        rc = mylite_execution_diagnostics_copy_system_variable_component_name_for_error(
+            span,
+            &offset,
+            &second
+        );
         if (rc != MYLITE_OK) {
             free(first);
             return rc;
         }
-        if (text_equals_ascii_case_insensitive(first, "session") ||
-            text_equals_ascii_case_insensitive(first, "local") ||
-            text_equals_ascii_case_insensitive(first, "global")) {
+        if (diagnostics_text_equals_ascii_case_insensitive(first, "session") ||
+            diagnostics_text_equals_ascii_case_insensitive(first, "local") ||
+            diagnostics_text_equals_ascii_case_insensitive(first, "global")) {
             free(first);
             *out_name = second;
             return MYLITE_OK;
         }
         free(second);
         free(first);
-        return copy_system_variable_raw_body_for_error(span, out_name);
+        return mylite_execution_diagnostics_copy_system_variable_raw_body_for_error(span, out_name);
     }
 
     *out_name = first;
     return MYLITE_OK;
 }
 
-static int copy_system_variable_component_name_for_error(
+static int mylite_execution_diagnostics_copy_system_variable_component_name_for_error(
     const struct mylite_sql_source_span *span,
     size_t *offset,
     char **out_name
@@ -386,7 +469,12 @@ static int copy_system_variable_component_name_for_error(
                 ++*offset;
                 if (*offset < span->length && span->text[*offset] == '`') {
                     int byte_rc =
-                        append_system_variable_error_name_byte('`', &name, &length, capacity);
+                        mylite_execution_diagnostics_append_system_variable_error_name_byte(
+                            '`',
+                            &name,
+                            &length,
+                            capacity
+                        );
                     if (byte_rc != MYLITE_OK) {
                         return byte_rc;
                     }
@@ -398,8 +486,12 @@ static int copy_system_variable_component_name_for_error(
             }
 
             {
-                int byte_rc =
-                    append_system_variable_error_name_byte(value, &name, &length, capacity);
+                int byte_rc = mylite_execution_diagnostics_append_system_variable_error_name_byte(
+                    value,
+                    &name,
+                    &length,
+                    capacity
+                );
                 if (byte_rc != MYLITE_OK) {
                     return byte_rc;
                 }
@@ -412,8 +504,12 @@ static int copy_system_variable_component_name_for_error(
     }
 
     while (*offset < span->length && span->text[*offset] != '.') {
-        int byte_rc =
-            append_system_variable_error_name_byte(span->text[*offset], &name, &length, capacity);
+        int byte_rc = mylite_execution_diagnostics_append_system_variable_error_name_byte(
+            span->text[*offset],
+            &name,
+            &length,
+            capacity
+        );
         if (byte_rc != MYLITE_OK) {
             return byte_rc;
         }
@@ -424,7 +520,7 @@ static int copy_system_variable_component_name_for_error(
     return MYLITE_OK;
 }
 
-static int copy_system_variable_raw_body_for_error(
+static int mylite_execution_diagnostics_copy_system_variable_raw_body_for_error(
     const struct mylite_sql_source_span *span,
     char **out_name
 ) {
@@ -441,7 +537,7 @@ static int copy_system_variable_raw_body_for_error(
     return MYLITE_OK;
 }
 
-static int append_system_variable_error_name_byte(
+static int mylite_execution_diagnostics_append_system_variable_error_name_byte(
     char value,
     char **name,
     size_t *length,
@@ -459,7 +555,7 @@ static int append_system_variable_error_name_byte(
     return MYLITE_OK;
 }
 
-static void set_native_function_parameter_count_error(
+void mylite_execution_diagnostics_set_native_function_parameter_count_error(
     struct mylite_db *database,
     const char *function_name
 ) {
@@ -483,7 +579,10 @@ static void set_native_function_parameter_count_error(
     );
 }
 
-static void set_invalid_json_function_text_error(struct mylite_db *database, size_t position) {
+void mylite_execution_diagnostics_set_invalid_json_function_text_error(
+    struct mylite_db *database,
+    size_t position
+) {
     struct mylite_json_normalize_result result = {
         .status = MYLITE_JSON_NORMALIZE_INVALID,
         .position = position,
@@ -508,7 +607,7 @@ static void set_invalid_json_function_text_error(struct mylite_db *database, siz
     );
 }
 
-static int append_invalid_json_value_warning(
+int mylite_execution_diagnostics_append_invalid_json_value_warning(
     struct mylite_db *database,
     const struct mylite_json_normalize_result *result
 ) {
@@ -533,7 +632,10 @@ static int append_invalid_json_value_warning(
     );
 }
 
-static void set_invalid_json_path_error(struct mylite_db *database, size_t position) {
+void mylite_execution_diagnostics_set_invalid_json_path_error(
+    struct mylite_db *database,
+    size_t position
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -553,7 +655,7 @@ static void set_invalid_json_path_error(struct mylite_db *database, size_t posit
     );
 }
 
-static void set_json_path_not_allowed_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_json_path_not_allowed_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_json_path_not_allowed,
@@ -562,7 +664,7 @@ static void set_json_path_not_allowed_error(struct mylite_db *database) {
     );
 }
 
-static void set_invalid_json_data_type_error(
+void mylite_execution_diagnostics_set_invalid_json_data_type_error(
     struct mylite_db *database,
     const char *function_name
 ) {
@@ -586,7 +688,7 @@ static void set_invalid_json_data_type_error(
     );
 }
 
-static void set_invalid_json_one_or_all_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_invalid_json_one_or_all_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_invalid_json_one_or_all,
@@ -595,7 +697,9 @@ static void set_invalid_json_one_or_all_error(struct mylite_db *database) {
     );
 }
 
-static void set_json_unquote_incorrect_type_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_json_unquote_incorrect_type_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_json_unquote_incorrect_type,
@@ -604,7 +708,7 @@ static void set_json_unquote_incorrect_type_error(struct mylite_db *database) {
     );
 }
 
-static void set_json_quote_incorrect_type_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_json_quote_incorrect_type_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_json_quote_incorrect_type,
@@ -613,7 +717,7 @@ static void set_json_quote_incorrect_type_error(struct mylite_db *database) {
     );
 }
 
-static void set_json_binary_charset_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_json_binary_charset_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_invalid_json_charset,
@@ -622,7 +726,7 @@ static void set_json_binary_charset_error(struct mylite_db *database) {
     );
 }
 
-static void set_json_null_member_name_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_json_null_member_name_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_json_null_member_name,
@@ -631,7 +735,7 @@ static void set_json_null_member_name_error(struct mylite_db *database) {
     );
 }
 
-static void set_no_database_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_no_database_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_no_database_selected,
@@ -640,7 +744,10 @@ static void set_no_database_error(struct mylite_db *database) {
     );
 }
 
-static void set_database_access_denied_error(struct mylite_db *database, const char *schema_name) {
+void mylite_execution_diagnostics_set_database_access_denied_error(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -660,7 +767,10 @@ static void set_database_access_denied_error(struct mylite_db *database, const c
     );
 }
 
-static void set_system_schema_access_error(struct mylite_db *database, const char *schema_name) {
+void mylite_execution_diagnostics_set_system_schema_access_error(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -680,7 +790,7 @@ static void set_system_schema_access_error(struct mylite_db *database, const cha
     );
 }
 
-static void set_mysql_data_dictionary_table_access_error(
+void mylite_execution_diagnostics_set_mysql_data_dictionary_table_access_error(
     struct mylite_db *database,
     const char *table_name
 ) {
@@ -708,7 +818,10 @@ static void set_mysql_data_dictionary_table_access_error(
     );
 }
 
-static void set_database_exists_error(struct mylite_db *database, const char *schema_name) {
+void mylite_execution_diagnostics_set_database_exists_error(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -728,7 +841,10 @@ static void set_database_exists_error(struct mylite_db *database, const char *sc
     );
 }
 
-static int append_database_exists_note(struct mylite_db *database, const char *schema_name) {
+int mylite_execution_diagnostics_append_database_exists_note(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -748,7 +864,10 @@ static int append_database_exists_note(struct mylite_db *database, const char *s
     );
 }
 
-static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name) {
+void mylite_execution_diagnostics_set_cant_drop_database_error(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -768,7 +887,10 @@ static void set_cant_drop_database_error(struct mylite_db *database, const char 
     );
 }
 
-static void set_unknown_database_error(struct mylite_db *database, const char *schema_name) {
+void mylite_execution_diagnostics_set_unknown_database_error(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Unknown database '%s'", schema_name);
 
@@ -783,7 +905,10 @@ static void set_unknown_database_error(struct mylite_db *database, const char *s
     );
 }
 
-static void set_database_does_not_exist_error(struct mylite_db *database, const char *schema_name) {
+void mylite_execution_diagnostics_set_database_does_not_exist_error(
+    struct mylite_db *database,
+    const char *schema_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Database '%s' doesn't exist", schema_name);
 
@@ -798,7 +923,10 @@ static void set_database_does_not_exist_error(struct mylite_db *database, const 
     );
 }
 
-static void set_table_exists_error(struct mylite_db *database, const char *table_name) {
+void mylite_execution_diagnostics_set_table_exists_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Table '%s' already exists", table_name);
 
@@ -813,7 +941,10 @@ static void set_table_exists_error(struct mylite_db *database, const char *table
     );
 }
 
-static int append_table_exists_note(struct mylite_db *database, const char *table_name) {
+int mylite_execution_diagnostics_append_table_exists_note(
+    struct mylite_db *database,
+    const char *table_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Table '%s' already exists", table_name);
 
@@ -828,7 +959,7 @@ static int append_table_exists_note(struct mylite_db *database, const char *tabl
     );
 }
 
-static void set_create_table_select_locking_clause_error(
+void mylite_execution_diagnostics_set_create_table_select_locking_clause_error(
     struct mylite_db *database,
     const char *source_table_name,
     const char *target_table_name
@@ -853,7 +984,7 @@ static void set_create_table_select_locking_clause_error(
     );
 }
 
-static void set_unknown_table_error(
+void mylite_execution_diagnostics_set_unknown_table_error(
     struct mylite_db *database,
     const char *schema_name,
     const char *table_name
@@ -873,7 +1004,7 @@ static void set_unknown_table_error(
     );
 }
 
-static void set_not_view_error(
+void mylite_execution_diagnostics_set_not_view_error(
     struct mylite_db *database,
     const char *schema_name,
     const char *table_name
@@ -893,7 +1024,10 @@ static void set_not_view_error(
     );
 }
 
-static void set_unknown_table_name_error(struct mylite_db *database, const char *table_name) {
+void mylite_execution_diagnostics_set_unknown_table_name_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Unknown table '%s'", table_name);
 
@@ -908,7 +1042,7 @@ static void set_unknown_table_name_error(struct mylite_db *database, const char 
     );
 }
 
-static void set_unknown_multi_delete_table_error(
+void mylite_execution_diagnostics_set_unknown_multi_delete_table_error(
     struct mylite_db *database,
     const char *table_name
 ) {
@@ -927,7 +1061,11 @@ static void set_unknown_multi_delete_table_error(
     );
 }
 
-static void set_wrong_usage_error(struct mylite_db *database, const char *left, const char *right) {
+void mylite_execution_diagnostics_set_wrong_usage_error(
+    struct mylite_db *database,
+    const char *left,
+    const char *right
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Incorrect usage of %s and %s", left, right);
 
@@ -942,7 +1080,7 @@ static void set_wrong_usage_error(struct mylite_db *database, const char *left, 
     );
 }
 
-static int set_unknown_drop_tables_error(
+int mylite_execution_diagnostics_set_unknown_drop_tables_error(
     struct mylite_db *database,
     const struct planned_drop_table *plan
 ) {
@@ -985,7 +1123,7 @@ static int set_unknown_drop_tables_error(
     }
     if (rc != MYLITE_OK) {
         mylite_dynamic_string_deinit(&message);
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
         return rc;
     }
 
@@ -1000,7 +1138,7 @@ static int set_unknown_drop_tables_error(
     return MYLITE_ERROR;
 }
 
-static int append_unknown_table_note(
+int mylite_execution_diagnostics_append_unknown_table_note(
     struct mylite_db *database,
     const char *schema_name,
     const char *table_name
@@ -1020,7 +1158,7 @@ static int append_unknown_table_note(
     );
 }
 
-static void set_table_does_not_exist_error(
+void mylite_execution_diagnostics_set_table_does_not_exist_error(
     struct mylite_db *database,
     const char *schema_name,
     const char *table_name
@@ -1040,7 +1178,10 @@ static void set_table_does_not_exist_error(
     );
 }
 
-static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name) {
+void mylite_execution_diagnostics_set_unknown_storage_engine_error(
+    struct mylite_db *database,
+    const char *engine_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Unknown storage engine '%s'", engine_name);
 
@@ -1055,7 +1196,7 @@ static void set_unknown_storage_engine_error(struct mylite_db *database, const c
     );
 }
 
-static void set_table_storage_engine_option_error(
+void mylite_execution_diagnostics_set_table_storage_engine_option_error(
     struct mylite_db *database,
     const char *table_name
 ) {
@@ -1078,7 +1219,7 @@ static void set_table_storage_engine_option_error(
     );
 }
 
-static int append_table_storage_engine_option_note(
+int mylite_execution_diagnostics_append_table_storage_engine_option_note(
     struct mylite_db *database,
     const char *table_name
 ) {
@@ -1101,7 +1242,7 @@ static int append_table_storage_engine_option_note(
     );
 }
 
-static void set_failed_read_auto_increment_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_failed_read_auto_increment_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_failed_read_auto_increment,
@@ -1110,7 +1251,10 @@ static void set_failed_read_auto_increment_error(struct mylite_db *database) {
     );
 }
 
-static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name) {
+void mylite_execution_diagnostics_set_unknown_character_set_error(
+    struct mylite_db *database,
+    const char *charset_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Unknown character set: '%s'", charset_name);
 
@@ -1125,7 +1269,10 @@ static void set_unknown_character_set_error(struct mylite_db *database, const ch
     );
 }
 
-static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name) {
+void mylite_execution_diagnostics_set_unknown_collation_error(
+    struct mylite_db *database,
+    const char *collation_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Unknown collation: '%s'", collation_name);
 
@@ -1140,7 +1287,7 @@ static void set_unknown_collation_error(struct mylite_db *database, const char *
     );
 }
 
-static void set_savepoint_does_not_exist_error(
+void mylite_execution_diagnostics_set_savepoint_does_not_exist_error(
     struct mylite_db *database,
     const char *savepoint_name
 ) {
@@ -1158,7 +1305,7 @@ static void set_savepoint_does_not_exist_error(
     );
 }
 
-static void set_collation_not_valid_for_charset_error(
+void mylite_execution_diagnostics_set_collation_not_valid_for_charset_error(
     struct mylite_db *database,
     const char *collation_name,
     const char *charset_name
@@ -1183,7 +1330,7 @@ static void set_collation_not_valid_for_charset_error(
     );
 }
 
-static void set_illegal_mix_of_collations_error(
+void mylite_execution_diagnostics_set_illegal_mix_of_collations_error(
     struct mylite_db *database,
     const char *first_collation,
     const char *second_collation,
@@ -1210,7 +1357,7 @@ static void set_illegal_mix_of_collations_error(
     );
 }
 
-static void set_conflicting_character_set_declarations_error(
+void mylite_execution_diagnostics_set_conflicting_character_set_declarations_error(
     struct mylite_db *database,
     const char *first_charset,
     const char *second_charset
@@ -1235,7 +1382,10 @@ static void set_conflicting_character_set_declarations_error(
     );
 }
 
-static void set_duplicate_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_duplicate_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Duplicate column name '%s'", column_name);
 
@@ -1250,7 +1400,7 @@ static void set_duplicate_column_error(struct mylite_db *database, const char *c
     );
 }
 
-static void set_duplicated_enum_value_error(
+void mylite_execution_diagnostics_set_duplicated_enum_value_error(
     struct mylite_db *database,
     const char *column_name,
     const char *value,
@@ -1278,7 +1428,7 @@ static void set_duplicated_enum_value_error(
     );
 }
 
-static void set_duplicated_set_value_error(
+void mylite_execution_diagnostics_set_duplicated_set_value_error(
     struct mylite_db *database,
     const char *column_name,
     const char *value,
@@ -1306,7 +1456,7 @@ static void set_duplicated_set_value_error(
     );
 }
 
-static void set_illegal_set_value_error(
+void mylite_execution_diagnostics_set_illegal_set_value_error(
     struct mylite_db *database,
     const char *value,
     size_t value_length
@@ -1332,7 +1482,7 @@ static void set_illegal_set_value_error(
     );
 }
 
-static void set_multiple_primary_key_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_multiple_primary_key_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_multiple_primary_key,
@@ -1341,7 +1491,7 @@ static void set_multiple_primary_key_error(struct mylite_db *database) {
     );
 }
 
-static void set_sql_require_primary_key_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_sql_require_primary_key_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_primary_key_required,
@@ -1354,7 +1504,7 @@ static void set_sql_require_primary_key_error(struct mylite_db *database) {
     );
 }
 
-static void set_wrong_auto_key_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_wrong_auto_key_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_wrong_auto_key,
@@ -1364,7 +1514,7 @@ static void set_wrong_auto_key_error(struct mylite_db *database) {
     );
 }
 
-static void set_column_length_too_big_error(
+void mylite_execution_diagnostics_set_column_length_too_big_error(
     struct mylite_db *database,
     const char *column_name,
     uint64_t maximum_length
@@ -1389,7 +1539,7 @@ static void set_column_length_too_big_error(
     );
 }
 
-static void set_row_size_too_large_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_row_size_too_large_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_row_size_too_large,
@@ -1400,7 +1550,7 @@ static void set_row_size_too_large_error(struct mylite_db *database) {
     );
 }
 
-static void set_incorrect_column_specifier_error(
+void mylite_execution_diagnostics_set_incorrect_column_specifier_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -1423,7 +1573,10 @@ static void set_incorrect_column_specifier_error(
     );
 }
 
-static void set_key_column_missing_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_key_column_missing_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Key column '%s' doesn't exist in table", column_name);
@@ -1439,7 +1592,7 @@ static void set_key_column_missing_error(struct mylite_db *database, const char 
     );
 }
 
-static void set_invalid_use_of_null_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_invalid_use_of_null_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_invalid_use_of_null,
@@ -1448,7 +1601,7 @@ static void set_invalid_use_of_null_error(struct mylite_db *database) {
     );
 }
 
-static void set_primary_key_part_null_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_primary_key_part_null_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_primary_key_part_null,
@@ -1457,7 +1610,10 @@ static void set_primary_key_part_null_error(struct mylite_db *database) {
     );
 }
 
-static void set_duplicate_key_name_error(struct mylite_db *database, const char *index_name) {
+void mylite_execution_diagnostics_set_duplicate_key_name_error(
+    struct mylite_db *database,
+    const char *index_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Duplicate key name '%s'", index_name);
 
@@ -1472,7 +1628,10 @@ static void set_duplicate_key_name_error(struct mylite_db *database, const char 
     );
 }
 
-static void set_incorrect_index_name_error(struct mylite_db *database, const char *index_name) {
+void mylite_execution_diagnostics_set_incorrect_index_name_error(
+    struct mylite_db *database,
+    const char *index_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Incorrect index name '%s'", index_name);
 
@@ -1487,7 +1646,7 @@ static void set_incorrect_index_name_error(struct mylite_db *database, const cha
     );
 }
 
-static void set_index_hint_use_force_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_index_hint_use_force_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_wrong_usage,
@@ -1496,7 +1655,7 @@ static void set_index_hint_use_force_error(struct mylite_db *database) {
     );
 }
 
-static void set_key_does_not_exist_in_table_error(
+void mylite_execution_diagnostics_set_key_does_not_exist_in_table_error(
     struct mylite_db *database,
     const char *index_name,
     const char *table_name
@@ -1521,7 +1680,9 @@ static void set_key_does_not_exist_in_table_error(
     );
 }
 
-static void set_primary_key_index_invisible_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_primary_key_index_invisible_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_primary_key_index_invisible,
@@ -1530,7 +1691,7 @@ static void set_primary_key_index_invisible_error(struct mylite_db *database) {
     );
 }
 
-static void set_storage_engine_cant_index_column_error(
+void mylite_execution_diagnostics_set_storage_engine_cant_index_column_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -1553,7 +1714,10 @@ static void set_storage_engine_cant_index_column_error(
     );
 }
 
-static void set_fulltext_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_fulltext_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1573,7 +1737,7 @@ static void set_fulltext_column_error(struct mylite_db *database, const char *co
     );
 }
 
-static void set_fulltext_explicit_order_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_fulltext_explicit_order_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_wrong_usage,
@@ -1582,7 +1746,7 @@ static void set_fulltext_explicit_order_error(struct mylite_db *database) {
     );
 }
 
-static void set_temporary_fulltext_index_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_temporary_fulltext_index_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_temporary_fulltext_index,
@@ -1591,7 +1755,9 @@ static void set_temporary_fulltext_index_error(struct mylite_db *database) {
     );
 }
 
-static void set_spatial_index_non_geometric_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_spatial_index_non_geometric_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_spatial_index_non_geometric,
@@ -1600,7 +1766,9 @@ static void set_spatial_index_non_geometric_error(struct mylite_db *database) {
     );
 }
 
-static void set_spatial_index_must_be_not_null_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_spatial_index_must_be_not_null_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_spatial_must_be_not_null,
@@ -1609,7 +1777,7 @@ static void set_spatial_index_must_be_not_null_error(struct mylite_db *database)
     );
 }
 
-static void set_spatial_unique_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_spatial_unique_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_spatial_unique,
@@ -1618,7 +1786,7 @@ static void set_spatial_unique_error(struct mylite_db *database) {
     );
 }
 
-static void set_spatial_index_type_not_supported_error(
+void mylite_execution_diagnostics_set_spatial_index_type_not_supported_error(
     struct mylite_db *database,
     const char *index_type
 ) {
@@ -1631,7 +1799,10 @@ static void set_spatial_index_type_not_supported_error(
     );
 
     if (written < 0 || (size_t)written >= sizeof(message)) {
-        set_runtime_error(database, "spatial index type diagnostic is too long");
+        mylite_execution_diagnostics_set_runtime_error(
+            database,
+            "spatial index type diagnostic is too long"
+        );
         return;
     }
     mylite_diagnostics_set_error(
@@ -1642,7 +1813,7 @@ static void set_spatial_index_type_not_supported_error(
     );
 }
 
-static void set_spatial_too_many_key_parts_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_spatial_too_many_key_parts_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_too_many_key_parts,
@@ -1651,7 +1822,10 @@ static void set_spatial_too_many_key_parts_error(struct mylite_db *database) {
     );
 }
 
-static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_blob_key_without_length_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1671,7 +1845,10 @@ static void set_blob_key_without_length_error(struct mylite_db *database, const 
     );
 }
 
-static void set_json_key_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_json_key_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1691,7 +1868,7 @@ static void set_json_key_error(struct mylite_db *database, const char *column_na
     );
 }
 
-static void set_incorrect_prefix_key_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_incorrect_prefix_key_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_incorrect_prefix_key,
@@ -1701,7 +1878,7 @@ static void set_incorrect_prefix_key_error(struct mylite_db *database) {
     );
 }
 
-static void set_key_part_length_cannot_be_zero_error(
+void mylite_execution_diagnostics_set_key_part_length_cannot_be_zero_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -1720,7 +1897,10 @@ static void set_key_part_length_cannot_be_zero_error(
     );
 }
 
-static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes) {
+void mylite_execution_diagnostics_set_key_too_long_error(
+    struct mylite_db *database,
+    uint64_t maximum_key_length_bytes
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1740,7 +1920,10 @@ static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_
     );
 }
 
-static void set_table_comment_too_long_error(struct mylite_db *database, const char *table_name) {
+void mylite_execution_diagnostics_set_table_comment_too_long_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1760,7 +1943,10 @@ static void set_table_comment_too_long_error(struct mylite_db *database, const c
     );
 }
 
-static void set_column_comment_too_long_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_column_comment_too_long_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1780,7 +1966,10 @@ static void set_column_comment_too_long_error(struct mylite_db *database, const 
     );
 }
 
-static void set_index_comment_too_long_error(struct mylite_db *database, const char *index_name) {
+void mylite_execution_diagnostics_set_index_comment_too_long_error(
+    struct mylite_db *database,
+    const char *index_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -1800,11 +1989,14 @@ static void set_index_comment_too_long_error(struct mylite_db *database, const c
     );
 }
 
-static void set_non_ascii_string_key_error(struct mylite_db *database) {
-    set_unsupported_error(database, "non-ASCII string key values are not supported");
+void mylite_execution_diagnostics_set_non_ascii_string_key_error(struct mylite_db *database) {
+    mylite_execution_diagnostics_set_unsupported_error(
+        database,
+        "non-ASCII string key values are not supported"
+    );
 }
 
-static void set_duplicate_key_error(
+void mylite_execution_diagnostics_set_duplicate_key_error(
     struct mylite_db *database,
     const char *table_name,
     const char *index_name,
@@ -1831,7 +2023,7 @@ static void set_duplicate_key_error(
     );
 }
 
-static void set_no_referenced_row_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_no_referenced_row_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_no_referenced_row,
@@ -1840,7 +2032,7 @@ static void set_no_referenced_row_error(struct mylite_db *database) {
     );
 }
 
-static void set_row_is_referenced_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_row_is_referenced_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_row_is_referenced,
@@ -1849,7 +2041,7 @@ static void set_row_is_referenced_error(struct mylite_db *database) {
     );
 }
 
-static void set_cannot_drop_index_needed_foreign_key_error(
+void mylite_execution_diagnostics_set_cannot_drop_index_needed_foreign_key_error(
     struct mylite_db *database,
     const char *index_name
 ) {
@@ -1872,7 +2064,7 @@ static void set_cannot_drop_index_needed_foreign_key_error(
     );
 }
 
-static void set_failed_to_open_referenced_table_error(
+void mylite_execution_diagnostics_set_failed_to_open_referenced_table_error(
     struct mylite_db *database,
     const char *table_name
 ) {
@@ -1891,7 +2083,9 @@ static void set_failed_to_open_referenced_table_error(
     );
 }
 
-static void set_incorrect_foreign_key_definition_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_incorrect_foreign_key_definition_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_incorrect_foreign_key_definition,
@@ -1900,7 +2094,9 @@ static void set_incorrect_foreign_key_definition_error(struct mylite_db *databas
     );
 }
 
-static void set_foreign_key_column_incompatible_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_foreign_key_column_incompatible_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_foreign_key_column_incompatible,
@@ -1909,7 +2105,7 @@ static void set_foreign_key_column_incompatible_error(struct mylite_db *database
     );
 }
 
-static void set_foreign_key_missing_unique_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_foreign_key_missing_unique_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_foreign_key_missing_unique,
@@ -1918,7 +2114,7 @@ static void set_foreign_key_missing_unique_error(struct mylite_db *database) {
     );
 }
 
-static void set_duplicate_foreign_key_error(
+void mylite_execution_diagnostics_set_duplicate_foreign_key_error(
     struct mylite_db *database,
     const char *foreign_key_name
 ) {
@@ -1941,7 +2137,7 @@ static void set_duplicate_foreign_key_error(
     );
 }
 
-static void set_drop_column_foreign_key_child_error(
+void mylite_execution_diagnostics_set_drop_column_foreign_key_child_error(
     struct mylite_db *database,
     const char *column_name,
     const char *foreign_key_name
@@ -1966,7 +2162,7 @@ static void set_drop_column_foreign_key_child_error(
     );
 }
 
-static void set_drop_column_foreign_key_parent_error(
+void mylite_execution_diagnostics_set_drop_column_foreign_key_parent_error(
     struct mylite_db *database,
     const char *column_name,
     const char *foreign_key_name,
@@ -1993,7 +2189,7 @@ static void set_drop_column_foreign_key_parent_error(
     );
 }
 
-static void set_foreign_key_set_null_not_nullable_error(
+void mylite_execution_diagnostics_set_foreign_key_set_null_not_nullable_error(
     struct mylite_db *database,
     const char *column_name,
     const char *foreign_key_name
@@ -2018,7 +2214,7 @@ static void set_foreign_key_set_null_not_nullable_error(
     );
 }
 
-static void set_foreign_key_cascade_duplicate_error(
+void mylite_execution_diagnostics_set_foreign_key_cascade_duplicate_error(
     struct mylite_db *database,
     const char *parent_table_name,
     const char *record_value,
@@ -2048,7 +2244,9 @@ static void set_foreign_key_cascade_duplicate_error(
     );
 }
 
-static void set_check_constraint_non_boolean_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_check_constraint_non_boolean_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_non_boolean,
@@ -2057,7 +2255,7 @@ static void set_check_constraint_non_boolean_error(struct mylite_db *database) {
     );
 }
 
-static void set_check_constraint_column_ref_error(
+void mylite_execution_diagnostics_set_check_constraint_column_ref_error(
     struct mylite_db *database,
     const char *constraint_name,
     const char *column_name
@@ -2082,7 +2280,7 @@ static void set_check_constraint_column_ref_error(
     );
 }
 
-static void set_check_constraint_function_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_check_constraint_function_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_function,
@@ -2091,7 +2289,7 @@ static void set_check_constraint_function_error(struct mylite_db *database) {
     );
 }
 
-static void set_check_constraint_subquery_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_check_constraint_subquery_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_subquery,
@@ -2100,7 +2298,7 @@ static void set_check_constraint_subquery_error(struct mylite_db *database) {
     );
 }
 
-static void set_check_constraint_variable_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_check_constraint_variable_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_variable,
@@ -2109,7 +2307,9 @@ static void set_check_constraint_variable_error(struct mylite_db *database) {
     );
 }
 
-static void set_check_constraint_auto_increment_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_check_constraint_auto_increment_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_auto_increment,
@@ -2118,7 +2318,7 @@ static void set_check_constraint_auto_increment_error(struct mylite_db *database
     );
 }
 
-static void set_check_constraint_violated_error(
+void mylite_execution_diagnostics_set_check_constraint_violated_error(
     struct mylite_db *database,
     const char *constraint_name
 ) {
@@ -2137,7 +2337,7 @@ static void set_check_constraint_violated_error(
     );
 }
 
-static void set_check_constraint_not_found_error(
+void mylite_execution_diagnostics_set_check_constraint_not_found_error(
     struct mylite_db *database,
     const char *constraint_name
 ) {
@@ -2160,7 +2360,7 @@ static void set_check_constraint_not_found_error(
     );
 }
 
-static void set_drop_constraint_ambiguous_error(
+void mylite_execution_diagnostics_set_drop_constraint_ambiguous_error(
     struct mylite_db *database,
     const char *constraint_name
 ) {
@@ -2184,7 +2384,7 @@ static void set_drop_constraint_ambiguous_error(
     );
 }
 
-static void set_constraint_does_not_exist_error(
+void mylite_execution_diagnostics_set_constraint_does_not_exist_error(
     struct mylite_db *database,
     const char *constraint_name
 ) {
@@ -2203,7 +2403,7 @@ static void set_constraint_does_not_exist_error(
     );
 }
 
-static void set_check_constraint_unknown_column_error(
+void mylite_execution_diagnostics_set_check_constraint_unknown_column_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -2226,7 +2426,7 @@ static void set_check_constraint_unknown_column_error(
     );
 }
 
-static void set_alter_check_constraint_unknown_column_error(
+void mylite_execution_diagnostics_set_alter_check_constraint_unknown_column_error(
     struct mylite_db *database,
     const char *column_name,
     const char *constraint_name
@@ -2251,7 +2451,7 @@ static void set_alter_check_constraint_unknown_column_error(
     );
 }
 
-static void set_duplicate_check_constraint_error(
+void mylite_execution_diagnostics_set_duplicate_check_constraint_error(
     struct mylite_db *database,
     const char *check_constraint_name
 ) {
@@ -2274,7 +2474,7 @@ static void set_duplicate_check_constraint_error(
     );
 }
 
-static int append_check_constraint_warning(
+int mylite_execution_diagnostics_append_check_constraint_warning(
     struct mylite_db *database,
     const char *constraint_name
 ) {
@@ -2293,12 +2493,12 @@ static int append_check_constraint_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_duplicate_key_warning(
+int mylite_execution_diagnostics_append_duplicate_key_warning(
     struct mylite_db *database,
     const char *table_name,
     const char *index_name,
@@ -2325,12 +2525,12 @@ static int append_duplicate_key_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_no_referenced_row_warning(struct mylite_db *database) {
+int mylite_execution_diagnostics_append_no_referenced_row_warning(struct mylite_db *database) {
     int rc = mylite_diagnostics_append_warning(
         mylite_connection_diagnostics(database),
         mysql_error_no_referenced_row,
@@ -2339,12 +2539,15 @@ static int append_no_referenced_row_warning(struct mylite_db *database) {
     );
 
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static void set_duplicate_table_alias_error(struct mylite_db *database, const char *table_name) {
+void mylite_execution_diagnostics_set_duplicate_table_alias_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Not unique table/alias: '%s'", table_name);
 
@@ -2359,7 +2562,10 @@ static void set_duplicate_table_alias_error(struct mylite_db *database, const ch
     );
 }
 
-static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_cant_drop_field_or_key_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -2379,7 +2585,7 @@ static void set_cant_drop_field_or_key_error(struct mylite_db *database, const c
     );
 }
 
-static void set_cant_remove_all_fields_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_cant_remove_all_fields_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_cant_remove_all_fields,
@@ -2388,7 +2594,7 @@ static void set_cant_remove_all_fields_error(struct mylite_db *database) {
     );
 }
 
-static void set_must_have_visible_column_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_must_have_visible_column_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_must_have_visible_column,
@@ -2397,7 +2603,7 @@ static void set_must_have_visible_column_error(struct mylite_db *database) {
     );
 }
 
-static void set_unknown_column_in_table_error(
+void mylite_execution_diagnostics_set_unknown_column_in_table_error(
     struct mylite_db *database,
     const char *column_name,
     const char *table_name
@@ -2417,7 +2623,7 @@ static void set_unknown_column_in_table_error(
     );
 }
 
-static void set_unknown_information_schema_table_error(
+void mylite_execution_diagnostics_set_unknown_information_schema_table_error(
     struct mylite_db *database,
     const char *table_name
 ) {
@@ -2436,7 +2642,10 @@ static void set_unknown_information_schema_table_error(
     );
 }
 
-static void set_unknown_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_unknown_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown column '%s' in 'field list'", column_name);
@@ -2452,7 +2661,10 @@ static void set_unknown_column_error(struct mylite_db *database, const char *col
     );
 }
 
-static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_unknown_where_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown column '%s' in 'where clause'", column_name);
@@ -2468,7 +2680,10 @@ static void set_unknown_where_column_error(struct mylite_db *database, const cha
     );
 }
 
-static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_unknown_order_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown column '%s' in 'order clause'", column_name);
@@ -2484,7 +2699,10 @@ static void set_unknown_order_column_error(struct mylite_db *database, const cha
     );
 }
 
-static void set_unknown_group_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_unknown_group_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown column '%s' in 'group statement'", column_name);
@@ -2500,7 +2718,10 @@ static void set_unknown_group_column_error(struct mylite_db *database, const cha
     );
 }
 
-static void set_unknown_having_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_unknown_having_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown column '%s' in 'having clause'", column_name);
@@ -2516,7 +2737,10 @@ static void set_unknown_having_column_error(struct mylite_db *database, const ch
     );
 }
 
-static void set_unknown_on_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_unknown_on_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown column '%s' in 'on clause'", column_name);
@@ -2532,7 +2756,7 @@ static void set_unknown_on_column_error(struct mylite_db *database, const char *
     );
 }
 
-static void set_ambiguous_column_reference_error(
+void mylite_execution_diagnostics_set_ambiguous_column_reference_error(
     struct mylite_db *database,
     enum column_reference_diagnostic_context context,
     const char *column_name
@@ -2571,7 +2795,10 @@ static void set_ambiguous_column_reference_error(
     );
 }
 
-static void set_ambiguous_order_column_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_ambiguous_order_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Column '%s' in order clause is ambiguous", column_name);
@@ -2587,7 +2814,10 @@ static void set_ambiguous_order_column_error(struct mylite_db *database, const c
     );
 }
 
-static void set_not_unique_table_alias_error(struct mylite_db *database, const char *alias) {
+void mylite_execution_diagnostics_set_not_unique_table_alias_error(
+    struct mylite_db *database,
+    const char *alias
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Not unique table/alias: '%s'", alias);
 
@@ -2602,7 +2832,7 @@ static void set_not_unique_table_alias_error(struct mylite_db *database, const c
     );
 }
 
-static void set_only_full_group_by_error(
+void mylite_execution_diagnostics_set_only_full_group_by_error(
     struct mylite_db *database,
     size_t expression_index,
     const char *clause_name,
@@ -2634,7 +2864,10 @@ static void set_only_full_group_by_error(
     );
 }
 
-static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_column_specified_twice_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Column '%s' specified twice", column_name);
 
@@ -2649,7 +2882,10 @@ static void set_column_specified_twice_error(struct mylite_db *database, const c
     );
 }
 
-static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number) {
+void mylite_execution_diagnostics_set_column_count_mismatch_error(
+    struct mylite_db *database,
+    size_t row_number
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -2669,7 +2905,7 @@ static void set_column_count_mismatch_error(struct mylite_db *database, size_t r
     );
 }
 
-static void set_values_empty_row_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_values_empty_row_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_empty_values_row,
@@ -2679,7 +2915,7 @@ static void set_values_empty_row_error(struct mylite_db *database) {
     );
 }
 
-static void set_values_default_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_values_default_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_values_default,
@@ -2688,7 +2924,9 @@ static void set_values_default_error(struct mylite_db *database) {
     );
 }
 
-static void set_values_integer_out_of_range_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_values_integer_out_of_range_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_data_out_of_range,
@@ -2697,7 +2935,10 @@ static void set_values_integer_out_of_range_error(struct mylite_db *database) {
     );
 }
 
-static void set_bad_null_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_bad_null_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Column '%s' cannot be null", column_name);
 
@@ -2712,7 +2953,7 @@ static void set_bad_null_error(struct mylite_db *database, const char *column_na
     );
 }
 
-static void set_load_data_file_error(
+void mylite_execution_diagnostics_set_load_data_file_error(
     struct mylite_db *database,
     const char *file_path,
     int os_error
@@ -2739,7 +2980,7 @@ static void set_load_data_file_error(
     );
 }
 
-static void set_load_data_local_disabled_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_load_data_local_disabled_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_load_data_local_disabled,
@@ -2748,7 +2989,10 @@ static void set_load_data_local_disabled_error(struct mylite_db *database) {
     );
 }
 
-static void set_load_data_row_missing_error(struct mylite_db *database, size_t row_number) {
+void mylite_execution_diagnostics_set_load_data_row_missing_error(
+    struct mylite_db *database,
+    size_t row_number
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -2768,7 +3012,7 @@ static void set_load_data_row_missing_error(struct mylite_db *database, size_t r
     );
 }
 
-static int append_load_data_row_missing_warnings(
+int mylite_execution_diagnostics_append_load_data_row_missing_warnings(
     struct mylite_db *database,
     struct load_data_missing_warning_request request
 ) {
@@ -2793,13 +3037,16 @@ static int append_load_data_row_missing_warnings(
             message
         );
         if (rc == MYLITE_NOMEM) {
-            set_nomem_error(database);
+            mylite_execution_diagnostics_set_nomem_error(database);
         }
     }
     return rc;
 }
 
-static void set_load_data_row_truncated_error(struct mylite_db *database, size_t row_number) {
+void mylite_execution_diagnostics_set_load_data_row_truncated_error(
+    struct mylite_db *database,
+    size_t row_number
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -2819,7 +3066,10 @@ static void set_load_data_row_truncated_error(struct mylite_db *database, size_t
     );
 }
 
-static int append_load_data_row_truncated_warning(struct mylite_db *database, size_t row_number) {
+int mylite_execution_diagnostics_append_load_data_row_truncated_warning(
+    struct mylite_db *database,
+    size_t row_number
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -2839,12 +3089,12 @@ static int append_load_data_row_truncated_warning(struct mylite_db *database, si
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static void set_load_data_null_to_not_null_error(
+void mylite_execution_diagnostics_set_load_data_null_to_not_null_error(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -2869,7 +3119,7 @@ static void set_load_data_null_to_not_null_error(
     );
 }
 
-static int append_load_data_null_to_not_null_warning(
+int mylite_execution_diagnostics_append_load_data_null_to_not_null_warning(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -2894,12 +3144,15 @@ static int append_load_data_null_to_not_null_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_spatial_bad_null_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Column '%s' cannot be null", column_name);
 
@@ -2914,7 +3167,7 @@ static void set_spatial_bad_null_error(struct mylite_db *database, const char *c
     );
 }
 
-static void set_generated_column_value_error(
+void mylite_execution_diagnostics_set_generated_column_value_error(
     struct mylite_db *database,
     const char *column_name,
     const char *table_name
@@ -2939,7 +3192,7 @@ static void set_generated_column_value_error(
     );
 }
 
-static void set_data_truncated_error(
+void mylite_execution_diagnostics_set_data_truncated_error(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -2964,7 +3217,7 @@ static void set_data_truncated_error(
     );
 }
 
-static void set_data_too_long_error(
+void mylite_execution_diagnostics_set_data_too_long_error(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -2989,7 +3242,10 @@ static void set_data_too_long_error(
     );
 }
 
-static void set_invalid_default_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_invalid_default_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Invalid default value for '%s'", column_name);
 
@@ -3004,7 +3260,10 @@ static void set_invalid_default_error(struct mylite_db *database, const char *co
     );
 }
 
-static void set_json_cant_have_default_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_json_cant_have_default_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -3024,7 +3283,7 @@ static void set_json_cant_have_default_error(struct mylite_db *database, const c
     );
 }
 
-static void set_invalid_json_text_error(
+void mylite_execution_diagnostics_set_invalid_json_text_error(
     struct mylite_db *database,
     size_t position,
     const char *column_name
@@ -3049,7 +3308,10 @@ static void set_invalid_json_text_error(
     );
 }
 
-static void set_no_default_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_no_default_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Field '%s' doesn't have a default value", column_name);
@@ -3065,7 +3327,9 @@ static void set_no_default_error(struct mylite_db *database, const char *column_
     );
 }
 
-static void set_default_function_expression_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_default_function_expression_error(
+    struct mylite_db *database
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_default_val_generated,
@@ -3074,7 +3338,7 @@ static void set_default_function_expression_error(struct mylite_db *database) {
     );
 }
 
-static void set_out_of_range_error(
+void mylite_execution_diagnostics_set_out_of_range_error(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -3099,7 +3363,10 @@ static void set_out_of_range_error(
     );
 }
 
-static void set_invalid_column_size_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_invalid_column_size_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Invalid size for column '%s'.", column_name);
 
@@ -3114,7 +3381,7 @@ static void set_invalid_column_size_error(struct mylite_db *database, const char
     );
 }
 
-static void set_incorrect_date_value_error(
+void mylite_execution_diagnostics_set_incorrect_date_value_error(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3141,7 +3408,7 @@ static void set_incorrect_date_value_error(
     );
 }
 
-static void set_incorrect_time_value_error(
+void mylite_execution_diagnostics_set_incorrect_time_value_error(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3168,7 +3435,7 @@ static void set_incorrect_time_value_error(
     );
 }
 
-static void set_incorrect_datetime_value_error(
+void mylite_execution_diagnostics_set_incorrect_datetime_value_error(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3195,7 +3462,10 @@ static void set_incorrect_datetime_value_error(
     );
 }
 
-static void set_incorrect_date_literal_error(struct mylite_db *database, const char *value_text) {
+void mylite_execution_diagnostics_set_incorrect_date_literal_error(
+    struct mylite_db *database,
+    const char *value_text
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Incorrect DATE value: '%s'", value_text);
 
@@ -3210,7 +3480,7 @@ static void set_incorrect_date_literal_error(struct mylite_db *database, const c
     );
 }
 
-static void set_incorrect_datetime_literal_error(
+void mylite_execution_diagnostics_set_incorrect_datetime_literal_error(
     struct mylite_db *database,
     const char *value_text
 ) {
@@ -3228,7 +3498,7 @@ static void set_incorrect_datetime_literal_error(
     );
 }
 
-static void set_incorrect_timestamp_value_error(
+void mylite_execution_diagnostics_set_incorrect_timestamp_value_error(
     struct mylite_db *database,
     const char *value_text
 ) {
@@ -3246,7 +3516,7 @@ static void set_incorrect_timestamp_value_error(
     );
 }
 
-static int append_incorrect_datetime_predicate_warning(
+int mylite_execution_diagnostics_append_incorrect_datetime_predicate_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name
@@ -3271,12 +3541,12 @@ static int append_incorrect_datetime_predicate_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_incorrect_date_predicate_warning(
+int mylite_execution_diagnostics_append_incorrect_date_predicate_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name
@@ -3301,12 +3571,12 @@ static int append_incorrect_date_predicate_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_incorrect_date_value_note(
+int mylite_execution_diagnostics_append_incorrect_date_value_note(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3333,12 +3603,15 @@ static int append_incorrect_date_value_note(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_bad_null_warning(struct mylite_db *database, const char *column_name) {
+int mylite_execution_diagnostics_append_bad_null_warning(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Column '%s' cannot be null", column_name);
     int rc = MYLITE_OK;
@@ -3353,12 +3626,15 @@ static int append_bad_null_warning(struct mylite_db *database, const char *colum
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_no_default_warning(struct mylite_db *database, const char *column_name) {
+int mylite_execution_diagnostics_append_no_default_warning(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Field '%s' doesn't have a default value", column_name);
@@ -3374,12 +3650,12 @@ static int append_no_default_warning(struct mylite_db *database, const char *col
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_out_of_range_warning(
+int mylite_execution_diagnostics_append_out_of_range_warning(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -3404,12 +3680,12 @@ static int append_out_of_range_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static void set_incorrect_integer_value_error(
+void mylite_execution_diagnostics_set_incorrect_integer_value_error(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3436,7 +3712,7 @@ static void set_incorrect_integer_value_error(
     );
 }
 
-static void set_incorrect_decimal_value_error(
+void mylite_execution_diagnostics_set_incorrect_decimal_value_error(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3463,7 +3739,7 @@ static void set_incorrect_decimal_value_error(
     );
 }
 
-static int append_incorrect_integer_value_warning(
+int mylite_execution_diagnostics_append_incorrect_integer_value_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3490,12 +3766,12 @@ static int append_incorrect_integer_value_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_incorrect_decimal_value_warning(
+int mylite_execution_diagnostics_append_incorrect_decimal_value_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -3522,12 +3798,12 @@ static int append_incorrect_decimal_value_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_data_truncated_warning(
+int mylite_execution_diagnostics_append_data_truncated_warning(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -3552,12 +3828,12 @@ static int append_data_truncated_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_data_too_long_warning(
+int mylite_execution_diagnostics_append_data_too_long_warning(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -3582,12 +3858,12 @@ static int append_data_too_long_warning(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_data_truncated_note(
+int mylite_execution_diagnostics_append_data_truncated_note(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -3612,20 +3888,24 @@ static int append_data_truncated_note(
         message
     );
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
     }
     return rc;
 }
 
-static int append_decimal_truncated_note(
+int mylite_execution_diagnostics_append_decimal_truncated_note(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
 ) {
-    return append_data_truncated_note(database, column_name, row_number);
+    return mylite_execution_diagnostics_append_data_truncated_note(
+        database,
+        column_name,
+        row_number
+    );
 }
 
-static void set_display_width_out_of_range_error(
+void mylite_execution_diagnostics_set_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -3648,7 +3928,7 @@ static void set_display_width_out_of_range_error(
     );
 }
 
-static void set_text_display_width_out_of_range_error(
+void mylite_execution_diagnostics_set_text_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -3671,7 +3951,7 @@ static void set_text_display_width_out_of_range_error(
     );
 }
 
-static void set_bit_display_width_out_of_range_error(
+void mylite_execution_diagnostics_set_bit_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -3694,7 +3974,7 @@ static void set_bit_display_width_out_of_range_error(
     );
 }
 
-static void set_invalid_year_display_width_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_invalid_year_display_width_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_invalid_year_display_width,
@@ -3703,7 +3983,7 @@ static void set_invalid_year_display_width_error(struct mylite_db *database) {
     );
 }
 
-static void set_decimal_precision_too_big_error(
+void mylite_execution_diagnostics_set_decimal_precision_too_big_error(
     struct mylite_db *database,
     const char *column_name,
     uint64_t precision
@@ -3728,7 +4008,7 @@ static void set_decimal_precision_too_big_error(
     );
 }
 
-static void set_decimal_scale_too_big_error(
+void mylite_execution_diagnostics_set_decimal_scale_too_big_error(
     struct mylite_db *database,
     const char *column_name,
     uint64_t scale
@@ -3753,7 +4033,7 @@ static void set_decimal_scale_too_big_error(
     );
 }
 
-static void set_decimal_scale_greater_than_precision_error(
+void mylite_execution_diagnostics_set_decimal_scale_greater_than_precision_error(
     struct mylite_db *database,
     const char *column_name
 ) {
@@ -3776,7 +4056,10 @@ static void set_decimal_scale_greater_than_precision_error(
     );
 }
 
-static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name) {
+void mylite_execution_diagnostics_set_predicate_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
         message,
@@ -3796,7 +4079,10 @@ static void set_predicate_out_of_range_error(struct mylite_db *database, const c
     );
 }
 
-static void set_having_out_of_range_error(struct mylite_db *database, const char *operand_name) {
+void mylite_execution_diagnostics_set_having_out_of_range_error(
+    struct mylite_db *database,
+    const char *operand_name
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Out of range value for '%s' in HAVING", operand_name);
@@ -3812,7 +4098,7 @@ static void set_having_out_of_range_error(struct mylite_db *database, const char
     );
 }
 
-static void set_limit_out_of_range_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_limit_out_of_range_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_parse,
@@ -3821,7 +4107,10 @@ static void set_limit_out_of_range_error(struct mylite_db *database) {
     );
 }
 
-static void set_regexp_error(struct mylite_db *database, const char *message) {
+void mylite_execution_diagnostics_set_regexp_error(
+    struct mylite_db *database,
+    const char *message
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_regular_expression,
@@ -3830,7 +4119,7 @@ static void set_regexp_error(struct mylite_db *database, const char *message) {
     );
 }
 
-static void set_regexp_illegal_argument_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_regexp_illegal_argument_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_regexp_illegal_argument,
@@ -3839,7 +4128,10 @@ static void set_regexp_illegal_argument_error(struct mylite_db *database) {
     );
 }
 
-static void set_regexp_character_range_error(struct mylite_db *database, const char *message) {
+void mylite_execution_diagnostics_set_regexp_character_range_error(
+    struct mylite_db *database,
+    const char *message
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_regular_expression_character_range,
@@ -3848,7 +4140,10 @@ static void set_regexp_character_range_error(struct mylite_db *database, const c
     );
 }
 
-static void set_identifier_too_long_error(struct mylite_db *database, const char *kind) {
+void mylite_execution_diagnostics_set_identifier_too_long_error(
+    struct mylite_db *database,
+    const char *kind
+) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "%s identifier is too long", kind);
 
@@ -3863,7 +4158,7 @@ static void set_identifier_too_long_error(struct mylite_db *database, const char
     );
 }
 
-static void set_reserved_name_error(
+void mylite_execution_diagnostics_set_reserved_name_error(
     struct mylite_db *database,
     const char *kind,
     const char *name
@@ -3885,7 +4180,7 @@ static void set_reserved_name_error(
     mylite_diagnostics_set_error(mylite_connection_diagnostics(database), code, "42000", message);
 }
 
-static void set_nomem_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_nomem_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         MYLITE_NOMEM,
@@ -3894,7 +4189,7 @@ static void set_nomem_error(struct mylite_db *database) {
     );
 }
 
-static void set_physical_sqlite_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_physical_sqlite_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown,
@@ -3903,7 +4198,7 @@ static void set_physical_sqlite_error(struct mylite_db *database) {
     );
 }
 
-static void set_physical_sqlite_row_error(struct mylite_db *database) {
+void mylite_execution_diagnostics_set_physical_sqlite_row_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown,
@@ -3912,7 +4207,10 @@ static void set_physical_sqlite_row_error(struct mylite_db *database) {
     );
 }
 
-static void set_runtime_error(struct mylite_db *database, const char *message) {
+void mylite_execution_diagnostics_set_runtime_error(
+    struct mylite_db *database,
+    const char *message
+) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown,
@@ -3921,7 +4219,11 @@ static void set_runtime_error(struct mylite_db *database, const char *message) {
     );
 }
 
-static void set_internal_error_if_clear(struct mylite_db *database, int rc, const char *message) {
+void mylite_execution_diagnostics_set_internal_error_if_clear(
+    struct mylite_db *database,
+    int rc,
+    const char *message
+) {
     if (database == NULL) {
         return;
     }
@@ -3929,7 +4231,7 @@ static void set_internal_error_if_clear(struct mylite_db *database, int rc, cons
         return;
     }
     if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
+        mylite_execution_diagnostics_set_nomem_error(database);
         return;
     }
     if (rc == MYLITE_MISUSE) {
@@ -3942,10 +4244,10 @@ static void set_internal_error_if_clear(struct mylite_db *database, int rc, cons
         return;
     }
 
-    set_runtime_error(database, message);
+    mylite_execution_diagnostics_set_runtime_error(database, message);
 }
 
-static int status_from_parse_status(enum mylite_sql_parse_status status) {
+int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_status status) {
     switch (status) {
     case MYLITE_SQL_PARSE_OK:
         return MYLITE_OK;
@@ -3960,4 +4262,35 @@ static int status_from_parse_status(enum mylite_sql_parse_status status) {
     }
 
     return MYLITE_ERROR;
+}
+
+static bool diagnostics_text_equals_ascii_case_insensitive(const char *left, const char *right) {
+    size_t index = 0U;
+
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+    while (left[index] != '\0' && right[index] != '\0') {
+        if (diagnostics_ascii_lower((unsigned char)left[index]) !=
+            diagnostics_ascii_lower((unsigned char)right[index])) {
+            return false;
+        }
+        ++index;
+    }
+
+    if (left[index] != '\0') {
+        return false;
+    }
+    if (right[index] != '\0') {
+        return false;
+    }
+
+    return true;
+}
+
+static unsigned char diagnostics_ascii_lower(unsigned char value) {
+    if (value >= 'A' && value <= 'Z') {
+        return (unsigned char)(value - 'A' + 'a');
+    }
+    return value;
 }

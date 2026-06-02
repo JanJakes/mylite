@@ -680,3 +680,26 @@
 - [x] Run focused tidy.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-fourth split.
+
+## Round 35
+
+- [x] Reinspect the remaining largest runtime fragments and identify diagnostics
+      as the next cohesive true-module boundary.
+- [x] Add `mylite_execution_diagnostics.h/.c` for MySQL-compatible runtime
+      error, warning, note, and parser-status translation helpers.
+- [x] Add `mylite_mysql_error_codes.h` so diagnostics and the remaining runtime
+      fragments share the existing MySQL numeric diagnostic constants without
+      duplicating enum entries.
+- [x] Add `mylite_execution_plan_types.h` for small planning/diagnostic types
+      that must cross the diagnostics module boundary while runtime fragments
+      remain include-based.
+- [x] Remove `mylite_execution_diagnostics.inc` and stale diagnostic prototypes
+      from `mylite_execution.c`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused diagnostics, DDL/DML, scalar, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run focused tidy.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-fifth split.

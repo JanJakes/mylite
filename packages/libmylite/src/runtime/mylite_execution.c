@@ -25282,7 +25282,17 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_row_scalar_value_planning.inc"
 
-#include "mylite_execution_row_scalar_temporal_planning.inc"
+#include "mylite_execution_row_scalar_temporal_format_planning.inc"
+
+#include "mylite_execution_row_scalar_temporal_interval_extract_planning.inc"
+
+#include "mylite_execution_row_scalar_temporal_conversion_planning.inc"
+
+#include "mylite_execution_row_scalar_temporal_period_timezone_weight_planning.inc"
+
+#include "mylite_execution_row_scalar_temporal_diff_planning.inc"
+
+#include "mylite_execution_row_scalar_temporal_timestamp_planning.inc"
 
 #include "mylite_execution_row_scalar_misc_planning.inc"
 

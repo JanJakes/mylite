@@ -854,9 +854,19 @@ The fragments are:
 - `mylite_execution_row_scalar_value_planning.inc`: row-scalar HEX, UNHEX,
   Base64, UUID, binary string, `CHAR`, charset/collation, control-flow,
   conversion, literal, column, concat, and `CONCAT_WS` planning.
-- `mylite_execution_row_scalar_temporal_planning.inc`: row-scalar date/time
-  formatting, temporal arithmetic, temporal extraction, constructor, period,
-  time zone, difference, UNIX timestamp, and timestamp planning.
+- `mylite_execution_row_scalar_temporal_format_planning.inc`: row-scalar
+  `DATE_FORMAT`, `TIME_FORMAT`, `GET_FORMAT`, `STR_TO_DATE`, and DATE_FORMAT
+  numeric equality planning.
+- `mylite_execution_row_scalar_temporal_interval_extract_planning.inc`:
+  row-scalar interval-second arithmetic and temporal extraction planning.
+- `mylite_execution_row_scalar_temporal_conversion_planning.inc`: row-scalar
+  `SEC_TO_TIME`, `FROM_UNIXTIME`, and temporal constructor planning.
+- `mylite_execution_row_scalar_temporal_period_timezone_weight_planning.inc`:
+  row-scalar period, time zone, and `WEIGHT_STRING` planning.
+- `mylite_execution_row_scalar_temporal_diff_planning.inc`: row-scalar
+  `DATEDIFF`, `TIMEDIFF`, and `TIMESTAMPDIFF` planning.
+- `mylite_execution_row_scalar_temporal_timestamp_planning.inc`: row-scalar
+  `UNIX_TIMESTAMP` and `TIMESTAMP` planning.
 - `mylite_execution_row_scalar_misc_planning.inc`: row-scalar `FIELD`,
   `GREATEST`, `LEAST`, `INTERVAL`, row-scalar cleanup, descriptor checks, and
   expression containment helpers.
@@ -1324,6 +1334,9 @@ current timestamp/session state.
 18. Split the oversized row-scalar string planning fragment into ordered
     same-translation-unit basic string, shape, bitmask/search, edit,
     transform/quote, compare/set, and REGEXP planning fragments.
+19. Split the oversized row-scalar temporal planning fragment into ordered
+    same-translation-unit format, interval/extract, conversion, period/time
+    zone/weight, diff, and timestamp planning fragments.
 
 ## Review checklist
 
@@ -1376,3 +1389,7 @@ current timestamp/session state.
   ownership and same-translation-unit helper linkage; the split must not
   change accepted row-scalar string argument families, column diagnostics,
   unsupported-function messages, or REGEXP pattern validation behavior.
+- Row-scalar temporal planning fragments preserve the existing planner
+  ownership and same-translation-unit helper linkage; the split must not
+  change temporal formatting, interval arithmetic, extraction, conversion,
+  period/time zone, difference, UNIX timestamp, or timestamp diagnostics.

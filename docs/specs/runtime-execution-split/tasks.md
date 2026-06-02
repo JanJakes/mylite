@@ -851,3 +851,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-second split.
+
+## Round 43
+
+- [x] Reinspect the remaining largest runtime fragments after the row-scalar
+      string split.
+- [x] Identify `mylite_execution_row_scalar_temporal_planning.inc` as a
+      row-scalar temporal function-family same-translation-unit split
+      candidate.
+- [x] Split temporal format, interval/extract, conversion,
+      period/timezone/weight, diff, and timestamp row-scalar planning into
+      named fragments.
+- [x] Remove `mylite_execution_row_scalar_temporal_planning.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused row-scalar temporal, date/time format, interval, timezone,
+      diff, timestamp, SELECT, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-third split.

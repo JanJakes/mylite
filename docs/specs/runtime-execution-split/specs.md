@@ -872,9 +872,17 @@ The fragments are:
   REGEXP predicate/string function planning.
 - `mylite_execution_row_scalar_json_planning.inc`: row-scalar JSON function and
   JSON operator planning.
-- `mylite_execution_row_scalar_value_planning.inc`: row-scalar HEX, UNHEX,
-  Base64, UUID, binary string, `CHAR`, charset/collation, control-flow,
-  conversion, literal, column, concat, and `CONCAT_WS` planning.
+- `mylite_execution_row_scalar_binary_value_planning.inc`: row-scalar HEX,
+  UNHEX, Base64, UUID conversion, and binary-string dispatcher planning.
+- `mylite_execution_row_scalar_char_charset_planning.inc`: row-scalar `CHAR`,
+  `CHARSET`, `COLLATION`, and `COERCIBILITY` planning.
+- `mylite_execution_row_scalar_control_flow_planning.inc`: row-scalar
+  top-level and nested IF, IFNULL, COALESCE, NULLIF, and ISNULL planning.
+- `mylite_execution_row_scalar_conversion_value_planning.inc`: row-scalar
+  non-concat dispatcher, CAST/CONVERT, literal, session value, and descriptor
+  column planning.
+- `mylite_execution_row_scalar_concat_planning.inc`: row-scalar CONCAT,
+  `||`, and CONCAT_WS planning.
 - `mylite_execution_row_scalar_temporal_format_planning.inc`: row-scalar
   `DATE_FORMAT`, `TIME_FORMAT`, `GET_FORMAT`, `STR_TO_DATE`, and DATE_FORMAT
   numeric equality planning.
@@ -1389,6 +1397,9 @@ current timestamp/session state.
     same-translation-unit table, table-status row, table-status WHERE, column,
     index-row, index-WHERE, column-display, database, filter, result-name,
     table-status-count, and LIKE pattern helper fragments.
+22. Split the oversized row-scalar value planning fragment into ordered
+    same-translation-unit binary/encoding/UUID, CHAR/charset, control-flow,
+    conversion/value/column, and concat planning fragments.
 
 ## Review checklist
 
@@ -1454,3 +1465,7 @@ current timestamp/session state.
   counting, and display formatting; the split must not introduce a second
   metadata query engine, materialize catalog data, or change sorting,
   deduplication, or MySQL-shaped result metadata.
+- Row-scalar value planning fragments preserve the existing planner ownership
+  and same-translation-unit helper linkage; the split must not change accepted
+  binary, UUID, CHAR, charset/collation, control-flow, conversion, literal,
+  column, CONCAT, or CONCAT_WS argument families or diagnostics.

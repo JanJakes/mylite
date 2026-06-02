@@ -911,3 +911,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-fifth split.
+
+## Round 46
+
+- [x] Reinspect the remaining largest runtime fragments after the SHOW helper
+      split.
+- [x] Identify `mylite_execution_row_scalar_value_planning.inc` as a
+      row-scalar value-family same-translation-unit split candidate.
+- [x] Split binary/encoding/UUID, CHAR/charset, control-flow,
+      conversion/value/column, and concat row-scalar planning into named
+      fragments.
+- [x] Remove `mylite_execution_row_scalar_value_planning.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused row-scalar value, binary, UUID, CHAR, charset/collation,
+      control-flow, conversion, CONCAT, SELECT, and parser-adjacent
+      build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-sixth split.

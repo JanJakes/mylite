@@ -25296,7 +25296,15 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_row_scalar_json_planning.inc"
 
-#include "mylite_execution_row_scalar_value_planning.inc"
+#include "mylite_execution_row_scalar_binary_value_planning.inc"
+
+#include "mylite_execution_row_scalar_char_charset_planning.inc"
+
+#include "mylite_execution_row_scalar_control_flow_planning.inc"
+
+#include "mylite_execution_row_scalar_conversion_value_planning.inc"
+
+#include "mylite_execution_row_scalar_concat_planning.inc"
 
 #include "mylite_execution_row_scalar_temporal_format_planning.inc"
 

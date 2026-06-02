@@ -1,0 +1,554 @@
+static int convert_predicate_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    *out_value = (struct planned_value){.is_null = false, .integer = 0};
+    if (value_node == NULL || column == NULL) {
+        set_unsupported_error(database, "WHERE supports only integer predicate literals");
+        return MYLITE_ERROR;
+    }
+
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, "WHERE supports only integer predicate literals");
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "WHERE supports only integer or boolean predicate literals"
+            );
+            return MYLITE_ERROR;
+        }
+
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_predicate_out_of_range_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    rc = convert_integer_for_predicate(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &out_value->integer
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_null = false;
+
+    return MYLITE_OK;
+}
+
+static int convert_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    if (column_descriptor_is_string_family(column)) {
+        return convert_predicate_string_literal(database, value_node, out_value);
+    }
+    if (column_descriptor_is_enum(column)) {
+        return convert_predicate_enum_literal(database, value_node, column, out_value);
+    }
+    if (column_descriptor_is_set(column)) {
+        return convert_predicate_set_literal(database, value_node, column, out_value);
+    }
+    if (column_descriptor_is_bit(column)) {
+        return convert_bit_literal(database, value_node, column, 1U, false, out_value);
+    }
+    if (column_descriptor_is_year(column)) {
+        return convert_predicate_year_literal(database, value_node, column, out_value);
+    }
+    if (column_descriptor_is_date(column)) {
+        return convert_predicate_date_literal(database, value_node, column, false, out_value, NULL);
+    }
+    if (column_descriptor_is_time(column)) {
+        return convert_predicate_time_literal(database, value_node, column, out_value);
+    }
+    if (column_descriptor_is_datetime(column)) {
+        return convert_predicate_datetime_literal(database, value_node, column, out_value);
+    }
+    if (column_descriptor_is_timestamp(column)) {
+        return convert_predicate_timestamp_literal(database, value_node, column, out_value);
+    }
+    return convert_predicate_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_predicate_value_with_date_comparison_mode(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value,
+    bool *out_compare_date_as_datetime
+) {
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = false;
+    }
+    if (column_descriptor_is_date(column)) {
+        return convert_predicate_date_literal(
+            database,
+            value_node,
+            column,
+            false,
+            out_value,
+            out_compare_date_as_datetime
+        );
+    }
+    return convert_predicate_value(database, value_node, column, out_value);
+}
+
+static int convert_predicate_date_between_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *lower_node,
+    const struct mylite_sql_ast_node *upper_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_lower_value,
+    struct planned_value *out_upper_value,
+    bool *out_compare_date_as_datetime
+) {
+    bool lower_is_datetime = false;
+    bool upper_is_datetime = false;
+    int rc = MYLITE_OK;
+
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = false;
+    }
+    rc = convert_predicate_date_literal(
+        database,
+        lower_node,
+        column,
+        false,
+        out_lower_value,
+        &lower_is_datetime
+    );
+    if (rc == MYLITE_OK) {
+        rc = convert_predicate_date_literal(
+            database,
+            upper_node,
+            column,
+            false,
+            out_upper_value,
+            &upper_is_datetime
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!lower_is_datetime && !upper_is_datetime) {
+        return MYLITE_OK;
+    }
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = true;
+    }
+    if (!lower_is_datetime) {
+        planned_value_deinit(out_lower_value);
+        rc = convert_predicate_date_literal(
+            database,
+            lower_node,
+            column,
+            true,
+            out_lower_value,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK && !upper_is_datetime) {
+        planned_value_deinit(out_upper_value);
+        rc = convert_predicate_date_literal(
+            database,
+            upper_node,
+            column,
+            true,
+            out_upper_value,
+            NULL
+        );
+    }
+
+    return rc;
+}
+
+static int convert_predicate_date_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count,
+    bool *out_compare_date_as_datetime
+) {
+    struct planned_value *values = NULL;
+    size_t value_count = 0U;
+    bool uses_datetime = false;
+    int rc = MYLITE_OK;
+
+    *out_values = NULL;
+    *out_value_count = 0U;
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = false;
+    }
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST ||
+        mylite_sql_ast_node_child_count(value_list) == 0U) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    if (value_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(value_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = convert_predicate_date_in_values(
+        database,
+        value_list,
+        column,
+        values,
+        value_count,
+        &uses_datetime
+    );
+    if (rc == MYLITE_OK && uses_datetime) {
+        rc = convert_predicate_date_in_values_to_datetime(
+            database,
+            value_list,
+            column,
+            values,
+            value_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_array_deinit(values, value_count);
+        free(values);
+        return rc;
+    }
+
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = uses_datetime;
+    }
+    *out_values = values;
+    *out_value_count = value_count;
+    return MYLITE_OK;
+}
+
+static int convert_predicate_date_in_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *values,
+    size_t value_count,
+    bool *out_uses_datetime
+) {
+    *out_uses_datetime = false;
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+        bool value_is_datetime = false;
+        int rc = MYLITE_OK;
+
+        if (predicate_comparison_value_is_null(value_node)) {
+            values[value_index] = (struct planned_value){.is_null = true, .integer = 0};
+            continue;
+        }
+        rc = convert_predicate_date_literal(
+            database,
+            value_node,
+            column,
+            false,
+            &values[value_index],
+            &value_is_datetime
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (value_is_datetime) {
+            *out_uses_datetime = true;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int convert_predicate_date_in_values_to_datetime(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *values,
+    size_t value_count
+) {
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+
+        if (date_in_value_already_compares_as_datetime(value_node, &values[value_index])) {
+            continue;
+        }
+        planned_value_deinit(&values[value_index]);
+        int rc = convert_predicate_date_literal(
+            database,
+            value_node,
+            column,
+            true,
+            &values[value_index],
+            NULL
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool date_in_value_already_compares_as_datetime(
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_value *value
+) {
+    if (predicate_comparison_value_is_null(value_node)) {
+        return true;
+    }
+    if (!value->is_text) {
+        return false;
+    }
+    if (value->text_length != datetime_text_length) {
+        return false;
+    }
+    return true;
+}
+
+static void planned_value_array_deinit(struct planned_value *values, size_t value_count) {
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        planned_value_deinit(&values[value_index]);
+    }
+}
+
+static int convert_predicate_enum_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = child_at(value_node, 0U);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_enum_string_literal(
+            database,
+            value_node,
+            column,
+            1U,
+            false,
+            false,
+            ENUM_STRING_PRESERVE_TRAILING_SPACES,
+            out_value
+        );
+    }
+    return convert_enum_integer_literal(database, value_node, column, 1U, false, out_value);
+}
+
+static int convert_predicate_set_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = child_at(value_node, 0U);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_set_string_literal(
+            database,
+            literal,
+            column,
+            1U,
+            false,
+            false,
+            false,
+            out_value
+        );
+    }
+    return convert_set_integer_literal(database, value_node, column, 1U, false, out_value);
+}
+
+static int convert_predicate_year_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    return convert_year_literal(database, value_node, column, 1U, false, out_value);
+}
+
+static int convert_predicate_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "WHERE string predicates support only string literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE string predicates support only string literals",
+        "WHERE string predicate literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "WHERE string predicate literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
+}
+
+static int convert_predicate_string_pattern_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "WHERE LIKE predicates support only string pattern literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE LIKE predicates support only string pattern literals",
+        "WHERE LIKE pattern literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "WHERE LIKE pattern literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
+}
+
+static int convert_predicate_regexp_pattern_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    struct mylite_regexp_program *program = NULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "WHERE REGEXP predicates support only string pattern literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE REGEXP predicates support only string pattern literals",
+        "WHERE REGEXP pattern literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "WHERE REGEXP pattern literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    enum mylite_regexp_compile_status status =
+        mylite_regexp_compile_ascii_ci(text, text_length, &program);
+    mylite_regexp_program_free(program);
+    if (status != MYLITE_REGEXP_COMPILE_OK) {
+        free(text);
+        if (status == MYLITE_REGEXP_COMPILE_NOMEM) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        if (status == MYLITE_REGEXP_COMPILE_UNCLOSED_BRACKET) {
+            set_regexp_error(
+                database,
+                "The regular expression contains an unclosed bracket expression."
+            );
+            return MYLITE_ERROR;
+        }
+        if (status == MYLITE_REGEXP_COMPILE_INVALID_RANGE) {
+            set_regexp_character_range_error(
+                database,
+                "The regular expression contains an invalid character range."
+            );
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(
+            database,
+            "WHERE REGEXP patterns support only MyLite's baseline ASCII regular expression subset"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
+}

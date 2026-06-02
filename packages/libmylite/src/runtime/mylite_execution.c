@@ -25244,7 +25244,25 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_select_column_planning.inc"
 
-#include "mylite_execution_select_predicate_planning.inc"
+#include "mylite_execution_select_predicate_entry.inc"
+
+#include "mylite_execution_select_predicate_leaf_comparison.inc"
+
+#include "mylite_execution_select_predicate_temporal_extract.inc"
+
+#include "mylite_execution_select_predicate_string_functions.inc"
+
+#include "mylite_execution_select_predicate_json_regexp_functions.inc"
+
+#include "mylite_execution_select_predicate_subquery_correlation.inc"
+
+#include "mylite_execution_select_predicate_special_in.inc"
+
+#include "mylite_execution_select_predicate_work_helpers.inc"
+
+#include "mylite_execution_select_predicate_value_conversion.inc"
+
+#include "mylite_execution_select_predicate_temporal_literals.inc"
 
 #include "mylite_execution_select_order_planning.inc"
 

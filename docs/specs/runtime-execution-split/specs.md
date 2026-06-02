@@ -809,8 +809,32 @@ The fragments are:
   expression containment helpers.
 - `mylite_execution_select_column_planning.inc`: SELECT result-column planning
   and result metadata descriptor population.
-- `mylite_execution_select_predicate_planning.inc`: SELECT predicate planning,
-  subquery predicates, predicate conversion, and predicate value normalization.
+- `mylite_execution_select_predicate_entry.inc`: SELECT predicate planning
+  entry points, predicate cleanup, iterative work-stack planning, logical
+  predicate finishing, and top-level predicate dispatch.
+- `mylite_execution_select_predicate_leaf_comparison.inc`: predicate leaf
+  dispatch, column/literal comparison planning, scalar literal truth planning,
+  comparison helpers, and scalar predicate classifiers.
+- `mylite_execution_select_predicate_temporal_extract.inc`: DATE_FORMAT
+  numeric predicate planning and temporal extractor predicate planning.
+- `mylite_execution_select_predicate_string_functions.inc`: string-length,
+  substring, and FIND_IN_SET predicate planning.
+- `mylite_execution_select_predicate_json_regexp_functions.inc`: REGEXP_LIKE,
+  JSON_VALID, and JSON_CONTAINS predicate planning.
+- `mylite_execution_select_predicate_subquery_correlation.inc`: comparison
+  column validation, EXISTS subquery planning, correlated column resolution,
+  and comparison operator classification.
+- `mylite_execution_select_predicate_special_in.inc`: IS NULL, boolean,
+  BETWEEN, IN list, IN subquery predicate planning, and IN-list value
+  conversion.
+- `mylite_execution_select_predicate_work_helpers.inc`: predicate node append,
+  work-stack append/pop, result-index, and column-source resolution helpers.
+- `mylite_execution_select_predicate_value_conversion.inc`: integer, ENUM,
+  SET, YEAR, string, string-pattern, and REGEXP-pattern predicate literal
+  conversion.
+- `mylite_execution_select_predicate_temporal_literals.inc`: date, time,
+  datetime, timestamp, and temporal-offset predicate literal conversion and
+  normalization.
 - `mylite_execution_select_order_planning.inc`: SELECT ORDER BY, SELECT LIMIT,
   and DELETE LIMIT planning helpers.
 - `mylite_execution_update_planning_helpers.inc`: UPDATE assignment, UPDATE
@@ -1232,6 +1256,11 @@ current timestamp/session state.
     same-translation-unit column entry/attribute, default finalization, default
     text, default integer evaluation, type mapping, type predicates, descriptor
     parsing, row-size validation, and key/modify validation fragments.
+15. Split the oversized SELECT predicate planning implementation fragment into
+    ordered same-translation-unit predicate entry/work, leaf comparison,
+    temporal extractor, string function, JSON/REGEXP function, subquery
+    correlation, special predicate/IN, work-helper, value-conversion, and
+    temporal literal-conversion fragments.
 
 ## Review checklist
 
@@ -1268,3 +1297,7 @@ current timestamp/session state.
   the execution translation unit; the split must not introduce separate schema
   mutation paths, duplicate type descriptors, or materialize catalog metadata
   outside the existing planner/runtime ownership.
+- SELECT predicate fragments preserve the existing planner ownership and
+  iterative work-stack behavior; the split must not introduce a second
+  predicate evaluator, change predicate conversion rules, or materialize
+  subquery results outside the existing planned predicate structures.

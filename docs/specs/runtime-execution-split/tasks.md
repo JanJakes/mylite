@@ -769,3 +769,25 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-eighth split.
+
+## Round 39
+
+- [x] Reinspect the remaining largest runtime fragments after the
+      column-planning split.
+- [x] Identify `mylite_execution_select_predicate_planning.inc` as a
+      predicate-entry/comparison/function/subquery/IN/conversion
+      same-translation-unit split candidate.
+- [x] Split predicate entry/work-stack planning, leaf comparison planning,
+      temporal extractor predicates, string function predicates, JSON/REGEXP
+      predicates, subquery correlation, special predicates/IN, work helpers,
+      predicate value conversion, and temporal literal normalization into
+      named fragments.
+- [x] Remove `mylite_execution_select_predicate_planning.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused predicate, scalar function, type, and parser-adjacent
+      build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-ninth split.

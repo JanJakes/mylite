@@ -811,3 +811,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fortieth split.
+
+## Round 41
+
+- [x] Reinspect the remaining largest runtime fragments after the grouped
+      aggregate split.
+- [x] Identify `mylite_execution_information_schema_columns.inc` as a
+      COLUMNS/InnoDB/constraint/key/statistics row-family
+      same-translation-unit split candidate.
+- [x] Split static COLUMNS rows, base COLUMNS/view/default rows, InnoDB
+      virtual rows, InnoDB column rows, InnoDB table rows, InnoDB index/field
+      rows, InnoDB foreign-key rows, constraint rows, key/referential
+      constraint rows, and STATISTICS rows into named fragments.
+- [x] Remove `mylite_execution_information_schema_columns.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused INFORMATION_SCHEMA metadata, InnoDB metadata, constraint,
+      key-usage, statistics, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-first split.

@@ -618,9 +618,29 @@ The fragments are:
 - `mylite_execution_information_schema_queries.inc`: INFORMATION_SCHEMA SELECT
   query execution, row-set ownership, static metadata rows, catalog table rows,
   table-status values, and built-in schema table metadata rows.
-- `mylite_execution_information_schema_columns.inc`: INFORMATION_SCHEMA column,
-  view-usage, InnoDB, constraint, key-usage, referential-constraint, and
-  statistics row synthesis.
+- `mylite_execution_information_schema_columns_system_rows.inc`: static
+  INFORMATION_SCHEMA and mysql system table COLUMNS rows plus static
+  COLUMNS_EXTENSIONS rows.
+- `mylite_execution_information_schema_columns_base_rows.inc`: user-table
+  COLUMNS, ST_GEOMETRY_COLUMNS, COLUMNS_EXTENSIONS, VIEWS, VIEW_TABLE_USAGE,
+  and column default/display metadata rows.
+- `mylite_execution_information_schema_innodb_virtual_rows.inc`: InnoDB
+  virtual generated-column dependency rows.
+- `mylite_execution_information_schema_innodb_column_rows.inc`: InnoDB column
+  rows and InnoDB column type/precision/prtype metadata helpers.
+- `mylite_execution_information_schema_innodb_table_rows.inc`: InnoDB table
+  and table-statistics rows plus table flag/column-count/page-size helpers.
+- `mylite_execution_information_schema_innodb_index_rows.inc`: InnoDB index
+  and field rows plus generated clustered-index and index-part helpers.
+- `mylite_execution_information_schema_innodb_foreign_rows.inc`: InnoDB
+  foreign-key and foreign-key-column rows plus foreign identifier/action
+  helpers.
+- `mylite_execution_information_schema_constraint_rows.inc`: table
+  constraints, table-constraint extensions, and check-constraint rows.
+- `mylite_execution_information_schema_key_constraint_rows.inc`: key column
+  usage and referential constraint rows.
+- `mylite_execution_information_schema_statistics_rows.inc`: mysql system
+  table and user-table STATISTICS rows.
 - `mylite_execution_information_schema_filtering.inc`: INFORMATION_SCHEMA
   result columns, result rows, COUNT(*) rows, WHERE predicate validation and
   evaluation, ORDER/LIMIT planning, source resolution, text comparison, and
@@ -1285,6 +1305,10 @@ current timestamp/session state.
 16. Split the oversized grouped aggregate planning implementation fragment into
     ordered same-translation-unit entry, source, group-column, projection,
     aggregate-function, HAVING, literal-conversion, and ORDER BY fragments.
+17. Split the oversized INFORMATION_SCHEMA column/constraint/statistics row
+    synthesis fragment into ordered same-translation-unit COLUMNS, InnoDB
+    virtual/column/table/index/foreign, constraint, key/referential, and
+    statistics row fragments.
 
 ## Review checklist
 
@@ -1329,3 +1353,7 @@ current timestamp/session state.
   and same-translation-unit helper linkage; the split must not change GROUP
   BY/HAVING/ORDER BY compatibility behavior or export grouped temporal literal
   conversion as a separate API.
+- INFORMATION_SCHEMA row-family fragments preserve the existing row-set
+  ownership and same-translation-unit helper linkage; the split must not
+  change MySQL 8.4-shaped column, InnoDB, constraint, key usage, referential
+  constraint, or statistics metadata.

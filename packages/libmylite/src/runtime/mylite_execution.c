@@ -25230,7 +25230,21 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_insert_execution.inc"
 
-#include "mylite_execution_insert_select.inc"
+#include "mylite_execution_insert_select_planning.inc"
+
+#include "mylite_execution_insert_select_table_execution.inc"
+
+#include "mylite_execution_insert_select_row_scalar_execution.inc"
+
+#include "mylite_execution_insert_select_table_rows.inc"
+
+#include "mylite_execution_insert_select_value_materialization.inc"
+
+#include "mylite_execution_insert_select_validation_core.inc"
+
+#include "mylite_execution_insert_select_string_validation.inc"
+
+#include "mylite_execution_insert_select_type_validation.inc"
 
 #include "mylite_execution_update_planning.inc"
 

@@ -793,9 +793,33 @@ The fragments are:
 - `mylite_execution_insert_execution.inc`: INSERT/REPLACE row execution,
   LOAD DATA row import and conversion, unique/foreign-key conflict handling,
   and REPLACE conflicting-row deletion.
-- `mylite_execution_insert_select.inc`: INSERT ... SELECT and REPLACE ...
-  SELECT planning, materialization, row validation, and source compatibility
-  checks.
+- `mylite_execution_insert_select_planning.inc`: INSERT ... SELECT and
+  REPLACE ... SELECT target/source planning, generated-target rejection,
+  row-scalar/table/UNION source classification, compound branch planning, and
+  planned INSERT SELECT cleanup.
+- `mylite_execution_insert_select_table_execution.inc`: INSERT SELECT
+  table-source execution dispatch, temporary table transaction setup, side
+  effects, cleanup, result normalization, and affected-row/last-insert-id
+  reporting.
+- `mylite_execution_insert_select_row_scalar_execution.inc`: row-scalar
+  INSERT SELECT execution, single-row source preparation, row-scalar
+  materialization, omitted-column checks, and row-scalar insert handoff.
+- `mylite_execution_insert_select_table_rows.inc`: temporary source
+  materialization, validation/insert statement execution loops, per-row insert
+  planning, and AUTO_INCREMENT counter handling for table/UNION sources.
+- `mylite_execution_insert_select_value_materialization.inc`: selected and
+  omitted INSERT SELECT value materialization, integer/string/blob/BIT/raw
+  SQLite value copying, and default value handling.
+- `mylite_execution_insert_select_validation_core.inc`: INSERT SELECT row
+  validation orchestration, source-column lookup for table/compound sources,
+  validation dispatch, source-target compatibility checks, and implicit
+  conversion messages.
+- `mylite_execution_insert_select_string_validation.inc`: INSERT SELECT
+  convertible string validation and canonical string-family validation for
+  CHAR, VARCHAR, and TEXT-family targets.
+- `mylite_execution_insert_select_type_validation.inc`: INSERT SELECT JSON,
+  binary string, BIT, DECIMAL, approximate numeric, DATE/TIME/DATETIME,
+  TIMESTAMP, YEAR, and integer validation.
 - `mylite_execution_update_planning.inc`: single-table and joined UPDATE
   planning, assignment planning, target validation, and executable update
   plan setup.
@@ -1570,6 +1594,10 @@ current timestamp/session state.
 31. Split the oversized scalar expression evaluator fragment into ordered
     same-translation-unit bitwise/BIT_COUNT, logical, comparison, arithmetic,
     and diagnostic helper fragments.
+32. Split the oversized INSERT SELECT fragment into ordered
+    same-translation-unit planning, table execution, row-scalar execution,
+    table row execution, value materialization, validation core, string
+    validation, and type validation fragments.
 
 ## Review checklist
 
@@ -1683,3 +1711,9 @@ current timestamp/session state.
   not change bitwise NULL/short-circuit behavior, logical truth semantics,
   comparison NULL-safe handling, arithmetic DIV/modulo warning staging,
   checked signed-64-bit overflow behavior, or scalar unsupported diagnostics.
+- INSERT SELECT fragments preserve the existing table/row-scalar/UNION source
+  planning and same-translation-unit helper linkage; the split must not change
+  temporary table materialization, row validation order, omitted-column
+  warnings, AUTO_INCREMENT counter handling, duplicate-key update behavior,
+  source-target compatibility diagnostics, or strict/non-strict conversion
+  behavior.

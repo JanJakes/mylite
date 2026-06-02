@@ -1115,3 +1115,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-fifth split.
+
+## Round 56
+
+- [x] Reinspect the remaining largest runtime fragments after the scalar
+      expression evaluator split.
+- [x] Identify `mylite_execution_insert_select.inc` as an INSERT SELECT
+      same-translation-unit split candidate.
+- [x] Split INSERT SELECT planning, table execution, row-scalar execution,
+      table row execution, value materialization, validation core, string
+      validation, and type validation into named fragments.
+- [x] Remove `mylite_execution_insert_select.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused INSERT SELECT, REPLACE SELECT, duplicate-key, non-strict
+      DML coercion, type conversion, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-sixth split.

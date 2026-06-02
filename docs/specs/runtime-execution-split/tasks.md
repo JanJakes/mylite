@@ -1035,3 +1035,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-first split.
+
+## Round 52
+
+- [x] Reinspect the remaining largest runtime fragments after the row-scalar
+      parameter-binding split.
+- [x] Identify `mylite_execution_scalar_control.inc` as a scalar control-flow
+      same-translation-unit split candidate.
+- [x] Split CASE entry/evaluation, IF-family evaluation, literal projection,
+      system-variable value/rendering, and IF/CASE validation into named
+      fragments.
+- [x] Remove `mylite_execution_scalar_control.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused IF/CASE, literal projection, system-variable, SHOW variable,
+      and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-second split.

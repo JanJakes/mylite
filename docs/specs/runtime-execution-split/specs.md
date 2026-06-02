@@ -850,9 +850,18 @@ The fragments are:
   `mylite_execution_scalar_temporal_format.h`.
 - `mylite_execution_scalar_expression_eval.inc`: scalar arithmetic, logical,
   comparison, and bitwise expression evaluators.
-- `mylite_execution_scalar_control.inc`: IF/CASE scalar control flow,
-  literal projection, system-variable scalar values, and control-flow
-  validation.
+- `mylite_execution_scalar_control_case_entry.inc`: IF/IFNULL/COALESCE/NULLIF,
+  ISNULL, and CASE scalar entry points plus searched/simple CASE evaluation.
+- `mylite_execution_scalar_control_if_eval.inc`: iterative IF-family
+  evaluation stack, frame completion, scalar-cell copying, and IF literal
+  operand handling.
+- `mylite_execution_scalar_literal_projection.inc`: tableless literal
+  projection and decimal integer literal normalization.
+- `mylite_execution_scalar_system_variables.inc`: session/global system
+  variable scalar values, SHOW variable rendering, variable resolution, and
+  system-variable identifier parsing.
+- `mylite_execution_scalar_control_validation.inc`: session scalar expression
+  classification plus IF/CASE validation and diagnostics.
 - `mylite_execution_scalar_projection.inc`: scalar projection classifiers,
   parenthesis unwrapping, and source-span copying helpers.
 - `mylite_execution_delete_planning.inc`: DELETE planning and execution helpers
@@ -1503,6 +1512,9 @@ current timestamp/session state.
     same-translation-unit SELECT/source, expression dispatch, window,
     conversion/RAND, arithmetic/generic recursion, temporal/basic string,
     string/REGEXP, JSON, control-flow, and encoding/UUID/CHAR fragments.
+28. Split the oversized scalar-control fragment into ordered
+    same-translation-unit CASE entry, IF-family evaluation, literal projection,
+    system-variable value/rendering, and IF/CASE validation fragments.
 
 ## Review checklist
 
@@ -1595,3 +1607,8 @@ current timestamp/session state.
   binding order and same-translation-unit helper linkage; the split must not
   change placeholder numbering, tableless SELECT handling, JSON/control-flow
   traversal, UUID/CHAR binding, or expression-family diagnostics.
+- Scalar-control fragments preserve the existing IF/CASE/session-scalar
+  evaluation order and same-translation-unit helper linkage; the split must not
+  change CASE warning staging, IF-family frame evaluation, literal projection,
+  system-variable value/SHOW rendering, variable lookup diagnostics, or
+  IF/CASE validation behavior.

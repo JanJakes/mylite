@@ -25266,7 +25266,15 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_scalar_expression_eval.inc"
 
-#include "mylite_execution_scalar_control.inc"
+#include "mylite_execution_scalar_control_case_entry.inc"
+
+#include "mylite_execution_scalar_control_if_eval.inc"
+
+#include "mylite_execution_scalar_literal_projection.inc"
+
+#include "mylite_execution_scalar_system_variables.inc"
+
+#include "mylite_execution_scalar_control_validation.inc"
 
 #include "mylite_execution_scalar_projection.inc"
 

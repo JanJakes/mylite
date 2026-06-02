@@ -102,6 +102,14 @@ metadata, remaining mysql system tables, sys core tables, sys summary tables,
 and sys schema tables. Each owner keeps its column/key/privilege/index arrays
 file-local and exposes only internal `count/at` providers.
 
+The fourteenth split starts reducing the mutable catalog monolith by moving the
+catalog schema migration ladder into `mylite_catalog_migrations.c`. The main
+catalog module still owns catalog initialization, state loading, descriptor
+materialization, validation, and mutation APIs. The migration module owns only
+the versioned one-step SQL migrations and exposes a single private
+`mylite_catalog_migrate_schema_one_step` entry point through
+`mylite_catalog_internal.h`.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

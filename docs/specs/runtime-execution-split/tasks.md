@@ -230,3 +230,19 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirteenth split.
+
+## Round 14
+
+- [x] Reinspect the remaining largest runtime/catalog monoliths after the
+      system-table descriptor split.
+- [x] Select catalog schema migrations as the next true module boundary.
+- [x] Add a private catalog internal header for migration entry points.
+- [x] Move catalog schema one-step migrations into
+      `mylite_catalog_migrations`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog migration/runtime tests.
+- [x] Review the split for behavior preservation, helper ownership, and
+      catalog schema compatibility.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fourteenth split.

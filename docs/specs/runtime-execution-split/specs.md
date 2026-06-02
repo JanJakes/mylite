@@ -93,6 +93,15 @@ module. The remaining system-table module keeps mysql/sys table column
 metadata, sys configuration trigger metadata, and the unified ordered
 system-table descriptor array.
 
+The thirteenth split completes the true module extraction of the combined
+mysql/sys system-table catalog descriptor file. The former system-table module
+becomes a small provider aggregator that preserves the public ordered
+descriptor API. The static descriptor data moves into owner modules for mysql
+privilege/auth tables, mysql service/help/log/cost metadata, mysql replication
+metadata, remaining mysql system tables, sys core tables, sys summary tables,
+and sys schema tables. Each owner keeps its column/key/privilege/index arrays
+file-local and exposes only internal `count/at` providers.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -166,9 +175,26 @@ uses these true C modules:
 - `mylite_execution_catalog_information_schema.c`: `INFORMATION_SCHEMA`
   keyword rows, table definitions, column definitions, and accessors.
 - `mylite_execution_catalog_system_tables.c`: `mysql` and `sys` system table
-  definitions and sys configuration trigger metadata. The `mysql` and `sys`
-  definitions intentionally stay together for now because the public accessor
-  returns one ordered system-table catalog.
+  descriptor provider aggregation and public ordered system-table lookup
+  accessors.
+- `mylite_execution_catalog_system_tables_internal.h`: private provider API
+  for system-table descriptor owner modules.
+- `mylite_execution_catalog_mysql_auth_tables.c`: mysql privilege/auth table
+  descriptors for `user`, global grants, database/table/column/procedure
+  privileges, roles, and password history.
+- `mylite_execution_catalog_mysql_service_tables.c`: mysql component, cost,
+  function, GTID, log, help, and NDB binlog descriptors in public catalog
+  order.
+- `mylite_execution_catalog_mysql_replication_tables.c`: mysql replication
+  metadata table descriptors.
+- `mylite_execution_catalog_mysql_misc_tables.c`: remaining mysql plugin,
+  cost/server, time-zone, and InnoDB stats descriptors.
+- `mylite_execution_catalog_sys_core_tables.c`: `sys.sys_config`,
+  `sys.version`, and sys configuration trigger metadata/accessors.
+- `mylite_execution_catalog_sys_summary_tables.c`: sys host, IO, memory,
+  InnoDB, latest-file, and instrumentation summary descriptors.
+- `mylite_execution_catalog_sys_schema_tables.c`: sys schema/statistics table
+  descriptors.
 - `mylite_execution_catalog_sys_views.c`: built-in sys view definitions,
   SHOW CREATE text, and sys view lookup/count accessors.
 - `mylite_execution_catalog_builtin.c`: built-in schema descriptors, built-in

@@ -1,0 +1,53 @@
+#ifndef MYLITE_EXECUTION_CATALOG_SYSTEM_TABLES_INTERNAL_H
+#define MYLITE_EXECUTION_CATALOG_SYSTEM_TABLES_INTERNAL_H
+
+#include "mylite_execution_catalog.h"
+
+#include <stddef.h>
+
+size_t mylite_execution_catalog_mysql_auth_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_mysql_auth_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_mysql_service_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_mysql_service_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_mysql_replication_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_mysql_replication_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_mysql_misc_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_mysql_misc_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_sys_core_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_core_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_sys_summary_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_summary_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_sys_schema_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_schema_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_sys_summary_x_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_summary_x_system_table_definition_at(
+    size_t index
+);
+
+size_t mylite_execution_catalog_sys_schema_x_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_schema_x_system_table_definition_at(
+    size_t index
+);
+
+#endif

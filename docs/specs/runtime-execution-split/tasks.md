@@ -208,3 +208,25 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twelfth split.
+
+## Round 13
+
+- [x] Reinspect the remaining system-table descriptor monolith after the sys
+      view split.
+- [x] Select mysql/sys system-table descriptor families as the next true module
+      boundary.
+- [x] Add a private internal provider header for system-table descriptor
+      owners.
+- [x] Move mysql auth, service, replication, and remaining mysql descriptor
+      families into owner modules.
+- [x] Move sys core, summary, and schema descriptor families into owner
+      modules.
+- [x] Replace the combined descriptor array with a public-order-preserving
+      provider aggregator.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused build and catalog/sys/mysql metadata tests.
+- [x] Review the split for behavior preservation, descriptor order, and module
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirteenth split.

@@ -143,6 +143,14 @@ definitions and table definitions move into
 aggregator for non-InnoDB definitions and keeps public lookup behavior
 unchanged.
 
+The nineteenth split extracts mutable catalog read and descriptor
+materialization logic into `mylite_catalog_read.c`. The new module owns catalog
+SELECT queries, public read/iteration APIs, next-id reads, post-insert
+descriptor reads, and descriptor materializers. `mylite_catalog.c` keeps
+descriptor mutation, write bind helpers, delete/update helpers, and
+write-side value validation. Shared validation and SQLite-level lookup helpers
+use a small private surface in `mylite_catalog_internal.h`.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -251,6 +259,36 @@ uses these true C modules:
 These modules may duplicate a tiny file-local ASCII-insensitive lookup helper
 when that keeps the helper private and avoids inventing a broader internal
 utility API before it earns its cost.
+
+### `mylite_catalog`
+
+The mutable catalog module family owns MyLite's private metadata tables and
+their C descriptor API. It uses true C modules where the dependency surface is
+small enough to keep internal helper exports narrow.
+
+The mutable catalog module family includes:
+
+- `mylite_catalog.c`: descriptor create/update/delete/mutation APIs, write
+  bind helpers, delete helpers, and catalog value validation that depends on
+  mutation-private structs.
+- `mylite_catalog_read.c`: public catalog read/iteration APIs, SQLite-level
+  one-row lookup helpers used by mutation code, next-id reads, post-insert
+  descriptor reads, and descriptor materializers.
+- `mylite_catalog_sqlite.c`: shared SQLite prepare/bind/finalize, checked
+  column extraction, changed-row, and integer conversion helpers.
+- `mylite_catalog_validation.c`: reusable catalog handle, identifier, enum,
+  id, generation, bool, and callback validation.
+- `mylite_catalog_state.c`: catalog handle lifecycle, schema bootstrap/load,
+  descriptor cache invalidation, mutation transaction lifecycle, and generation
+  transactions.
+- `mylite_catalog_migrations.c`: versioned schema migration steps.
+
+The mutable catalog module family does not own:
+
+- SQL parser or planner behavior.
+- Runtime result-row construction.
+- Static MySQL `INFORMATION_SCHEMA`, `mysql`, or `sys` compatibility metadata.
+- SQLite fork patches or SQLite virtual table hooks.
 
 ### `mylite_execution_system_variables`
 

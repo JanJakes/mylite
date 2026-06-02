@@ -12,6 +12,25 @@ struct mylite_catalog_generation_change {
     uint64_t next_generation;
 };
 
+struct mylite_catalog_table_descriptor_input {
+    int64_t schema_id;
+    const char *name;
+    const char *physical_name;
+    enum mylite_catalog_table_kind kind;
+    const char *default_charset;
+    const char *default_collation;
+    const char *comment;
+    const char *row_format_option;
+    int64_t key_block_size;
+    int64_t pack_keys;
+    int64_t checksum;
+    int64_t stats_persistent;
+    int64_t stats_auto_recalc;
+    int64_t stats_sample_pages;
+    int64_t created_time_utc_epoch;
+    int64_t updated_time_utc_epoch;
+};
+
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
 int mylite_catalog_begin_generation_change(
     struct mylite_db *database,
@@ -71,6 +90,82 @@ int mylite_catalog_checked_column_text(
 int mylite_catalog_u64_to_i64(uint64_t value, int64_t *out_value);
 int mylite_catalog_i64_to_u32(int64_t value, uint32_t *out_value);
 int mylite_catalog_i64_to_u64(int64_t value, uint64_t *out_value);
+int mylite_catalog_validate_table_descriptor_input(
+    const struct mylite_catalog_table_descriptor_input *input
+);
+bool mylite_catalog_column_default_kind_stores_integer(
+    enum mylite_catalog_column_default_kind default_kind
+);
+bool mylite_catalog_column_default_kind_stores_text(
+    enum mylite_catalog_column_default_kind default_kind
+);
+
+int mylite_catalog_read_schema_by_name_from_sqlite(
+    sqlite3 *sqlite,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+int mylite_catalog_read_schema_by_id_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+int mylite_catalog_read_table_by_name_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_read_table_by_id_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_read_view_by_table_id_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_view_descriptor *out_view
+);
+int mylite_catalog_read_column_by_name_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_column_descriptor *out_column
+);
+int mylite_catalog_try_read_primary_index_by_table_id_from_sqlite(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_index_descriptor *out_index,
+    bool *out_found
+);
+int mylite_catalog_read_next_table_id(sqlite3 *sqlite, int64_t *out_table_id);
+int mylite_catalog_read_next_index_id(sqlite3 *sqlite, int64_t *out_index_id);
+int mylite_catalog_read_next_foreign_key_id(sqlite3 *sqlite, int64_t *out_foreign_key_id);
+int mylite_catalog_read_next_check_constraint_id(sqlite3 *sqlite, int64_t *out_check_constraint_id);
+int mylite_catalog_read_inserted_index_column(
+    struct mylite_db *database,
+    int64_t index_id,
+    int64_t ordinal_position,
+    struct mylite_catalog_index_column_descriptor *out_index_column
+);
+int mylite_catalog_read_inserted_foreign_key(
+    struct mylite_db *database,
+    int64_t child_table_id,
+    const char *name,
+    struct mylite_catalog_foreign_key_descriptor *out_foreign_key
+);
+int mylite_catalog_read_inserted_foreign_key_column(
+    struct mylite_db *database,
+    int64_t foreign_key_id,
+    int64_t ordinal_position,
+    struct mylite_catalog_foreign_key_column_descriptor *out_foreign_key_column
+);
+int mylite_catalog_read_inserted_check_constraint(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
+);
 
 int mylite_catalog_validate_database(struct mylite_db *database);
 int mylite_catalog_validate_ready_database(struct mylite_db *database);

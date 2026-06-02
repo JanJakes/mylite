@@ -317,3 +317,25 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the eighteenth split.
+
+## Round 19
+
+- [x] Reinspect mutable catalog monolith split candidates after the
+      information-schema metadata split.
+- [x] Select catalog read, iteration, next-id, post-insert read, and
+      descriptor materialization helpers as the next true module boundary.
+- [x] Move catalog SELECT column indexes and descriptor materializers into
+      `mylite_catalog_read`.
+- [x] Move public catalog read/iteration APIs and private SQLite-level read
+      helpers into `mylite_catalog_read`.
+- [x] Keep mutation/write bind helpers and write-side catalog value validation
+      in `mylite_catalog`.
+- [x] Expose only the shared table-descriptor validator, default-kind helpers,
+      and SQLite-level read helpers through `mylite_catalog_internal.h`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog read/materialization tests.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      function ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the nineteenth split.

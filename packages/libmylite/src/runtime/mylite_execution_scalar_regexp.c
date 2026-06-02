@@ -1,5 +1,6 @@
 #include "mylite_execution_scalar_regexp.h"
 #include "mylite_execution_scalar.h"
+#include "mylite_execution_scalar_string_position.h"
 
 #include "mylite_regexp.h"
 

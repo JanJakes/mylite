@@ -637,3 +637,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-second split.
+
+## Round 33
+
+- [x] Reinspect `mylite_execution_scalar_string.c` after the REGEXP and
+      charset/collation extraction.
+- [x] Add `mylite_execution_scalar_string_position.h/.c` for string slice,
+      padding, bitmask, search, `FIND_IN_SET`, and `STRCMP` execution.
+- [x] Add `mylite_execution_scalar_string_transform.h/.c` for `CONCAT_WS`,
+      `REPLACE`, string `INSERT`, `REVERSE`, `SOUNDEX`, `QUOTE`, and
+      `SUBSTRING_INDEX` execution.
+- [x] Move position/search/padding/bitmask and transform declarations out of
+      the catch-all scalar header into dedicated internal headers.
+- [x] Keep core string length, codepoint, case, trim, and borrowed
+      session-scalar text conversion in `mylite_execution_scalar_string.c`.
+- [x] Register the new runtime sources in CMake.
+- [x] Run focused scalar string build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-third split.

@@ -15,6 +15,8 @@
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_scalar_charset_collation.h"
 #include "mylite_execution_scalar_regexp.h"
+#include "mylite_execution_scalar_string_position.h"
+#include "mylite_execution_scalar_string_transform.h"
 #include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_execution_system_variables.h"
 #include "mylite_integer_arithmetic.h"

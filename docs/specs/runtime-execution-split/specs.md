@@ -239,16 +239,16 @@ the scalar string module. Core string scalar functions
 extended string functions (`LPAD()`, `RPAD()`, `REPEAT()`, `SPACE()`,
 `EXPORT_SET()`, `MAKE_SET()`, `LOCATE()`, `INSTR()`, `POSITION()`,
 `CONCAT_WS()`, `REPLACE()`, `INSERT()`, `REVERSE()`, `SOUNDEX()`, `QUOTE()`,
-`SUBSTRING_INDEX()`, `FIND_IN_SET()`, and `STRCMP()`) stay in
+`SUBSTRING_INDEX()`, `FIND_IN_SET()`, and `STRCMP()`) initially stay in
 `mylite_execution_scalar_string.c`. Round 32 moves REGEXP scalar functions and
 scalar `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` metadata execution into
-dedicated scalar modules. The remaining scalar string module owns
-string-specific argument normalization, UTF-8 slice validation, and string
-function-family dispatch helpers. Row-scalar planning, predicate planning,
-scalar projection descriptor construction, generic session-scalar dispatch,
-table-option validation, shared diagnostics, and session state remain in the
-execution runtime and call these modules through explicit internal scalar
-helper wrappers.
+dedicated scalar modules. Round 33 splits the remaining scalar string module
+into core string length/codepoint/case/trim execution, position/search/padding
+execution, and string transformation execution. Row-scalar planning, predicate
+planning, scalar projection descriptor construction, generic session-scalar
+dispatch, table-option validation, shared diagnostics, and session state remain
+in the execution runtime and call these modules through explicit internal
+scalar helper wrappers.
 
 ## Goals
 
@@ -669,10 +669,11 @@ The fragments are:
 - `mylite_execution_scalar_temporal_core.inc`: tombstone include; scalar
   temporal core support lives in `mylite_execution_scalar_temporal.c`.
 - `mylite_execution_scalar_string_extended.inc`: tombstone include; scalar
-  string extended support lives in `mylite_execution_scalar_string.c`, REGEXP
-  support lives in `mylite_execution_scalar_regexp.c`, and
-  charset/collation/coercibility support lives in
-  `mylite_execution_scalar_charset_collation.c`.
+  string position/search/padding support lives in
+  `mylite_execution_scalar_string_position.c`, scalar string transformation
+  support lives in `mylite_execution_scalar_string_transform.c`, REGEXP support
+  lives in `mylite_execution_scalar_regexp.c`, and charset/collation/coercibility
+  support lives in `mylite_execution_scalar_charset_collation.c`.
 - `mylite_execution_scalar_misc.inc`: scalar subquery, concatenation,
   `ELT`, `FIELD`, `GREATEST`, `LEAST`, and `INTERVAL` scalar support.
 - `mylite_execution_scalar_numeric.inc`: numeric arithmetic, bitwise,
@@ -798,6 +799,82 @@ session-scalar dispatch, or non-JSON scalar function families. The exported
 entry points are internal to the `mylite` static library and remain outside the
 public MyLite ABI.
 
+### `mylite_execution_scalar_string`
+
+The scalar string core module owns session-scalar implementations for:
+
+- `LENGTH`
+- `OCTET_LENGTH`
+- `BIT_LENGTH`
+- `CHAR_LENGTH`
+- `CHARACTER_LENGTH`
+- `ASCII`
+- `ORD`
+- `LOWER`
+- `LCASE`
+- `UPPER`
+- `UCASE`
+- `TRIM`, `LTRIM`, and `RTRIM`
+
+The module also owns the shared session-scalar text conversion helper used by
+the scalar string family for borrowed session values such as schema, user,
+connection id, version, row counts, date/time values, and system variables.
+
+The module must not own string slice, padding, bitmask, search, transform,
+REGEXP, charset/collation, row-scalar planning, predicate SQL rendering, or
+generic scalar dispatch.
+
+### `mylite_execution_scalar_string_position`
+
+The scalar string position/search module owns session-scalar implementations for:
+
+- `LEFT`
+- `RIGHT`
+- `SUBSTRING`, `SUBSTR`, and `MID`
+- `LPAD`
+- `RPAD`
+- `REPEAT`
+- `SPACE`
+- `EXPORT_SET`
+- `MAKE_SET`
+- `LOCATE`
+- `INSTR`
+- `POSITION`
+- `FIND_IN_SET`
+- `STRCMP`
+
+The module owns the string slice, padding, bitmask, and search function-kind
+enums and planner helper declarations in
+`mylite_execution_scalar_string_position.h`. It may call scalar string core
+helpers for admitted scalar text arguments and borrowed session-scalar text
+conversion.
+
+The module must not own string transform functions, REGEXP, charset/collation,
+row-scalar planning, predicate SQL rendering, generic scalar dispatch, or
+session-state mutation.
+
+### `mylite_execution_scalar_string_transform`
+
+The scalar string transform module owns session-scalar implementations for:
+
+- `CONCAT_WS`
+- `REPLACE`
+- string `INSERT`
+- `REVERSE`
+- `SOUNDEX`
+- `QUOTE`
+- `SUBSTRING_INDEX`
+
+The module owns transform-specific argument classification helpers in
+`mylite_execution_scalar_string_transform.h`. It may call scalar string core
+helpers for scalar text conversion and scalar string position helpers for
+signed integer and NULL slice/count argument parsing.
+
+The module must not own core string length/codepoint/case/trim execution,
+position/search/padding/bitmask functions, REGEXP, charset/collation,
+row-scalar planning, predicate SQL rendering, generic scalar dispatch, or
+session-state mutation.
+
 ### `mylite_execution_scalar_regexp`
 
 The scalar REGEXP module owns session-scalar implementations for:
@@ -811,10 +888,10 @@ The module also exposes narrow internal helpers for row-scalar REGEXP planning:
 REGEXP string function classification, argument-list normalization,
 match-type decoding, pattern validation, and literal text normalization.
 
-The module may call core scalar string helpers for admitted scalar text
-arguments and session scalar argument evaluation. It must not own ordinary
-string scalar functions, row-scalar planning, predicate SQL rendering, generic
-scalar dispatch, or session state.
+The module may call scalar string position helpers for admitted scalar text
+arguments and scalar string core helpers for session scalar argument
+evaluation. It must not own ordinary string scalar functions, row-scalar
+planning, predicate SQL rendering, generic scalar dispatch, or session state.
 
 ### `mylite_execution_scalar_charset_collation`
 
@@ -946,10 +1023,11 @@ current timestamp/session state.
   values, NULL propagation, unsupported-shape diagnostics, and planner helper
   behavior must remain identical to the previous scalar temporal format
   fragment behavior.
-- Scalar string, REGEXP, charset/collation, and coercibility function values,
-  NULL propagation, unsupported-shape diagnostics, planner helper behavior,
-  and metadata classification must remain identical to the previous scalar
-  string module behavior.
+- Scalar string core, position/search/padding, transform, REGEXP,
+  charset/collation, and coercibility function values, NULL propagation,
+  unsupported-shape diagnostics, planner helper behavior, and metadata
+  classification must remain identical to the previous scalar string module
+  behavior.
 
 ## Implementation plan
 

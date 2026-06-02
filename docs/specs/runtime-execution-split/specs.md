@@ -126,6 +126,14 @@ validation. Validation that depends on catalog-private value structs, such as
 column default semantics, stays in `mylite_catalog.c` until those ownership
 types are split deliberately.
 
+The seventeenth split moves catalog handle state, file-backed schema
+bootstrap/load/migration coordination, descriptor-cache invalidation, mutation
+transaction lifecycle, and catalog-generation transitions into
+`mylite_catalog_state.c`. The mutable descriptor row APIs remain in
+`mylite_catalog.c`. Descriptor mutation code uses a small private
+generation-change helper surface instead of owning catalog-global transaction
+details directly.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

@@ -8,7 +8,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+struct mylite_catalog_generation_change {
+    uint64_t next_generation;
+};
+
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
+int mylite_catalog_begin_generation_change(
+    struct mylite_db *database,
+    struct mylite_catalog_generation_change *out_change
+);
+int mylite_catalog_finish_generation_change(
+    struct mylite_db *database,
+    const struct mylite_catalog_generation_change *change
+);
+void mylite_catalog_abandon_generation_change(sqlite3 *sqlite);
 int mylite_catalog_execute_sql(sqlite3 *sqlite, const char *sql);
 int mylite_catalog_prepare_statement(
     sqlite3 *sqlite,

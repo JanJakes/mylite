@@ -279,3 +279,20 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the sixteenth split.
+
+## Round 17
+
+- [x] Reinspect catalog state/bootstrap ownership after the validation split.
+- [x] Select catalog lifecycle, schema bootstrap/load, descriptor cache reset,
+      mutation transaction lifecycle, and generation transactions as the next
+      true module boundary.
+- [x] Move catalog state helpers into `mylite_catalog_state`.
+- [x] Expose only the private generation-change transaction helpers through
+      `mylite_catalog_internal.h`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog state/runtime tests.
+- [x] Review the split for behavior preservation, transaction ownership, and
+      helper-surface width.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the seventeenth split.

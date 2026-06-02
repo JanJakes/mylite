@@ -25410,7 +25410,17 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_dml_sql_builders.inc"
 
-#include "mylite_execution_sqlite_write_helpers.inc"
+#include "mylite_execution_sqlite_write_statements.inc"
+
+#include "mylite_execution_insert_duplicate_write_helpers.inc"
+
+#include "mylite_execution_update_unique_key_write_conflicts.inc"
+
+#include "mylite_execution_foreign_key_write_validation.inc"
+
+#include "mylite_execution_unique_key_write_lookup.inc"
+
+#include "mylite_execution_key_tuple_formatting.inc"
 
 #include "mylite_execution_row_scalar_parameter_binding.inc"
 

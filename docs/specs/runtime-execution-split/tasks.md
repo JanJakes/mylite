@@ -972,3 +972,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-eighth split.
+
+## Round 49
+
+- [x] Reinspect the remaining largest runtime fragments after the
+      INFORMATION_SCHEMA query split.
+- [x] Identify `mylite_execution_sqlite_write_helpers.inc` as a SQLite write
+      helper same-translation-unit split candidate.
+- [x] Split statement/constraint helpers, INSERT duplicate-key helpers,
+      UPDATE unique-key conflict handling, foreign-key validation, unique-key
+      lookup, and key tuple formatting into named fragments.
+- [x] Remove `mylite_execution_sqlite_write_helpers.inc` and replace it with
+      the ordered fragment include sequence.
+- [x] Run focused INSERT, UPDATE, unique-key, foreign-key, generated column,
+      constraint, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-ninth split.

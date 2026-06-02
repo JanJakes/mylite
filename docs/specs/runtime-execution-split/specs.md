@@ -1012,10 +1012,20 @@ The fragments are:
 - `mylite_execution_dml_sql_builders.inc`: DELETE and UPDATE SQL rendering,
   joined/limited rowid filters, update assignment SQL, auto-update column
   rendering, and changed-row predicates.
-- `mylite_execution_sqlite_write_helpers.inc`: SQLite schema/control
-  execution, statement preparation/finalization, INSERT stepping, duplicate-key
-  handling, foreign-key validation, unique-key conflict SQL, and duplicate-key
-  display formatting.
+- `mylite_execution_sqlite_write_statements.inc`: SQLite schema/control
+  execution, statement preparation/finalization, INSERT row binding/stepping,
+  and constraint-message helpers.
+- `mylite_execution_insert_duplicate_write_helpers.inc`: INSERT duplicate-key
+  conflict detection, duplicate assignment conversion, UPDATE SQL rendering,
+  assignment binding, and changed-row predicates.
+- `mylite_execution_update_unique_key_write_conflicts.inc`: UPDATE unique-key
+  conflict detection and duplicate-key diagnostic selection.
+- `mylite_execution_foreign_key_write_validation.inc`: child and parent
+  foreign-key validation SQL for post-write checks.
+- `mylite_execution_unique_key_write_lookup.inc`: unique-key existence
+  probing, lookup SQL rendering, conflict SQL rendering, and parameter binding.
+- `mylite_execution_key_tuple_formatting.inc`: SQLite/current-row key tuple
+  formatting and MySQL duplicate-key display value formatting.
 - `mylite_execution_row_scalar_parameter_binding.inc`: SELECT, INSERT SELECT,
   and row-scalar expression parameter binding for scalar, temporal, string,
   JSON, control-flow, UUID, and character expressions.
@@ -1441,6 +1451,10 @@ current timestamp/session state.
     same-translation-unit query-execution, system-dispatch, catalog-dispatch,
     row-helper, static-core, static storage, built-in table-status, and
     base table-status row fragments.
+25. Split the oversized SQLite write helper fragment into ordered
+    same-translation-unit statement/constraint, INSERT duplicate-key,
+    UPDATE unique-key conflict, foreign-key validation, unique-key lookup, and
+    key tuple formatting fragments.
 
 ## Review checklist
 
@@ -1520,3 +1534,7 @@ current timestamp/session state.
   linkage; the split must not introduce materialized metadata tables, duplicate
   table-status loading, change processlist/view/table usage rows, or alter
   INFORMATION_SCHEMA.TABLES/PARTITIONS values.
+- SQLite write-helper fragments preserve the existing direct SQLite write
+  execution ownership and same-translation-unit helper linkage; the split must
+  not introduce buffered write tables, duplicate uniqueness/foreign-key
+  validation paths, or change INSERT/UPDATE duplicate-key diagnostics.

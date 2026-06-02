@@ -649,9 +649,29 @@ The fragments are:
 - `mylite_execution_mysql_system_innodb_stats_rows.inc`: mysql system table
   column metadata helpers plus mysql `innodb_index_stats` and
   `innodb_table_stats` row synthesis.
-- `mylite_execution_information_schema_queries.inc`: INFORMATION_SCHEMA SELECT
-  query execution, row-set ownership, static metadata rows, catalog table rows,
-  table-status values, and built-in schema table metadata rows.
+- `mylite_execution_information_schema_query_execution.inc`:
+  INFORMATION_SCHEMA SELECT query resolution, execution, row-set build entry,
+  and row-set ownership cleanup.
+- `mylite_execution_information_schema_system_dispatch_rows.inc`:
+  INFORMATION_SCHEMA system-row dispatch plus static trigger, view,
+  view-table-usage, and view-routine-usage rows.
+- `mylite_execution_information_schema_catalog_dispatch_rows.inc`:
+  INFORMATION_SCHEMA catalog row routing across schemas, tables, views, and
+  base-table row families.
+- `mylite_execution_information_schema_row_helpers.inc`: INFORMATION_SCHEMA
+  row append and cell-copy ownership helper.
+- `mylite_execution_information_schema_static_core_rows.inc`: static
+  INFORMATION_SCHEMA schemata, charset/collation, engine/plugin, keyword,
+  privilege, user attribute, resource group, processlist, and related core
+  rows.
+- `mylite_execution_information_schema_static_storage_rows.inc`: static
+  INFORMATION_SCHEMA partition, table, table-extension, tablespace, file, and
+  InnoDB storage metadata rows.
+- `mylite_execution_information_schema_builtin_table_status_helpers.inc`:
+  built-in schema table row synthesis and table-status value helpers.
+- `mylite_execution_information_schema_base_table_status_rows.inc`: user
+  base-table/view INFORMATION_SCHEMA.TABLES and PARTITIONS rows plus
+  table-status value loading helpers.
 - `mylite_execution_information_schema_columns_system_rows.inc`: static
   INFORMATION_SCHEMA and mysql system table COLUMNS rows plus static
   COLUMNS_EXTENSIONS rows.
@@ -1417,6 +1437,10 @@ current timestamp/session state.
     same-translation-unit dispatch/static-row, sys auto-increment, sys
     statistics, sys table/index-health, sys object-overview, and mysql InnoDB
     stats row fragments.
+24. Split the oversized INFORMATION_SCHEMA query fragment into ordered
+    same-translation-unit query-execution, system-dispatch, catalog-dispatch,
+    row-helper, static-core, static storage, built-in table-status, and
+    base table-status row fragments.
 
 ## Review checklist
 
@@ -1491,3 +1515,8 @@ current timestamp/session state.
   helper linkage; the split must not introduce a second metadata query engine,
   materialize catalog tables, change sys placeholder behavior, or alter mysql
   InnoDB stats row synthesis.
+- INFORMATION_SCHEMA query fragments preserve the existing row-set ownership,
+  catalog dispatch, static row synthesis, and same-translation-unit helper
+  linkage; the split must not introduce materialized metadata tables, duplicate
+  table-status loading, change processlist/view/table usage rows, or alter
+  INFORMATION_SCHEMA.TABLES/PARTITIONS values.

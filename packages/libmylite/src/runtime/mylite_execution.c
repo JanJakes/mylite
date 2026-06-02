@@ -25128,7 +25128,21 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_mysql_system_innodb_stats_rows.inc"
 
-#include "mylite_execution_information_schema_queries.inc"
+#include "mylite_execution_information_schema_query_execution.inc"
+
+#include "mylite_execution_information_schema_system_dispatch_rows.inc"
+
+#include "mylite_execution_information_schema_catalog_dispatch_rows.inc"
+
+#include "mylite_execution_information_schema_row_helpers.inc"
+
+#include "mylite_execution_information_schema_static_core_rows.inc"
+
+#include "mylite_execution_information_schema_static_storage_rows.inc"
+
+#include "mylite_execution_information_schema_builtin_table_status_helpers.inc"
+
+#include "mylite_execution_information_schema_base_table_status_rows.inc"
 
 #include "mylite_execution_information_schema_columns_system_rows.inc"
 

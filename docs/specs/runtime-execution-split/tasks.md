@@ -952,3 +952,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-seventh split.
+
+## Round 48
+
+- [x] Reinspect the remaining largest runtime fragments after the mysql system
+      query split.
+- [x] Identify `mylite_execution_information_schema_queries.inc` as an
+      INFORMATION_SCHEMA query-family same-translation-unit split candidate.
+- [x] Split query execution, system dispatch rows, catalog dispatch rows, row
+      helpers, static core rows, static storage rows, built-in table-status
+      helpers, and base table-status rows into named fragments.
+- [x] Remove `mylite_execution_information_schema_queries.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused INFORMATION_SCHEMA, builtin schema, table status, InnoDB
+      metadata, mysql/sys metadata, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-eighth split.

@@ -175,7 +175,7 @@ static int session_unary_scalar_value(
         return literal_projection_value(database, expression, out_cell);
     }
     if (is_scalar_bitwise_unary_operator(mylite_sql_ast_node_operator(expression))) {
-        return scalar_bitwise_value(database, expression, out_cell);
+        return mylite_execution_scalar_bitwise_value(database, expression, out_cell);
     }
     if (is_scalar_logical_unary_operator(mylite_sql_ast_node_operator(expression))) {
         return scalar_logical_value(database, expression, out_cell);
@@ -191,11 +191,11 @@ static int session_binary_scalar_value(
     if (row_scalar_expression_is_concat_operator(expression)) {
         return scalar_concat_operator_value(database, expression, out_cell);
     }
-    if (is_scalar_division_projection_expression(expression)) {
-        return scalar_division_value(database, expression, out_cell);
+    if (mylite_execution_is_scalar_division_projection_expression(expression)) {
+        return mylite_execution_scalar_division_value(database, expression, out_cell);
     }
     if (is_scalar_bitwise_projection_expression(expression)) {
-        return scalar_bitwise_value(database, expression, out_cell);
+        return mylite_execution_scalar_bitwise_value(database, expression, out_cell);
     }
     if (is_scalar_logical_projection_expression(expression)) {
         return scalar_logical_value(database, expression, out_cell);

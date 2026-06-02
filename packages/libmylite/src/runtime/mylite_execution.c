@@ -14,6 +14,7 @@
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_scalar_charset_collation.h"
+#include "mylite_execution_scalar_numeric.h"
 #include "mylite_execution_scalar_regexp.h"
 #include "mylite_execution_scalar_string_position.h"
 #include "mylite_execution_scalar_string_transform.h"
@@ -898,10 +899,6 @@ static const char *const show_table_status_result_columns[show_table_status_resu
 };
 
 static const char scalar_pi_text[] = "3.141593";
-static const double angle_conversion_half_turn_degrees = 180.0;
-static const double double_scientific_integer_threshold = 1.0e15;
-static const double logarithm_base_two = 2.0;
-static const double logarithm_base_ten = 10.0;
 static const long double decimal_round_integer_step = 1.0L;
 static const int tm_year_calendar_offset = 1900;
 static const uint64_t longtext_max_length = 4294967295ULL;
@@ -3392,33 +3389,10 @@ struct string_bitmask_scalar_text_argument {
     char *owned_text;
 };
 
-struct rounding_signed_value {
-    bool is_null;
-    bool is_negative;
-    uint64_t magnitude;
-    size_t staged_division_by_zero_warning_count;
-};
-
 struct prepared_statement_expanded_sql {
     char *text;
     size_t text_size;
     size_t parameter_count;
-};
-
-struct scalar_exact_decimal {
-    bool is_null;
-    bool is_negative;
-    char integer_digits[scalar_exact_decimal_part_capacity + 1U];
-    size_t integer_length;
-    char fraction_digits[scalar_exact_decimal_part_capacity + 1U];
-    size_t fraction_length;
-};
-
-struct scalar_decimal_places {
-    bool is_null;
-    bool is_negative;
-    bool overflowed;
-    uint64_t magnitude;
 };
 
 enum scalar_integer_cast_target {
@@ -3476,13 +3450,6 @@ struct scalar_arithmetic_operation {
     enum mylite_sql_ast_operator operator_kind;
     int64_t left;
     int64_t right;
-};
-
-struct approximate_numeric_input_value {
-    bool is_null;
-    bool is_negative;
-    uint64_t magnitude;
-    size_t division_by_zero_warning_count;
 };
 
 struct scalar_comparison_operation {
@@ -11857,195 +11824,6 @@ static int format_field_scalar_result_position(
     struct session_scalar_cell *out_cell
 );
 static void field_scalar_argument_deinit(struct field_scalar_argument *argument);
-static int scalar_bitwise_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int abs_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_abs_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value
-);
-static int evaluate_abs_direct_literal_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_bitwise_value *out_value,
-    bool *out_handled
-);
-static int sign_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_sign_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
-);
-static int evaluate_sign_direct_literal_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value,
-    bool *out_handled
-);
-static int sign_of_decimal_integer_literal(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    bool is_negative,
-    struct scalar_arithmetic_value *out_value
-);
-static int rounding_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_rounding_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_rounding_places_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
-);
-static int evaluate_rounding_signed_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct rounding_signed_value *out_value
-);
-static int evaluate_rounding_direct_signed_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct rounding_signed_value *out_value,
-    bool *out_handled
-);
-static int round_signed_value_to_negative_places(
-    struct mylite_db *database,
-    const struct rounding_signed_value *value,
-    int64_t places,
-    struct session_scalar_cell *out_cell
-);
-static int evaluate_rounding_direct_literal_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static int format_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int truncate_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int scalar_format_truncate_arguments(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct scalar_exact_decimal *out_value,
-    struct scalar_decimal_places *out_places
-);
-static int scalar_exact_decimal_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct scalar_exact_decimal *out_decimal
-);
-static int scalar_decimal_places_argument(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct scalar_decimal_places *out_places
-);
-static int parse_scalar_exact_decimal_literal(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    bool is_negative,
-    const char *function_name,
-    struct scalar_exact_decimal *out_decimal
-);
-static int parse_scalar_exact_decimal_dot_index(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    size_t *out_dot_index
-);
-static int assign_scalar_exact_decimal_integer(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    size_t dot_index,
-    const char *function_name,
-    struct scalar_exact_decimal *out_decimal
-);
-static int assign_scalar_exact_decimal_fraction(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    size_t dot_index,
-    const char *function_name,
-    struct scalar_exact_decimal *out_decimal
-);
-static int parse_scalar_decimal_places_literal(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    bool is_negative,
-    const char *function_name,
-    struct scalar_decimal_places *out_places
-);
-static int assign_format_function_text(
-    struct mylite_db *database,
-    const struct scalar_exact_decimal *value,
-    const struct scalar_decimal_places *places,
-    struct session_scalar_cell *out_cell
-);
-static size_t format_decimal_place_count(const struct scalar_decimal_places *places);
-static void copy_format_fraction_digits(
-    const struct scalar_exact_decimal *value,
-    size_t decimal_places,
-    char *out_fraction_digits
-);
-static int round_format_decimal_digits(
-    struct mylite_db *database,
-    const struct scalar_exact_decimal *value,
-    size_t decimal_places,
-    char *integer_digits,
-    size_t *in_out_integer_length,
-    char *fraction_digits
-);
-static int assign_format_output_text(
-    struct mylite_db *database,
-    bool is_negative,
-    const char *integer_digits,
-    size_t integer_length,
-    const char *fraction_digits,
-    size_t decimal_places,
-    struct session_scalar_cell *out_cell
-);
-static int assign_truncate_function_text(
-    struct mylite_db *database,
-    const struct scalar_exact_decimal *value,
-    const struct scalar_decimal_places *places,
-    struct session_scalar_cell *out_cell
-);
-static void set_format_truncate_unsupported_error(
-    struct mylite_db *database,
-    const char *function_name
-);
-static bool scalar_decimal_parts_are_zero(
-    const char *integer_digits,
-    size_t integer_digit_count,
-    const char *fraction_digits,
-    size_t fraction_digit_count
-);
-static bool scalar_decimal_digits_are_zero(const char *digits, size_t digit_count);
 static int cast_binary_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -12424,163 +12202,6 @@ static int scalar_arithmetic_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
-);
-static int scalar_division_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int sqrt_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int angle_conversion_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int inverse_trig_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int direct_trig_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static const char *direct_trig_function_name(const struct mylite_sql_ast_node *expression);
-static int finish_direct_trig_function_value(
-    struct mylite_db *database,
-    double output,
-    const char *function_name,
-    size_t warning_count,
-    struct session_scalar_cell *out_cell
-);
-static int set_cot_zero_out_of_range_error(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static int atan_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int atan_one_argument_function_value(
-    struct mylite_db *database,
-    const struct approximate_numeric_input_value *first,
-    const char *function_name,
-    struct session_scalar_cell *out_cell
-);
-static int atan_two_argument_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct approximate_numeric_input_value *first,
-    const char *function_name,
-    struct session_scalar_cell *out_cell
-);
-static int finish_atan_function_value(
-    struct mylite_db *database,
-    double output,
-    const char *function_name,
-    size_t warning_count,
-    struct session_scalar_cell *out_cell
-);
-static int exp_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int logarithm_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int one_argument_logarithm_function_value(
-    struct mylite_db *database,
-    const struct approximate_numeric_input_value *value,
-    const char *function_name,
-    double log_base,
-    struct session_scalar_cell *out_cell
-);
-static int two_argument_logarithm_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct approximate_numeric_input_value *base,
-    struct session_scalar_cell *out_cell
-);
-static int power_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int finish_exp_log_power_function_value(
-    struct mylite_db *database,
-    double output,
-    const char *function_name,
-    size_t division_warning_count,
-    struct session_scalar_cell *out_cell
-);
-static int set_double_out_of_range_error(struct mylite_db *database, const char *function_name);
-static double approximate_numeric_input_to_double(
-    const struct approximate_numeric_input_value *value
-);
-static int evaluate_approximate_numeric_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct approximate_numeric_input_value *out_value,
-    void (*set_unsupported_error)(struct mylite_db *)
-);
-static int evaluate_approximate_numeric_direct_value_operand(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct approximate_numeric_input_value *out_value,
-    void (*set_unsupported_error)(struct mylite_db *),
-    bool *out_handled
-);
-static int format_double_text(
-    struct mylite_db *database,
-    double value,
-    const char *function_name,
-    char *buffer,
-    size_t buffer_size
-);
-static int copy_normalized_double_text(
-    struct mylite_db *database,
-    const char *candidate,
-    const char *function_name,
-    char *buffer,
-    size_t buffer_size
-);
-static bool should_format_scientific_integer_double(double value);
-static int format_scientific_double_text(
-    struct mylite_db *database,
-    double value,
-    const char *function_name,
-    char *buffer,
-    size_t buffer_size
-);
-static int format_c_locale_text(char *buffer, size_t buffer_size, const char *format, ...);
-static int parse_c_locale_double(const char *text, char **out_end, double *out_value);
-static int copy_normalized_scientific_double_text(
-    struct mylite_db *database,
-    const char *candidate,
-    const char *function_name,
-    char *buffer,
-    size_t buffer_size
-);
-static void set_double_format_error(struct mylite_db *database, const char *function_name);
-static int format_scalar_division_value(
-    struct mylite_db *database,
-    int64_t numerator,
-    int64_t denominator,
-    char *buffer,
-    size_t buffer_size
-);
-static bool scalar_division_left_null_short_circuits(
-    const struct mylite_sql_ast_node *expression,
-    const struct scalar_arithmetic_value *left
 );
 static int evaluate_scalar_arithmetic_expression(
     struct mylite_db *database,
@@ -13294,7 +12915,6 @@ static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_no
 static bool is_scalar_arithmetic_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
-static bool is_scalar_division_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_bitwise_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_logical_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_comparison_projection_expression(
@@ -25612,6 +25232,21 @@ int mylite_execution_accumulate_staged_division_by_zero_warnings(
     return accumulate_staged_division_by_zero_warnings(database, staged_count, inout_warning_count);
 }
 
+int mylite_execution_accumulate_staged_warning_count(
+    struct mylite_db *database,
+    size_t staged_count,
+    size_t *inout_warning_count
+) {
+    return accumulate_staged_warning_count(database, staged_count, inout_warning_count);
+}
+
+int mylite_execution_append_division_by_zero_warnings(
+    struct mylite_db *database,
+    size_t warning_count
+) {
+    return append_division_by_zero_warnings(database, warning_count);
+}
+
 int mylite_execution_decode_sql_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
@@ -25934,6 +25569,62 @@ void mylite_execution_set_native_function_parameter_count_error(
     set_native_function_parameter_count_error(database, function_name);
 }
 
+void mylite_execution_set_scalar_division_unsupported_error(struct mylite_db *database) {
+    set_scalar_division_unsupported_error(database);
+}
+
+void mylite_execution_set_abs_signed_minimum_overflow_error(struct mylite_db *database) {
+    set_abs_signed_minimum_overflow_error(database);
+}
+
+void mylite_execution_set_abs_unsupported_error(struct mylite_db *database) {
+    set_abs_unsupported_error(database);
+}
+
+void mylite_execution_set_sign_unsupported_error(struct mylite_db *database) {
+    set_sign_unsupported_error(database);
+}
+
+void mylite_execution_set_rounding_unsupported_error(struct mylite_db *database) {
+    set_rounding_unsupported_error(database);
+}
+
+int mylite_execution_set_rounding_signed_overflow_error(struct mylite_db *database) {
+    return set_rounding_signed_overflow_error(database);
+}
+
+void mylite_execution_set_sqrt_unsupported_error(struct mylite_db *database) {
+    set_sqrt_unsupported_error(database);
+}
+
+void mylite_execution_set_angle_conversion_unsupported_error(struct mylite_db *database) {
+    set_angle_conversion_unsupported_error(database);
+}
+
+void mylite_execution_set_inverse_trig_unsupported_error(struct mylite_db *database) {
+    set_inverse_trig_unsupported_error(database);
+}
+
+void mylite_execution_set_direct_trig_unsupported_error(struct mylite_db *database) {
+    set_direct_trig_unsupported_error(database);
+}
+
+void mylite_execution_set_atan_unsupported_error(struct mylite_db *database) {
+    set_atan_unsupported_error(database);
+}
+
+void mylite_execution_set_exp_log_power_unsupported_error(struct mylite_db *database) {
+    set_exp_log_power_unsupported_error(database);
+}
+
+void mylite_execution_set_format_unsupported_error(struct mylite_db *database) {
+    set_format_unsupported_error(database);
+}
+
+void mylite_execution_set_truncate_unsupported_error(struct mylite_db *database) {
+    set_truncate_unsupported_error(database);
+}
+
 void mylite_execution_set_base_conversion_unsupported_error(struct mylite_db *database) {
     set_base_conversion_unsupported_error(database);
 }
@@ -26213,8 +25904,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_scalar_string_extended.inc"
 
 #include "mylite_execution_scalar_misc.inc"
-
-#include "mylite_execution_scalar_numeric.inc"
 
 #include "mylite_execution_scalar_conversion.inc"
 

@@ -74,7 +74,7 @@ static bool is_scalar_projection_expression_without_collate(
     if (is_scalar_concat_projection_expression(expression)) {
         return true;
     }
-    if (is_scalar_division_projection_expression(expression)) {
+    if (mylite_execution_is_scalar_division_projection_expression(expression)) {
         return true;
     }
     if (is_scalar_bitwise_projection_expression(expression)) {
@@ -1779,7 +1779,7 @@ static bool is_scalar_arithmetic_projection_expression(
     return result;
 }
 
-static bool is_scalar_division_projection_expression(const struct mylite_sql_ast_node *expression) {
+bool mylite_execution_is_scalar_division_projection_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
         mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_DIVIDE) {

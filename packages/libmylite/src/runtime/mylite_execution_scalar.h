@@ -424,6 +424,9 @@ int mylite_execution_parse_unsigned_integer_literal(
 bool mylite_execution_is_scalar_arithmetic_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
+bool mylite_execution_is_scalar_division_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 bool mylite_execution_is_scalar_bitwise_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -452,6 +455,15 @@ int mylite_execution_accumulate_staged_division_by_zero_warnings(
     struct mylite_db *database,
     size_t staged_count,
     size_t *inout_warning_count
+);
+int mylite_execution_accumulate_staged_warning_count(
+    struct mylite_db *database,
+    size_t staged_count,
+    size_t *inout_warning_count
+);
+int mylite_execution_append_division_by_zero_warnings(
+    struct mylite_db *database,
+    size_t warning_count
 );
 int mylite_execution_scalar_rand_function_value(
     struct mylite_db *database,
@@ -631,6 +643,20 @@ void mylite_execution_set_native_function_parameter_count_error(
     struct mylite_db *database,
     const char *function_name
 );
+void mylite_execution_set_scalar_division_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_abs_signed_minimum_overflow_error(struct mylite_db *database);
+void mylite_execution_set_abs_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_sign_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_rounding_unsupported_error(struct mylite_db *database);
+int mylite_execution_set_rounding_signed_overflow_error(struct mylite_db *database);
+void mylite_execution_set_sqrt_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_angle_conversion_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_inverse_trig_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_direct_trig_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_atan_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_exp_log_power_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_format_unsupported_error(struct mylite_db *database);
+void mylite_execution_set_truncate_unsupported_error(struct mylite_db *database);
 void mylite_execution_set_base_conversion_unsupported_error(struct mylite_db *database);
 void mylite_execution_set_bit_count_unsupported_error(struct mylite_db *database);
 void mylite_execution_set_crc32_unsupported_error(struct mylite_db *database);

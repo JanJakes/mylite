@@ -250,6 +250,18 @@ dispatch, table-option validation, shared diagnostics, and session state remain
 in the execution runtime and call these modules through explicit internal
 scalar helper wrappers.
 
+The thirty-fourth split targets scalar numeric execution. Numeric scalar
+families (`/`, bitwise projection rendering, `ABS()`, `SIGN()`,
+`CEIL()`/`CEILING()`/`FLOOR()`/`ROUND()`, `SQRT()`, trigonometric functions,
+`ATAN()`/`ATAN2()`, `EXP()`/`LN()`/`LOG()`/`LOG10()`/`LOG2()`,
+`POW()`/`POWER()`, `FORMAT()`, and `TRUNCATE()`) move into
+`mylite_execution_scalar_numeric.c`. The module also owns the shared
+locale-stable double formatting helpers used by `RAND()` and catalog numeric
+normalization. Generic arithmetic/logical/comparison evaluators, scalar
+projection classifiers, warning appenders, diagnostics, generic scalar
+dispatch, and session state remain in the execution runtime and are reached
+through explicit internal helper declarations.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -676,8 +688,11 @@ The fragments are:
   support lives in `mylite_execution_scalar_charset_collation.c`.
 - `mylite_execution_scalar_misc.inc`: scalar subquery, concatenation,
   `ELT`, `FIELD`, `GREATEST`, `LEAST`, and `INTERVAL` scalar support.
-- `mylite_execution_scalar_numeric.inc`: numeric arithmetic, bitwise,
-  rounding, `FORMAT`, and `TRUNCATE` scalar support.
+- `mylite_execution_scalar_numeric.inc`: removed; scalar division, bitwise
+  result formatting, numeric scalar functions, approximate math, double-format,
+  `FORMAT`, and `TRUNCATE` scalar support lives in
+  `mylite_execution_scalar_numeric.c` with internal declarations in
+  `mylite_execution_scalar_numeric.h`.
 - `mylite_execution_scalar_conversion.inc`: scalar `CAST`, `CONVERT`, and
   `COLLATE` support.
 - `mylite_execution_scalar_temporal_format.inc`: tombstone include; scalar
@@ -910,6 +925,34 @@ MySQL-compatible diagnostics. It must not own row-scalar value planning,
 column descriptor resolution, table charset/collation option handling, generic
 scalar dispatch, or session system-variable state.
 
+### `mylite_execution_scalar_numeric`
+
+The scalar numeric module owns session-scalar implementations for:
+
+- top-level `/` scalar division
+- bitwise scalar projection result formatting
+- `ABS`
+- `SIGN`
+- `CEIL`, `CEILING`, `FLOOR`, and `ROUND`
+- `SQRT`
+- `DEGREES` and `RADIANS`
+- `ACOS` and `ASIN`
+- `SIN`, `COS`, `TAN`, and `COT`
+- `ATAN` and `ATAN2`
+- `EXP`, `LN`, `LOG`, `LOG10`, `LOG2`, `POW`, and `POWER`
+- `FORMAT`
+- `TRUNCATE`
+
+It also owns reusable locale-stable double parsing/formatting helpers used by
+`RAND()` scalar execution and catalog numeric normalization. The module may
+call shared scalar helpers for AST traversal, scalar projection classification,
+arithmetic/bitwise operand evaluation, warning count accumulation, warning
+emission, literal normalization, and MySQL-compatible diagnostics.
+
+The module must not own generic scalar dispatch, scalar arithmetic/logical
+expression evaluators, row-scalar planning, predicate SQL rendering, catalog
+loading policy, system-variable state, or session-state mutation.
+
 ### `mylite_execution_scalar_temporal`
 
 The scalar temporal module owns session-scalar implementations for the temporal
@@ -1028,6 +1071,10 @@ current timestamp/session state.
   unsupported-shape diagnostics, planner helper behavior, and metadata
   classification must remain identical to the previous scalar string module
   behavior.
+- Scalar numeric result values, NULL propagation, warning staging,
+  unsupported-shape diagnostics, approximate double formatting, and
+  catalog-loading numeric normalization must remain identical to the previous
+  scalar numeric fragment behavior.
 
 ## Implementation plan
 

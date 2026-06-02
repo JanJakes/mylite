@@ -4607,7 +4607,7 @@ static int parse_approximate_scanned_value(
     memcpy(token, text + scan->token_start, token_length);
     token[token_length] = '\0';
 
-    rc = parse_c_locale_double(token, &end, &parsed);
+    rc = mylite_execution_parse_c_locale_double(token, &end, &parsed);
     if (rc == MYLITE_OK && (end == token || end == NULL || *end != '\0')) {
         rc = MYLITE_ERROR;
     }
@@ -4701,7 +4701,7 @@ static int parse_approximate_literal_value(
     memcpy(buffer, text, text_length);
     buffer[text_length] = '\0';
 
-    if (parse_c_locale_double(buffer, &end, &parsed) != MYLITE_OK || end == buffer || end == NULL ||
+    if (mylite_execution_parse_c_locale_double(buffer, &end, &parsed) != MYLITE_OK || end == buffer || end == NULL ||
         *end != '\0' || !isfinite(parsed)) {
         set_out_of_range_error(database, column_name, row_number);
         return MYLITE_ERROR;
@@ -4801,7 +4801,7 @@ static int format_approximate_value_text(
         return format_float_value_text(database, value, context_name, buffer, buffer_size);
     }
 
-    return format_double_text(
+    return mylite_execution_format_double_text(
         database,
         value == 0.0 ? 0.0 : value,
         context_name,
@@ -4823,7 +4823,7 @@ static int format_float_value_text(
     if (context_name == NULL || buffer == NULL || buffer_size == 0U) {
         return MYLITE_MISUSE;
     }
-    written = format_c_locale_text(
+    written = mylite_execution_format_c_locale_text(
         candidate,
         sizeof(candidate),
         "%.*g",
@@ -4831,11 +4831,11 @@ static int format_float_value_text(
         value
     );
     if (written < 0 || (size_t)written >= sizeof(candidate)) {
-        set_double_format_error(database, context_name);
+        mylite_execution_set_double_format_error(database, context_name);
         return MYLITE_ERROR;
     }
     if (strchr(candidate, 'e') != NULL || strchr(candidate, 'E') != NULL) {
-        return copy_normalized_scientific_double_text(
+        return mylite_execution_copy_normalized_scientific_double_text(
             database,
             candidate,
             context_name,
@@ -4843,7 +4843,7 @@ static int format_float_value_text(
             buffer_size
         );
     }
-    return copy_normalized_double_text(database, candidate, context_name, buffer, buffer_size);
+    return mylite_execution_copy_normalized_double_text(database, candidate, context_name, buffer, buffer_size);
 }
 
 static int canonicalize_decimal_text(

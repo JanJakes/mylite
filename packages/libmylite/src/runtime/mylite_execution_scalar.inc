@@ -367,40 +367,40 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ABS_FUNCTION:
-        return abs_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_abs_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SIGN_FUNCTION:
-        return sign_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_sign_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CEIL_FUNCTION:
     case MYLITE_SQL_AST_CEILING_FUNCTION:
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
     case MYLITE_SQL_AST_ROUND_FUNCTION:
-        return rounding_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_rounding_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SQRT_FUNCTION:
-        return sqrt_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_sqrt_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DEGREES_FUNCTION:
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
-        return angle_conversion_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_angle_conversion_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ACOS_FUNCTION:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
-        return inverse_trig_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_inverse_trig_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SIN_FUNCTION:
     case MYLITE_SQL_AST_COS_FUNCTION:
     case MYLITE_SQL_AST_TAN_FUNCTION:
     case MYLITE_SQL_AST_COT_FUNCTION:
-        return direct_trig_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_direct_trig_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
-        return atan_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_atan_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_EXP_FUNCTION:
-        return exp_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_exp_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LN_FUNCTION:
     case MYLITE_SQL_AST_LOG_FUNCTION:
     case MYLITE_SQL_AST_LOG10_FUNCTION:
     case MYLITE_SQL_AST_LOG2_FUNCTION:
-        return logarithm_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_logarithm_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_POW_FUNCTION:
     case MYLITE_SQL_AST_POWER_FUNCTION:
-        return power_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_power_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return mylite_execution_scalar_base_conversion_function_value(database, expression, out_cell);
@@ -454,12 +454,12 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CHAR_FUNCTION:
         return mylite_execution_scalar_char_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
-        return format_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_format_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
         set_unsupported_error(database, "FORMAT() locale arguments are not supported");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_TRUNCATE_FUNCTION:
-        return truncate_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_truncate_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
         return cast_binary_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
@@ -827,7 +827,7 @@ static int rand_function_value(
     }
 
     if (rc == MYLITE_OK) {
-        rc = format_double_text(
+        rc = mylite_execution_format_double_text(
             database,
             value,
             "RAND",

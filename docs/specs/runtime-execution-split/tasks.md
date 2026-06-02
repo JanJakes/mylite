@@ -658,3 +658,25 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the thirty-third split.
+
+## Round 34
+
+- [x] Reinspect remaining scalar fragments after the scalar string-family split.
+- [x] Identify numeric scalar execution as a true-module boundary with a narrow
+      helper surface.
+- [x] Add `mylite_execution_scalar_numeric.h/.c` for scalar division, bitwise
+      scalar result formatting, `ABS`, `SIGN`, rounding, approximate math,
+      trigonometry, logarithm/power, `FORMAT`, and `TRUNCATE` execution.
+- [x] Move locale-stable double parsing/formatting into the numeric module and
+      expose it through internal declarations for `RAND()` and catalog numeric
+      normalization.
+- [x] Remove `mylite_execution_scalar_numeric.inc` and stale numeric structs,
+      prototypes, and static constants from `mylite_execution.c`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused scalar numeric and catalog-loading-adjacent tests.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run focused tidy.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the thirty-fourth split.

@@ -1075,3 +1075,23 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-third split.
+
+## Round 54
+
+- [x] Reinspect the remaining largest runtime fragments after the SQL-builder
+      split.
+- [x] Identify `mylite_execution_show_general.inc` as a SHOW statement
+      same-translation-unit split candidate.
+- [x] Split SHOW tables/status, charset/variables/status, SHOW VARIABLES
+      WHERE evaluation, schema-object/processlist/privileges, replication
+      metadata, and diagnostics output into named fragments.
+- [x] Remove `mylite_execution_show_general.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused SHOW metadata, variable/status, processlist, replication,
+      diagnostics, and parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-fourth split.

@@ -25168,7 +25168,17 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_table_maintenance_queries.inc"
 
-#include "mylite_execution_show_general.inc"
+#include "mylite_execution_show_tables_status_general.inc"
+
+#include "mylite_execution_show_charset_variables_status.inc"
+
+#include "mylite_execution_show_variables_where_eval.inc"
+
+#include "mylite_execution_show_schema_objects_processlist_privileges.inc"
+
+#include "mylite_execution_show_replication_metadata.inc"
+
+#include "mylite_execution_show_diagnostics_output.inc"
 
 #include "mylite_execution_show_columns_indexes.inc"
 

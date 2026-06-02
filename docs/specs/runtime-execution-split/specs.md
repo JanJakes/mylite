@@ -701,11 +701,27 @@ The fragments are:
   descriptor type metadata helpers.
 - `mylite_execution_table_maintenance_queries.inc`: CHECKSUM TABLE and
   ANALYZE/CHECK/OPTIMIZE/REPAIR TABLE placeholder execution.
-- `mylite_execution_show_general.inc`: SHOW TABLES, SHOW TABLE STATUS, SHOW
-  CHARACTER SET, SHOW COLLATION, SHOW VARIABLES, SHOW STATUS, SHOW TRIGGERS,
-  SHOW EVENTS, SHOW OPEN TABLES, SHOW ROUTINE STATUS, SHOW PROCESSLIST, SHOW
-  GRANTS, SHOW PRIVILEGES, binary-log/replica SHOW placeholders, and
-  SHOW WARNINGS/ERRORS execution.
+- `mylite_execution_show_tables_status_general.inc`: SHOW TABLES and SHOW
+  TABLE STATUS execution, shared SHOW schema resolution, result-column
+  setup, LIKE/WHERE filter node resolution, and built-in schema dispatch.
+- `mylite_execution_show_charset_variables_status.inc`: SHOW CHARACTER SET,
+  SHOW COLLATION, SHOW VARIABLES, and SHOW STATUS execution plus
+  variable/status visibility and row append helpers.
+- `mylite_execution_show_variables_where_eval.inc`: SHOW VARIABLES WHERE
+  output-column predicate evaluation, truth-table handling, literal
+  comparison, LIKE matching, column resolution, and iterative frame/truth
+  stacks.
+- `mylite_execution_show_schema_objects_processlist_privileges.inc`: SHOW
+  TRIGGERS, SHOW EVENTS, SHOW OPEN TABLES, SHOW ROUTINE STATUS, SHOW
+  PROCESSLIST, SHOW GRANTS, SHOW PRIVILEGES, processlist text formatting, and
+  profiling/processlist deprecation warnings.
+- `mylite_execution_show_replication_metadata.inc`: SHOW BINARY LOG STATUS,
+  SHOW BINARY LOGS, SHOW REPLICA STATUS, and SHOW REPLICAS placeholder
+  metadata execution.
+- `mylite_execution_show_diagnostics_output.inc`: SHOW WARNINGS, SHOW COUNT
+  WARNINGS, SHOW ERRORS, SHOW COUNT ERRORS, diagnostics LIMIT planning,
+  previous-diagnostics row synthesis, error counting, and unsigned integer
+  formatting helpers.
 - `mylite_execution_show_columns_indexes.inc`: SHOW COLUMNS and SHOW INDEX
   execution for user tables and supported mysql system tables.
 - `mylite_execution_show_create.inc`: SHOW CREATE TABLE/VIEW/DATABASE,
@@ -1533,6 +1549,10 @@ current timestamp/session state.
     same-translation-unit CREATE table/index helper, DROP/ALTER ADD
     column/index, ALTER column default, ALTER MODIFY copy, and ALTER
     ORDER/FORCE/rename/truncate fragments.
+30. Split the oversized SHOW general fragment into ordered
+    same-translation-unit table/status, charset/variable/status,
+    SHOW VARIABLES WHERE, schema-object/processlist/privilege, replication
+    metadata, and diagnostics output fragments.
 
 ## Review checklist
 
@@ -1635,3 +1655,9 @@ current timestamp/session state.
   formatting, CREATE/DROP/ALTER/TRUNCATE SQL text, generated/check constraint
   SQL, key-part rendering, default quoting/materialization, ALTER MODIFY copy
   execution, or ORDER/FORCE rebuild SQL.
+- SHOW general fragments preserve the existing SHOW statement ownership and
+  same-translation-unit helper linkage; the split must not change selected or
+  explicit schema resolution, LIKE/WHERE filters, variable/status visibility,
+  output-column predicate truth semantics, processlist formatting, replication
+  placeholder metadata, diagnostics LIMIT handling, or warning/error row
+  ordering.

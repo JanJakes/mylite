@@ -118,6 +118,14 @@ migration code. Catalog object validation and descriptor mutation logic remain
 in `mylite_catalog.c`; migrations still expose only their one-step private
 entry point.
 
+The sixteenth split moves reusable catalog validation primitives into
+`mylite_catalog_validation.c`. This module owns database readiness checks,
+identifier length/reservation checks, enum/domain validators, positive id and
+generation checks, callback validators, and catalog boolean extraction
+validation. Validation that depends on catalog-private value structs, such as
+column default semantics, stays in `mylite_catalog.c` until those ownership
+types are split deliberately.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

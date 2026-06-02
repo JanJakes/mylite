@@ -737,13 +737,6 @@ static int read_inserted_index_column(
     int64_t ordinal_position,
     struct mylite_catalog_index_column_descriptor *out_index_column
 );
-static int validate_database(struct mylite_db *database);
-static int validate_catalog_ready_database(struct mylite_db *database);
-static int validate_required_name(const char *name, size_t capacity);
-static int validate_optional_name(const char *name, size_t capacity);
-static int validate_logical_object_name(const char *name, size_t capacity);
-static int validate_table_kind(enum mylite_catalog_table_kind kind);
-static int validate_column_default_kind(enum mylite_catalog_column_default_kind kind);
 static int validate_catalog_column_values(
     const struct catalog_column_values *values,
     bool use_logical_object_name
@@ -777,9 +770,6 @@ static bool catalog_logical_type_is_bit(const char *logical_type);
 static bool catalog_logical_type_is_text_family(const char *logical_type);
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type);
 static bool catalog_logical_type_equals(const char *logical_type, const char *expected);
-static int validate_catalog_bool_i64(int64_t value, bool *out_bool);
-static int validate_index_kind(enum mylite_catalog_index_kind kind);
-static int validate_active_mutation(const struct mylite_catalog_mutation *mutation);
 static int validate_insert_index_request(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -811,19 +801,6 @@ static int read_inserted_index_if_requested(
 static int validate_catalog_column_reorder_request(
     const struct mylite_catalog_column_reorder *reorder
 );
-static int validate_positive_id(int64_t id);
-static int validate_positive_ordinal(int64_t ordinal_position);
-static int validate_generation(uint64_t generation);
-static int validate_schema_callback(mylite_catalog_schema_callback callback);
-static int validate_callback(mylite_catalog_table_callback callback);
-static int validate_column_callback(mylite_catalog_column_callback callback);
-static int validate_index_callback(mylite_catalog_index_callback callback);
-static int validate_index_column_callback(mylite_catalog_index_column_callback callback);
-static int validate_foreign_key_callback(mylite_catalog_foreign_key_callback callback);
-static int validate_foreign_key_column_callback(
-    mylite_catalog_foreign_key_column_callback callback
-);
-static int validate_check_constraint_callback(mylite_catalog_check_constraint_callback callback);
 static int text_equals_ascii_case_insensitive(const char *left, const char *right);
 static int text_has_ascii_case_insensitive_prefix(const char *text, const char *prefix);
 static char ascii_lower(unsigned char byte);
@@ -859,7 +836,7 @@ void mylite_catalog_deinit(struct mylite_catalog *catalog) {
 int mylite_catalog_initialize_file_backed(struct mylite_db *database) {
     int rc = MYLITE_OK;
 
-    rc = validate_database(database);
+    rc = mylite_catalog_validate_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -913,7 +890,7 @@ int mylite_catalog_begin_mutation(
     if (mutation != NULL) {
         mylite_catalog_mutation_init(mutation);
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -946,12 +923,12 @@ int mylite_catalog_commit_mutation(
     struct mylite_db *database,
     struct mylite_catalog_mutation *mutation
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -997,7 +974,7 @@ int mylite_catalog_allocate_table_id_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t *out_table_id
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (out_table_id != NULL) {
         *out_table_id = 0;
@@ -1005,7 +982,7 @@ int mylite_catalog_allocate_table_id_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1021,7 +998,7 @@ int mylite_catalog_allocate_index_id_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t *out_index_id
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (out_index_id != NULL) {
         *out_index_id = 0;
@@ -1029,7 +1006,7 @@ int mylite_catalog_allocate_index_id_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1045,7 +1022,7 @@ int mylite_catalog_allocate_foreign_key_id_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t *out_foreign_key_id
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (out_foreign_key_id != NULL) {
         *out_foreign_key_id = 0;
@@ -1053,7 +1030,7 @@ int mylite_catalog_allocate_foreign_key_id_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1074,9 +1051,9 @@ int mylite_catalog_allocate_check_constraint_id_in_mutation(
     if (out_check_constraint_id != NULL) {
         *out_check_constraint_id = 0;
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -1136,15 +1113,15 @@ int mylite_catalog_insert_table_in_mutation(
     if (out_table != NULL) {
         *out_table = (struct mylite_catalog_table_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1434,19 +1411,19 @@ int mylite_catalog_insert_column_in_mutation(
     if (out_column != NULL) {
         *out_column = (struct mylite_catalog_column_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_ordinal(ordinal_position);
+    rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1529,50 +1506,73 @@ int mylite_catalog_insert_view_in_mutation(
     if (out_view != NULL) {
         *out_view = (struct mylite_catalog_view_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view_definition, MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            view_definition,
+            MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(show_create_sql, MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            show_create_sql,
+            MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(check_option, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc =
+            mylite_catalog_validate_required_name(check_option, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(is_updatable, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc =
+            mylite_catalog_validate_required_name(is_updatable, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(definer, MYLITE_CATALOG_DEFINER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(definer, MYLITE_CATALOG_DEFINER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(security_type, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            security_type,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(character_set_client, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            character_set_client,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(collation_connection, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            collation_connection,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(source_schema_id);
+        rc = mylite_catalog_validate_positive_id(source_schema_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(source_table_id);
+        rc = mylite_catalog_validate_positive_id(source_table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(source_schema_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            source_schema_name,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(source_table_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            source_table_name,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -1779,36 +1779,37 @@ static int validate_insert_index_request(
     const char *comment
 ) {
     struct mylite_catalog_table_descriptor table = {0};
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(index_id);
+    rc = mylite_catalog_validate_positive_id(index_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+    rc =
+        mylite_catalog_validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_index_kind(kind);
+    rc = mylite_catalog_validate_index_kind(kind);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_optional_name(comment, MYLITE_CATALOG_INDEX_COMMENT_CAPACITY);
+    rc = mylite_catalog_validate_optional_name(comment, MYLITE_CATALOG_INDEX_COMMENT_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1919,13 +1920,13 @@ static int mark_table_fulltext_doc_id_initialized_in_mutation(
 ) {
     struct mylite_catalog_table_descriptor table = {0};
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -1979,32 +1980,32 @@ int mylite_catalog_insert_index_column_in_mutation(
     if (out_index_column != NULL) {
         *out_index_column = (struct mylite_catalog_index_column_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(index_id);
+    rc = mylite_catalog_validate_positive_id(index_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(column_id);
+    rc = mylite_catalog_validate_positive_id(column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_ordinal(ordinal_position);
+    rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (prefix_length != NULL) {
-        rc = validate_positive_ordinal(*prefix_length);
+        rc = mylite_catalog_validate_positive_ordinal(*prefix_length);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -2169,38 +2170,39 @@ int mylite_catalog_insert_foreign_key_in_mutation(
     if (out_foreign_key != NULL) {
         *out_foreign_key = (struct mylite_catalog_foreign_key_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(foreign_key_id);
+    rc = mylite_catalog_validate_positive_id(foreign_key_id);
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(child_table_id);
+        rc = mylite_catalog_validate_positive_id(child_table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(parent_table_id);
+        rc = mylite_catalog_validate_positive_id(parent_table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(parent_index_id);
+        rc = mylite_catalog_validate_positive_id(parent_index_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(child_index_id);
+        rc = mylite_catalog_validate_positive_id(child_index_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(update_rule, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(update_rule, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(delete_rule, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(delete_rule, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(match_option, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc =
+            mylite_catalog_validate_required_name(match_option, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -2309,32 +2311,32 @@ int mylite_catalog_insert_foreign_key_column_in_mutation(
     if (out_foreign_key_column != NULL) {
         *out_foreign_key_column = (struct mylite_catalog_foreign_key_column_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(foreign_key_id);
+    rc = mylite_catalog_validate_positive_id(foreign_key_id);
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(child_table_id);
+        rc = mylite_catalog_validate_positive_id(child_table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(parent_table_id);
+        rc = mylite_catalog_validate_positive_id(parent_table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(child_column_id);
+        rc = mylite_catalog_validate_positive_id(child_column_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(parent_column_id);
+        rc = mylite_catalog_validate_positive_id(parent_column_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_ordinal(ordinal_position);
+        rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_ordinal(position_in_unique_constraint);
+        rc = mylite_catalog_validate_positive_ordinal(position_in_unique_constraint);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -2384,33 +2386,42 @@ int mylite_catalog_insert_check_constraint_in_mutation(
     if (out_check_constraint != NULL) {
         *out_check_constraint = (struct mylite_catalog_check_constraint_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(check_constraint_id);
+        rc = mylite_catalog_validate_positive_id(check_constraint_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            physical_name,
+            MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(check_clause, MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            check_clause,
+            MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(sqlite_expression, MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            sqlite_expression,
+            MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_ordinal(generated_ordinal);
+        rc = mylite_catalog_validate_positive_ordinal(generated_ordinal);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_ordinal(ordinal_position);
+        rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -2717,18 +2728,18 @@ int mylite_catalog_delete_index_in_mutation(
     int64_t index_id
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(index_id);
+        rc = mylite_catalog_validate_positive_id(index_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -2783,24 +2794,24 @@ int mylite_catalog_delete_index_column_in_mutation(
     int64_t ordinal_position
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(index_id);
+        rc = mylite_catalog_validate_positive_id(index_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(column_id);
+        rc = mylite_catalog_validate_positive_id(column_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_ordinal(ordinal_position);
+        rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -2899,21 +2910,21 @@ int mylite_catalog_rename_index_in_mutation(
     const char *name
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(index_id);
+        rc = mylite_catalog_validate_positive_id(index_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -2958,18 +2969,18 @@ int mylite_catalog_set_index_visibility_in_mutation(
 ) {
     sqlite3_stmt *statement = NULL;
     int64_t visible_value = mylite_catalog_bool_value(is_visible);
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(index_id);
+        rc = mylite_catalog_validate_positive_id(index_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -3011,16 +3022,16 @@ int mylite_catalog_delete_foreign_keys_for_child_table_in_mutation(
     int64_t child_table_id
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(child_table_id);
+    rc = mylite_catalog_validate_positive_id(child_table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3063,20 +3074,20 @@ int mylite_catalog_delete_foreign_key_in_mutation(
     int64_t foreign_key_id
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(child_table_id);
+    rc = mylite_catalog_validate_positive_id(child_table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(foreign_key_id);
+    rc = mylite_catalog_validate_positive_id(foreign_key_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3128,13 +3139,13 @@ int mylite_catalog_delete_check_constraints_for_table_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t table_id
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -3150,16 +3161,16 @@ int mylite_catalog_delete_check_constraint_in_mutation(
     int64_t check_constraint_id
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(check_constraint_id);
+        rc = mylite_catalog_validate_positive_id(check_constraint_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -3195,16 +3206,16 @@ int mylite_catalog_update_check_constraint_enforcement_in_mutation(
     bool is_enforced
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(check_constraint_id);
+        rc = mylite_catalog_validate_positive_id(check_constraint_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -3247,16 +3258,19 @@ int mylite_catalog_rename_generated_check_constraints_in_mutation(
     const char *table_name
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_active_mutation(mutation);
+        rc = mylite_catalog_validate_active_mutation(mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_logical_object_name(table_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_logical_object_name(
+            table_name,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -3292,16 +3306,16 @@ int mylite_catalog_delete_table_in_mutation(
     int64_t table_id
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3399,24 +3413,24 @@ int mylite_catalog_delete_column_in_mutation(
     int64_t ordinal_position
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(column_id);
+    rc = mylite_catalog_validate_positive_id(column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_ordinal(ordinal_position);
+    rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3476,24 +3490,24 @@ int mylite_catalog_rename_column_in_mutation(
     const char *name
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(column_id);
+    rc = mylite_catalog_validate_positive_id(column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3572,20 +3586,20 @@ int mylite_catalog_replace_column_in_mutation(
             sqlite_generation_expression == NULL ? "" : sqlite_generation_expression,
     };
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(column_id);
+    rc = mylite_catalog_validate_positive_id(column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3630,12 +3644,12 @@ int mylite_catalog_reorder_columns_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     const struct mylite_catalog_column_reorder *reorder
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3706,11 +3720,11 @@ static int apply_catalog_column_reorder(
     if (column->table_id != reorder->table_id) {
         return MYLITE_MISUSE;
     }
-    rc = validate_positive_id(column->column_id);
+    rc = mylite_catalog_validate_positive_id(column->column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_ordinal(final_ordinal);
+    rc = mylite_catalog_validate_positive_ordinal(final_ordinal);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3775,11 +3789,11 @@ static int validate_catalog_column_reorder_request(
         reorder->column_count > (size_t)(INT64_MAX / 2)) {
         return MYLITE_MISUSE;
     }
-    rc = validate_positive_id(reorder->table_id);
+    rc = mylite_catalog_validate_positive_id(reorder->table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(reorder->metadata_replaced_column_id);
+    rc = mylite_catalog_validate_positive_id(reorder->metadata_replaced_column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3795,7 +3809,7 @@ int mylite_catalog_set_column_visibility_in_mutation(
 ) {
     sqlite3_stmt *statement = NULL;
     int64_t visible_value = 0;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (is_visible) {
         visible_value = 1;
@@ -3804,15 +3818,15 @@ int mylite_catalog_set_column_visibility_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(column_id);
+    rc = mylite_catalog_validate_positive_id(column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3853,16 +3867,16 @@ int mylite_catalog_delete_schema_in_mutation(
     int64_t schema_id
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(schema_id);
+    rc = mylite_catalog_validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4111,23 +4125,23 @@ int mylite_catalog_update_table_identity_in_mutation(
     if (out_table != NULL) {
         *out_table = (struct mylite_catalog_table_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(schema_id);
+    rc = mylite_catalog_validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4189,23 +4203,26 @@ int mylite_catalog_update_table_default_charset_collation_in_mutation(
     if (out_table != NULL) {
         *out_table = (struct mylite_catalog_table_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(default_collation, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(
+        default_collation,
+        MYLITE_CATALOG_IDENTIFIER_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4261,19 +4278,19 @@ int mylite_catalog_update_table_comment_in_mutation(
     if (out_table != NULL) {
         *out_table = (struct mylite_catalog_table_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_optional_name(comment, MYLITE_CATALOG_TABLE_COMMENT_CAPACITY);
+    rc = mylite_catalog_validate_optional_name(comment, MYLITE_CATALOG_TABLE_COMMENT_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4327,23 +4344,26 @@ int mylite_catalog_update_schema_default_charset_collation_in_mutation(
     if (out_schema != NULL) {
         *out_schema = (struct mylite_catalog_schema_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_active_mutation(mutation);
+    rc = mylite_catalog_validate_active_mutation(mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(schema_id);
+    rc = mylite_catalog_validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(default_collation, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(
+        default_collation,
+        MYLITE_CATALOG_IDENTIFIER_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4392,12 +4412,12 @@ int mylite_catalog_update_table_auto_increment_next(
     int64_t auto_increment_next
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4435,12 +4455,12 @@ int mylite_catalog_update_table_updated_time(
     int64_t updated_time_utc_epoch
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4479,12 +4499,12 @@ int mylite_catalog_for_each_schema(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_schema_callback(callback);
+    rc = mylite_catalog_validate_schema_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4525,16 +4545,16 @@ int mylite_catalog_for_each_table_in_schema(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(schema_id);
+    rc = mylite_catalog_validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_callback(callback);
+    rc = mylite_catalog_validate_table_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4582,16 +4602,16 @@ int mylite_catalog_for_each_column_in_table(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_column_callback(callback);
+    rc = mylite_catalog_validate_column_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4638,16 +4658,16 @@ int mylite_catalog_for_each_index_in_table(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_index_callback(callback);
+    rc = mylite_catalog_validate_index_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4692,16 +4712,16 @@ int mylite_catalog_for_each_index_column_in_index(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(index_id);
+    rc = mylite_catalog_validate_positive_id(index_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_index_column_callback(callback);
+    rc = mylite_catalog_validate_index_column_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4747,16 +4767,16 @@ int mylite_catalog_for_each_foreign_key_in_child_table(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(child_table_id);
+    rc = mylite_catalog_validate_positive_id(child_table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_foreign_key_callback(callback);
+    rc = mylite_catalog_validate_foreign_key_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4801,16 +4821,16 @@ int mylite_catalog_for_each_foreign_key_for_parent_table(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(parent_table_id);
+    rc = mylite_catalog_validate_positive_id(parent_table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_foreign_key_callback(callback);
+    rc = mylite_catalog_validate_foreign_key_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4855,16 +4875,16 @@ int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(foreign_key_id);
+    rc = mylite_catalog_validate_positive_id(foreign_key_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_foreign_key_column_callback(callback);
+    rc = mylite_catalog_validate_foreign_key_column_callback(callback);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -4910,13 +4930,13 @@ int mylite_catalog_for_each_check_constraint_in_table(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_check_constraint_callback(callback);
+        rc = mylite_catalog_validate_check_constraint_callback(callback);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -4963,13 +4983,13 @@ int mylite_catalog_for_each_check_constraint_in_schema(
 ) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(schema_id);
+        rc = mylite_catalog_validate_positive_id(schema_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_check_constraint_callback(callback);
+        rc = mylite_catalog_validate_check_constraint_callback(callback);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -5018,7 +5038,7 @@ int mylite_catalog_try_read_check_constraint_by_physical_name(
     bool *out_found
 ) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (out_check_constraint != NULL) {
         *out_check_constraint = (struct mylite_catalog_check_constraint_descriptor){0};
@@ -5030,10 +5050,13 @@ int mylite_catalog_try_read_check_constraint_by_physical_name(
         return MYLITE_MISUSE;
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(table_id);
+        rc = mylite_catalog_validate_positive_id(table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            physical_name,
+            MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY
+        );
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -5075,7 +5098,7 @@ int mylite_catalog_try_read_primary_index_by_table_id(
     struct mylite_catalog_index_descriptor *out_index,
     bool *out_found
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -5084,7 +5107,7 @@ int mylite_catalog_try_read_primary_index_by_table_id(
         return MYLITE_MISUSE;
     }
     *out_found = false;
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5120,19 +5143,22 @@ int mylite_catalog_create_schema_with_defaults(
     if (out_schema != NULL) {
         *out_schema = (struct mylite_catalog_schema_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(default_collation, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(
+        default_collation,
+        MYLITE_CATALOG_IDENTIFIER_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5208,10 +5234,10 @@ int mylite_catalog_read_schema_by_id(
     int64_t schema_id,
     struct mylite_catalog_schema_descriptor *out_schema
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(schema_id);
+        rc = mylite_catalog_validate_positive_id(schema_id);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -5226,7 +5252,7 @@ int mylite_catalog_try_read_schema_by_name(
     struct mylite_catalog_schema_descriptor *out_schema,
     bool *out_found
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -5235,7 +5261,7 @@ int mylite_catalog_try_read_schema_by_name(
         return MYLITE_MISUSE;
     }
     *out_found = false;
-    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5248,11 +5274,11 @@ int mylite_catalog_delete_schema(struct mylite_db *database, int64_t schema_id) 
     sqlite3_stmt *statement = NULL;
     int rc = MYLITE_OK;
 
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(schema_id);
+    rc = mylite_catalog_validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5401,7 +5427,7 @@ int mylite_catalog_create_table(
     if (out_table != NULL) {
         *out_table = (struct mylite_catalog_table_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5519,28 +5545,46 @@ int mylite_catalog_create_table(
 static int validate_catalog_table_descriptor_input(
     const struct catalog_table_descriptor_input *input
 ) {
-    int rc = input == NULL ? MYLITE_MISUSE : validate_positive_id(input->schema_id);
+    int rc = input == NULL ? MYLITE_MISUSE : mylite_catalog_validate_positive_id(input->schema_id);
 
     if (rc == MYLITE_OK) {
-        rc = validate_logical_object_name(input->name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_logical_object_name(
+            input->name,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(input->physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            input->physical_name,
+            MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_table_kind(input->kind);
+        rc = mylite_catalog_validate_table_kind(input->kind);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(input->default_charset, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            input->default_charset,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(input->default_collation, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            input->default_collation,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_optional_name(input->comment, MYLITE_CATALOG_TABLE_COMMENT_CAPACITY);
+        rc = mylite_catalog_validate_optional_name(
+            input->comment,
+            MYLITE_CATALOG_TABLE_COMMENT_CAPACITY
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_optional_name(input->row_format_option, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_optional_name(
+            input->row_format_option,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     }
     if (rc == MYLITE_OK && input->row_format_option != NULL &&
         input->row_format_option[0] != '\0' &&
@@ -5598,7 +5642,7 @@ int mylite_catalog_try_read_table_by_name(
     struct mylite_catalog_table_descriptor *out_table,
     bool *out_found
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -5607,11 +5651,11 @@ int mylite_catalog_try_read_table_by_name(
         return MYLITE_MISUSE;
     }
     *out_found = false;
-    rc = validate_positive_id(schema_id);
+    rc = mylite_catalog_validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5624,7 +5668,7 @@ int mylite_catalog_read_table_by_id(
     int64_t table_id,
     struct mylite_catalog_table_descriptor *out_table
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -5632,7 +5676,7 @@ int mylite_catalog_read_table_by_id(
     if (out_table == NULL) {
         return MYLITE_MISUSE;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5645,7 +5689,7 @@ int mylite_catalog_read_view_by_table_id(
     int64_t table_id,
     struct mylite_catalog_view_descriptor *out_view
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -5653,7 +5697,7 @@ int mylite_catalog_read_view_by_table_id(
     if (out_view == NULL) {
         return MYLITE_MISUSE;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5670,15 +5714,15 @@ int mylite_catalog_update_table_name(
     sqlite3_stmt *statement = NULL;
     int rc = MYLITE_OK;
 
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5728,11 +5772,11 @@ int mylite_catalog_delete_table(struct mylite_db *database, int64_t table_id) {
     sqlite3_stmt *statement = NULL;
     int rc = MYLITE_OK;
 
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5885,15 +5929,15 @@ int mylite_catalog_create_column(
     if (out_column != NULL) {
         *out_column = (struct mylite_catalog_column_descriptor){0};
     }
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_ordinal(ordinal_position);
+    rc = mylite_catalog_validate_positive_ordinal(ordinal_position);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5958,7 +6002,7 @@ int mylite_catalog_read_column_by_name(
     const char *name,
     struct mylite_catalog_column_descriptor *out_column
 ) {
-    int rc = validate_catalog_ready_database(database);
+    int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -5966,11 +6010,11 @@ int mylite_catalog_read_column_by_name(
     if (out_column == NULL) {
         return MYLITE_MISUSE;
     }
-    rc = validate_positive_id(table_id);
+    rc = mylite_catalog_validate_positive_id(table_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -5983,11 +6027,11 @@ int mylite_catalog_delete_column(struct mylite_db *database, int64_t column_id) 
     sqlite3_stmt *statement = NULL;
     int rc = MYLITE_OK;
 
-    rc = validate_catalog_ready_database(database);
+    rc = mylite_catalog_validate_ready_database(database);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_positive_id(column_id);
+    rc = mylite_catalog_validate_positive_id(column_id);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -6665,7 +6709,7 @@ static void abandon_generation_change(sqlite3 *sqlite) {
 
 static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation) {
     sqlite3_stmt *statement = NULL;
-    int rc = validate_generation(generation);
+    int rc = mylite_catalog_validate_generation(generation);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -7339,7 +7383,7 @@ static int read_next_table_id(sqlite3 *sqlite, int64_t *out_table_id) {
         }
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(*out_table_id);
+        rc = mylite_catalog_validate_positive_id(*out_table_id);
     }
 
     return mylite_catalog_finalize_statement(statement, rc);
@@ -7365,7 +7409,7 @@ static int read_next_index_id(sqlite3 *sqlite, int64_t *out_index_id) {
         }
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(*out_index_id);
+        rc = mylite_catalog_validate_positive_id(*out_index_id);
     }
 
     return mylite_catalog_finalize_statement(statement, rc);
@@ -7391,7 +7435,7 @@ static int read_next_foreign_key_id(sqlite3 *sqlite, int64_t *out_foreign_key_id
         }
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(*out_foreign_key_id);
+        rc = mylite_catalog_validate_positive_id(*out_foreign_key_id);
     }
 
     return mylite_catalog_finalize_statement(statement, rc);
@@ -7418,7 +7462,7 @@ static int read_next_check_constraint_id(sqlite3 *sqlite, int64_t *out_check_con
         }
     }
     if (rc == MYLITE_OK) {
-        rc = validate_positive_id(*out_check_constraint_id);
+        rc = mylite_catalog_validate_positive_id(*out_check_constraint_id);
     }
 
     return mylite_catalog_finalize_statement(statement, rc);
@@ -7531,7 +7575,7 @@ static int materialize_table_identity(
         rc = mylite_catalog_checked_column_i64(statement, catalog_table_select_kind_column, &kind);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_table_kind((enum mylite_catalog_table_kind)kind);
+        rc = mylite_catalog_validate_table_kind((enum mylite_catalog_table_kind)kind);
     }
     if (rc == MYLITE_OK) {
         out_table->kind = (enum mylite_catalog_table_kind)kind;
@@ -7647,7 +7691,7 @@ static int materialize_table_lifecycle(
     );
 
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(
+        rc = mylite_catalog_validate_bool_i64(
             fulltext_doc_id_initialized,
             &out_table->fulltext_doc_id_initialized
         );
@@ -7883,44 +7927,62 @@ static int materialize_view_generations(
 }
 
 static int validate_materialized_view(const struct mylite_catalog_view_descriptor *view) {
-    int rc = validate_positive_id(view->table_id);
+    int rc = mylite_catalog_validate_positive_id(view->table_id);
 
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->view_definition, MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY);
+        rc = mylite_catalog_validate_required_name(
+            view->view_definition,
+            MYLITE_CATALOG_VIEW_DEFINITION_CAPACITY
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_validate_required_name(
+            view->show_create_sql,
+            MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_validate_required_name(view->check_option, sizeof(view->check_option));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_validate_required_name(view->is_updatable, sizeof(view->is_updatable));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_validate_required_name(view->definer, sizeof(view->definer));
     }
     if (rc == MYLITE_OK) {
         rc =
-            validate_required_name(view->show_create_sql, MYLITE_CATALOG_VIEW_SHOW_CREATE_CAPACITY);
+            mylite_catalog_validate_required_name(view->security_type, sizeof(view->security_type));
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->check_option, sizeof(view->check_option));
+        rc = mylite_catalog_validate_required_name(
+            view->character_set_client,
+            sizeof(view->character_set_client)
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->is_updatable, sizeof(view->is_updatable));
+        rc = mylite_catalog_validate_required_name(
+            view->collation_connection,
+            sizeof(view->collation_connection)
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->definer, sizeof(view->definer));
+        rc = mylite_catalog_validate_positive_id(view->source_schema_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->security_type, sizeof(view->security_type));
+        rc = mylite_catalog_validate_positive_id(view->source_table_id);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->character_set_client, sizeof(view->character_set_client));
+        rc = mylite_catalog_validate_required_name(
+            view->source_schema_name,
+            sizeof(view->source_schema_name)
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->collation_connection, sizeof(view->collation_connection));
-    }
-    if (rc == MYLITE_OK) {
-        rc = validate_positive_id(view->source_schema_id);
-    }
-    if (rc == MYLITE_OK) {
-        rc = validate_positive_id(view->source_table_id);
-    }
-    if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->source_schema_name, sizeof(view->source_schema_name));
-    }
-    if (rc == MYLITE_OK) {
-        rc = validate_required_name(view->source_table_name, sizeof(view->source_table_name));
+        rc = mylite_catalog_validate_required_name(
+            view->source_table_name,
+            sizeof(view->source_table_name)
+        );
     }
     return rc;
 }
@@ -8038,7 +8100,7 @@ static int materialize_column_flags(
     );
 
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(nullable, &out_column->is_nullable);
+        rc = mylite_catalog_validate_bool_i64(nullable, &out_column->is_nullable);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_i64(
@@ -8048,7 +8110,7 @@ static int materialize_column_flags(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(visible, &out_column->is_visible);
+        rc = mylite_catalog_validate_bool_i64(visible, &out_column->is_visible);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_i64(
@@ -8058,7 +8120,7 @@ static int materialize_column_flags(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(auto_increment, &out_column->is_auto_increment);
+        rc = mylite_catalog_validate_bool_i64(auto_increment, &out_column->is_auto_increment);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_i64(
@@ -8068,7 +8130,7 @@ static int materialize_column_flags(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(
+        rc = mylite_catalog_validate_bool_i64(
             on_update_current_timestamp,
             &out_column->on_update_current_timestamp
         );
@@ -8091,7 +8153,9 @@ static int materialize_column_defaults(
     );
 
     if (rc == MYLITE_OK) {
-        rc = validate_column_default_kind((enum mylite_catalog_column_default_kind)default_kind);
+        rc = mylite_catalog_validate_column_default_kind(
+            (enum mylite_catalog_column_default_kind)default_kind
+        );
     }
     if (rc == MYLITE_OK) {
         out_column->default_kind = (enum mylite_catalog_column_default_kind)default_kind;
@@ -8166,7 +8230,7 @@ static int materialize_column_generated(
     );
 
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(is_generated, &out_column->is_generated);
+        rc = mylite_catalog_validate_bool_i64(is_generated, &out_column->is_generated);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_i64(
@@ -8231,7 +8295,7 @@ static int materialize_index(
         rc = mylite_catalog_checked_column_i64(statement, catalog_index_select_kind_column, &kind);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_index_kind((enum mylite_catalog_index_kind)kind);
+        rc = mylite_catalog_validate_index_kind((enum mylite_catalog_index_kind)kind);
     }
     if (rc == MYLITE_OK) {
         out_index->kind = (enum mylite_catalog_index_kind)kind;
@@ -8638,7 +8702,7 @@ static int materialize_check_constraint(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(is_enforced, &out_check_constraint->is_enforced);
+        rc = mylite_catalog_validate_bool_i64(is_enforced, &out_check_constraint->is_enforced);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_i64(
@@ -8648,7 +8712,10 @@ static int materialize_check_constraint(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_catalog_bool_i64(name_is_generated, &out_check_constraint->name_is_generated);
+        rc = mylite_catalog_validate_bool_i64(
+            name_is_generated,
+            &out_check_constraint->name_is_generated
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_i64(
@@ -8689,90 +8756,6 @@ static int materialize_check_constraint(
     return rc;
 }
 
-static int validate_database(struct mylite_db *database) {
-    if (database == NULL || database->sqlite == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_catalog_ready_database(struct mylite_db *database) {
-    int rc = validate_database(database);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (!database->catalog.initialized) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_required_name(const char *name, size_t capacity) {
-    size_t length = 0U;
-
-    if (name == NULL || name[0] == '\0') {
-        return MYLITE_MISUSE;
-    }
-
-    length = strlen(name);
-    if (length >= capacity) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_optional_name(const char *name, size_t capacity) {
-    if (name == NULL || name[0] == '\0') {
-        return MYLITE_OK;
-    }
-
-    return validate_required_name(name, capacity);
-}
-
-static int validate_logical_object_name(const char *name, size_t capacity) {
-    int rc = validate_required_name(name, capacity);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (mylite_catalog_name_is_reserved(name)) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_table_kind(enum mylite_catalog_table_kind kind) {
-    if (kind != MYLITE_CATALOG_TABLE_KIND_BASE && kind != MYLITE_CATALOG_TABLE_KIND_VIEW) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_column_default_kind(enum mylite_catalog_column_default_kind kind) {
-    if (kind != MYLITE_CATALOG_COLUMN_DEFAULT_NONE &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_BINARY &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
 static int validate_catalog_column_values(
     const struct catalog_column_values *values,
     bool use_logical_object_name
@@ -8780,30 +8763,49 @@ static int validate_catalog_column_values(
     int rc = MYLITE_OK;
 
     if (use_logical_object_name) {
-        rc = validate_logical_object_name(values->name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc = mylite_catalog_validate_logical_object_name(
+            values->name,
+            MYLITE_CATALOG_IDENTIFIER_CAPACITY
+        );
     } else {
-        rc = validate_required_name(values->name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+        rc =
+            mylite_catalog_validate_required_name(values->name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     }
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(values->logical_type, MYLITE_CATALOG_TYPE_NAME_CAPACITY);
+    rc = mylite_catalog_validate_required_name(
+        values->logical_type,
+        MYLITE_CATALOG_TYPE_NAME_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_required_name(values->physical_type, MYLITE_CATALOG_TYPE_NAME_CAPACITY);
+    rc = mylite_catalog_validate_required_name(
+        values->physical_type,
+        MYLITE_CATALOG_TYPE_NAME_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_optional_name(values->character_set_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_optional_name(
+        values->character_set_name,
+        MYLITE_CATALOG_IDENTIFIER_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_optional_name(values->collation_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    rc = mylite_catalog_validate_optional_name(
+        values->collation_name,
+        MYLITE_CATALOG_IDENTIFIER_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_optional_name(values->comment, MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY);
+    rc = mylite_catalog_validate_optional_name(
+        values->comment,
+        MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -8823,7 +8825,7 @@ static int validate_catalog_column_default_value(const struct catalog_column_val
     if (values == NULL) {
         return MYLITE_MISUSE;
     }
-    rc = validate_column_default_kind(values->default_kind);
+    rc = mylite_catalog_validate_column_default_kind(values->default_kind);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -9175,124 +9177,6 @@ static bool catalog_logical_type_equals(const char *logical_type, const char *ex
     }
 
     return false;
-}
-
-static int validate_catalog_bool_i64(int64_t value, bool *out_bool) {
-    if (value != 0 && value != 1) {
-        return MYLITE_ERROR;
-    }
-
-    *out_bool = value != 0;
-    return MYLITE_OK;
-}
-
-static int validate_index_kind(enum mylite_catalog_index_kind kind) {
-    if (kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY && kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-        kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT && kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_active_mutation(const struct mylite_catalog_mutation *mutation) {
-    if (mutation == NULL || !mutation->active || mutation->next_generation == 0U) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_positive_id(int64_t id) {
-    if (id <= 0) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_positive_ordinal(int64_t ordinal_position) {
-    if (ordinal_position <= 0) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_generation(uint64_t generation) {
-    int64_t signed_generation = 0;
-
-    if (generation == 0U) {
-        return MYLITE_ERROR;
-    }
-
-    return mylite_catalog_u64_to_i64(generation, &signed_generation);
-}
-
-static int validate_schema_callback(mylite_catalog_schema_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_callback(mylite_catalog_table_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_column_callback(mylite_catalog_column_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_index_callback(mylite_catalog_index_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_index_column_callback(mylite_catalog_index_column_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_foreign_key_callback(mylite_catalog_foreign_key_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_foreign_key_column_callback(
-    mylite_catalog_foreign_key_column_callback callback
-) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
-}
-
-static int validate_check_constraint_callback(mylite_catalog_check_constraint_callback callback) {
-    if (callback == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    return MYLITE_OK;
 }
 
 static int text_has_ascii_case_insensitive_prefix(const char *text, const char *prefix) {

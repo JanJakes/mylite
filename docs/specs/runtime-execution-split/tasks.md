@@ -262,3 +262,20 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifteenth split.
+
+## Round 16
+
+- [x] Reinspect catalog validation helpers after the SQLite helper split.
+- [x] Select reusable validation primitives as the next true module boundary.
+- [x] Move database readiness, name, enum/domain, id/ordinal, generation,
+      callback, and boolean extraction validators into
+      `mylite_catalog_validation`.
+- [x] Keep private column-default validation in `mylite_catalog.c` until its
+      private value structs have a dedicated ownership boundary.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused build and catalog validation/runtime tests.
+- [x] Review the split for behavior preservation, private struct leakage, and
+      helper-surface width.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the sixteenth split.

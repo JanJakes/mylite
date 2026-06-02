@@ -42,6 +42,7 @@ add_library(mylite STATIC
   src/runtime/mylite_catalog.c
   src/runtime/mylite_catalog_migrations.c
   src/runtime/mylite_catalog_sqlite.c
+  src/runtime/mylite_catalog_validation.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_convert_tz.c
   src/runtime/mylite_date_format.c

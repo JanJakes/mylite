@@ -189,6 +189,16 @@ path lookup, containment checks, mutation application, and DOM/emission helpers
 each move into focused runtime modules without changing the public JSON API,
 diagnostics, path support, normalization order, or memory ownership rules.
 
+The twenty-fifth split targets scalar JSON mutation execution. JSON_SET,
+JSON_INSERT, JSON_REPLACE, and JSON_REMOVE scalar argument evaluation moves out
+of `mylite_execution_scalar_json.c` into
+`mylite_execution_scalar_json_mutation.c`. A narrow private
+`mylite_execution_scalar_json_internal.h` header exposes only the shared scalar
+JSON constructor, path, and JSON_EXTRACT finish helpers needed by mutation
+value coercion. This split preserves the existing SQL scalar function ABI,
+diagnostics, NULL propagation, unsupported-shape behavior, and JSON runtime API
+calls.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.
@@ -390,6 +400,32 @@ The JSON runtime module family does not own:
 - SQL parser or scalar-function dispatch.
 - MySQL diagnostic text rendering beyond JSON parser result details.
 - SQLite function registration wrappers.
+
+### `mylite_execution_scalar_json`
+
+The scalar JSON execution module family owns SQL AST argument handling for
+MySQL-compatible JSON scalar functions and maps those arguments into the
+standalone JSON runtime API.
+
+The scalar JSON execution module family includes:
+
+- `mylite_execution_scalar_json.c`: JSON_VALID, JSON_EXTRACT, JSON_VALUE,
+  JSON_CONTAINS, JSON_CONTAINS_PATH, JSON_LENGTH, JSON_KEYS, JSON_TYPE,
+  JSON_QUOTE, JSON_UNQUOTE, JSON_ARRAY, and JSON_OBJECT scalar entry points
+  plus shared constructor, path, argument-list, and result-finish helpers.
+- `mylite_execution_scalar_json_mutation.c`: JSON_SET, JSON_INSERT,
+  JSON_REPLACE, and JSON_REMOVE scalar entry points, mutation argument-count
+  validation, document/path/value coercion, NULL propagation, and mutation
+  result diagnostics.
+- `mylite_execution_scalar_json_internal.h`: private helper declarations shared
+  only inside the scalar JSON execution family.
+
+The scalar JSON execution module family does not own:
+
+- JSON document parsing, normalization, mutation application, or path traversal;
+  those remain in the standalone `mylite_json` module family.
+- Row-scalar planning and function-dispatch decisions.
+- Public client ABI beyond the existing internal runtime scalar declarations.
 
 ### `mylite_execution_system_variables`
 

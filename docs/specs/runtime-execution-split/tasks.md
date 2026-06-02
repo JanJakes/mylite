@@ -458,3 +458,20 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the twenty-fourth split.
+
+## Round 25
+
+- [x] Reinspect scalar JSON execution and choose a true-module boundary.
+- [x] Add a private scalar JSON internal header for shared constructor, path,
+      and JSON_EXTRACT finish helpers.
+- [x] Move JSON_SET, JSON_INSERT, JSON_REPLACE, and JSON_REMOVE scalar
+      execution into `mylite_execution_scalar_json_mutation.c`.
+- [x] Keep JSON construction, extraction, introspection, quoting, validation,
+      and containment scalar execution in `mylite_execution_scalar_json.c`.
+- [x] Register the new runtime source in CMake.
+- [x] Run focused scalar JSON build, tests, and tidy.
+- [x] Review the split for behavior preservation, helper-surface width, and
+      ownership.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the twenty-fifth split.

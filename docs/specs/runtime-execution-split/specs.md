@@ -605,8 +605,29 @@ The fragments are:
   setters.
 - `mylite_execution_set_sql_mode_timestamp_time_zone.inc`: SQL mode,
   timestamp, and time-zone system-variable setters.
-- `mylite_execution_ddl_statements.inc`: high-level DDL/schema statement
-  execution.
+- `mylite_execution_ddl_create_table_statements.inc`: high-level
+  `CREATE TABLE`, temporary table, `CREATE TABLE LIKE`, and
+  `CREATE TABLE ... SELECT` statement execution.
+- `mylite_execution_ddl_create_view_statements.inc`: high-level `CREATE VIEW`
+  planning, catalog mutation, and view SQL synthesis.
+- `mylite_execution_ddl_create_schema_index_statements.inc`: high-level
+  `CREATE INDEX` and `CREATE SCHEMA` entry-point execution.
+- `mylite_execution_ddl_drop_existence_statements.inc`: high-level `DROP`
+  table/view/schema execution and DDL `IF EXISTS`/`IF NOT EXISTS` completion
+  helpers.
+- `mylite_execution_ddl_table_action_statements.inc`: `TRUNCATE`, rename,
+  `ALTER TABLE ADD COLUMN`, and multi-action ALTER TABLE execution.
+- `mylite_execution_ddl_alter_table_index_constraint_statements.inc`:
+  ALTER TABLE index, primary key, foreign key, check constraint, and
+  `DROP INDEX` execution.
+- `mylite_execution_ddl_alter_table_column_statements.inc`: ALTER TABLE column,
+  default, and visibility statement execution.
+- `mylite_execution_ddl_alter_table_schema_option_statements.inc`: ALTER TABLE
+  default charset/collation, `CONVERT TO CHARACTER SET`, comment, and
+  ALTER SCHEMA default charset/collation execution.
+- `mylite_execution_ddl_alter_table_maintenance_statements.inc`: ALTER TABLE
+  `ORDER BY`, `FORCE`, key-maintenance no-op execution, and ALGORITHM/LOCK
+  validation.
 - `mylite_execution_dml_statements.inc`: high-level INSERT/REPLACE/LOAD
   DATA/DELETE/UPDATE execution.
 - `mylite_execution_metadata_queries.inc`: `DO`, high-level `SELECT`
@@ -1337,6 +1358,10 @@ current timestamp/session state.
 19. Split the oversized row-scalar temporal planning fragment into ordered
     same-translation-unit format, interval/extract, conversion, period/time
     zone/weight, diff, and timestamp planning fragments.
+20. Split the oversized DDL statement execution fragment into ordered
+    same-translation-unit create-table, create-view, create-schema/index,
+    drop/existence, table-action, index/constraint, column, schema/table-option,
+    and table-maintenance fragments.
 
 ## Review checklist
 
@@ -1393,3 +1418,7 @@ current timestamp/session state.
   ownership and same-translation-unit helper linkage; the split must not
   change temporal formatting, interval arithmetic, extraction, conversion,
   period/time zone, difference, UNIX timestamp, or timestamp diagnostics.
+- DDL statement fragments preserve the existing statement execution ownership
+  in `mylite_execution.c`; the split must not introduce separate schema
+  mutation paths, duplicate DDL completion/result handling, or change implicit
+  commit, temporary-table, existence, ALTER TABLE, or warning behavior.

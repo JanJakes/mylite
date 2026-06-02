@@ -871,3 +871,22 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-third split.
+
+## Round 44
+
+- [x] Reinspect the remaining largest runtime fragments after the row-scalar
+      temporal split.
+- [x] Identify `mylite_execution_ddl_statements.inc` as a DDL statement-family
+      same-translation-unit split candidate.
+- [x] Split create-table, create-view, create-schema/index, drop/existence,
+      table-action, index/constraint, column, schema/table-option, and
+      maintenance DDL statement execution into named fragments.
+- [x] Remove `mylite_execution_ddl_statements.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused DDL, schema, index, ALTER TABLE, DROP, CREATE VIEW, and
+      parser-adjacent build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, and future true-module readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the forty-fourth split.

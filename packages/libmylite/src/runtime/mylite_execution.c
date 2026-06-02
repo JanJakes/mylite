@@ -25198,7 +25198,21 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_alter_table_drop_rename_column.inc"
 
-#include "mylite_execution_alter_table_modify_options.inc"
+#include "mylite_execution_alter_table_modify_column_entry.inc"
+
+#include "mylite_execution_alter_table_default_visibility_options.inc"
+
+#include "mylite_execution_alter_table_charset_conversion_options.inc"
+
+#include "mylite_execution_alter_table_table_option_actions.inc"
+
+#include "mylite_execution_alter_table_modify_column_resolution.inc"
+
+#include "mylite_execution_alter_table_modify_column_execution.inc"
+
+#include "mylite_execution_alter_table_check_rebuild_sql.inc"
+
+#include "mylite_execution_alter_table_rename_check_constraints.inc"
 
 #include "mylite_execution_load_data_planning.inc"
 

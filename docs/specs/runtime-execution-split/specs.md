@@ -748,10 +748,27 @@ The fragments are:
 - `mylite_execution_alter_table_drop_rename_column.inc`: ALTER TABLE DROP
   PRIMARY KEY, AUTO_INCREMENT option, DROP COLUMN dependency planning, and
   RENAME COLUMN planning/execution.
-- `mylite_execution_alter_table_modify_options.inc`: ALTER TABLE MODIFY/
-  CHANGE COLUMN, SET/DROP DEFAULT, column/index visibility, default
-  charset/collation, CONVERT CHARACTER SET, COMMENT, ORDER BY, FORCE, key
-  maintenance, rebuild SQL, and rename collision helpers.
+- `mylite_execution_alter_table_modify_column_entry.inc`: ALTER TABLE
+  MODIFY/CHANGE COLUMN entry planning and column-position parsing.
+- `mylite_execution_alter_table_default_visibility_options.inc`: ALTER TABLE
+  SET/DROP DEFAULT, column visibility, and index visibility planning and
+  catalog mutation.
+- `mylite_execution_alter_table_charset_conversion_options.inc`: ALTER TABLE
+  default charset/collation and CONVERT CHARACTER SET planning, validation, and
+  catalog metadata updates.
+- `mylite_execution_alter_table_table_option_actions.inc`: ALTER TABLE
+  COMMENT, ORDER BY, FORCE, and key-maintenance option planning/execution
+  entry points.
+- `mylite_execution_alter_table_modify_column_resolution.inc`: MODIFY/CHANGE
+  COLUMN replacement descriptor resolution, index validation, position
+  resolution, and no-op/metadata-only detection.
+- `mylite_execution_alter_table_modify_column_execution.inc`: MODIFY/CHANGE
+  COLUMN mutation, existing-row validation, target descriptor synthesis, and
+  physical rebuild execution for MODIFY/ORDER BY/FORCE.
+- `mylite_execution_alter_table_check_rebuild_sql.inc`: ALTER TABLE CHECK
+  temporary physical-name, create SQL, copy SQL, and column-list rendering.
+- `mylite_execution_alter_table_rename_check_constraints.inc`: rename-table
+  mutation helpers and check-constraint collision rejection.
 - `mylite_execution_load_data_planning.inc`: LOAD DATA target-column
   resolution, target index collection, and IGNORE line-count parsing.
 - `mylite_execution_dml_planning.inc`: INSERT/REPLACE target planning,
@@ -1455,6 +1472,11 @@ current timestamp/session state.
     same-translation-unit statement/constraint, INSERT duplicate-key,
     UPDATE unique-key conflict, foreign-key validation, unique-key lookup, and
     key tuple formatting fragments.
+26. Split the oversized ALTER TABLE modify/options fragment into ordered
+    same-translation-unit modify/change entry, default/visibility,
+    charset-conversion, table-option actions, modify-column resolution,
+    modify-column execution, check rebuild SQL, and rename/check-constraint
+    collision fragments.
 
 ## Review checklist
 
@@ -1538,3 +1560,8 @@ current timestamp/session state.
   execution ownership and same-translation-unit helper linkage; the split must
   not introduce buffered write tables, duplicate uniqueness/foreign-key
   validation paths, or change INSERT/UPDATE duplicate-key diagnostics.
+- ALTER TABLE modify/options fragments preserve the existing schema-mutation
+  ownership and same-translation-unit helper linkage; the split must not
+  introduce alternate ALTER TABLE execution paths, duplicate rebuild SQL
+  generation, or change MODIFY/CHANGE, default, visibility, charset, ORDER BY,
+  FORCE, key-maintenance, CHECK rebuild, or rename collision behavior.

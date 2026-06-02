@@ -992,3 +992,25 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the forty-ninth split.
+
+## Round 50
+
+- [x] Reinspect the remaining largest runtime fragments after the SQLite write
+      helper split.
+- [x] Identify `mylite_execution_alter_table_modify_options.inc` as an ALTER
+      TABLE modify/options same-translation-unit split candidate.
+- [x] Split modify/change entry planning, default/visibility options, charset
+      conversion options, table-option actions, modify-column resolution,
+      modify-column execution, CHECK rebuild SQL, and rename/check-constraint
+      collision helpers into named fragments.
+- [x] Remove `mylite_execution_alter_table_modify_options.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused ALTER TABLE modify/change, default, visibility, charset,
+      ORDER BY, FORCE, key-maintenance, CHECK, rename, and parser-adjacent
+      build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fiftieth split.

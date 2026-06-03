@@ -7342,9 +7342,31 @@ expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R);
 }
+expression(A) ::= COUNT(T) LPAREN(L) count_nullif_predicate_expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R);
+}
 expression(A) ::= COUNT(T) LPAREN(L) count_literal(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R);
+}
+count_nullif_predicate_expression(A) ::= NULLIF(T) LPAREN count_nullif_predicate(B)
+        COMMA FALSE(F) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state,
+        T,
+        MYLITE_SQL_AST_NULLIF_FUNCTION,
+        B,
+        mylite_sql_parser_make_literal(state, F, MYLITE_SQL_AST_LITERAL_FALSE),
+        R);
+}
+count_nullif_predicate(A) ::= qualified_identifier(C) EQUAL(O) predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+}
+count_nullif_predicate(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
 }
 expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(

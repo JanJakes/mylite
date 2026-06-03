@@ -203,6 +203,14 @@ static int execute_select_statement(
             out_result
         );
     }
+    if (select_statement_has_count_expression_aggregate(statement)) {
+        return execute_count_expression_aggregate_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
     if (select_statement_has_count_aggregate(statement)) {
         return execute_count_select_statement(
             database,

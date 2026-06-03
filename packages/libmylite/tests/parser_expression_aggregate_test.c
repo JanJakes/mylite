@@ -1374,6 +1374,60 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT COUNT(NULLIF(`meta_value` LIKE '%\\\"administrator\\\"%', false)), "
+        "COUNT(NULLIF(meta_value = 'a:0:{}', FALSE)), COUNT(*) FROM wp_usermeta "
+        "INNER JOIN wp_users ON user_id = ID WHERE meta_key = 'wp_capabilities';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    third_expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION,
+        "count nullif like expression function"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_NULLIF_FUNCTION,
+        "count nullif like argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(first_expression, 0U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "count nullif like predicate"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(parser_test_child_at(first_expression, 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "count nullif false argument"
+    );
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION,
+        "count nullif equality expression function"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(second_expression, 0U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "count nullif equality predicate"
+    );
+    failures += parser_test_expect_node(
+        third_expression,
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "count nullif mixed count star"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(select, 1U),
+        MYLITE_SQL_AST_FROM_JOIN,
+        "count nullif joined source"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT COUNT(/* inside */NULL) FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result

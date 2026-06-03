@@ -134,6 +134,16 @@ static int test_joined_aggregate_values_and_persistence(void) {
         "1",
         "7",
     };
+    static const char *const role_count_columns[] = {
+        "administrators",
+        "editors",
+        "authors",
+        "contributors",
+        "subscribers",
+        "empty_roles",
+        "total_roles",
+    };
+    static const char *const role_count_values[] = {"1", "1", "0", "0", "1", "1", "4"};
     static const char *const inner_count_columns[] = {"post_id", "COUNT(*)"};
     static const char *const inner_count_values[] = {"1", "2", "2", "1"};
     static const char *const category_count_columns[] = {"category", "COUNT(c.id)"};
@@ -368,6 +378,46 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .values = joined_multi_key_values,
             .row_count = 3U,
             .context = "joined grouped by two descriptor keys",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE users(ID INT NOT NULL)", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE usermeta("
+        "user_id INT NOT NULL, meta_key VARCHAR(64) NOT NULL, meta_value TEXT)",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO users VALUES (1), (2), (3), (4), (5)", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO usermeta VALUES "
+        "(1, 'wp_capabilities', 'a:1:{s:13:\"administrator\";b:1;}'), "
+        "(2, 'wp_capabilities', 'a:1:{s:6:\"editor\";b:1;}'), "
+        "(3, 'wp_capabilities', 'a:1:{s:10:\"subscriber\";b:1;}'), "
+        "(4, 'wp_capabilities', 'a:0:{}'), "
+        "(5, 'other_meta', 'a:1:{s:13:\"administrator\";b:1;}')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT "
+                   "COUNT(NULLIF(`meta_value` LIKE '%\\\"administrator\\\"%', false)) AS "
+                   "administrators, "
+                   "COUNT(NULLIF(`meta_value` LIKE '%\\\"editor\\\"%', false)) AS editors, "
+                   "COUNT(NULLIF(`meta_value` LIKE '%\\\"author\\\"%', false)) AS authors, "
+                   "COUNT(NULLIF(`meta_value` LIKE '%\\\"contributor\\\"%', false)) AS "
+                   "contributors, "
+                   "COUNT(NULLIF(`meta_value` LIKE '%\\\"subscriber\\\"%', false)) AS subscribers, "
+                   "COUNT(NULLIF(`meta_value` = 'a:0:{}', false)) AS empty_roles, "
+                   "COUNT(*) AS total_roles "
+                   "FROM usermeta INNER JOIN users ON user_id = ID "
+                   "WHERE meta_key = 'wp_capabilities'",
+            .columns = role_count_columns,
+            .column_count = 7U,
+            .values = role_count_values,
+            .row_count = 1U,
+            .context = "joined count nullif predicate role counts",
         }
     );
     failures += expect_row_count(database, "-1", "row count after joined aggregate select");

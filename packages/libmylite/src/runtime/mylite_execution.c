@@ -2565,6 +2565,24 @@ struct planned_count {
     struct planned_select_predicate predicate;
 };
 
+enum planned_count_expression_aggregate_item_kind {
+    PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR = 0,
+    PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE = 1,
+};
+
+struct planned_count_expression_aggregate_item {
+    enum planned_count_expression_aggregate_item_kind kind;
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+    struct planned_select_predicate predicate;
+};
+
+struct planned_count_expression_aggregate {
+    struct planned_select source;
+    struct planned_count_expression_aggregate_item *items;
+    size_t item_count;
+};
+
 struct planned_count_source_nodes {
     const struct mylite_sql_ast_node *from_clause;
     const struct mylite_sql_ast_node *where_clause;
@@ -5028,6 +5046,15 @@ static int execute_column_aggregate_select_statement(
 );
 static bool select_statement_has_count_having_clause(const struct mylite_sql_ast_node *statement);
 static int execute_count_having_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static bool select_statement_has_count_expression_aggregate(
+    const struct mylite_sql_ast_node *statement
+);
+static int execute_count_expression_aggregate_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     bool apply_sql_select_limit,
@@ -11279,6 +11306,20 @@ static int plan_count_column(
 static int execute_count_from_plan(
     struct mylite_db *database,
     const struct planned_count *plan,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int plan_count_expression_aggregate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count_expression_aggregate *out_plan
+);
+static void planned_count_expression_aggregate_deinit(
+    struct planned_count_expression_aggregate *plan
+);
+static int execute_count_expression_aggregate_from_plan(
+    struct mylite_db *database,
+    const struct planned_count_expression_aggregate *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
@@ -26981,6 +27022,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_row_scalar_select_parameter_binding.inc"
 
 #include "mylite_execution_count_having_select.inc"
+
+#include "mylite_execution_count_expression_aggregate.inc"
 
 #include "mylite_execution_row_scalar_expression_parameter_dispatch.inc"
 

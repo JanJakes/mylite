@@ -96,6 +96,15 @@ int mylite_execution_string_slice_signed_position_value(
     int64_t *out_value,
     bool *out_is_null
 );
+int mylite_execution_string_slice_substring_text_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    int64_t position,
+    bool has_length,
+    int64_t requested_length,
+    struct session_scalar_cell *out_cell
+);
 int mylite_execution_string_slice_signed_integer_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

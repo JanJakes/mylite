@@ -68,6 +68,10 @@ expectations for this slice:
   admits unsigned integer literals for numeric status columns and continues to
   defer warning-producing and type-coercing `SHOW` predicates over nonnumeric
   columns. Quoted numeric text such as `` `Rows` = '3' `` remains admitted.
+- `SUBSTRING()` / `SUBSTR()` / `MID()` expressions over displayed output
+  columns are admitted as left operands for the same limited predicate shapes.
+  For example, `SUBSTR(Name, 11, 1) = '1'` matches a table named
+  `_tmp_table1`. `NULL` position or length arguments produce SQL `NULL`.
 - Successful supported `WHERE` filters leave `@@warning_count == 0`,
   `@@error_count == 0`, and make `ROW_COUNT()` return `-1`.
 - Unknown output columns report `1054` / `42S22` (`Unknown column ... in 'where
@@ -180,25 +184,39 @@ the `WHERE` clause.
 
 The admitted predicate subset is:
 
-- `column = string_literal_or_unsigned_integer_literal`
-- `column <=> string_literal_or_unsigned_integer_literal`
-- `column <> string_literal_or_unsigned_integer_literal`
-- `column != string_literal_or_unsigned_integer_literal`
-- `column < string_literal_or_unsigned_integer_literal`
-- `column <= string_literal_or_unsigned_integer_literal`
-- `column > string_literal_or_unsigned_integer_literal`
-- `column >= string_literal_or_unsigned_integer_literal`
-- `column <=> NULL`
-- `column LIKE string_literal`
-- `column NOT LIKE string_literal`
-- `column IN (string_literal_or_unsigned_integer_literal_or_NULL [, ...])`
-- `column NOT IN (string_literal_or_unsigned_integer_literal_or_NULL [, ...])`
-- `column IS NULL`
-- `column IS NOT NULL`
+- `operand = string_literal_or_unsigned_integer_literal`
+- `operand <=> string_literal_or_unsigned_integer_literal`
+- `operand <> string_literal_or_unsigned_integer_literal`
+- `operand != string_literal_or_unsigned_integer_literal`
+- `operand < string_literal_or_unsigned_integer_literal`
+- `operand <= string_literal_or_unsigned_integer_literal`
+- `operand > string_literal_or_unsigned_integer_literal`
+- `operand >= string_literal_or_unsigned_integer_literal`
+- `operand <=> NULL`
+- `operand LIKE string_literal`
+- `operand NOT LIKE string_literal`
+- `operand REGEXP string_literal`
+- `operand NOT REGEXP string_literal`
+- `operand RLIKE string_literal`
+- `operand NOT RLIKE string_literal`
+- `operand IN (string_literal_or_unsigned_integer_literal_or_NULL [, ...])`
+- `operand NOT IN (string_literal_or_unsigned_integer_literal_or_NULL [, ...])`
+- `operand IS NULL`
+- `operand IS NOT NULL`
 - parenthesized predicates
 - `NOT predicate`
 - `predicate AND predicate`
 - `predicate OR predicate`
+
+`operand` is either a displayed output column or one `SUBSTRING()`,
+`SUBSTR()`, or `MID()` call whose first argument is a displayed output column.
+Substring position and length arguments follow the existing baseline substring
+function subset for integer, boolean, unary-signed integer, and `NULL`
+literals. Substring operands are string-valued and compare case-sensitively
+when their source column uses the `Name` table-name policy; otherwise they use
+the same ASCII case-insensitive comparison policy as the source status text.
+Unsigned integer predicate literals remain admitted only for direct numeric
+status-column operands, not substring operands.
 
 Comparisons for numeric status columns use unsigned decimal conversion for the
 admitted string and integer literals, so leading zeroes do not affect equality
@@ -229,10 +247,14 @@ deterministically rather than being approximated:
 - unsigned integer literals for nonnumeric output columns;
 - warning-producing string/numeric comparison coercions;
 - column-to-column comparisons;
-- functions such as `LOWER(Name)`, which may fail during parsing before
-  runtime predicate validation;
-- `BETWEEN`, `REGEXP`, `RLIKE`, `XOR`, `IS TRUE`, `IS FALSE`, and arbitrary
-  expression predicates;
+- functions other than the admitted one-level `SUBSTRING()` / `SUBSTR()` /
+  `MID()` operands, which may fail during parsing before runtime predicate
+  validation;
+- nested substring expressions, substring calls on literals or non-output
+  expressions, nonliteral substring position/length arguments, and substring
+  calls on the right side of a predicate;
+- `BETWEEN`, `XOR`, `IS TRUE`, `IS FALSE`, and arbitrary expression
+  predicates;
 - subqueries and CTEs;
 - `ORDER BY`, `LIMIT`, and `LIKE ... WHERE` combinations.
 
@@ -248,9 +270,9 @@ Supported runtime diagnostics:
   'where clause'`;
 - qualified output column: the same unknown-column diagnostic using the
   displayed dotted reference;
-- non-output expressions where a column is required: syntax error when the
-  parser does not admit the expression shape, otherwise a deterministic
-  unsupported MyLite diagnostic;
+- non-output expressions where an admitted operand is required: syntax error
+  when the parser does not admit the expression shape, otherwise a
+  deterministic unsupported MyLite diagnostic;
 - non-string and non-`NULL` predicate literals: deterministic unsupported
   MyLite diagnostic;
 - unsupported predicate operators and expression forms: deterministic
@@ -273,8 +295,10 @@ The feature is covered by:
 
 Runtime coverage must include default-schema and explicit-schema filters,
 case-insensitive output-column references, backticked column references,
-`LIKE`, equality, null-safe equality, `IN`/`NOT IN`, `IS NULL`/`IS NOT NULL`,
-`AND`/`OR`/`NOT`, no-match filters, auto-increment `NULL` behavior, unknown
-columns, qualified columns, unsupported numeric predicates, no result-set
-mutation, row-count/warning behavior, persistence after reopen, independent
-handles, and preservation of the existing `.mylite` preamble invariants.
+`LIKE`, baseline `REGEXP`/`RLIKE`, equality, null-safe equality, `IN`/`NOT IN`,
+`IS NULL`/`IS NOT NULL`, substring operands over output columns, `AND`/`OR`/`NOT`,
+no-match filters, auto-increment `NULL` behavior, unknown columns, qualified
+columns, unsupported numeric predicates, unsupported expression forms, no
+result-set mutation, row-count/warning behavior, persistence after reopen,
+independent handles, and preservation of the existing `.mylite` preamble
+invariants.

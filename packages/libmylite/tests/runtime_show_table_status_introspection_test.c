@@ -489,6 +489,20 @@ static int test_show_table_status_where_filters(void) {
         {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
     };
+    static const struct expected_status_row name_case_row[] = {
+        {.name = "NameCase", .rows = "0", .average_row_length = "0"},
+    };
+    static const struct expected_status_row tmp_table1_row[] = {
+        {.name = "_tmp_table1", .rows = "0", .average_row_length = "0"},
+    };
+    static const struct expected_status_row tmp_table2_row[] = {
+        {.name = "_tmp_table2", .rows = "0", .average_row_length = "0"},
+    };
+    static const struct expected_status_row substring_null_rows[] = {
+        {.name = "NameCase", .rows = "0", .average_row_length = "0"},
+        {.name = "_tmp_table1", .rows = "0", .average_row_length = "0"},
+        {.name = "_tmp_table2", .rows = "0", .average_row_length = "0"},
+    };
     static const struct expected_status_row other_rows[] = {
         {.name = "only_other", .rows = "0", .average_row_length = "0"},
     };
@@ -511,6 +525,9 @@ static int test_show_table_status_where_filters(void) {
         "CREATE TABLE auto_numbers (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, i INT NULL)"
     );
     failures += execute_statement_ok(database, "INSERT INTO auto_numbers(i) VALUES (10), (20)");
+    failures += execute_statement_ok(database, "CREATE TABLE _tmp_table1 (id INT NOT NULL)");
+    failures += execute_statement_ok(database, "CREATE TABLE _tmp_table2 (id INT NOT NULL)");
+    failures += execute_statement_ok(database, "CREATE TABLE NameCase (id INT NOT NULL)");
 
     failures += expect_show_table_status_result(
         database,
@@ -581,6 +598,57 @@ static int test_show_table_status_where_filters(void) {
         auto_and_numbers_rows,
         sizeof(auto_and_numbers_rows) / sizeof(auto_and_numbers_rows[0]),
         "where engine and in"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Name, 11, 1) = '1'",
+        tmp_table1_row,
+        sizeof(tmp_table1_row) / sizeof(tmp_table1_row[0]),
+        "where substring name comma comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTRING(Name FROM 11 FOR 1) = '2'",
+        tmp_table2_row,
+        sizeof(tmp_table2_row) / sizeof(tmp_table2_row[0]),
+        "where substring name from-for comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE MID(Name, 1, 1) = 'N'",
+        name_case_row,
+        sizeof(name_case_row) / sizeof(name_case_row[0]),
+        "where mid name comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE MID(Name, 1, 1) = 'n' AND Name = 'NameCase'",
+        NULL,
+        0U,
+        "where substring name comparison case-sensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Engine, 1, 1) = 'i' AND Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where substring engine comparison case-insensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Name, NULL, 1) <=> NULL AND Name IN "
+        "('_tmp_table1','_tmp_table2','NameCase')",
+        substring_null_rows,
+        sizeof(substring_null_rows) / sizeof(substring_null_rows[0]),
+        "where substring null position null safe"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Name, 1, 0) = '' AND Name IN "
+        "('_tmp_table1','_tmp_table2','NameCase')",
+        substring_null_rows,
+        sizeof(substring_null_rows) / sizeof(substring_null_rows[0]),
+        "where substring zero length comparison"
     );
     failures += expect_show_table_status_result(
         database,
@@ -847,6 +915,45 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
     failures += execute_error(
         database,
         "SHOW TABLE STATUS WHERE Name = 3",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "SHOW TABLE STATUS WHERE integer literal predicates support only numeric columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR('abc', 1, 1) = 'a'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLE STATUS WHERE supports only output columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Name, '1', 1) = 'n'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string slice functions support only integer, boolean, and NULL position literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Auto_increment, '1', 1) IS NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string slice functions support only integer, boolean, and NULL position literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE SUBSTR(Name, 1, 1) = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

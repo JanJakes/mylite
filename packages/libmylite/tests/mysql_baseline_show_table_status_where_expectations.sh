@@ -85,6 +85,10 @@ row_names() {
     awk -F '\t' 'NF > 0 { print $1 }'
 }
 
+row_names_sorted() {
+    awk -F '\t' 'NF > 0 { print $1 }' | LC_ALL=C sort
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE}; DROP DATABASE IF EXISTS ${OTHER_DATABASE};
                DROP DATABASE IF EXISTS ${EMPTY_DATABASE};" >/dev/null 2>&1 || true
@@ -107,6 +111,9 @@ run_mysql \
      USE ${DATABASE};
      CREATE TABLE numbers(id INT NOT NULL, i INT NULL) ENGINE=InnoDB;
      CREATE TABLE auto_numbers(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, i INT NULL) ENGINE=InnoDB;
+     CREATE TABLE _tmp_table1(id INT NOT NULL) ENGINE=InnoDB;
+     CREATE TABLE _tmp_table2(id INT NOT NULL) ENGINE=InnoDB;
+     CREATE TABLE NameCase(id INT NOT NULL) ENGINE=InnoDB;
      INSERT INTO numbers VALUES (1, NULL), (2, 20), (3, 30);
      INSERT INTO auto_numbers(i) VALUES (10), (20);
      CREATE TABLE ${OTHER_DATABASE}.only_other(id INT NOT NULL) ENGINE=InnoDB;" >/dev/null
@@ -128,6 +135,53 @@ engine_in=$(
 )
 expect_value "engine case-insensitive and name in" "auto_numbers
 numbers" "$engine_in"
+
+substring_name=$(
+    run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE SUBSTR(Name, 11, 1) = '1';" \
+        | row_names
+)
+expect_value "substring name comma comparison" "_tmp_table1" "$substring_name"
+
+substring_from_for=$(
+    run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE SUBSTRING(Name FROM 11 FOR 1) = '2';" \
+        | row_names
+)
+expect_value "substring name from-for comparison" "_tmp_table2" "$substring_from_for"
+
+mid_name=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE MID(Name, 1, 1) = 'N';" | row_names)
+expect_value "mid name comparison" "NameCase" "$mid_name"
+
+substring_name_case=$(
+    run_mysql \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE MID(Name, 1, 1) = 'n' AND Name = 'NameCase';" \
+        | row_names
+)
+expect_value "substring name comparison case-sensitive" "" "$substring_name_case"
+
+substring_engine=$(
+    run_mysql \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE SUBSTR(Engine, 1, 1) = 'i' AND Name = 'numbers';" \
+        | row_names
+)
+expect_value "substring engine comparison case-insensitive" "numbers" "$substring_engine"
+
+substring_null_position=$(
+    run_mysql \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE SUBSTR(Name, NULL, 1) <=> NULL AND Name IN ('_tmp_table1','_tmp_table2','NameCase');" \
+        | row_names_sorted
+)
+expect_value "substring null position null safe" "NameCase
+_tmp_table1
+_tmp_table2" "$substring_null_position"
+
+substring_zero_length=$(
+    run_mysql \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE SUBSTR(Name, 1, 0) = '' AND Name IN ('_tmp_table1','_tmp_table2','NameCase');" \
+        | row_names_sorted
+)
+expect_value "substring zero length comparison" "NameCase
+_tmp_table1
+_tmp_table2" "$substring_zero_length"
 
 rows_string=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE \`Rows\` = '3';" | row_names)
 expect_value "rows string comparison" "numbers" "$rows_string"
@@ -228,7 +282,7 @@ numeric_name_status=$(
         | tail -n 1 \
         | normalize_tsv
 )
-expect_value "mysql numeric name comparison warnings" "2|0|-1" "$numeric_name_status"
+expect_value "mysql numeric name comparison warnings" "5|0|-1" "$numeric_name_status"
 
 expect_error \
     "unknown where column" \

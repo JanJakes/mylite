@@ -2905,6 +2905,13 @@ struct show_table_status_where_comparison {
     int value;
 };
 
+struct show_table_status_where_operand {
+    const char *value;
+    bool case_sensitive;
+    bool numeric;
+    struct session_scalar_cell cell;
+};
+
 struct show_databases_where_comparison {
     int value;
 };
@@ -21161,12 +21168,18 @@ static int evaluate_show_table_status_where_is_null_predicate(
     const char *const values[show_table_status_result_column_count],
     enum show_variables_where_truth *out_truth
 );
-static int show_table_status_where_column_value(
+static int show_table_status_where_operand_value(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *column_node,
+    const struct mylite_sql_ast_node *operand_node,
     const char *const values[show_table_status_result_column_count],
-    const char **out_value,
-    size_t *out_column_index
+    struct show_table_status_where_operand *out_operand
+);
+static void show_table_status_where_operand_deinit(struct show_table_status_where_operand *operand);
+static int show_table_status_where_substring_operand_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const char *const values[show_table_status_result_column_count],
+    struct show_table_status_where_operand *out_operand
 );
 static int resolve_show_table_status_where_column(
     struct mylite_db *database,
@@ -21176,23 +21189,21 @@ static int resolve_show_table_status_where_column(
 static int compare_show_table_status_where_literal(
     struct mylite_db *database,
     enum mylite_sql_ast_operator operator_kind,
-    const char *left,
-    size_t column_index,
+    const struct show_table_status_where_operand *left,
     const struct mylite_sql_ast_node *right,
     enum show_variables_where_truth *out_truth
 );
 static int decode_show_table_status_where_comparable_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
-    size_t column_index,
+    bool left_is_numeric,
     const char *unsupported_message,
     char **out_text
 );
 static int show_table_status_where_compare_text(
     struct mylite_db *database,
-    const char *left,
+    const struct show_table_status_where_operand *left,
     const char *right,
-    size_t column_index,
     int *out_comparison
 );
 static int show_table_status_where_compare_numeric_text(
@@ -21203,9 +21214,8 @@ static int show_table_status_where_compare_numeric_text(
 );
 static int show_table_status_where_texts_are_equal(
     struct mylite_db *database,
-    const char *left,
+    const struct show_table_status_where_operand *left,
     const char *right,
-    size_t column_index,
     bool *out_equal
 );
 static int show_table_status_where_truth_from_comparison(
@@ -21236,7 +21246,7 @@ static int evaluate_show_metadata_where_regexp_predicate(
 static int compare_show_table_status_where_text(
     const char *left,
     const char *right,
-    size_t column_index
+    bool case_sensitive
 );
 static bool parse_show_table_status_where_unsigned_text(const char *text, uint64_t *out_value);
 static bool show_table_status_where_column_is_case_sensitive(size_t column_index);

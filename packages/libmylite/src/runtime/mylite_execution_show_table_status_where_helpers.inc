@@ -181,11 +181,9 @@ static int evaluate_show_table_status_where_comparison_predicate(
 ) {
     const struct mylite_sql_ast_node *left_node = child_at(predicate, 0U);
     const struct mylite_sql_ast_node *right_node = child_at(predicate, 1U);
-    const char *left = NULL;
-    size_t column_index = 0U;
+    struct show_table_status_where_operand left = {0};
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
-    int rc =
-        show_table_status_where_column_value(database, left_node, values, &left, &column_index);
+    int rc = show_table_status_where_operand_value(database, left_node, values, &left);
     static const struct show_metadata_regexp_messages regexp_messages = {
         .literal = "SHOW TABLE STATUS WHERE REGEXP predicates support only string pattern literals",
         .nul = "SHOW TABLE STATUS WHERE REGEXP pattern literals do not support NUL bytes",
@@ -200,21 +198,23 @@ static int evaluate_show_table_status_where_comparison_predicate(
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
-        (void)column_index;
-        return evaluate_show_metadata_where_regexp_predicate(
+        rc = evaluate_show_metadata_where_regexp_predicate(
             database,
-            left,
+            left.value,
             right_node,
             &regexp_messages,
-            show_table_status_where_column_is_case_sensitive(column_index),
+            left.case_sensitive,
             out_truth
         );
+        show_table_status_where_operand_deinit(&left);
+        return rc;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         char *pattern = NULL;
 
-        if (left == NULL) {
+        if (left.value == NULL) {
             *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
+            show_table_status_where_operand_deinit(&left);
             return MYLITE_OK;
         }
         rc = decode_show_table_status_where_string_literal(database, right_node, &pattern);
@@ -222,9 +222,9 @@ static int evaluate_show_table_status_where_comparison_predicate(
             bool matches = show_like_pattern_matches(
                 pattern,
                 strlen(pattern),
-                left,
-                strlen(left),
-                show_table_status_where_column_is_case_sensitive(column_index)
+                left.value,
+                strlen(left.value),
+                left.case_sensitive
             );
 
             if (matches) {
@@ -234,17 +234,19 @@ static int evaluate_show_table_status_where_comparison_predicate(
             }
         }
         free(pattern);
+        show_table_status_where_operand_deinit(&left);
         return rc;
     }
 
-    return compare_show_table_status_where_literal(
+    rc = compare_show_table_status_where_literal(
         database,
         operator_kind,
-        left,
-        column_index,
+        &left,
         right_node,
         out_truth
     );
+    show_table_status_where_operand_deinit(&left);
+    return rc;
 }
 
 static int evaluate_show_table_status_where_in_predicate(
@@ -255,22 +257,22 @@ static int evaluate_show_table_status_where_in_predicate(
 ) {
     const struct mylite_sql_ast_node *left_node = child_at(predicate, 0U);
     const struct mylite_sql_ast_node *value_list = child_at(predicate, 1U);
-    const char *left = NULL;
-    size_t column_index = 0U;
+    struct show_table_status_where_operand left = {0};
     size_t value_count = 0U;
     bool saw_null = false;
-    int rc =
-        show_table_status_where_column_value(database, left_node, values, &left, &column_index);
+    int rc = show_table_status_where_operand_value(database, left_node, values, &left);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (left == NULL) {
+    if (left.value == NULL) {
         *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
+        show_table_status_where_operand_deinit(&left);
         return MYLITE_OK;
     }
     if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
         set_runtime_error(database, "invalid SHOW TABLE STATUS WHERE IN list");
+        show_table_status_where_operand_deinit(&left);
         return MYLITE_ERROR;
     }
 
@@ -286,6 +288,7 @@ static int evaluate_show_table_status_where_in_predicate(
                 "SHOW TABLE STATUS WHERE IN supports only string, unsigned integer, and NULL "
                 "literals"
             );
+            show_table_status_where_operand_deinit(&left);
             return MYLITE_ERROR;
         }
 
@@ -297,7 +300,7 @@ static int evaluate_show_table_status_where_in_predicate(
         rc = decode_show_table_status_where_comparable_literal(
             database,
             value_node,
-            column_index,
+            left.numeric,
             "SHOW TABLE STATUS WHERE IN supports only string, unsigned integer, and NULL literals",
             &right
         );
@@ -306,19 +309,20 @@ static int evaluate_show_table_status_where_in_predicate(
 
             rc = show_table_status_where_texts_are_equal(
                 database,
-                left,
+                &left,
                 right,
-                column_index,
                 &equal
             );
             if (rc == MYLITE_OK && equal) {
                 *out_truth = SHOW_VARIABLES_WHERE_TRUE;
                 free(right);
+                show_table_status_where_operand_deinit(&left);
                 return MYLITE_OK;
             }
         }
         free(right);
         if (rc != MYLITE_OK) {
+            show_table_status_where_operand_deinit(&left);
             return rc;
         }
     }
@@ -328,6 +332,7 @@ static int evaluate_show_table_status_where_in_predicate(
     } else {
         *out_truth = SHOW_VARIABLES_WHERE_FALSE;
     }
+    show_table_status_where_operand_deinit(&left);
     return MYLITE_OK;
 }
 
@@ -337,49 +342,177 @@ static int evaluate_show_table_status_where_is_null_predicate(
     const char *const values[show_table_status_result_column_count],
     enum show_variables_where_truth *out_truth
 ) {
-    const char *value = NULL;
-    size_t column_index = 0U;
-    int rc = show_table_status_where_column_value(
+    struct show_table_status_where_operand value = {0};
+    int rc = show_table_status_where_operand_value(
         database,
         child_at(predicate, 0U),
         values,
-        &value,
-        &column_index
+        &value
     );
 
-    (void)column_index;
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (mylite_sql_ast_node_operator(predicate) == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
-        *out_truth = value == NULL ? SHOW_VARIABLES_WHERE_FALSE : SHOW_VARIABLES_WHERE_TRUE;
+        *out_truth = value.value == NULL ? SHOW_VARIABLES_WHERE_FALSE : SHOW_VARIABLES_WHERE_TRUE;
     } else {
-        *out_truth = value == NULL ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth = value.value == NULL ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
     }
+    show_table_status_where_operand_deinit(&value);
     return MYLITE_OK;
 }
 
-static int show_table_status_where_column_value(
+static int show_table_status_where_operand_value(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *column_node,
+    const struct mylite_sql_ast_node *operand_node,
     const char *const values[show_table_status_result_column_count],
-    const char **out_value,
-    size_t *out_column_index
+    struct show_table_status_where_operand *out_operand
 ) {
     size_t column_index = 0U;
-    int rc = resolve_show_table_status_where_column(database, column_node, &column_index);
+    int rc = MYLITE_OK;
 
-    if (rc != MYLITE_OK) {
-        return rc;
+    if (out_operand == NULL) {
+        return MYLITE_MISUSE;
     }
-    if (values == NULL || out_value == NULL || out_column_index == NULL) {
+    *out_operand = (struct show_table_status_where_operand){0};
+    if (values == NULL) {
         set_runtime_error(database, "invalid SHOW TABLE STATUS WHERE row");
         return MYLITE_ERROR;
     }
 
-    *out_value = values[column_index];
-    *out_column_index = column_index;
+    operand_node = unwrap_parenthesized_expression(operand_node);
+    if (operand_node != NULL &&
+        mylite_execution_string_slice_function_kind(operand_node->kind) ==
+            PLANNED_STRING_SLICE_FUNCTION_SUBSTRING) {
+        return show_table_status_where_substring_operand_value(
+            database,
+            operand_node,
+            values,
+            out_operand
+        );
+    }
+
+    rc = resolve_show_table_status_where_column(database, operand_node, &column_index);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_operand->value = values[column_index];
+    out_operand->case_sensitive = show_table_status_where_column_is_case_sensitive(column_index);
+    out_operand->numeric = show_table_status_where_column_is_numeric(column_index);
     return MYLITE_OK;
+}
+
+static void show_table_status_where_operand_deinit(
+    struct show_table_status_where_operand *operand
+) {
+    if (operand != NULL) {
+        mylite_execution_session_scalar_cell_deinit(&operand->cell);
+        *operand = (struct show_table_status_where_operand){0};
+    }
+}
+
+static int show_table_status_where_substring_operand_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const char *const values[show_table_status_result_column_count],
+    struct show_table_status_where_operand *out_operand
+) {
+    const struct mylite_sql_ast_node *source_node = NULL;
+    const struct mylite_sql_ast_node *position_node = NULL;
+    const struct mylite_sql_ast_node *length_node = NULL;
+    const char *source_value = NULL;
+    size_t source_column_index = 0U;
+    size_t argument_count = 0U;
+    int64_t position = 0;
+    int64_t requested_length = 0;
+    bool position_is_null = false;
+    bool length_is_null = false;
+    bool has_length = false;
+    int rc = MYLITE_OK;
+
+    if (operand_node == NULL || values == NULL || out_operand == NULL) {
+        set_runtime_error(database, "invalid SHOW TABLE STATUS WHERE substring operand");
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(operand_node);
+    if (argument_count != 2U && argument_count != 3U) {
+        set_unsupported_error(
+            database,
+            "SHOW TABLE STATUS WHERE SUBSTRING operands need two or three arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    source_node = child_at(operand_node, 0U);
+    position_node = child_at(operand_node, 1U);
+    if (argument_count == 3U) {
+        has_length = true;
+        length_node = child_at(operand_node, 2U);
+    }
+
+    rc = resolve_show_table_status_where_column(database, source_node, &source_column_index);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!mylite_execution_string_slice_length_argument_is_admitted(position_node)) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only integer, boolean, and NULL position literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (has_length && !mylite_execution_string_slice_length_argument_is_admitted(length_node)) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only integer, boolean, and NULL length literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_execution_string_slice_signed_position_value(
+        database,
+        position_node,
+        &position,
+        &position_is_null
+    );
+    if (rc == MYLITE_OK && has_length) {
+        rc = mylite_execution_string_slice_signed_length_value(
+            database,
+            length_node,
+            &requested_length,
+            &length_is_null
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    source_value = values[source_column_index];
+    if (source_value == NULL || position_is_null || length_is_null) {
+        out_operand->value = NULL;
+        out_operand->case_sensitive =
+            show_table_status_where_column_is_case_sensitive(source_column_index);
+        out_operand->numeric = false;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_execution_string_slice_substring_text_value(
+        database,
+        source_value,
+        strlen(source_value),
+        position,
+        has_length,
+        requested_length,
+        &out_operand->cell
+    );
+    if (rc == MYLITE_OK) {
+        out_operand->value = out_operand->cell.value;
+        out_operand->case_sensitive =
+            show_table_status_where_column_is_case_sensitive(source_column_index);
+        out_operand->numeric = false;
+    }
+    return rc;
 }
 
 static int resolve_show_table_status_where_column(
@@ -437,8 +570,7 @@ static int resolve_show_table_status_where_column(
 static int compare_show_table_status_where_literal(
     struct mylite_db *database,
     enum mylite_sql_ast_operator operator_kind,
-    const char *left,
-    size_t column_index,
+    const struct show_table_status_where_operand *left,
     const struct mylite_sql_ast_node *right,
     enum show_variables_where_truth *out_truth
 ) {
@@ -447,7 +579,7 @@ static int compare_show_table_status_where_literal(
     int comparison = 0;
     int rc = MYLITE_OK;
 
-    if (right == NULL || out_truth == NULL) {
+    if (left == NULL || right == NULL || out_truth == NULL) {
         set_runtime_error(database, "invalid SHOW TABLE STATUS WHERE comparison");
         return MYLITE_ERROR;
     }
@@ -463,7 +595,7 @@ static int compare_show_table_status_where_literal(
     literal_kind = mylite_sql_ast_node_literal_kind(right);
     if (compare_show_table_status_where_null_operand(
             operator_kind,
-            left,
+            left->value,
             literal_kind,
             out_truth
         )) {
@@ -473,7 +605,7 @@ static int compare_show_table_status_where_literal(
     rc = decode_show_table_status_where_comparable_literal(
         database,
         right,
-        column_index,
+        left->numeric,
         "SHOW TABLE STATUS WHERE comparisons support only string, unsigned integer, and NULL "
         "literals",
         &right_text
@@ -483,8 +615,12 @@ static int compare_show_table_status_where_literal(
         return rc;
     }
 
-    rc =
-        show_table_status_where_compare_text(database, left, right_text, column_index, &comparison);
+    if (left->value == NULL) {
+        *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
+        free(right_text);
+        return MYLITE_OK;
+    }
+    rc = show_table_status_where_compare_text(database, left, right_text, &comparison);
     if (rc == MYLITE_OK) {
         rc = show_table_status_where_truth_from_comparison(
             database,
@@ -501,7 +637,7 @@ static int compare_show_table_status_where_literal(
 static int decode_show_table_status_where_comparable_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
-    size_t column_index,
+    bool left_is_numeric,
     const char *unsupported_message,
     char **out_text
 ) {
@@ -522,7 +658,7 @@ static int decode_show_table_status_where_comparable_literal(
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
-    if (!show_table_status_where_column_is_numeric(column_index)) {
+    if (!left_is_numeric) {
         set_unsupported_error(
             database,
             "SHOW TABLE STATUS WHERE integer literal predicates support only numeric columns"
@@ -541,20 +677,28 @@ static int decode_show_table_status_where_comparable_literal(
 
 static int show_table_status_where_compare_text(
     struct mylite_db *database,
-    const char *left,
+    const struct show_table_status_where_operand *left,
     const char *right,
-    size_t column_index,
     int *out_comparison
 ) {
     if (out_comparison == NULL) {
         return MYLITE_MISUSE;
     }
     *out_comparison = 0;
-    if (show_table_status_where_column_is_numeric(column_index)) {
-        return show_table_status_where_compare_numeric_text(database, left, right, out_comparison);
+    if (left == NULL || left->value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (left->numeric) {
+        return show_table_status_where_compare_numeric_text(
+            database,
+            left->value,
+            right,
+            out_comparison
+        );
     }
 
-    *out_comparison = compare_show_table_status_where_text(left, right, column_index);
+    *out_comparison =
+        compare_show_table_status_where_text(left->value, right, left->case_sensitive);
     return MYLITE_OK;
 }
 
@@ -589,9 +733,8 @@ static int show_table_status_where_compare_numeric_text(
 
 static int show_table_status_where_texts_are_equal(
     struct mylite_db *database,
-    const char *left,
+    const struct show_table_status_where_operand *left,
     const char *right,
-    size_t column_index,
     bool *out_equal
 ) {
     int comparison = 0;
@@ -601,7 +744,7 @@ static int show_table_status_where_texts_are_equal(
         return MYLITE_MISUSE;
     }
     *out_equal = false;
-    rc = show_table_status_where_compare_text(database, left, right, column_index, &comparison);
+    rc = show_table_status_where_compare_text(database, left, right, &comparison);
     if (rc == MYLITE_OK) {
         *out_equal = comparison == 0;
     }
@@ -686,9 +829,9 @@ static int decode_show_table_status_where_string_literal(
 static int compare_show_table_status_where_text(
     const char *left,
     const char *right,
-    size_t column_index
+    bool case_sensitive
 ) {
-    if (show_table_status_where_column_is_case_sensitive(column_index)) {
+    if (case_sensitive) {
         return strcmp(left, right);
     }
     return compare_ascii_case_insensitive_text(left, right);

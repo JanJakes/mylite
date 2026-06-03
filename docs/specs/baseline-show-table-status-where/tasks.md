@@ -18,6 +18,9 @@
   and unsupported predicate forms.
 - [x] Admit unsigned integer literals for numeric displayed status columns while
   preserving deterministic rejection of coercive nonnumeric predicates.
+- [x] Admit one-level `SUBSTRING()` / `SUBSTR()` / `MID()` left operands over
+  displayed output columns while preserving deterministic rejection of arbitrary
+  expressions.
 - [x] Add MySQL expectation script coverage.
 - [x] Extend parser and runtime C tests.
 - [x] Update `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md`.

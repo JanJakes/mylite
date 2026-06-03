@@ -1156,3 +1156,26 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-seventh split.
+
+## Round 58
+
+- [x] Reinspect the remaining largest runtime fragments after the scalar
+      projection query split.
+- [x] Identify `mylite_execution_ddl_planning.inc` as a CREATE TABLE planning
+      same-translation-unit split candidate.
+- [x] Split CREATE TABLE planning core, column default charset handling,
+      item-list validation, primary-key definition planning, secondary-index
+      planning, foreign-key planning, CHECK constraint planning, generated
+      expression rendering, and CHECK expression rendering into named
+      fragments.
+- [x] Remove `mylite_execution_ddl_planning.inc` and replace it with the
+      ordered fragment include sequence.
+- [x] Run focused CREATE TABLE, constraints, generated column, CHECK
+      constraint, foreign-key, index, charset/default, and parser-adjacent
+      build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-eighth split.

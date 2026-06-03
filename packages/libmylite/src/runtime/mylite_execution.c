@@ -25186,7 +25186,23 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_result_completion.inc"
 
-#include "mylite_execution_ddl_planning.inc"
+#include "mylite_execution_create_table_planning_core.inc"
+
+#include "mylite_execution_create_table_column_default_charset.inc"
+
+#include "mylite_execution_create_table_item_validation.inc"
+
+#include "mylite_execution_primary_key_definition_planning.inc"
+
+#include "mylite_execution_create_table_secondary_index_planning.inc"
+
+#include "mylite_execution_create_table_foreign_key_planning.inc"
+
+#include "mylite_execution_create_table_check_constraint_planning.inc"
+
+#include "mylite_execution_create_table_generated_expression_rendering.inc"
+
+#include "mylite_execution_check_expression_rendering.inc"
 
 #include "mylite_execution_create_table_constraints.inc"
 

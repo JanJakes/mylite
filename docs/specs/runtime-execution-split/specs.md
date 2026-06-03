@@ -730,9 +730,40 @@ The fragments are:
 - `mylite_execution_result_completion.inc`: completed-statement row-count
   classification, diagnostics snapshot preservation, and successful-result
   finalization helpers.
-- `mylite_execution_ddl_planning.inc`: CREATE TABLE planning core, column item
-  planning, inline primary/unique/index collection, generated column
-  finalization, and generated/CHECK expression rendering.
+- `mylite_execution_create_table_planning_core.inc`: CREATE TABLE planning
+  entry point, target/table option initialization, item-list traversal, and
+  column item dispatch.
+- `mylite_execution_create_table_column_default_charset.inc`: CREATE TABLE
+  column default binary charset handling, explicit charset/collation detection,
+  text-family length normalization, and binary string descriptor conversion for
+  columns inheriting a binary table default.
+- `mylite_execution_create_table_item_validation.inc`: CREATE TABLE column item
+  counting and supported item-list validation for columns, keys, indexes,
+  foreign keys, and CHECK constraints.
+- `mylite_execution_primary_key_definition_planning.inc`: inline and
+  table-level primary-key planning, shared primary-key option extraction,
+  key-part validation, duplicate detection, NULL rejection, spatial rejection,
+  and key length validation entry.
+- `mylite_execution_create_table_secondary_index_planning.inc`: CREATE TABLE
+  inline unique-key, secondary/unique/fulltext/spatial index planning, first key
+  part resolution, index-kind validation, option extraction, part append, and
+  key-length validation entry.
+- `mylite_execution_create_table_foreign_key_planning.inc`: CREATE TABLE
+  FOREIGN KEY definition collection, child/parent part-name planning, rule
+  parsing, parent resolution, set-null validation, child-index selection, and
+  planned foreign-key reservation.
+- `mylite_execution_create_table_check_constraint_planning.inc`: CREATE TABLE
+  table and inline CHECK constraint collection, inline enforcement handling,
+  generated CHECK name planning, duplicate name rejection, and planned CHECK
+  descriptor reservation.
+- `mylite_execution_create_table_generated_expression_rendering.inc`: generated
+  column finalization, generated expression validation, MySQL expression text
+  rendering, SQLite expression rendering, and generated expression work-stack
+  helpers.
+- `mylite_execution_check_expression_rendering.inc`: CHECK constraint
+  expression validation shared by CREATE/ALTER CHECK planning, MySQL CHECK
+  clause rendering, SQLite CHECK expression rendering, boolean/arithmetic
+  operator mapping, span text copying, and CHECK expression work-stack helpers.
 - `mylite_execution_create_table_constraints.inc`: CREATE TABLE CHECK,
   FOREIGN KEY, secondary-index, primary-key, and AUTO_INCREMENT validation and
   planning helpers.
@@ -1622,6 +1653,11 @@ current timestamp/session state.
     scalar SELECT execution, shared scalar result metadata, session scalar
     result helper, session scalar warning, and argument-count diagnostic
     fragments.
+34. Split the oversized DDL planning fragment into ordered
+    same-translation-unit CREATE TABLE planning core, column default charset
+    handling, item-list validation, primary-key definition planning,
+    secondary-index planning, foreign-key planning, CHECK constraint planning,
+    generated expression rendering, and CHECK expression rendering fragments.
 
 ## Review checklist
 
@@ -1747,3 +1783,9 @@ current timestamp/session state.
   diagnostics, result metadata shapes, last-insert-id rollback on scalar SELECT
   failure, warning emission order, staged warning counts, or function
   argument-count diagnostic names.
+- CREATE TABLE planning fragments preserve the existing DDL planning ownership
+  and same-translation-unit helper linkage; the split must not change target
+  resolution, item-list validation, binary default charset propagation,
+  primary/unique/secondary/fulltext/spatial index diagnostics, foreign-key
+  planning, generated-column expression rendering, CHECK constraint naming,
+  boolean validation, or MySQL/SQLite expression text generation.

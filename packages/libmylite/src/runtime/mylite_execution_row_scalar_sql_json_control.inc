@@ -229,6 +229,8 @@ static int append_row_scalar_json_extract_document_argument_sql(
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
         return append_row_scalar_json_set_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -332,6 +334,8 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
         return append_row_scalar_json_extract_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -639,6 +643,8 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -861,6 +867,10 @@ static int append_row_scalar_control_flow_expression_sql(
         return append_row_scalar_nullif_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         return append_row_scalar_isnull_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+        return append_row_scalar_searched_case_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        return append_row_scalar_like_predicate_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -962,6 +972,10 @@ static int append_row_scalar_nested_control_flow_expression_sql(
         return append_row_scalar_nested_nullif_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         return append_row_scalar_nested_isnull_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+        return append_row_scalar_searched_case_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        return append_row_scalar_like_predicate_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -1210,6 +1224,105 @@ static int append_row_scalar_isnull_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_searched_case_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    size_t result_argument_limit = 0U;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE ||
+        expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+    if ((expression->argument_count % 2U) == 0U) {
+        result_argument_limit = expression->argument_count;
+    } else if (expression->case_has_else) {
+        result_argument_limit = expression->argument_count - 1U;
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "(CASE");
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < result_argument_limit;
+         argument_index += 2U) {
+        rc = mylite_dynamic_string_append(string, " WHEN ");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " THEN ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_argument_sql(
+                string,
+                &expression->arguments[argument_index + 1U],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK && expression->case_has_else) {
+        rc = mylite_dynamic_string_append(string, " ELSE ");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_argument_sql(
+                string,
+                &expression->arguments[expression->argument_count - 1U],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " END)");
+    }
+    return rc;
+}
+
+static int append_row_scalar_like_predicate_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE ||
+        expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_control_flow_argument_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " LIKE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_control_flow_argument_sql(
+            string,
+            &expression->arguments[1],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK && expression->like_uses_escape) {
+        rc = mylite_dynamic_string_append(string, " ESCAPE '\\'");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_nested_if_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -1393,6 +1506,8 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_nested_control_flow_expression_sql(
             string,
             expression,
@@ -1503,6 +1618,13 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        return append_row_scalar_nested_control_flow_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -1845,7 +1967,14 @@ static int append_row_scalar_string_slice_operand_sql(
     if (negate) {
         rc = mylite_dynamic_string_append(string, "(-");
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && expression != NULL &&
+        expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC) {
+        rc = append_row_scalar_integer_arithmetic_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK) {
         rc = append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
     }
     if (rc == MYLITE_OK && negate) {

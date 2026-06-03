@@ -95,6 +95,8 @@ static int test_like_predicate_queries(void) {
     static const char *const char_exact_ids[] = {"1", "2", "6"};
     static const char *const escaped_underscore_ids[] = {"4"};
     static const char *const escaped_percent_ids[] = {"5"};
+    static const char *const concat_escaped_underscore_ids[] = {"4"};
+    static const char *const joined_concat_ids[] = {"1", "8"};
     static const char *const not_like_ab_ids[] = {"8"};
     static const char *const aggregate_count[] = {"6"};
     static const char *const logical_ids[] = {"1", "8"};
@@ -154,6 +156,77 @@ static int test_like_predicate_queries(void) {
             .context = "default LIKE backslash escapes underscore",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE CONCAT('ab\\_', '%') ORDER BY id",
+            .values = concat_escaped_underscore_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "LIKE accepts CONCAT pattern expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE join_terms(id INT, suffix VARCHAR(8), deadline LONGTEXT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO join_terms VALUES (1, 'y', '1'), (2, 'missing', '1')",
+        NULL
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT jt.id, s.id FROM join_terms AS jt "
+                   "JOIN strings AS s ON s.v = CONCAT('x', jt.suffix) "
+                   "WHERE jt.deadline < UNIX_TIMESTAMP() ORDER BY jt.id, s.id",
+            .values = joined_concat_ids,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "joined equality accepts CONCAT descriptor expression and timeout filter",
+        }
+    );
+    {
+        mylite_result *age_result = NULL;
+        failures += execute_ok(
+            database,
+            "SELECT UNIX_TIMESTAMP() - jt.deadline AS age FROM join_terms AS jt WHERE jt.id = 1",
+            &age_result
+        );
+        if (age_result != NULL) {
+            const char *age_text = NULL;
+            char *age_end = NULL;
+            long long age = -1LL;
+            size_t age_column_count = mylite_result_column_count(age_result);
+            size_t age_row_count = mylite_result_row_count(age_result);
+
+            failures += expect_size(
+                age_column_count,
+                1U,
+                "unix_timestamp text arithmetic columns"
+            );
+            failures += expect_size(
+                age_row_count,
+                1U,
+                "unix_timestamp text arithmetic rows"
+            );
+            if (age_column_count == 1U && age_row_count == 1U) {
+                age_text = mylite_result_value_text(age_result, 0U, 0U);
+                age = age_text == NULL ? -1LL : strtoll(age_text, &age_end, 10);
+            }
+            if (age_text == NULL || age_end == age_text || *age_end != '\0' || age <= 0) {
+                fprintf(
+                    stderr,
+                    "unix_timestamp text arithmetic age: expected positive integer, got %s\n",
+                    age_text == NULL ? "(null)" : age_text
+                );
+                ++failures;
+            }
+            mylite_result_free(age_result);
+        }
+    }
     failures += expect_query_values(
         database,
         (struct expected_query){

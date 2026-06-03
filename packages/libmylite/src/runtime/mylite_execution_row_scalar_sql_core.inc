@@ -13,7 +13,7 @@ static int append_row_scalar_expression_sql(
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+        return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return append_row_scalar_window_function_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -221,6 +221,8 @@ static int append_row_scalar_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         return append_row_scalar_rand_expression_sql(string, expression, next_parameter);
@@ -231,6 +233,33 @@ static int append_row_scalar_expression_sql(
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_row_scalar_column_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return MYLITE_ERROR;
+    }
+    if (expression->column_cast_as_integer) {
+        rc = mylite_dynamic_string_append(string, "CAST(");
+    }
+    if (rc == MYLITE_OK && expression->column_has_source_index) {
+        rc = append_select_source_alias(string, expression->column_source_index);
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, '.');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+    }
+    if (rc == MYLITE_OK && expression->column_cast_as_integer) {
+        rc = mylite_dynamic_string_append(string, " AS INTEGER)");
+    }
+    return rc;
 }
 
 static int append_row_scalar_window_function_expression_sql(
@@ -402,6 +431,8 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
@@ -529,7 +560,10 @@ static int append_row_scalar_conversion_base_expression_sql(
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+        return append_row_scalar_column_sql(string, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -660,7 +694,7 @@ static int append_row_scalar_non_concat_expression_sql(
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+        return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -773,6 +807,9 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -849,16 +886,28 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
 
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
-        rc = append_numbered_parameter(string, *next_parameter);
+        rc = mylite_dynamic_string_append(string, "CAST(");
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " AS INTEGER)");
+        }
         if (rc == MYLITE_OK) {
             ++(*next_parameter);
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+        return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return append_row_scalar_integer_arithmetic_function_call_sql(string, stack, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+        return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+        return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -875,11 +924,9 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
@@ -1077,11 +1124,29 @@ static int append_row_scalar_concat_expression_sql(
             rc = mylite_dynamic_string_append(string, " || ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_row_scalar_non_concat_expression_sql(
-                string,
-                &expression->arguments[argument_index],
-                next_parameter
-            );
+            if (expression->arguments[argument_index].kind ==
+                PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH) {
+                rc = append_row_scalar_string_length_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            } else if (
+                expression->arguments[argument_index].kind ==
+                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
+            ) {
+                rc = append_row_scalar_string_slice_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            } else {
+                rc = append_row_scalar_non_concat_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            }
         }
     }
     if (rc == MYLITE_OK) {
@@ -1109,11 +1174,29 @@ static int append_row_scalar_concat_ws_expression_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_row_scalar_non_concat_expression_sql(
-                string,
-                &expression->arguments[argument_index],
-                next_parameter
-            );
+            if (expression->arguments[argument_index].kind ==
+                PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH) {
+                rc = append_row_scalar_string_length_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            } else if (
+                expression->arguments[argument_index].kind ==
+                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
+            ) {
+                rc = append_row_scalar_string_slice_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            } else {
+                rc = append_row_scalar_non_concat_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            }
         }
     }
     if (rc == MYLITE_OK) {

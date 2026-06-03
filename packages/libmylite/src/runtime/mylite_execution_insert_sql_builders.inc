@@ -321,7 +321,7 @@ static int append_insert_select_compound_table_branch_sql(
         rc = mylite_dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_from_sql(string, source);
+        rc = append_select_from_sql(string, source, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(string, &source->predicate, next_parameter);
@@ -476,6 +476,7 @@ static bool row_scalar_expression_uses_string_collation(
                 expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET) != 0;
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         return expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -513,6 +514,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:

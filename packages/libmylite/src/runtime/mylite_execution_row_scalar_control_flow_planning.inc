@@ -12,6 +12,7 @@ static bool is_row_scalar_control_flow_expression(const struct mylite_sql_ast_no
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
     case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return true;
     default:
         return false;
@@ -76,6 +77,16 @@ static int plan_row_scalar_control_flow_expression(
         );
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
         return plan_row_scalar_isnull_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+        return plan_row_scalar_searched_case_expression(
             database,
             expression,
             has_source,
@@ -171,6 +182,16 @@ static int plan_row_scalar_nested_control_flow_expression(
             table_column_count,
             out_expression
         );
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+        return plan_row_scalar_searched_case_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     case MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "IFNULL");
         return MYLITE_ERROR;
@@ -190,6 +211,158 @@ static int plan_row_scalar_nested_control_flow_expression(
         "COALESCE(), NULLIF(), and ISNULL()"
     );
     return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_searched_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *when_list = NULL;
+    const struct mylite_sql_ast_node *else_clause = NULL;
+    const struct mylite_sql_ast_node *when_clause = NULL;
+    size_t when_count = 0U;
+    size_t argument_count = 0U;
+    size_t argument_index = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION) {
+        set_unsupported_error(database, "row-scalar searched CASE expression is unsupported");
+        return MYLITE_ERROR;
+    }
+    when_list = child_at(expression, 0U);
+    else_clause = child_at(expression, 1U);
+    if (when_list == NULL || when_list->kind != MYLITE_SQL_AST_CASE_WHEN_LIST) {
+        set_unsupported_error(database, "row-scalar searched CASE requires WHEN clauses");
+        return MYLITE_ERROR;
+    }
+
+    when_count = mylite_sql_ast_node_child_count(when_list);
+    argument_count = when_count * 2U;
+    if (else_clause != NULL) {
+        ++argument_count;
+    }
+    if (when_count == 0U || argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE;
+    out_expression->argument_count = argument_count;
+    out_expression->case_has_else = else_clause != NULL;
+
+    when_clause = child_at(when_list, 0U);
+    while (rc == MYLITE_OK && when_clause != NULL) {
+        if (when_clause->kind != MYLITE_SQL_AST_CASE_WHEN_CLAUSE ||
+            argument_index + 1U >= argument_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        rc = plan_row_scalar_control_flow_condition_argument(
+            database,
+            child_at(when_clause, 0U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_index]
+        );
+        if (rc == MYLITE_OK) {
+            rc = plan_row_scalar_control_flow_value_argument(
+                database,
+                child_at(when_clause, 1U),
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                &out_expression->arguments[argument_index + 1U]
+            );
+        }
+        argument_index += 2U;
+        when_clause = when_clause->next_sibling;
+    }
+    if (rc == MYLITE_OK && else_clause != NULL) {
+        rc = plan_row_scalar_control_flow_value_argument(
+            database,
+            child_at(else_clause, 0U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_count - 1U]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->field_domain = row_scalar_searched_case_result_domain(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_LIKE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "row-scalar CASE WHEN supports only LIKE predicates");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
+    out_expression->argument_count = 2U;
+    out_expression->like_uses_escape = (bool)!session_sql_mode_has(
+        &database->session,
+        MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
+    );
+
+    rc = plan_row_scalar_control_flow_value_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_control_flow_value_argument(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
 }
 
 static int plan_row_scalar_if_expression(
@@ -848,6 +1021,18 @@ static int plan_row_scalar_control_flow_condition_argument(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE) {
+        return plan_row_scalar_like_predicate_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -1006,6 +1191,18 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
+    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE) {
+        return plan_row_scalar_like_predicate_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -1056,7 +1253,8 @@ static int plan_row_scalar_control_flow_column(
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int rc = resolve_descriptor_column_reference(
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         source_context,
@@ -1064,7 +1262,8 @@ static int plan_row_scalar_control_flow_column(
         "row-scalar SELECT control-flow functions support only descriptor columns",
         table_columns,
         table_column_count,
-        &column
+        &column,
+        &source_index
     );
 
     if (rc != MYLITE_OK) {
@@ -1076,6 +1275,8 @@ static int plan_row_scalar_control_flow_column(
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 
@@ -1088,7 +1289,8 @@ static int plan_row_scalar_control_flow_condition_column(
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int rc = resolve_descriptor_column_reference(
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         source_context,
@@ -1096,7 +1298,8 @@ static int plan_row_scalar_control_flow_condition_column(
         "IF() row conditions support only descriptor columns",
         table_columns,
         table_column_count,
-        &column
+        &column,
+        &source_index
     );
 
     if (rc != MYLITE_OK) {
@@ -1108,6 +1311,8 @@ static int plan_row_scalar_control_flow_condition_column(
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 
@@ -1187,8 +1392,10 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         return expression->field_domain;
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
@@ -1311,5 +1518,55 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_common_domai
         }
     }
 
+    return domain;
+}
+
+static enum planned_row_scalar_field_domain row_scalar_searched_case_result_domain(
+    const struct planned_row_scalar_expression *expression
+) {
+    enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    size_t result_argument_limit = 0U;
+
+    if (expression == NULL || expression->arguments == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE ||
+        expression->argument_count < 2U) {
+        return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    }
+    if ((expression->argument_count % 2U) == 0U) {
+        result_argument_limit = expression->argument_count;
+    } else if (expression->case_has_else) {
+        result_argument_limit = expression->argument_count - 1U;
+    } else {
+        return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    }
+    for (size_t argument_index = 1U; argument_index < result_argument_limit; argument_index += 2U) {
+        enum planned_row_scalar_field_domain argument_domain =
+            row_scalar_control_flow_argument_domain(&expression->arguments[argument_index]);
+
+        if (argument_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+            continue;
+        }
+        if (domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+            domain = argument_domain;
+        } else if (domain != argument_domain) {
+            return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+        }
+    }
+    if (expression->case_has_else) {
+        enum planned_row_scalar_field_domain argument_domain =
+            row_scalar_control_flow_argument_domain(
+                &expression->arguments[expression->argument_count - 1U]
+            );
+
+        if (argument_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+            return domain;
+        }
+        if (domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+            return argument_domain;
+        }
+        if (domain != argument_domain) {
+            return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+        }
+    }
     return domain;
 }

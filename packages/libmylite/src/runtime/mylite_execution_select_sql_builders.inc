@@ -24,7 +24,7 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
         rc = mylite_dynamic_string_append(&string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_from_sql(&string, plan);
+        rc = append_select_from_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
@@ -69,7 +69,8 @@ static int append_select_projection_column_sql(
 
 static int append_select_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_select *plan
+    const struct planned_select *plan,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -122,7 +123,11 @@ static int append_select_from_sql(
             rc = append_select_source_alias(string, right_source_index);
         }
         if (rc == MYLITE_OK) {
-            rc = append_select_join_condition_sql(string, &plan->join_conditions[join_index]);
+            rc = append_select_join_condition_sql(
+                string,
+                &plan->join_conditions[join_index],
+                next_parameter
+            );
         }
     }
 
@@ -138,7 +143,8 @@ static bool planned_select_qualifies_source_references(const struct planned_sele
 
 static int append_select_join_condition_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_select_join_condition *condition
+    const struct planned_select_join_condition *condition,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -159,12 +165,23 @@ static int append_select_join_condition_sql(
         rc = mylite_dynamic_string_append(string, " = ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_descriptor_value_sql_for_source(
-            string,
-            &condition->right_column,
-            condition->right_source_index,
-            true
-        );
+        if (condition->right_value_is_row_scalar_expression) {
+            if (next_parameter == NULL) {
+                return MYLITE_ERROR;
+            }
+            rc = append_row_scalar_expression_sql(
+                string,
+                condition->right_row_scalar_expression,
+                next_parameter
+            );
+        } else {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &condition->right_column,
+                condition->right_source_index,
+                true
+            );
+        }
     }
 
     return rc;
@@ -207,7 +224,17 @@ static int build_row_scalar_select_sql(
     if (rc == MYLITE_OK && plan->has_source) {
         rc = mylite_dynamic_string_append(&string, " FROM ");
     }
-    if (rc == MYLITE_OK && plan->has_source) {
+    if (rc == MYLITE_OK && plan->has_source && plan->source_count != 0U) {
+        struct planned_select source_plan = {
+            .sources = plan->sources,
+            .source_count = plan->source_count,
+            .join_kinds = plan->join_kinds,
+            .join_conditions = plan->join_conditions,
+            .join_count = plan->join_count,
+        };
+
+        rc = append_select_from_sql(&string, &source_plan, &next_parameter);
+    } else if (rc == MYLITE_OK && plan->has_source) {
         rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
     if (rc == MYLITE_OK && plan->has_source) {

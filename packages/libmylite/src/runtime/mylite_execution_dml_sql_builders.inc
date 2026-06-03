@@ -104,7 +104,7 @@ static int append_joined_delete_rowid_subquery_sql(
         rc = mylite_dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_joined_delete_from_sql(string, plan);
+        rc = append_joined_delete_from_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
@@ -131,7 +131,8 @@ static int append_joined_delete_target_rowid_sql(
 
 static int append_joined_delete_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_delete *plan
+    const struct planned_delete *plan,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -169,7 +170,7 @@ static int append_joined_delete_from_sql(
         rc = append_select_source_alias(string, 1U);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_join_condition_sql(string, &plan->join_condition);
+        rc = append_select_join_condition_sql(string, &plan->join_condition, next_parameter);
     }
 
     return rc;
@@ -408,7 +409,7 @@ static int build_update_matched_sql(const struct planned_update *plan, char **ou
 
     rc = mylite_dynamic_string_append(&string, "SELECT 1 FROM ");
     if (rc == MYLITE_OK && plan->is_joined) {
-        rc = append_joined_update_from_sql(&string, plan);
+        rc = append_joined_update_from_sql(&string, plan, &next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = append_single_update_matched_from_sql(&string, plan);
     }
@@ -570,7 +571,7 @@ static int append_joined_update_rowid_subquery_sql(
         rc = mylite_dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_joined_update_from_sql(string, plan);
+        rc = append_joined_update_from_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
@@ -597,7 +598,8 @@ static int append_joined_update_target_rowid_sql(
 
 static int append_joined_update_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -635,7 +637,7 @@ static int append_joined_update_from_sql(
         rc = append_select_source_alias(string, 1U);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_join_condition_sql(string, &plan->join_condition);
+        rc = append_select_join_condition_sql(string, &plan->join_condition, next_parameter);
     }
 
     return rc;

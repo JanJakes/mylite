@@ -475,16 +475,40 @@ static int plan_comparison_predicate(
                 &database->session,
                 MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
             );
-            rc = convert_predicate_string_pattern_literal(
-                database,
-                child_at(predicate_node, 1U),
-                &node.value
-            );
+            if (child_at(predicate_node, 1U) != NULL &&
+                child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL) {
+                rc = convert_predicate_string_pattern_literal(
+                    database,
+                    child_at(predicate_node, 1U),
+                    &node.value
+                );
+            } else {
+                rc = plan_predicate_row_scalar_value_expression(
+                    database,
+                    child_at(predicate_node, 1U),
+                    source_context,
+                    table_columns,
+                    table_column_count,
+                    &node
+                );
+            }
         } else if (comparison_operator_is_regexp(node.operator_kind)) {
             rc = convert_predicate_regexp_pattern_literal(
                 database,
                 child_at(predicate_node, 1U),
                 &node.value
+            );
+        } else if (
+            child_at(predicate_node, 1U) != NULL &&
+            child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION
+        ) {
+            rc = plan_predicate_row_scalar_value_expression(
+                database,
+                child_at(predicate_node, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                &node
             );
         } else if (predicate_comparison_value_is_null(child_at(predicate_node, 1U))) {
             node.value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
@@ -501,10 +525,53 @@ static int plan_comparison_predicate(
     if (rc != MYLITE_OK) {
         planned_value_deinit(&node.value);
         planned_value_deinit(&node.upper_value);
+        planned_row_scalar_expression_deinit(node.row_scalar_value_expression);
+        free(node.row_scalar_value_expression);
         return rc;
     }
 
-    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
+        planned_row_scalar_expression_deinit(node.row_scalar_value_expression);
+        free(node.row_scalar_value_expression);
+    }
+    return rc;
+}
+
+static int plan_predicate_row_scalar_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    int rc = MYLITE_OK;
+
+    node->row_scalar_value_expression = calloc(1U, sizeof(*node->row_scalar_value_expression));
+    if (node->row_scalar_value_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node->row_scalar_value_expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node->row_scalar_value_expression);
+        free(node->row_scalar_value_expression);
+        node->row_scalar_value_expression = NULL;
+    }
+    return rc;
 }
 
 static int plan_row_scalar_function_comparison_predicate(

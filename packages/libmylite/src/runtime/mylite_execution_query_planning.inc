@@ -1195,6 +1195,30 @@ static int plan_row_scalar_integer_arithmetic_frame(
             frame->out_expression
         );
     }
+    if (current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
+        return plan_row_scalar_unix_timestamp_expression(
+            database,
+            current,
+            true,
+            source_context,
+            table_columns,
+            table_column_count,
+            frame->out_expression
+        );
+    }
+    if (mylite_execution_string_length_function_kind(current->kind) !=
+        PLANNED_STRING_LENGTH_FUNCTION_NONE) {
+        return plan_row_scalar_string_length_expression(
+            database,
+            current,
+            true,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            frame->out_expression
+        );
+    }
 
     set_unsupported_error(
         database,
@@ -1375,7 +1399,9 @@ static int plan_row_scalar_integer_arithmetic_column(
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int rc = resolve_descriptor_column_reference(
+    size_t source_index = 0U;
+    bool cast_as_integer = false;
+    int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         source_context,
@@ -1383,32 +1409,49 @@ static int plan_row_scalar_integer_arithmetic_column(
         "table-backed signed integer arithmetic projection supports only descriptor columns",
         table_columns,
         table_column_count,
-        &column
+        &column,
+        &source_index
     );
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!signed_integer_arithmetic_column_descriptor_is_supported(database, &column)) {
+    if (!signed_integer_arithmetic_column_descriptor_is_supported(
+            database,
+            &column,
+            &cast_as_integer
+        )) {
         return MYLITE_ERROR;
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
+    out_expression->column_cast_as_integer = cast_as_integer;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 
 static bool signed_integer_arithmetic_column_descriptor_is_supported(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *column
+    const struct mylite_catalog_column_descriptor *column,
+    bool *out_cast_as_integer
 ) {
     const char *logical_type = NULL;
 
+    if (out_cast_as_integer == NULL) {
+        return false;
+    }
+    *out_cast_as_integer = false;
+    if (column != NULL && column_descriptor_is_string_family(column)) {
+        *out_cast_as_integer = true;
+        return true;
+    }
     if (column == NULL || strcmp(column->physical_type, "INTEGER") != 0) {
         set_unsupported_error(
             database,
             "table-backed signed integer arithmetic projection supports only signed integer "
-            "descriptor columns"
+            "and nonbinary string descriptor columns"
         );
         return false;
     }
@@ -1432,7 +1475,7 @@ static bool signed_integer_arithmetic_column_descriptor_is_supported(
     set_unsupported_error(
         database,
         "table-backed signed integer arithmetic projection supports only signed integer "
-        "descriptor columns"
+        "and nonbinary string descriptor columns"
     );
     return false;
 }

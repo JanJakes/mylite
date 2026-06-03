@@ -62,6 +62,8 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return bind_row_scalar_nested_control_flow_expression_parameters(
             statement,
             expression,
@@ -159,6 +161,13 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        return bind_row_scalar_nested_control_flow_expression_parameters(
             statement,
             expression,
             parameter_index

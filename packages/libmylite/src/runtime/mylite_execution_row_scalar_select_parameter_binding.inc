@@ -11,7 +11,16 @@ static int bind_select_parameters_at(
 ) {
     int rc = MYLITE_OK;
 
-    rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
+    for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_conditions[join_index],
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
+    }
     if (rc == MYLITE_OK) {
         rc = bind_select_order_parameters(statement, &plan->order, parameter_index);
     }
@@ -26,6 +35,22 @@ static int bind_select_parameters_at(
     }
 
     return rc;
+}
+
+static int bind_select_join_condition_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_join_condition *condition,
+    int *parameter_index
+) {
+    if (condition == NULL || !condition->has_condition ||
+        !condition->right_value_is_row_scalar_expression) {
+        return MYLITE_OK;
+    }
+    return bind_row_scalar_expression_parameters(
+        statement,
+        condition->right_row_scalar_expression,
+        parameter_index
+    );
 }
 
 static int bind_row_scalar_select_parameters(
@@ -48,6 +73,13 @@ static int bind_row_scalar_select_parameters_at(
         rc = bind_row_scalar_expression_parameters(
             statement,
             &plan->items[item_index].expression,
+            parameter_index
+        );
+    }
+    for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_conditions[join_index],
             parameter_index
         );
     }

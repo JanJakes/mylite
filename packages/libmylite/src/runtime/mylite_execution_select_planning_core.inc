@@ -903,6 +903,7 @@ static int plan_joined_select_condition(
     const struct select_source_context *source_context,
     struct planned_select_join_condition *out_condition
 ) {
+    const struct mylite_sql_ast_node *right_node = NULL;
     int rc = MYLITE_OK;
 
     *out_condition = (struct planned_select_join_condition){.has_condition = false};
@@ -914,9 +915,15 @@ static int plan_joined_select_condition(
         }
         return MYLITE_OK;
     }
-    if (condition_node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+    if ((condition_node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+         condition_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) ||
         mylite_sql_ast_node_operator(condition_node) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
         set_unsupported_error(database, "joined SELECT supports only descriptor equality ON");
+        return MYLITE_ERROR;
+    }
+    right_node = child_at(condition_node, 1U);
+    if (right_node == NULL) {
+        set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
@@ -931,10 +938,11 @@ static int plan_joined_select_condition(
         &out_condition->left_column,
         &out_condition->left_source_index
     );
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && (right_node->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                            right_node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         rc = resolve_descriptor_column_reference_with_source_index(
             database,
-            child_at(condition_node, 1U),
+            right_node,
             source_context,
             COLUMN_REFERENCE_ON,
             "joined SELECT supports only descriptor equality ON",
@@ -943,19 +951,43 @@ static int plan_joined_select_condition(
             &out_condition->right_column,
             &out_condition->right_source_index
         );
+        if (rc == MYLITE_OK &&
+            !join_condition_columns_are_compatible(
+                &out_condition->left_column,
+                &out_condition->right_column
+            )) {
+            set_unsupported_error(
+                database,
+                "joined SELECT supports only same-family integer or string descriptor equality ON"
+            );
+            return MYLITE_ERROR;
+        }
+    } else if (rc == MYLITE_OK) {
+        out_condition->right_row_scalar_expression =
+            (struct planned_row_scalar_expression *)calloc(
+                1U,
+                sizeof(*out_condition->right_row_scalar_expression)
+            );
+        if (out_condition->right_row_scalar_expression == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        rc = plan_row_scalar_expression(
+            database,
+            right_node,
+            true,
+            source_context,
+            NULL,
+            NULL,
+            0U,
+            out_condition->right_row_scalar_expression
+        );
+        if (rc == MYLITE_OK) {
+            out_condition->right_value_is_row_scalar_expression = true;
+        }
     }
     if (rc != MYLITE_OK) {
         return rc;
-    }
-    if (!join_condition_columns_are_compatible(
-            &out_condition->left_column,
-            &out_condition->right_column
-        )) {
-        set_unsupported_error(
-            database,
-            "joined SELECT supports only same-family integer or string descriptor equality ON"
-        );
-        return MYLITE_ERROR;
     }
 
     out_condition->has_condition = true;
@@ -1009,10 +1041,30 @@ static void planned_select_deinit(struct planned_select *plan) {
     free((void *)plan->column_aliases);
     free(plan->column_source_indexes);
     free(plan->join_kinds);
+    if (plan->join_conditions != NULL) {
+        for (size_t join_index = 0U; join_index < plan->join_count; ++join_index) {
+            planned_select_join_condition_deinit(&plan->join_conditions[join_index]);
+        }
+    } else {
+        planned_select_join_condition_deinit(&plan->join_condition);
+    }
     free(plan->join_conditions);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_order_deinit(&plan->order);
     *plan = (struct planned_select){0};
+}
+
+static void planned_select_join_condition_deinit(
+    struct planned_select_join_condition *condition
+) {
+    if (condition == NULL) {
+        return;
+    }
+    if (condition->right_row_scalar_expression != NULL) {
+        planned_row_scalar_expression_deinit(condition->right_row_scalar_expression);
+        free(condition->right_row_scalar_expression);
+    }
+    *condition = (struct planned_select_join_condition){0};
 }
 
 static int plan_row_scalar_select(
@@ -1060,17 +1112,32 @@ static int plan_row_scalar_select(
         if (rc == MYLITE_OK) {
             item_source_context = &source_context;
         }
+    } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JOIN) {
+        out_plan->has_source = true;
+        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        if (rc == MYLITE_OK) {
+            rc = plan_row_scalar_select_join_source(
+                database,
+                from_clause,
+                out_plan,
+                &source_context
+            );
+        }
+        if (rc == MYLITE_OK) {
+            item_source_context = &source_context;
+        }
     } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
     } else if (from_clause != NULL) {
         set_unsupported_error(
             database,
-            "row-scalar SELECT supports only no-source, DUAL, or one descriptor table source"
+            "row-scalar SELECT supports only no-source, DUAL, descriptor table, or joined "
+            "descriptor table sources"
         );
         return MYLITE_ERROR;
     }
 
-    if (out_plan->has_source) {
+    if (out_plan->has_source && out_plan->source_count == 0U) {
         item_table = &out_plan->table;
     }
     if (rc == MYLITE_OK) {
@@ -1171,6 +1238,59 @@ static int plan_row_scalar_select_source(
         );
     }
 
+    return rc;
+}
+
+static int plan_row_scalar_select_join_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_row_scalar_select *out_plan,
+    struct select_source_context *out_source_context
+) {
+    struct planned_select source_plan = {0};
+    struct joined_select_temp_nodes temp_nodes = {0};
+    int rc = prepare_joined_select_plan(database, from_clause, &source_plan, &temp_nodes);
+
+    if (rc == MYLITE_OK) {
+        rc = reject_duplicate_select_source_reference(
+            database,
+            source_plan.sources,
+            source_plan.source_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = init_join_select_source_context(
+            source_plan.sources,
+            source_plan.source_count,
+            out_source_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_unsupported_multi_source_join_edges(database, &source_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_conditions(
+            database,
+            temp_nodes.join_condition_nodes,
+            temp_nodes.join_condition_node_count,
+            &source_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->sources = source_plan.sources;
+        out_plan->source_count = source_plan.source_count;
+        out_plan->join_kinds = source_plan.join_kinds;
+        out_plan->join_conditions = source_plan.join_conditions;
+        out_plan->join_count = source_plan.join_count;
+        source_plan.sources = NULL;
+        source_plan.source_count = 0U;
+        source_plan.join_kinds = NULL;
+        source_plan.join_conditions = NULL;
+        source_plan.join_count = 0U;
+    }
+
+    planned_select_deinit(&source_plan);
+    joined_select_temp_nodes_deinit(&temp_nodes);
     return rc;
 }
 
@@ -1397,6 +1517,17 @@ static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *p
         planned_row_scalar_expression_deinit(&plan->items[item_index].expression);
     }
     free(plan->items);
+    for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
+        free(plan->sources[source_index].columns);
+    }
+    if (plan->join_conditions != NULL) {
+        for (size_t join_index = 0U; join_index < plan->join_count; ++join_index) {
+            planned_select_join_condition_deinit(&plan->join_conditions[join_index]);
+        }
+    }
+    free(plan->sources);
+    free(plan->join_kinds);
+    free(plan->join_conditions);
     if (plan->tableless_filter.has_filter && plan->tableless_filter.has_scalar_predicate) {
         planned_select_predicate_deinit_without_exists(&plan->tableless_filter.predicate);
     } else if (plan->tableless_filter.has_filter) {

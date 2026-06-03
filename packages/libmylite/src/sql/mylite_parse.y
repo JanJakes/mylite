@@ -969,8 +969,15 @@ create_index_statement(A) ::=
     A = mylite_sql_parser_make_create_spatial_index_statement(state, C, N, T, L, O);
 }
 
-drop_index_statement(A) ::= DROP(D) INDEX identifier(I) ON table_name(T). {
+drop_index_statement(A) ::= DROP(D) INDEX drop_index_name(I) ON table_name(T). {
     A = mylite_sql_parser_make_drop_index_statement(state, D, I, T);
+}
+
+drop_index_name(A) ::= identifier(I). {
+    A = I;
+}
+drop_index_name(A) ::= PRIMARY(P). {
+    A = mylite_sql_parser_make_identifier(state, P);
 }
 
 create_table_select_as_opt ::= .
@@ -1279,15 +1286,25 @@ show_table_status_filter_opt(A) ::= WHERE(W) predicate(P). {
     A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
-show_character_set_statement(A) ::= SHOW(S) CHARACTER SET(T) show_like_clause_opt(L). {
+show_character_set_statement(A) ::= SHOW(S) CHARACTER SET(T) show_catalog_filter_opt(L). {
     A = mylite_sql_parser_make_show_character_set_statement(state, S, T, L);
 }
-show_character_set_statement(A) ::= SHOW(S) CHARSET(T) show_like_clause_opt(L). {
+show_character_set_statement(A) ::= SHOW(S) CHARSET(T) show_catalog_filter_opt(L). {
     A = mylite_sql_parser_make_show_character_set_statement(state, S, T, L);
 }
 
-show_collation_statement(A) ::= SHOW(S) COLLATION(C) show_like_clause_opt(L). {
+show_collation_statement(A) ::= SHOW(S) COLLATION(C) show_catalog_filter_opt(L). {
     A = mylite_sql_parser_make_show_collation_statement(state, S, C, L);
+}
+
+show_catalog_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_catalog_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
+}
+show_catalog_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_triggers_statement(A) ::= SHOW(S) TRIGGERS(T) show_like_clause_opt(L). {
@@ -1666,6 +1683,16 @@ alter_table_multi_first_action(A) ::= ADD(A1) primary_key_definition(P) COMMA. {
             P,
             mylite_sql_parser_empty_alter_table_options()));
 }
+alter_table_multi_first_action(A) ::= ADD(A1) named_primary_key_definition(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_primary_key_statement(
+            state,
+            A1,
+            NULL,
+            P,
+            mylite_sql_parser_empty_alter_table_options()));
+}
 alter_table_multi_first_action(A) ::= DROP(A1) INDEX identifier(I) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
@@ -1759,6 +1786,14 @@ alter_table_multi_action(A) ::= ADD(A1) primary_key_definition(P). {
         P,
         mylite_sql_parser_empty_alter_table_options());
 }
+alter_table_multi_action(A) ::= ADD(A1) named_primary_key_definition(P). {
+    A = mylite_sql_parser_make_alter_table_add_primary_key_statement(
+        state,
+        A1,
+        NULL,
+        P,
+        mylite_sql_parser_empty_alter_table_options());
+}
 alter_table_multi_action(A) ::= DROP(A1) INDEX identifier(I). {
     A = mylite_sql_parser_make_alter_table_drop_index_statement(
         state,
@@ -1805,6 +1840,12 @@ alter_table_add_column_statement(A) ::=
 
 alter_table_add_primary_key_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD primary_key_definition(P) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P, O);
+}
+
+alter_table_add_primary_key_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD named_primary_key_definition(P)
+    alter_table_option_tail_opt(O). {
     A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P, O);
 }
 
@@ -3105,6 +3146,13 @@ select_statement(A) ::=
         L, K);
 }
 select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM derived_table_source(D)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) select_order_clause_opt(O)
+    limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B, D, W, G, H, O, L, K);
+}
+select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM inner_join_table_source(JT)
     where_clause_opt(W) group_clause_opt(G)
     having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
@@ -3143,6 +3191,14 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O, L, K);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) STAR(S) FROM derived_table_source(D)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) select_order_clause_opt(O)
+    limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        D, W, G, H, O, L, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM inner_join_table_source(JT)
@@ -3204,6 +3260,13 @@ union_modifier_opt(A) ::= ALL. {
 
 table_source(A) ::= table_name(N) table_alias_opt(AL) table_index_hints_opt(IH). {
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+table_source(A) ::= derived_table_source(D). {
+    A = D;
+}
+
+derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) table_alias_opt(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
 
 inner_join_table_source(A) ::=
@@ -3455,9 +3518,8 @@ join_condition_opt(A) ::= ON join_condition(C). {
     A = C;
 }
 
-join_condition(A) ::= qualified_identifier(L) EQUAL(O) qualified_identifier(R). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, L, O, MYLITE_SQL_AST_OPERATOR_EQUAL, R);
+join_condition(A) ::= predicate(P). {
+    A = P;
 }
 
 select_modifiers(A) ::=
@@ -3823,6 +3885,11 @@ predicate_atom(A) ::= string_length_expression(C). {
     A = C;
 }
 predicate_atom(A) ::= string_length_expression(C) predicate_comparison_operator(O)
+        string_length_expression(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
+predicate_atom(A) ::= string_length_expression(C) predicate_comparison_operator(O)
         predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
@@ -3834,6 +3901,11 @@ predicate_atom(A) ::= string_length_expression(C) IS(I) NULL(N). {
 predicate_atom(A) ::= string_length_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+predicate_atom(A) ::= substring_expression(C) predicate_comparison_operator(O)
+        substring_expression(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
 }
 predicate_atom(A) ::= substring_expression(C) predicate_comparison_operator(O)
         predicate_comparison_value(V). {
@@ -4040,17 +4112,22 @@ predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_compari
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) LIKE(O) STRING(T). {
+predicate_atom(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
     A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE,
-        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
 }
-predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) STRING(T). {
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
         mylite_sql_parser_make_comparison_predicate(
-            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE,
-            mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
+}
+predicate_like_pattern(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+predicate_like_pattern(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
 }
 predicate_atom(A) ::= qualified_identifier(C) REGEXP(O) STRING(T). {
     A = mylite_sql_parser_make_comparison_predicate(
@@ -4178,6 +4255,14 @@ predicate_comparison_value(A) ::= BIT_LITERAL(T). {
 }
 predicate_comparison_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+predicate_comparison_value(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
 }
 predicate_comparison_value(A) ::= DATABASE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -7499,7 +7584,7 @@ searched_case_when_list(A) ::= searched_case_when(B). {
 searched_case_when_list(A) ::= searched_case_when_list(B) searched_case_when(C). {
     A = mylite_sql_parser_append_case_when(state, B, C);
 }
-searched_case_when(A) ::= WHEN(W) expression(C) THEN expression(R). {
+searched_case_when(A) ::= WHEN(W) predicate(C) THEN expression(R). {
     A = mylite_sql_parser_make_case_when_clause(state, W, C, R);
 }
 
@@ -8483,6 +8568,9 @@ create_table_item(A) ::= column_definition(B). {
 create_table_item(A) ::= primary_key_definition(B). {
     A = B;
 }
+create_table_item(A) ::= named_primary_key_definition(B). {
+    A = B;
+}
 create_table_item(A) ::= secondary_index_definition(B). {
     A = B;
 }
@@ -8509,6 +8597,10 @@ primary_key_definition(A) ::=
     PRIMARY(P) KEY index_type_opt(Y) LPAREN primary_key_part_list(L) RPAREN(R)
     index_option_list_opt(O). {
     A = mylite_sql_parser_make_primary_key_definition(state, P, Y, L, R, O);
+}
+
+named_primary_key_definition(A) ::= CONSTRAINT identifier primary_key_definition(P). {
+    A = P;
 }
 
 primary_key_part_list(A) ::= primary_key_part(B). {
@@ -8616,6 +8708,12 @@ index_option(A) ::= index_comment_option(B). {
 }
 index_option(A) ::= index_visibility_option(B). {
     A = B;
+}
+index_option(A) ::= ALGORITHM(T) equal_opt alter_algorithm_value. {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+index_option(A) ::= LOCK(T) equal_opt alter_lock_value. {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 index_comment_option(A) ::= COMMENT(T) STRING(V). {
@@ -8826,6 +8924,13 @@ index_key_direction_opt(A) ::= DESC(T). {
 column_definition(A) ::= identifier(N) column_type(T) column_attribute_list_opt(L). {
     A = mylite_sql_parser_make_column_definition_with_attributes(state, N, T, L);
 }
+column_definition(A) ::= identifier(N) column_type(T) column_attribute_list_opt(L)
+    inline_foreign_key_reference. {
+    A = mylite_sql_parser_make_column_definition_with_attributes(state, N, T, L);
+}
+
+inline_foreign_key_reference ::= REFERENCES table_name LPAREN foreign_key_part_list RPAREN
+    foreign_key_action_clause_list_opt.
 
 column_attribute_list_opt(A) ::= . {
     A = NULL;

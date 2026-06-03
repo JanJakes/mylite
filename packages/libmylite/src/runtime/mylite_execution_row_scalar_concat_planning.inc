@@ -39,24 +39,54 @@ static int plan_row_scalar_concat_expression(
         const struct mylite_sql_ast_node *unwrapped_argument =
             unwrap_parenthesized_expression(argument);
 
-        if (unwrapped_argument != NULL &&
-            unwrapped_argument->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+        if (unwrapped_argument == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        } else if (unwrapped_argument->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
             set_unsupported_error(
                 database,
                 "row-scalar SELECT CONCAT() does not support nested CONCAT()"
             );
             rc = MYLITE_ERROR;
         } else {
-            rc = plan_row_scalar_non_concat_expression(
-                database,
-                argument,
-                has_source,
-                source_context,
-                table_columns,
-                table_column_count,
-                true,
-                &out_expression->arguments[argument_index]
-            );
+            if (mylite_execution_string_length_function_kind(unwrapped_argument->kind) !=
+                PLANNED_STRING_LENGTH_FUNCTION_NONE) {
+                rc = plan_row_scalar_string_length_expression(
+                    database,
+                    argument,
+                    has_source,
+                    source_context,
+                    table_columns,
+                    table_column_count,
+                    COLUMN_REFERENCE_FIELD,
+                    &out_expression->arguments[argument_index]
+                );
+            } else if (
+                mylite_execution_string_slice_function_kind(unwrapped_argument->kind) !=
+                PLANNED_STRING_SLICE_FUNCTION_NONE
+            ) {
+                rc = plan_row_scalar_string_slice_expression(
+                    database,
+                    argument,
+                    has_source,
+                    source_context,
+                    table_columns,
+                    table_column_count,
+                    COLUMN_REFERENCE_FIELD,
+                    &out_expression->arguments[argument_index]
+                );
+            } else {
+                rc = plan_row_scalar_non_concat_expression(
+                    database,
+                    argument,
+                    has_source,
+                    source_context,
+                    table_columns,
+                    table_column_count,
+                    true,
+                    &out_expression->arguments[argument_index]
+                );
+            }
         }
         argument = argument->next_sibling;
     }
@@ -221,16 +251,44 @@ static int plan_row_scalar_concat_operator_arguments(
             break;
         }
 
-        rc = plan_row_scalar_non_concat_expression(
-            database,
-            current,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            true,
-            &arguments[*inout_next_argument]
-        );
+        if (mylite_execution_string_length_function_kind(current->kind) !=
+            PLANNED_STRING_LENGTH_FUNCTION_NONE) {
+            rc = plan_row_scalar_string_length_expression(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                COLUMN_REFERENCE_FIELD,
+                &arguments[*inout_next_argument]
+            );
+        } else if (
+            mylite_execution_string_slice_function_kind(current->kind) !=
+            PLANNED_STRING_SLICE_FUNCTION_NONE
+        ) {
+            rc = plan_row_scalar_string_slice_expression(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                COLUMN_REFERENCE_FIELD,
+                &arguments[*inout_next_argument]
+            );
+        } else {
+            rc = plan_row_scalar_non_concat_expression(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                true,
+                &arguments[*inout_next_argument]
+            );
+        }
         if (rc == MYLITE_OK) {
             ++(*inout_next_argument);
         }

@@ -168,7 +168,7 @@ static int execute_row_scalar_select_from_plan(
         return rc;
     }
 
-    if (plan->has_source) {
+    if (plan->has_source && plan->source_count == 0U) {
         rc = load_result_column_metadata_context_for_table(
             database,
             plan->table.table_id,
@@ -634,6 +634,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
     case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
     case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
@@ -792,6 +793,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
@@ -945,6 +947,8 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
@@ -1276,6 +1280,11 @@ static int set_row_scalar_select_found_row_count(
     }
 
     count_plan.table = plan->table;
+    count_plan.sources = plan->sources;
+    count_plan.source_count = plan->source_count;
+    count_plan.join_kinds = plan->join_kinds;
+    count_plan.join_conditions = plan->join_conditions;
+    count_plan.join_count = plan->join_count;
     count_plan.predicate = plan->predicate;
     count_plan.limit = plan->limit;
     rc = found_row_count_for_select_limit_envelope(
@@ -1391,6 +1400,16 @@ static int read_select_found_row_count(
 
     if (rc == MYLITE_OK) {
         rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count;
+             ++join_index) {
+            rc = bind_select_join_condition_parameters(
+                statement,
+                &plan->join_conditions[join_index],
+                &parameter_index
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);

@@ -1,4 +1,20 @@
 
+static int bind_row_scalar_string_slice_operand_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression != NULL &&
+        expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC) {
+        return bind_row_scalar_integer_arithmetic_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
+    }
+    return bind_row_scalar_non_concat_expression_parameters(statement, expression, parameter_index);
+}
+
 static int bind_row_scalar_left_right_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -18,18 +34,18 @@ static int bind_row_scalar_left_right_expression_parameters(
     value = &expression->arguments[0];
     length = &expression->arguments[1];
 
-    rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+    rc = bind_row_scalar_string_slice_operand_parameters(statement, value, parameter_index);
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, length, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, length, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, value, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, length, parameter_index);
     }
     return rc;
 }
@@ -60,36 +76,36 @@ static int bind_row_scalar_substring_expression_parameters(
         length = &expression->arguments[2];
     }
 
-    rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+    rc = bind_row_scalar_string_slice_operand_parameters(statement, value, parameter_index);
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, position, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, position, parameter_index);
     }
     if (rc == MYLITE_OK && has_length) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, length, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, position, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, position, parameter_index);
     }
     if (rc == MYLITE_OK && has_length) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, length, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, position, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, position, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, value, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, position, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, position, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, value, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, position, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, position, parameter_index);
     }
     if (rc == MYLITE_OK && has_length) {
-        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+        rc = bind_row_scalar_string_slice_operand_parameters(statement, length, parameter_index);
     }
     return rc;
 }
@@ -292,6 +308,8 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
@@ -422,6 +440,8 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }

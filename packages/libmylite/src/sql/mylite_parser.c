@@ -4694,6 +4694,36 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_source(
     return from_table;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_derived_table_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_parenthesis,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_parenthesis,
+    struct mylite_sql_ast_node *alias
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&left_parenthesis), span_from_token(&right_parenthesis));
+    struct mylite_sql_ast_node *derived = NULL;
+
+    if (select_statement != NULL) {
+        span = span_join(span, select_statement->span);
+    }
+    if (alias != NULL) {
+        span = span_join(span, alias->span);
+    }
+
+    derived = make_node(state, MYLITE_SQL_AST_FROM_DERIVED, span);
+    if (derived == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(derived, select_statement);
+    if (alias != NULL) {
+        mylite_sql_ast_node_append_child(derived, alias);
+    }
+    return derived;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,

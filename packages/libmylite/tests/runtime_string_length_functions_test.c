@@ -228,9 +228,21 @@ static int test_table_backed_lengths_and_reopen(void) {
     static const char *const length_octet_predicate_rows[] = {"2", "3"};
     static const char *const length_bit_predicate_rows[] = {"2", "3"};
     static const char *const length_char_predicate_rows[] = {"1", "3"};
+    static const char *const length_char_mismatch_rows[] = {"3"};
     static const char *const length_not_null_predicate_rows[] = {"1", "3"};
     static const char *const length_null_predicate_rows[] = {"2", "4"};
     static const char *const length_truth_predicate_rows[] = {"1"};
+    static const char *const columns_case_length[] = {"id", "chars"};
+    static const char *const case_length_rows[] = {
+        "1",
+        "1",
+        "2",
+        "2",
+        "3",
+        "0",
+        "4",
+        NULL,
+    };
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_two_rows_no_warnings[] = {"2", "0"};
     static const char *const columns_mutated[] = {"id", "txt"};
@@ -387,6 +399,17 @@ static int test_table_backed_lengths_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM predicates WHERE LENGTH(v) != CHAR_LENGTH(v) ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_char_mismatch_rows,
+            .row_count = 1U,
+            .context = "length compared to char_length predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM predicates WHERE LENGTH(n) IS NULL ORDER BY id",
             .columns = columns_id,
             .column_count = 1U,
@@ -415,6 +438,18 @@ static int test_table_backed_lengths_and_reopen(void) {
             .values = length_truth_predicate_rows,
             .row_count = 1U,
             .context = "length truth predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CHAR_LENGTH(CASE WHEN v LIKE 'A%' THEN v ELSE txt END) AS chars "
+                   "FROM predicates ORDER BY id",
+            .columns = columns_case_length,
+            .column_count = sizeof(columns_case_length) / sizeof(columns_case_length[0]),
+            .values = case_length_rows,
+            .row_count = 4U,
+            .context = "char_length searched case like rows",
         }
     );
     failures +=

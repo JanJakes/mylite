@@ -113,11 +113,12 @@ enum {
     table_name_part_capacity = 3,
     integer_text_capacity = mylite_execution_scalar_integer_text_capacity,
     index_display_group_primary = 0,
-    index_display_group_not_null_unique = 1,
-    index_display_group_nullable_unique = 2,
-    index_display_group_secondary = 3,
-    index_display_group_fulltext = 4,
-    index_display_group_unknown = 5,
+    index_display_group_spatial = 1,
+    index_display_group_not_null_unique = 2,
+    index_display_group_nullable_unique = 3,
+    index_display_group_secondary = 4,
+    index_display_group_fulltext = 5,
+    index_display_group_unknown = 6,
     select_source_alias_capacity = sizeof("_mylite_s") + integer_text_capacity,
     update_unique_internal_key_alias_capacity = sizeof("_mylite_key_") + integer_text_capacity,
     duplicate_key_value_display_length = 64,
@@ -467,10 +468,16 @@ enum {
     mysql_servers_column_count = 9,
     mysql_innodb_index_stats_column_count = 8,
     mysql_innodb_table_stats_column_count = 6,
+    information_schema_tables_table_schema_column = 1,
+    information_schema_tables_table_name_column = 2,
     information_schema_tables_index_length_column = 11,
     information_schema_tables_auto_increment_column = 13,
     information_schema_tables_create_time_column = 14,
     information_schema_tables_update_time_column = 15,
+    information_schema_columns_table_schema_column = 1,
+    information_schema_columns_table_name_column = 2,
+    information_schema_columns_column_name_column = 3,
+    information_schema_columns_ordinal_position_column = 4,
     information_schema_columns_default_column = 5,
     information_schema_columns_is_nullable_column = 6,
     information_schema_columns_character_maximum_length_column = 8,
@@ -1276,6 +1283,8 @@ struct planned_alter_table_add_column {
     size_t column_count;
     size_t target_column_index;
     bool changes_position;
+    bool adds_inline_primary_key;
+    bool adds_inline_unique_key;
     char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
@@ -1521,6 +1530,7 @@ struct planned_alter_table_auto_increment {
     int64_t requested_next;
     int64_t effective_next;
     bool has_auto_increment_column;
+    bool is_temporary;
 };
 
 struct planned_drop_column_index_update {
@@ -1570,6 +1580,8 @@ struct planned_alter_table_modify_column {
     bool is_metadata_only;
     bool checks_duplicate_replacement;
     bool reports_rebuild_row_count;
+    bool adds_inline_primary_key;
+    bool adds_inline_unique_key;
     const char *unsupported_object_message;
     const char *rowid_alias_message;
     const char *integer_support_message;
@@ -1995,6 +2007,7 @@ struct planned_select_predicate_node {
     struct planned_exists_subquery *exists_subquery;
     struct planned_in_subquery *in_subquery;
     struct planned_row_scalar_expression *row_scalar_expression;
+    struct planned_row_scalar_expression *row_scalar_value_expression;
 };
 
 struct planned_select_predicate {
@@ -2134,10 +2147,12 @@ struct planned_in_subquery {
 
 struct planned_select_join_condition {
     bool has_condition;
+    bool right_value_is_row_scalar_expression;
     struct mylite_catalog_column_descriptor left_column;
     struct mylite_catalog_column_descriptor right_column;
     size_t left_source_index;
     size_t right_source_index;
+    struct planned_row_scalar_expression *right_row_scalar_expression;
 };
 
 struct planned_select {
@@ -2265,6 +2280,8 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ = 79,
     PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING = 80,
     PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY = 81,
+    PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE = 82,
+    PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE = 83,
 };
 
 enum {
@@ -2352,6 +2369,8 @@ struct planned_row_scalar_expression {
     enum mylite_json_sql_value_kind json_value_kind;
     enum planned_json_mutation_kind json_mutation_kind;
     bool regexp_case_sensitive;
+    bool like_uses_escape;
+    bool case_has_else;
     bool has_rand_seed;
     uint32_t rand_seed;
     bool window_has_partition;
@@ -2366,6 +2385,9 @@ struct planned_row_scalar_expression {
     struct mylite_catalog_column_descriptor window_partition_column;
     struct mylite_catalog_column_descriptor window_order_column;
     struct mylite_catalog_column_descriptor column;
+    bool column_cast_as_integer;
+    bool column_has_source_index;
+    size_t column_source_index;
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
 };
@@ -2429,6 +2451,11 @@ struct planned_row_scalar_select {
     struct table_name_resolution source;
     char source_alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct mylite_catalog_table_descriptor table;
+    struct planned_select_source *sources;
+    size_t source_count;
+    enum mylite_sql_ast_join_kind *join_kinds;
+    struct planned_select_join_condition *join_conditions;
+    size_t join_count;
     struct planned_row_scalar_select_item *items;
     size_t item_count;
     bool source_has_alias;
@@ -2782,6 +2809,12 @@ struct show_variables_where_row {
     const char *value;
 };
 
+struct show_catalog_where_row {
+    const char *const *columns;
+    const char *const *values;
+    size_t column_count;
+};
+
 struct show_variables_where_eval_frame {
     const struct mylite_sql_ast_node *node;
     enum show_variables_where_eval_action action;
@@ -2876,6 +2909,7 @@ struct show_schema_resolution {
 };
 
 struct table_status_values {
+    int64_t row_count;
     char row_count_text[integer_text_capacity];
     char average_row_length_text[integer_text_capacity];
     char index_length_text[integer_text_capacity];
@@ -3057,6 +3091,11 @@ struct information_schema_truth_stack {
     size_t capacity;
 };
 
+enum information_schema_projection_kind {
+    INFORMATION_SCHEMA_PROJECTION_COLUMN = 0,
+    INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION = 1,
+};
+
 struct information_schema_query {
     const struct mylite_execution_catalog_table_definition *definition;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -3065,6 +3104,8 @@ struct information_schema_query {
     const struct mylite_sql_ast_node *count_expression;
     const struct mylite_sql_ast_node *count_alias;
     size_t *projection_indexes;
+    enum information_schema_projection_kind *projection_kinds;
+    const struct mylite_sql_ast_node **projection_expressions;
     char **projection_names;
     size_t projection_count;
     bool has_order;
@@ -3406,6 +3447,7 @@ struct set_session_snapshot {
     enum mylite_transaction_access_mode next_transaction_access_mode;
     bool sql_mode_is_placeholder;
     bool time_zone_is_placeholder;
+    bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
     bool big_tables;
     bool foreign_key_checks_enabled;
@@ -3416,10 +3458,17 @@ struct set_session_snapshot {
     bool next_transaction_access_mode_from_system_variable;
     bool has_timestamp_override;
     char time_zone[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+    char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char character_set_results[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
     struct mylite_session_user_variable *user_variables;
     size_t user_variable_count;
     size_t user_variable_capacity;
+    struct mylite_session_system_variable_override *system_variable_overrides;
+    size_t system_variable_override_count;
+    size_t system_variable_override_capacity;
 };
 
 static int execute_parsed_statement(
@@ -3661,6 +3710,25 @@ static enum mylite_session_user_variable_value_kind infer_user_variable_value_ki
     const struct session_scalar_cell *value
 );
 static int ensure_session_user_variable_capacity(struct mylite_db *database);
+static int set_session_system_variable_override(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    const char *value,
+    size_t value_size
+);
+static const char *session_system_variable_override_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+);
+static const char *session_system_variable_override_show_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+);
+static struct mylite_session_system_variable_override *find_session_system_variable_override(
+    struct mylite_session_state *session,
+    enum mylite_execution_system_variable_kind kind
+);
+static int ensure_session_system_variable_override_capacity(struct mylite_db *database);
 static int prepare_statement_source_sql(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source,
@@ -3741,6 +3809,11 @@ static int copy_session_user_variables(
     const struct mylite_session_state *source,
     struct mylite_session_user_variable **out_variables
 );
+static int copy_session_system_variable_overrides(
+    struct mylite_db *database,
+    const struct mylite_session_state *source,
+    struct mylite_session_system_variable_override **out_overrides
+);
 static void restore_set_session_snapshot(
     struct mylite_db *database,
     struct set_session_snapshot *snapshot
@@ -3748,6 +3821,10 @@ static void restore_set_session_snapshot(
 static void deinit_set_session_snapshot(struct set_session_snapshot *snapshot);
 static void free_session_user_variables(
     struct mylite_session_user_variable *variables,
+    size_t count
+);
+static void free_session_system_variable_overrides(
+    struct mylite_session_system_variable_override *overrides,
     size_t count
 );
 static int apply_set_system_variable_assignment(
@@ -3759,6 +3836,59 @@ static int apply_set_system_variable_user_variable_assignment(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
+);
+static int apply_set_text_session_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_text_session_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value
+);
+static bool set_system_variable_is_text_session_state(
+    enum mylite_execution_system_variable_kind kind
+);
+static int set_text_session_system_variable(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    const char *value,
+    size_t value_size
+);
+static const char *text_session_system_variable_default_value(
+    enum mylite_execution_system_variable_kind kind
+);
+static int copy_set_text_system_variable_node_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_execution_system_variable_kind kind,
+    const char *variable_name,
+    char **out_value,
+    size_t *out_value_size
+);
+static int apply_set_session_placeholder_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_session_placeholder_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_session_placeholder_boolean_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    bool value
+);
+static int copy_set_session_placeholder_node_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct resolved_set_system_variable_target *target,
+    char **out_value,
+    size_t *out_value_size
 );
 static int apply_set_server_identity_binary_log_system_variable_assignment(
     struct mylite_db *database,
@@ -5108,9 +5238,32 @@ static int execute_information_schema_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int execute_information_schema_join_compat_select_if_needed(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result,
+    bool *out_handled
+);
 static int select_statement_targets_information_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+);
+static int select_source_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    bool *out_matches
+);
+static int table_source_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    bool *out_matches
+);
+static int derived_source_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source,
     bool *out_matches
 );
 static int execute_mysql_system_table_select_statement(
@@ -6110,6 +6263,19 @@ static int append_table_status_create_option_i64(
     const char *prefix,
     int64_t value
 );
+static int table_status_auto_increment_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct table_status_values *status,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+);
+static int table_status_has_temporary_shadow(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_has_temporary_shadow
+);
 static int table_status_has_auto_increment(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
@@ -6618,12 +6784,28 @@ static int append_information_schema_table_constraints_index_row(
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_index_info *index
 );
+static int append_information_schema_table_constraints_index_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *indexes,
+    size_t index_count
+);
 static int append_information_schema_table_constraints_foreign_key_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
+);
+static int append_information_schema_table_constraints_foreign_key_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
 );
 static int append_information_schema_table_constraints_check_row(
     struct mylite_db *database,
@@ -6660,6 +6842,14 @@ static int append_information_schema_table_constraints_extensions_foreign_key_ro
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
+);
+static int append_information_schema_table_constraints_extensions_foreign_key_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
 );
 static int append_information_schema_table_constraints_extensions_mysql_system_rows(
     struct mylite_db *database,
@@ -6701,6 +6891,14 @@ static int append_information_schema_key_column_usage_foreign_key_row(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
+);
+static int append_information_schema_key_column_usage_foreign_key_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
 );
 static int append_information_schema_key_column_usage_mysql_system_rows(
     struct mylite_db *database,
@@ -6768,6 +6966,43 @@ static int information_schema_append_count_result(
     mylite_result *result,
     size_t *out_read_row_count
 );
+static int information_schema_projection_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    size_t projection_index,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+);
+static int information_schema_unsigned_projection_expression_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    const struct mylite_sql_ast_node *expression,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+);
+static int information_schema_numeric_projection_expression_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    const struct mylite_sql_ast_node *expression,
+    double *out_value,
+    bool *out_is_null
+);
+static int information_schema_numeric_text_value(
+    struct mylite_db *database,
+    const char *text,
+    double *out_value,
+    bool *out_is_null
+);
+static int information_schema_numeric_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    double *out_value
+);
 static int information_schema_matching_row_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -6776,12 +7011,50 @@ static int information_schema_matching_row_indexes(
     size_t **out_indexes,
     size_t *out_index_count
 );
+static int information_schema_includes_connection_control_failed_login_attempts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    bool *out_includes_table
+);
+static int information_schema_predicate_includes_connection_control_failed_login_attempts(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    bool *out_includes_table
+);
+static bool information_schema_row_is_connection_control_failed_login_attempts(char **row);
 static int information_schema_sort_row_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count
 );
+static int information_schema_needs_auto_increment_null_default_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    bool *out_needs_order
+);
+static int information_schema_predicate_has_auto_increment_is_null(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    bool *out_has_predicate
+);
+static void information_schema_sort_auto_increment_null_row_indexes(
+    const struct information_schema_row_set *rows,
+    size_t *indexes,
+    size_t index_count
+);
+static int information_schema_compare_auto_increment_null_rows(
+    const struct information_schema_row_set *rows,
+    size_t left_row,
+    size_t right_row
+);
+static int information_schema_auto_increment_null_schema_priority(const char *schema_name);
 static int information_schema_compare_rows(
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
@@ -6864,6 +7137,15 @@ static int information_schema_is_null_predicate_matches(
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
     enum information_schema_truth_value *out_truth
+);
+static int information_schema_predicate_row_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    char **row,
+    size_t column_index,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
 );
 static int information_schema_compound_predicate_matches(
     struct mylite_db *database,
@@ -7042,10 +7324,40 @@ static int information_schema_append_projection(
     size_t column_index,
     const struct mylite_sql_ast_node *alias
 );
+static int information_schema_append_expression_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+);
+static int information_schema_append_projection_slot(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    size_t column_index,
+    enum information_schema_projection_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+);
+static int information_schema_validate_unsigned_projection_expression(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression
+);
+static int information_schema_validate_numeric_projection_expression(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression
+);
 static int information_schema_plan_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
     struct information_schema_query *out_query
+);
+static int information_schema_resolve_order_reference(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *order_reference,
+    size_t *out_order_index
 );
 static int information_schema_plan_limit(
     struct mylite_db *database,
@@ -7924,6 +8236,7 @@ static int decode_table_option_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *option_name_node,
     char **out_name,
+    size_t *out_name_length,
     struct table_option_name_policy policy
 );
 static const struct mylite_execution_catalog_collation *utf8mb4_collation_by_name(const char *name);
@@ -8194,6 +8507,65 @@ static int reorder_catalog_columns_after_add(
     const struct mylite_catalog_mutation *mutation,
     const struct planned_alter_table_add_column *plan,
     const struct mylite_catalog_column_descriptor *inserted_column
+);
+static int apply_alter_table_add_column_inline_keys(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_column *plan,
+    const struct mylite_catalog_column_descriptor *inserted_column
+);
+static int apply_inline_primary_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int apply_inline_unique_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int make_inline_key_column_descriptors(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_columns,
+    size_t source_column_count,
+    size_t target_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    bool replaces_column,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static int add_inline_key_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_columns,
+    size_t source_column_count,
+    size_t target_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static int replace_inline_key_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_columns,
+    size_t source_column_count,
+    size_t target_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static int apply_alter_table_modify_column_inline_keys(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_modify_column *plan
 );
 static int plan_alter_table_add_primary_key(
     struct mylite_db *database,
@@ -8734,11 +9106,19 @@ static int validate_loaded_add_index_part_attributes(
     const char *column_name,
     int64_t *out_prefix_length
 );
-static struct mylite_catalog_index_column_descriptor make_loaded_add_index_column_descriptor(
+static int make_loaded_add_index_column_descriptor(
+    struct mylite_db *database,
     const struct planned_alter_table_add_index *plan,
     const struct mylite_sql_ast_node *part,
     const struct mylite_catalog_column_descriptor *column,
-    int64_t prefix_length
+    int64_t prefix_length,
+    struct mylite_catalog_index_column_descriptor *out_descriptor
+);
+static int loaded_add_index_prefix_covers_full_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    int64_t prefix_length,
+    bool *out_covers_full_column
 );
 static int reserve_planned_alter_table_add_index_parts(
     struct mylite_db *database,
@@ -8952,6 +9332,12 @@ static int plan_alter_table_drop_primary_key_for_multi_action(
 static int plan_alter_table_drop_primary_key_with_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool validate_auto_increment,
+    struct planned_alter_table_drop_primary_key *out_plan
+);
+static int plan_alter_table_drop_primary_key_for_table_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_name_node,
     bool validate_auto_increment,
     struct planned_alter_table_drop_primary_key *out_plan
 );
@@ -9331,6 +9717,10 @@ static bool modify_column_temporal_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
+static bool modify_column_string_to_integer_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
 static bool modify_column_definition_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -9381,6 +9771,13 @@ static int validate_existing_text_for_column(
     struct mylite_db *database,
     const unsigned char *text,
     int byte_count,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
+static int validate_existing_text_integer_for_column(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
 );
@@ -10125,6 +10522,9 @@ static int append_select_column_from_source(
     const struct mylite_sql_ast_node *alias
 );
 static void planned_select_order_deinit(struct planned_select_order *order);
+static void planned_select_join_condition_deinit(
+    struct planned_select_join_condition *condition
+);
 static void planned_select_deinit(struct planned_select *plan);
 static int execute_select_from_plan(
     struct mylite_db *database,
@@ -10174,6 +10574,12 @@ static int plan_row_scalar_select_source(
     struct select_source_context *out_source_context,
     struct mylite_catalog_column_descriptor **out_table_columns,
     size_t *out_table_column_count
+);
+static int plan_row_scalar_select_join_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_row_scalar_select *out_plan,
+    struct select_source_context *out_source_context
 );
 static int plan_row_scalar_select_row_envelope(
     struct mylite_db *database,
@@ -11516,6 +11922,11 @@ static int evaluate_greatest_least_scalar_integer_argument(
     const struct mylite_sql_ast_node *expression,
     struct field_scalar_argument *out_argument
 );
+static int evaluate_greatest_least_scalar_decimal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+);
 static int merge_greatest_least_domain(
     struct mylite_db *database,
     enum planned_row_scalar_field_domain incoming,
@@ -12356,6 +12767,72 @@ static int append_show_status(
     bool global_scope,
     const struct mylite_execution_show_status_descriptor *descriptor
 );
+static int show_catalog_filter_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct show_like_filter *filter,
+    const struct show_catalog_where_row *row,
+    bool *out_matches
+);
+static int show_catalog_where_clause_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct show_catalog_where_row *row,
+    bool *out_matches
+);
+static int evaluate_show_catalog_where_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const struct show_catalog_where_row *row,
+    enum show_variables_where_truth *out_truth
+);
+static int visit_show_catalog_where_predicate(
+    struct mylite_db *database,
+    struct show_variables_where_frame_stack *frame_stack,
+    const struct mylite_sql_ast_node *predicate
+);
+static int evaluate_show_catalog_where_frame(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const struct show_catalog_where_row *row,
+    struct show_variables_where_truth_stack *truth_stack
+);
+static int evaluate_show_catalog_where_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const struct show_catalog_where_row *row,
+    enum show_variables_where_truth *out_truth
+);
+static int evaluate_show_catalog_where_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const struct show_catalog_where_row *row,
+    enum show_variables_where_truth *out_truth
+);
+static int evaluate_show_catalog_where_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const struct show_catalog_where_row *row,
+    enum show_variables_where_truth *out_truth
+);
+static int show_catalog_where_column_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct show_catalog_where_row *row,
+    const char **out_value
+);
+static int compare_show_catalog_where_literal(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left,
+    const struct mylite_sql_ast_node *right,
+    enum show_variables_where_truth *out_truth
+);
+static int decode_show_catalog_where_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    char **out_text
+);
 static int append_show_variable(
     struct mylite_db *database,
     mylite_result *result,
@@ -12993,13 +13470,23 @@ static bool show_create_table_has_auto_increment(const struct planned_show_creat
 static int append_show_create_table_index(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    const struct planned_show_create_table *plan,
     const struct loaded_index_info *index,
     bool is_last_index
 );
 static int append_show_create_table_index_header(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    const struct planned_show_create_table *plan,
     const struct loaded_index_info *index
+);
+static const char *show_create_table_index_display_name(
+    const struct planned_show_create_table *plan,
+    const struct loaded_index_info *index
+);
+static bool show_create_foreign_key_name_is_generated(
+    const struct planned_show_create_table *plan,
+    const struct loaded_foreign_key_info *foreign_key
 );
 static int append_show_create_table_index_options(
     struct mylite_dynamic_string *string,
@@ -14465,6 +14952,33 @@ static int finalize_planned_column_string_default_value(
     struct planned_column *column,
     const struct mylite_sql_ast_node *value_node
 );
+static int finalize_planned_column_numeric_character_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
+static bool column_default_value_is_numeric_character_literal(
+    const struct mylite_sql_ast_node *value_node
+);
+static int allocate_numeric_character_default_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_text,
+    size_t *out_text_length
+);
+static int copy_numeric_character_default_span(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_text,
+    size_t *out_text_length
+);
+static int copy_numeric_character_default_bytes(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length
+);
 static int finalize_planned_column_decimal_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -15215,11 +15729,6 @@ static bool modify_column_binary_string_replacement_supported(
 );
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node);
 
-static int reject_inline_primary_key_column_definition(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *column_definition,
-    const char *message
-);
 static int reject_auto_increment_column_definition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_definition,
@@ -17423,6 +17932,14 @@ static int validate_comparison_predicate_column(
     struct mylite_db *database,
     const struct planned_select_predicate_node *node
 );
+static int plan_predicate_row_scalar_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
 static int plan_exists_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -18491,7 +19008,8 @@ static int plan_row_scalar_integer_arithmetic_column(
 );
 static bool signed_integer_arithmetic_column_descriptor_is_supported(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *column
+    const struct mylite_catalog_column_descriptor *column,
+    bool *out_cast_as_integer
 );
 static int plan_row_scalar_date_function_expression(
     struct mylite_db *database,
@@ -18702,6 +19220,10 @@ static int plan_row_scalar_string_slice_length_argument(
 static int plan_row_scalar_string_slice_position_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_slice_column(
@@ -19845,6 +20367,24 @@ static int plan_row_scalar_nested_control_flow_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_searched_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_if_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -20004,6 +20544,9 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_column_domai
 static enum planned_row_scalar_field_domain row_scalar_control_flow_common_domain(
     const struct planned_row_scalar_expression *arguments,
     size_t argument_count
+);
+static enum planned_row_scalar_field_domain row_scalar_searched_case_result_domain(
+    const struct planned_row_scalar_expression *expression
 );
 static int plan_row_scalar_non_concat_expression(
     struct mylite_db *database,
@@ -21435,6 +21978,12 @@ static int decode_show_index_where_string_literal(
     const struct mylite_sql_ast_node *literal_node,
     char **out_text
 );
+static int decode_show_index_where_comparable_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    size_t column_index,
+    char **out_text
+);
 static int compare_show_index_where_text(const char *left, const char *right);
 static bool show_index_where_column_is_numeric(size_t column_index);
 static int append_show_index(
@@ -21784,6 +22333,7 @@ static int append_sqlite_blob_default(
 );
 static int append_quoted_sql_text(struct mylite_dynamic_string *string, const char *text);
 static int append_mysql_quoted_text(struct mylite_dynamic_string *string, const char *text);
+static int append_mysql_quoted_comment_text(struct mylite_dynamic_string *string, const char *text);
 static int append_mysql_quoted_default_text(struct mylite_dynamic_string *string, const char *text);
 static int build_alter_table_drop_column_sql(
     const struct planned_alter_table_drop_column *plan,
@@ -22066,6 +22616,10 @@ static int append_row_scalar_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
+);
+static int append_row_scalar_column_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
 );
 static int append_row_scalar_window_function_expression_sql(
     struct mylite_dynamic_string *string,
@@ -22453,6 +23007,16 @@ static int append_row_scalar_json_constructor_argument_sql(
     size_t *next_parameter
 );
 static int append_row_scalar_control_flow_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_searched_case_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_like_predicate_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -22925,11 +23489,13 @@ static int append_select_source_alias(struct mylite_dynamic_string *string, size
 static bool planned_select_qualifies_source_references(const struct planned_select *plan);
 static int append_select_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_select *plan
+    const struct planned_select *plan,
+    size_t *next_parameter
 );
 static int append_select_join_condition_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_select_join_condition *condition
+    const struct planned_select_join_condition *condition,
+    size_t *next_parameter
 );
 static int append_select_limit_sql(
     struct mylite_dynamic_string *string,
@@ -22958,7 +23524,8 @@ static int append_joined_delete_target_rowid_sql(
 );
 static int append_joined_delete_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_delete *plan
+    const struct planned_delete *plan,
+    size_t *next_parameter
 );
 static int build_update_sql(const struct planned_update *plan, char **out_sql);
 static int append_single_update_target_sql(
@@ -23034,7 +23601,8 @@ static int append_joined_update_target_rowid_sql(
 );
 static int append_joined_update_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 );
 static int append_update_changed_condition_sql(
     struct mylite_dynamic_string *string,
@@ -23083,6 +23651,24 @@ static int validate_foreign_key_references(
     struct mylite_db *database,
     const struct loaded_foreign_key_info *foreign_key,
     bool parent_write
+);
+static int set_row_is_referenced_foreign_key_error(
+    struct mylite_db *database,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int append_row_is_referenced_foreign_key_detail(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int append_row_is_referenced_foreign_key_columns(
+    struct mylite_dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool child_columns
+);
+static int append_row_is_referenced_foreign_key_rules(
+    struct mylite_dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key
 );
 static int build_foreign_key_validation_sql(
     const struct loaded_foreign_key_info *foreign_key,
@@ -23586,6 +24172,11 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
 static int bind_select_parameters_at(
     sqlite3_stmt *statement,
     const struct planned_select *plan,
+    int *parameter_index
+);
+static int bind_select_join_condition_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_join_condition *condition,
     int *parameter_index
 );
 static int bind_row_scalar_select_parameters(
@@ -24167,6 +24758,652 @@ static void set_parse_error(
     struct mylite_db *database,
     const struct mylite_sql_parse_result *parse_result
 );
+struct normalized_mysql_compat_sql {
+    const char *sql;
+    size_t sql_size;
+    char *owned_sql;
+};
+
+static int normalize_mysql_compat_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    struct normalized_mysql_compat_sql *out_sql
+);
+static void normalized_mysql_compat_sql_deinit(struct normalized_mysql_compat_sql *sql);
+static int extract_mysql_executable_comment_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    char **out_sql,
+    size_t *out_sql_size,
+    bool *out_changed
+);
+static int rewrite_set_user_variable_increment_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    char **out_sql,
+    size_t *out_sql_size,
+    bool *out_changed
+);
+static int quote_set_bare_compat_values_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    char **out_sql,
+    size_t *out_sql_size,
+    bool *out_changed
+);
+static bool trim_sql_span(
+    const char *sql,
+    size_t sql_size,
+    size_t *out_start,
+    size_t *out_end
+);
+static bool sql_span_equals_ascii_case_insensitive(
+    const char *text,
+    size_t text_size,
+    const char *expected
+);
+static bool sql_byte_is_identifier(char byte);
+static bool sql_byte_starts_identifier(char byte);
+static void copy_folded_sql_identifier(
+    const char *text,
+    size_t text_size,
+    char *buffer,
+    size_t buffer_size
+);
+static bool set_target_needs_bare_value_quoting(const char *target_name);
+static bool set_assignment_target_before_equal(
+    const char *sql,
+    size_t assignment_start,
+    size_t equal_index,
+    char *buffer,
+    size_t buffer_size
+);
+static bool set_assignment_value_word(
+    const char *sql,
+    size_t sql_size,
+    size_t value_start,
+    size_t *out_value_end
+);
+
+static int normalize_mysql_compat_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    struct normalized_mysql_compat_sql *out_sql
+) {
+    const char *current_sql = sql;
+    size_t current_size = sql_size;
+    char *owned_sql = NULL;
+    char *next_sql = NULL;
+    size_t next_size = 0U;
+    bool changed = false;
+    int rc = MYLITE_OK;
+
+    if (out_sql == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = (struct normalized_mysql_compat_sql){.sql = sql, .sql_size = sql_size};
+
+    rc = extract_mysql_executable_comment_sql(
+        database,
+        current_sql,
+        current_size,
+        &next_sql,
+        &next_size,
+        &changed
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (changed) {
+        owned_sql = next_sql;
+        current_sql = owned_sql;
+        current_size = next_size;
+    }
+
+    rc = rewrite_set_user_variable_increment_sql(
+        database,
+        current_sql,
+        current_size,
+        &next_sql,
+        &next_size,
+        &changed
+    );
+    if (rc != MYLITE_OK) {
+        free(owned_sql);
+        return rc;
+    }
+    if (changed) {
+        free(owned_sql);
+        owned_sql = next_sql;
+        current_sql = owned_sql;
+        current_size = next_size;
+    }
+
+    rc = quote_set_bare_compat_values_sql(
+        database,
+        current_sql,
+        current_size,
+        &next_sql,
+        &next_size,
+        &changed
+    );
+    if (rc != MYLITE_OK) {
+        free(owned_sql);
+        return rc;
+    }
+    if (changed) {
+        free(owned_sql);
+        owned_sql = next_sql;
+        current_sql = owned_sql;
+        current_size = next_size;
+    }
+
+    out_sql->sql = current_sql;
+    out_sql->sql_size = current_size;
+    out_sql->owned_sql = owned_sql;
+    return MYLITE_OK;
+}
+
+static void normalized_mysql_compat_sql_deinit(struct normalized_mysql_compat_sql *sql) {
+    if (sql == NULL) {
+        return;
+    }
+    free(sql->owned_sql);
+    *sql = (struct normalized_mysql_compat_sql){0};
+}
+
+static int extract_mysql_executable_comment_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    char **out_sql,
+    size_t *out_sql_size,
+    bool *out_changed
+) {
+    size_t start = 0U;
+    size_t end = 0U;
+    size_t body_start = 0U;
+    size_t body_end = 0U;
+    size_t close = 0U;
+    size_t tail = 0U;
+    char *copy = NULL;
+
+    if (out_sql == NULL || out_sql_size == NULL || out_changed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    *out_sql_size = 0U;
+    *out_changed = false;
+    if (!trim_sql_span(sql, sql_size, &start, &end) || end - start < 5U ||
+        sql[start] != '/' || sql[start + 1U] != '*' || sql[start + 2U] != '!') {
+        return MYLITE_OK;
+    }
+
+    close = start + 3U;
+    while (close + 1U < end && !(sql[close] == '*' && sql[close + 1U] == '/')) {
+        ++close;
+    }
+    if (close + 1U >= end) {
+        return MYLITE_OK;
+    }
+    tail = close + 2U;
+    while (tail < end && isspace((unsigned char)sql[tail])) {
+        ++tail;
+    }
+    if (tail < end && sql[tail] == ';') {
+        ++tail;
+        while (tail < end && isspace((unsigned char)sql[tail])) {
+            ++tail;
+        }
+    }
+    if (tail != end) {
+        return MYLITE_OK;
+    }
+
+    body_start = start + 3U;
+    while (body_start < close && isdigit((unsigned char)sql[body_start])) {
+        ++body_start;
+    }
+    while (body_start < close && isspace((unsigned char)sql[body_start])) {
+        ++body_start;
+    }
+    body_end = close;
+    while (body_end > body_start && isspace((unsigned char)sql[body_end - 1U])) {
+        --body_end;
+    }
+
+    copy = (char *)malloc(body_end - body_start + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, sql + body_start, body_end - body_start);
+    copy[body_end - body_start] = '\0';
+    *out_sql = copy;
+    *out_sql_size = body_end - body_start;
+    *out_changed = true;
+    return MYLITE_OK;
+}
+
+static int rewrite_set_user_variable_increment_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    char **out_sql,
+    size_t *out_sql_size,
+    bool *out_changed
+) {
+    size_t start = 0U;
+    size_t end = 0U;
+    size_t index = 0U;
+    size_t name_start = 0U;
+    size_t name_end = 0U;
+    size_t rhs_name_start = 0U;
+    size_t rhs_name_end = 0U;
+    size_t delta_start = 0U;
+    size_t delta_end = 0U;
+    char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    char rhs_name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    struct mylite_session_user_variable *variable = NULL;
+    intmax_t parsed_current_value = 0;
+    int64_t current_value = 0;
+    int64_t delta = 0;
+    int64_t result_value = 0;
+    uint64_t delta_magnitude = 0U;
+    char *endptr = NULL;
+    char result_text[64];
+    int written = 0;
+
+    if (out_sql == NULL || out_sql_size == NULL || out_changed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    *out_sql_size = 0U;
+    *out_changed = false;
+    if (!trim_sql_span(sql, sql_size, &start, &end) || end - start < 3U ||
+        !sql_span_equals_ascii_case_insensitive(sql + start, 3U, "SET")) {
+        return MYLITE_OK;
+    }
+    index = start + 3U;
+    while (index < end && isspace((unsigned char)sql[index])) {
+        ++index;
+    }
+    if (index >= end || sql[index] != '@') {
+        return MYLITE_OK;
+    }
+    name_start = index + 1U;
+    index = name_start;
+    while (index < end && sql_byte_is_identifier(sql[index])) {
+        ++index;
+    }
+    name_end = index;
+    if (name_end == name_start || name_end - name_start >= sizeof(name)) {
+        return MYLITE_OK;
+    }
+    while (index < end && isspace((unsigned char)sql[index])) {
+        ++index;
+    }
+    if (index >= end || sql[index] != '=') {
+        return MYLITE_OK;
+    }
+    ++index;
+    while (index < end && isspace((unsigned char)sql[index])) {
+        ++index;
+    }
+    if (index >= end || sql[index] != '@') {
+        return MYLITE_OK;
+    }
+    rhs_name_start = index + 1U;
+    index = rhs_name_start;
+    while (index < end && sql_byte_is_identifier(sql[index])) {
+        ++index;
+    }
+    rhs_name_end = index;
+    while (index < end && isspace((unsigned char)sql[index])) {
+        ++index;
+    }
+    if (index >= end || sql[index] != '+') {
+        return MYLITE_OK;
+    }
+    ++index;
+    while (index < end && isspace((unsigned char)sql[index])) {
+        ++index;
+    }
+    delta_start = index;
+    while (index < end && isdigit((unsigned char)sql[index])) {
+        ++index;
+    }
+    delta_end = index;
+    while (index < end && isspace((unsigned char)sql[index])) {
+        ++index;
+    }
+    if (index < end && sql[index] == ';') {
+        ++index;
+        while (index < end && isspace((unsigned char)sql[index])) {
+            ++index;
+        }
+    }
+    if (delta_end == delta_start || index != end) {
+        return MYLITE_OK;
+    }
+
+    copy_folded_sql_identifier(sql + name_start, name_end - name_start, name, sizeof(name));
+    copy_folded_sql_identifier(
+        sql + rhs_name_start,
+        rhs_name_end - rhs_name_start,
+        rhs_name,
+        sizeof(rhs_name)
+    );
+    if (strcmp(name, rhs_name) != 0) {
+        return MYLITE_OK;
+    }
+    variable = find_session_user_variable(&database->session, name);
+    if (variable == NULL || variable->is_null || variable->value == NULL) {
+        return MYLITE_OK;
+    }
+
+    errno = 0;
+    parsed_current_value = strtoimax(variable->value, &endptr, 10);
+    if (errno != 0 || endptr == variable->value || *endptr != '\0') {
+        return MYLITE_OK;
+    }
+    if (parsed_current_value < (intmax_t)INT64_MIN ||
+        parsed_current_value > (intmax_t)INT64_MAX) {
+        return MYLITE_OK;
+    }
+    current_value = (int64_t)parsed_current_value;
+    for (size_t digit = delta_start; digit < delta_end; ++digit) {
+        uint64_t next_digit = (uint64_t)(sql[digit] - '0');
+
+        if (delta_magnitude > (UINT64_MAX - next_digit) / 10U) {
+            return MYLITE_OK;
+        }
+        delta_magnitude = delta_magnitude * 10U + next_digit;
+    }
+    if (delta_magnitude > (uint64_t)INT64_MAX) {
+        return MYLITE_OK;
+    }
+    delta = (int64_t)delta_magnitude;
+    if ((delta > 0 && current_value > INT64_MAX - delta) ||
+        (delta < 0 && current_value < INT64_MIN - delta)) {
+        return MYLITE_OK;
+    }
+    result_value = current_value + delta;
+    written = snprintf(
+        result_text,
+        sizeof(result_text),
+        "SET @%.*s = %" PRId64,
+        (int)(name_end - name_start),
+        sql + name_start,
+        result_value
+    );
+    if (written < 0 || (size_t)written >= sizeof(result_text)) {
+        set_runtime_error(database, "failed to rewrite SET user variable assignment");
+        return MYLITE_ERROR;
+    }
+    *out_sql = (char *)malloc((size_t)written + 1U);
+    if (*out_sql == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_sql, result_text, (size_t)written + 1U);
+    *out_sql_size = (size_t)written;
+    *out_changed = true;
+    return MYLITE_OK;
+}
+
+static int quote_set_bare_compat_values_sql(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    char **out_sql,
+    size_t *out_sql_size,
+    bool *out_changed
+) {
+    struct mylite_dynamic_string rewritten;
+    size_t start = 0U;
+    size_t end = 0U;
+    size_t cursor = 0U;
+    size_t scan = 0U;
+    bool changed = false;
+
+    if (out_sql == NULL || out_sql_size == NULL || out_changed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    *out_sql_size = 0U;
+    *out_changed = false;
+    if (!trim_sql_span(sql, sql_size, &start, &end) || end - start < 3U ||
+        !sql_span_equals_ascii_case_insensitive(sql + start, 3U, "SET")) {
+        return MYLITE_OK;
+    }
+
+    mylite_dynamic_string_init(&rewritten);
+    scan = start + 3U;
+    while (scan < sql_size) {
+        char target_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t equal_index = scan;
+        size_t value_start = 0U;
+        size_t value_end = 0U;
+
+        while (equal_index < sql_size && sql[equal_index] != '=') {
+            ++equal_index;
+        }
+        if (equal_index >= sql_size) {
+            break;
+        }
+        if (!set_assignment_target_before_equal(
+                sql,
+                scan,
+                equal_index,
+                target_name,
+                sizeof(target_name)
+            ) ||
+            !set_target_needs_bare_value_quoting(target_name)) {
+            scan = equal_index + 1U;
+            continue;
+        }
+
+        value_start = equal_index + 1U;
+        while (value_start < sql_size && isspace((unsigned char)sql[value_start])) {
+            ++value_start;
+        }
+        if (!set_assignment_value_word(sql, sql_size, value_start, &value_end) ||
+            sql_span_equals_ascii_case_insensitive(
+                sql + value_start,
+                value_end - value_start,
+                "DEFAULT"
+            )) {
+            scan = equal_index + 1U;
+            continue;
+        }
+
+        if (mylite_dynamic_string_append_bytes(&rewritten, sql + cursor, value_start - cursor) !=
+            MYLITE_OK ||
+            mylite_dynamic_string_append_char(&rewritten, '\'') != MYLITE_OK ||
+            mylite_dynamic_string_append_bytes(
+                &rewritten,
+                sql + value_start,
+                value_end - value_start
+            ) != MYLITE_OK ||
+            mylite_dynamic_string_append_char(&rewritten, '\'') != MYLITE_OK) {
+            mylite_dynamic_string_deinit(&rewritten);
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        cursor = value_end;
+        scan = value_end;
+        changed = true;
+    }
+
+    if (!changed) {
+        mylite_dynamic_string_deinit(&rewritten);
+        return MYLITE_OK;
+    }
+    if (mylite_dynamic_string_append_bytes(&rewritten, sql + cursor, sql_size - cursor) !=
+        MYLITE_OK) {
+        mylite_dynamic_string_deinit(&rewritten);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    *out_sql = mylite_dynamic_string_take(&rewritten);
+    if (*out_sql == NULL) {
+        mylite_dynamic_string_deinit(&rewritten);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    *out_sql_size = strlen(*out_sql);
+    *out_changed = true;
+    mylite_dynamic_string_deinit(&rewritten);
+    return MYLITE_OK;
+}
+
+static bool trim_sql_span(
+    const char *sql,
+    size_t sql_size,
+    size_t *out_start,
+    size_t *out_end
+) {
+    size_t start = 0U;
+    size_t end = sql_size;
+
+    if (sql == NULL || out_start == NULL || out_end == NULL) {
+        return false;
+    }
+    while (start < end && isspace((unsigned char)sql[start])) {
+        ++start;
+    }
+    while (end > start && isspace((unsigned char)sql[end - 1U])) {
+        --end;
+    }
+    *out_start = start;
+    *out_end = end;
+    return start < end;
+}
+
+static bool sql_span_equals_ascii_case_insensitive(
+    const char *text,
+    size_t text_size,
+    const char *expected
+) {
+    size_t expected_size = expected == NULL ? 0U : strlen(expected);
+
+    if (text == NULL || expected == NULL || text_size != expected_size) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_size; ++index) {
+        if (ascii_lower((unsigned char)text[index]) !=
+            ascii_lower((unsigned char)expected[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sql_byte_is_identifier(char byte) {
+    return isalnum((unsigned char)byte) || byte == '_' || byte == '$';
+}
+
+static bool sql_byte_starts_identifier(char byte) {
+    return isalpha((unsigned char)byte) || byte == '_' || byte == '$';
+}
+
+static void copy_folded_sql_identifier(
+    const char *text,
+    size_t text_size,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t copied = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return;
+    }
+    copied = text_size < buffer_size ? text_size : buffer_size - 1U;
+    for (size_t index = 0U; index < copied; ++index) {
+        buffer[index] = ascii_lower((unsigned char)text[index]);
+    }
+    buffer[copied] = '\0';
+}
+
+static bool set_target_needs_bare_value_quoting(const char *target_name) {
+    static const char *const targets[] = {
+        "character_set_client",
+        "character_set_connection",
+        "character_set_results",
+        "collation_connection",
+        "default_collation_for_utf8mb4",
+        "default_storage_engine",
+        "default_tmp_storage_engine",
+        "resultset_metadata",
+        "session_track_gtids",
+        "session_track_transaction_info",
+        "use_secondary_engine",
+    };
+
+    if (target_name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(targets) / sizeof(targets[0]); ++index) {
+        if (strcmp(target_name, targets[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool set_assignment_target_before_equal(
+    const char *sql,
+    size_t assignment_start,
+    size_t equal_index,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t name_end = equal_index;
+    size_t name_start = 0U;
+
+    if (sql == NULL || buffer == NULL || buffer_size == 0U || assignment_start >= equal_index) {
+        return false;
+    }
+    buffer[0] = '\0';
+    while (name_end > assignment_start && isspace((unsigned char)sql[name_end - 1U])) {
+        --name_end;
+    }
+    name_start = name_end;
+    while (name_start > assignment_start && sql_byte_is_identifier(sql[name_start - 1U])) {
+        --name_start;
+    }
+    if (name_start == name_end || name_end - name_start >= buffer_size) {
+        return false;
+    }
+    copy_folded_sql_identifier(sql + name_start, name_end - name_start, buffer, buffer_size);
+    return true;
+}
+
+static bool set_assignment_value_word(
+    const char *sql,
+    size_t sql_size,
+    size_t value_start,
+    size_t *out_value_end
+) {
+    size_t index = value_start;
+
+    if (sql == NULL || out_value_end == NULL || index >= sql_size ||
+        !sql_byte_starts_identifier(sql[index])) {
+        return false;
+    }
+    ++index;
+    while (index < sql_size && sql_byte_is_identifier(sql[index])) {
+        ++index;
+    }
+    *out_value_end = index;
+    return true;
+}
 
 int mylite_execute(
     mylite_db *database,
@@ -24176,6 +25413,7 @@ int mylite_execute(
 ) {
     struct mylite_statement_context context;
     struct mylite_sql_parse_result parse_result;
+    struct normalized_mysql_compat_sql normalized_sql;
     const struct mylite_sql_ast_node *statement = NULL;
     int64_t completed_row_count = -1;
     size_t statement_count = 0U;
@@ -24207,9 +25445,21 @@ int mylite_execute(
         return MYLITE_MISUSE;
     }
 
-    mylite_statement_context_init(&context);
-    rc = mylite_statement_context_begin(&context, database, sql, sql_size);
+    normalized_sql = (struct normalized_mysql_compat_sql){0};
+    rc = normalize_mysql_compat_sql(database, sql, sql_size, &normalized_sql);
     if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    mylite_statement_context_init(&context);
+    rc = mylite_statement_context_begin(
+        &context,
+        database,
+        normalized_sql.sql,
+        normalized_sql.sql_size
+    );
+    if (rc != MYLITE_OK) {
+        normalized_mysql_compat_sql_deinit(&normalized_sql);
         mylite_statement_context_deinit(&context);
         return rc;
     }
@@ -24218,8 +25468,8 @@ int mylite_execute(
 
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
-            .input = sql,
-            .length = sql_size,
+            .input = normalized_sql.sql,
+            .length = normalized_sql.sql_size,
             .modes = lexer_modes_for_session_sql_mode(&database->session),
         },
         &parse_result
@@ -24229,6 +25479,7 @@ int mylite_execute(
         mylite_sql_parse_result_deinit(&parse_result);
         (void)mylite_statement_context_end(&context, rc);
         mylite_statement_context_deinit(&context);
+        normalized_mysql_compat_sql_deinit(&normalized_sql);
         return rc;
     }
 
@@ -24262,6 +25513,7 @@ int mylite_execute(
     }
     (void)mylite_statement_context_end(&context, rc);
     mylite_statement_context_deinit(&context);
+    normalized_mysql_compat_sql_deinit(&normalized_sql);
 
     return rc;
 }
@@ -25147,6 +26399,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_dml_statements.inc"
 
 #include "mylite_execution_metadata_queries.inc"
+
+#include "mylite_execution_information_schema_join_compat.inc"
 
 #include "mylite_execution_mysql_system_query_dispatch.inc"
 

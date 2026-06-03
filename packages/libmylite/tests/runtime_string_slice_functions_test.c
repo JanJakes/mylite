@@ -428,6 +428,24 @@ static int test_table_backed_string_slices_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_case_position[] = {"id", "suffix"};
+    static const char *const values_case_position[] = {
+        "1",
+        "llo",
+        "2",
+        "",
+        "3",
+        NULL,
+    };
+    static const char *const columns_concat_case_slice[] = {"id", "label"};
+    static const char *const values_concat_case_slice[] = {
+        "1",
+        "xllo",
+        "2",
+        "y",
+        "3",
+        NULL,
+    };
     static const char *const columns_labels[] = {"LEFT(v, 2)", "r"};
     static const char *const values_labels[] = {"ab", "c"};
     static const char *const columns_substring_labels[] = {"SUBSTRING(v, 2, 3)", "s"};
@@ -638,6 +656,33 @@ static int test_table_backed_string_slices_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id, SUBSTRING(txt, "
+                   "CHAR_LENGTH(CASE WHEN v LIKE 'a%' THEN 'he' ELSE '' END) + 1) AS suffix "
+                   "FROM t ORDER BY id",
+            .columns = columns_case_position,
+            .column_count = sizeof(columns_case_position) / sizeof(columns_case_position[0]),
+            .values = values_case_position,
+            .row_count = 3U,
+            .context = "substring char_length searched case position",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CONCAT(CASE WHEN v LIKE 'a%' THEN 'x' ELSE 'y' END, "
+                   "SUBSTRING(txt, CHAR_LENGTH(CASE WHEN v LIKE 'a%' THEN 'he' ELSE '' END) + 1)) "
+                   "AS label FROM t ORDER BY id",
+            .columns = columns_concat_case_slice,
+            .column_count =
+                sizeof(columns_concat_case_slice) / sizeof(columns_concat_case_slice[0]),
+            .values = values_concat_case_slice,
+            .row_count = 3U,
+            .context = "concat searched case substring argument",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT LEFT(v, 2), RIGHT(v, 1) AS r FROM t WHERE id = 1",
             .columns = columns_labels,
             .column_count = sizeof(columns_labels) / sizeof(columns_labels[0]),
@@ -724,6 +769,17 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .values = substring_case_predicate_rows,
             .row_count = 1U,
             .context = "substring case-insensitive predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM si WHERE SUBSTR(v, 1) != SUBSTRING(v, 1) ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "substring compared to substring synonym predicate rows",
         }
     );
     failures += expect_query(

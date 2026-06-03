@@ -95,6 +95,17 @@ static int plan_row_scalar_string_length_argument(
             out_expression
         );
     }
+    if (is_row_scalar_control_flow_expression(expression)) {
+        return plan_row_scalar_control_flow_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
                        expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
         set_unsupported_error(
@@ -130,7 +141,8 @@ static int plan_row_scalar_string_length_column(
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int rc = resolve_descriptor_column_reference(
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         source_context,
@@ -138,7 +150,8 @@ static int plan_row_scalar_string_length_column(
         "row-scalar SELECT string length functions support only descriptor columns",
         table_columns,
         table_column_count,
-        &column
+        &column,
+        &source_index
     );
 
     if (rc != MYLITE_OK) {
@@ -150,6 +163,8 @@ static int plan_row_scalar_string_length_column(
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 

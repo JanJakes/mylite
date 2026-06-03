@@ -159,8 +159,16 @@ static int bind_select_non_in_predicate_node_parameters(
             parameter_index
         );
         if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON) {
-            rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
-            if (rc == MYLITE_OK) {
+            if (node->row_scalar_value_expression != NULL) {
+                rc = bind_row_scalar_expression_parameters(
+                    statement,
+                    node->row_scalar_value_expression,
+                    parameter_index
+                );
+            } else {
+                rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
+            }
+            if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
                 ++(*parameter_index);
             }
         }
@@ -172,6 +180,14 @@ static int bind_select_non_in_predicate_node_parameters(
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON && node->value_is_column_reference) {
         return MYLITE_OK;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+        node->row_scalar_value_expression != NULL) {
+        return bind_row_scalar_expression_parameters(
+            statement,
+            node->row_scalar_value_expression,
+            parameter_index
+        );
     }
 
     rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
@@ -334,7 +350,16 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    if (plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_condition,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
     }
@@ -358,6 +383,13 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK) {
         rc = bind_update_auto_update_parameters(statement, &parameter_index, plan);
+    }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_condition,
+            &parameter_index
+        );
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);

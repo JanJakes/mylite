@@ -8,7 +8,7 @@ static int build_select_found_rows_sql(const struct planned_select *plan, char *
 
     rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
     if (rc == MYLITE_OK) {
-        rc = append_select_from_sql(&string, plan);
+        rc = append_select_from_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
@@ -337,7 +337,7 @@ static int append_grouped_aggregate_from_sql(
         rc = append_select_source_alias(string, 1U);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_join_condition_sql(string, &plan->join_condition);
+        rc = append_select_join_condition_sql(string, &plan->join_condition, NULL);
     }
 
     return rc;
@@ -1104,10 +1104,16 @@ static int append_select_row_scalar_predicate_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ' ');
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && node->row_scalar_value_expression != NULL) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                node->row_scalar_value_expression,
+                next_parameter
+            );
+        } else if (rc == MYLITE_OK) {
             rc = append_numbered_parameter(string, *next_parameter);
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
             ++(*next_parameter);
         }
         return rc;
@@ -1370,11 +1376,18 @@ static int append_select_comparison_predicate_term_sql(
                 node->value_column_source_index,
                 qualify_column
             );
+        } else if (node->row_scalar_value_expression != NULL) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                node->row_scalar_value_expression,
+                next_parameter
+            );
         } else {
             rc = append_numbered_parameter(string, *next_parameter);
         }
     }
-    if (rc == MYLITE_OK && !node->value_is_column_reference) {
+    if (rc == MYLITE_OK && !node->value_is_column_reference &&
+        node->row_scalar_value_expression == NULL) {
         ++(*next_parameter);
     }
 
@@ -1388,10 +1401,16 @@ static int append_select_like_predicate_term_sql(
 ) {
     int rc = mylite_dynamic_string_append(string, "LIKE ");
 
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && node->row_scalar_value_expression != NULL) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_value_expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK) {
         rc = append_numbered_parameter(string, *next_parameter);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
         ++(*next_parameter);
     }
     if (rc == MYLITE_OK && node->like_uses_escape) {

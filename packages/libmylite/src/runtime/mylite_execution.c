@@ -25164,7 +25164,21 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_information_schema_statistics_rows.inc"
 
-#include "mylite_execution_information_schema_filtering.inc"
+#include "mylite_execution_information_schema_result_rows.inc"
+
+#include "mylite_execution_information_schema_predicate_validation.inc"
+
+#include "mylite_execution_information_schema_predicate_evaluation.inc"
+
+#include "mylite_execution_information_schema_predicate_comparison.inc"
+
+#include "mylite_execution_information_schema_predicate_values.inc"
+
+#include "mylite_execution_information_schema_query_planning.inc"
+
+#include "mylite_execution_information_schema_compare_format_helpers.inc"
+
+#include "mylite_execution_information_schema_descriptor_metadata.inc"
 
 #include "mylite_execution_table_maintenance_queries.inc"
 

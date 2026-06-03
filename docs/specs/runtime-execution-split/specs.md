@@ -695,10 +695,33 @@ The fragments are:
   usage and referential constraint rows.
 - `mylite_execution_information_schema_statistics_rows.inc`: mysql system
   table and user-table STATISTICS rows.
-- `mylite_execution_information_schema_filtering.inc`: INFORMATION_SCHEMA
-  result columns, result rows, COUNT(*) rows, WHERE predicate validation and
-  evaluation, ORDER/LIMIT planning, source resolution, text comparison, and
-  descriptor type metadata helpers.
+- `mylite_execution_information_schema_result_rows.inc`: INFORMATION_SCHEMA
+  result column setup, matching row index collection, row sorting, COUNT(*)
+  row emission, projected row emission, and visible-row accounting.
+- `mylite_execution_information_schema_predicate_validation.inc`:
+  INFORMATION_SCHEMA WHERE clause planning and iterative validation for
+  comparison, IS NULL, BETWEEN, and IN predicates.
+- `mylite_execution_information_schema_predicate_evaluation.inc`:
+  INFORMATION_SCHEMA predicate evaluation stacks, truth-value stack handling,
+  predicate visit/evaluate dispatch, NOT/AND/OR/XOR truth folding, and IS NULL
+  truth evaluation.
+- `mylite_execution_information_schema_predicate_comparison.inc`:
+  INFORMATION_SCHEMA comparison, LIKE, NULL-safe equality, BETWEEN, IN,
+  numeric matching, and text matching predicate evaluation.
+- `mylite_execution_information_schema_predicate_values.inc`:
+  INFORMATION_SCHEMA predicate value extraction for strings, integers,
+  DATABASE()/SCHEMA(), LIKE patterns, signed magnitudes, and WHERE/ORDER/FIELD
+  column reference resolution.
+- `mylite_execution_information_schema_query_planning.inc`:
+  INFORMATION_SCHEMA projection, ORDER BY, LIMIT, source table resolution,
+  optional alias capture, and catalog table-definition lookup.
+- `mylite_execution_information_schema_compare_format_helpers.inc`:
+  shared INFORMATION_SCHEMA/system metadata text comparison, case-insensitive
+  collation checks, numeric column classification, integer parsing, and integer
+  formatting helpers.
+- `mylite_execution_information_schema_descriptor_metadata.inc`:
+  INFORMATION_SCHEMA descriptor metadata helpers for character lengths,
+  character sets, collations, data types, numeric precision, and numeric scale.
 - `mylite_execution_table_maintenance_queries.inc`: CHECKSUM TABLE and
   ANALYZE/CHECK/OPTIMIZE/REPAIR TABLE placeholder execution.
 - `mylite_execution_show_tables_status_general.inc`: SHOW TABLES and SHOW
@@ -1658,6 +1681,10 @@ current timestamp/session state.
     handling, item-list validation, primary-key definition planning,
     secondary-index planning, foreign-key planning, CHECK constraint planning,
     generated expression rendering, and CHECK expression rendering fragments.
+35. Split the oversized INFORMATION_SCHEMA filtering fragment into ordered
+    same-translation-unit result row, predicate validation, predicate
+    evaluation, predicate comparison, predicate value, query planning,
+    compare/format helper, and descriptor metadata fragments.
 
 ## Review checklist
 
@@ -1789,3 +1816,9 @@ current timestamp/session state.
   primary/unique/secondary/fulltext/spatial index diagnostics, foreign-key
   planning, generated-column expression rendering, CHECK constraint naming,
   boolean validation, or MySQL/SQLite expression text generation.
+- INFORMATION_SCHEMA filtering fragments preserve the existing metadata query
+  ownership and same-translation-unit helper linkage; the split must not change
+  result column names, COUNT(*) behavior, row sorting, LIMIT handling,
+  source/alias resolution, WHERE predicate diagnostics, truth semantics,
+  NULL-safe/LIKE/BETWEEN/IN comparisons, collation-aware text comparison, or
+  descriptor metadata values.

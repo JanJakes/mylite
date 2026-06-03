@@ -1179,3 +1179,24 @@
 - [x] Fix review findings.
 - [x] Run `git diff --check`, staged diff check, and full check workflow.
 - [x] Commit and push the fifty-eighth split.
+
+## Round 59
+
+- [x] Reinspect the remaining largest runtime fragments after the CREATE TABLE
+      planning split.
+- [x] Identify `mylite_execution_information_schema_filtering.inc` as an
+      INFORMATION_SCHEMA query filtering same-translation-unit split candidate.
+- [x] Split INFORMATION_SCHEMA result row handling, predicate validation,
+      predicate evaluation, predicate comparison, predicate value extraction,
+      query planning, compare/format helpers, and descriptor metadata helpers
+      into named fragments.
+- [x] Remove `mylite_execution_information_schema_filtering.inc` and replace it
+      with the ordered fragment include sequence.
+- [x] Run focused INFORMATION_SCHEMA query, predicate, result metadata,
+      descriptor metadata, parser-adjacent, and SHOW/metadata build/tests.
+- [x] Review the split for behavior preservation, fragment boundaries,
+      misleading names, shared-helper placement, and future true-module
+      readiness.
+- [x] Fix review findings.
+- [x] Run `git diff --check`, staged diff check, and full check workflow.
+- [x] Commit and push the fifty-ninth split.

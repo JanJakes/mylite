@@ -81,6 +81,43 @@ static int plan_select_predicate_with_options(
     return rc;
 }
 
+static int plan_select_having_predicate_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+) {
+    int rc = MYLITE_OK;
+
+    *out_predicate = (struct planned_select_predicate){0};
+    out_predicate->qualify_column_references = select_source_context_is_joined(source_context);
+    if (having_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (having_clause->kind != MYLITE_SQL_AST_HAVING_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only descriptor column HAVING predicates");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_select_predicate_node(
+        database,
+        child_at(having_clause, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        options,
+        out_predicate
+    );
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit(out_predicate);
+    }
+
+    return rc;
+}
+
 static void planned_select_predicate_deinit(struct planned_select_predicate *predicate) {
     if (predicate == NULL) {
         return;
@@ -153,6 +190,76 @@ static void planned_in_subquery_deinit(struct planned_in_subquery *subquery) {
     free(subquery->source.columns);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_in_subquery){0};
+}
+
+static int merge_select_predicate_with_and(
+    struct mylite_db *database,
+    struct planned_select_predicate *target,
+    struct planned_select_predicate *addition
+) {
+    struct planned_select_predicate_node *nodes = NULL;
+    struct planned_select_predicate_node logical_node = {0};
+    size_t original_count = 0U;
+    size_t node_index = 0U;
+    bool addition_qualifies = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || addition == NULL || !addition->has_root) {
+        return MYLITE_OK;
+    }
+    if (!target->has_root) {
+        *target = *addition;
+        *addition = (struct planned_select_predicate){0};
+        return MYLITE_OK;
+    }
+    if (addition->node_count > (SIZE_MAX - target->node_count - 1U)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    addition_qualifies = addition->qualify_column_references;
+    original_count = target->node_count;
+    nodes = realloc(
+        target->nodes,
+        (target->node_count + addition->node_count) * sizeof(*target->nodes)
+    );
+    if (nodes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    target->nodes = nodes;
+    memcpy(
+        &target->nodes[target->node_count],
+        addition->nodes,
+        addition->node_count * sizeof(*addition->nodes)
+    );
+    target->node_count += addition->node_count;
+    for (size_t index = original_count; index < target->node_count; ++index) {
+        if (target->nodes[index].left_index != SIZE_MAX) {
+            target->nodes[index].left_index += original_count;
+        }
+        if (target->nodes[index].right_index != SIZE_MAX) {
+            target->nodes[index].right_index += original_count;
+        }
+    }
+
+    logical_node = (struct planned_select_predicate_node){
+        .kind = PLANNED_SELECT_PREDICATE_AND,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        .left_index = target->root_index,
+        .right_index = addition->root_index + original_count,
+    };
+    free(addition->nodes);
+    *addition = (struct planned_select_predicate){0};
+
+    rc = append_planned_select_predicate_node(database, target, &logical_node, &node_index);
+    if (rc == MYLITE_OK) {
+        target->root_index = node_index;
+        target->has_root = true;
+        target->qualify_column_references =
+            target->qualify_column_references || addition_qualifies;
+    }
+    return rc;
 }
 
 static int plan_select_predicate_node(

@@ -2181,6 +2181,7 @@ struct planned_select {
 
 struct select_optional_clauses {
     const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *having_clause;
     const struct mylite_sql_ast_node *order_clause;
     const struct mylite_sql_ast_node *limit_clause;
 };
@@ -2463,6 +2464,19 @@ struct planned_row_scalar_select {
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
+};
+
+enum planned_count_having_select_projection_kind {
+    PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR = 0,
+    PLANNED_COUNT_HAVING_SELECT_ROW_SCALAR = 1,
+};
+
+struct planned_count_having_select {
+    enum planned_count_having_select_projection_kind projection_kind;
+    enum mylite_sql_ast_operator operator_kind;
+    struct planned_value value;
+    struct planned_select descriptor_projection;
+    struct planned_row_scalar_select row_projection;
 };
 
 struct row_scalar_select_clauses {
@@ -5007,6 +5021,13 @@ static int execute_count_select_statement(
     mylite_result **out_result
 );
 static int execute_column_aggregate_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static bool select_statement_has_count_having_clause(const struct mylite_sql_ast_node *statement);
+static int execute_count_having_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     bool apply_sql_select_limit,
@@ -10564,6 +10585,59 @@ static int plan_row_scalar_select(
     bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
 );
+static int plan_count_having_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count_having_select *out_plan
+);
+static int collect_count_having_select_clauses(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct select_optional_clauses *out_clauses
+);
+static int plan_count_having_select_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_optional_clauses *clauses,
+    const struct select_source_context *source_context,
+    struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_count_having_select *out_plan
+);
+static bool select_list_is_descriptor_projection(
+    const struct mylite_sql_ast_node *select_list
+);
+static int plan_count_having_descriptor_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_optional_clauses *clauses,
+    const struct select_source_context *source_context,
+    struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_count_having_select *out_plan
+);
+static int plan_count_having_row_scalar_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_optional_clauses *clauses,
+    const struct select_source_context *source_context,
+    struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_count_having_select *out_plan
+);
+static int plan_count_having_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    enum mylite_sql_ast_operator *out_operator_kind,
+    struct planned_value *out_value
+);
+static const struct mylite_sql_ast_node *count_having_comparison_node(
+    const struct mylite_sql_ast_node *having_clause
+);
+static bool count_having_comparison_uses_count_star(
+    const struct mylite_sql_ast_node *comparison
+);
+static void planned_count_having_select_deinit(struct planned_count_having_select *plan);
 static int collect_row_scalar_select_clauses(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *optional_clause,
@@ -10621,6 +10695,27 @@ static int execute_row_scalar_select_from_plan(
     struct mylite_db *database,
     const struct planned_row_scalar_select *plan,
     mylite_result **out_result
+);
+static int execute_count_having_select_from_plan(
+    struct mylite_db *database,
+    const struct planned_count_having_select *plan,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int append_count_having_select_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_count_having_select *plan,
+    const struct result_column_metadata_context *metadata_context
+);
+static int append_count_having_row_scalar_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_count_having_select *plan,
+    const struct result_column_metadata_context *metadata_context
+);
+static const char *count_having_row_scalar_literal_label(
+    const struct planned_row_scalar_select_item *item
 );
 static int row_scalar_select_step_error(
     struct mylite_db *database,
@@ -17420,6 +17515,20 @@ static int plan_select_predicate_with_options(
     const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 );
+static int plan_select_having_predicate_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+);
+static int merge_select_predicate_with_and(
+    struct mylite_db *database,
+    struct planned_select_predicate *target,
+    struct planned_select_predicate *addition
+);
 static void planned_select_predicate_deinit(struct planned_select_predicate *predicate);
 static void planned_select_predicate_deinit_without_exists(
     struct planned_select_predicate *predicate
@@ -22631,6 +22740,28 @@ static int build_row_scalar_select_sql(
     const struct planned_row_scalar_select *plan,
     char **out_sql
 );
+static int build_count_having_select_sql(
+    const struct planned_count_having_select *plan,
+    char **out_sql
+);
+static int append_count_having_outer_select_list_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_having_select *plan
+);
+static int append_count_having_inner_select_list_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_having_select *plan,
+    size_t *next_parameter
+);
+static int append_count_having_projection_alias(
+    struct mylite_dynamic_string *string,
+    size_t projection_index
+);
+static int append_count_having_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_having_select *plan,
+    size_t *next_parameter
+);
 static int append_row_scalar_tableless_filter_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_select *plan,
@@ -24213,6 +24344,10 @@ static int bind_select_join_condition_parameters(
 static int bind_row_scalar_select_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_select *plan
+);
+static int bind_count_having_select_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count_having_select *plan
 );
 static int bind_row_scalar_select_parameters_at(
     sqlite3_stmt *statement,
@@ -26844,6 +26979,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_key_tuple_formatting.inc"
 
 #include "mylite_execution_row_scalar_select_parameter_binding.inc"
+
+#include "mylite_execution_count_having_select.inc"
 
 #include "mylite_execution_row_scalar_expression_parameter_dispatch.inc"
 

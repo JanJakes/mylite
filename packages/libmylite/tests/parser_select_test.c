@@ -1713,6 +1713,26 @@ static int test_select_group_by_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT DISTINCT meta_key FROM wp_postmeta WHERE meta_key NOT BETWEEN '_' AND '_z' "
+        "HAVING meta_key NOT LIKE CONCAT('\\_', '%') ORDER BY meta_key LIMIT 30;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    having_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
+    failures += parser_test_expect_node(
+        having_clause,
+        MYLITE_SQL_AST_HAVING_CLAUSE,
+        "select having without group"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(having_clause, 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "select having not like"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT t.g AS k, SUM(t.n) AS s FROM app.numbers AS t GROUP BY t.g "
         "HAVING SUM(t.n) IS NOT NULL ORDER BY k DESC LIMIT 1 OFFSET 1;",
         MYLITE_SQL_PARSE_OK,

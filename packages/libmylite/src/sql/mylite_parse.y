@@ -3727,6 +3727,16 @@ having_predicate_atom(A) ::= having_operand(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
+having_predicate_atom(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+}
+having_predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
+}
 
 having_operand(A) ::= qualified_identifier(B). {
     A = B;

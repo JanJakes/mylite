@@ -339,6 +339,10 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "1",
         "7",
     };
+    static const char *const count_having_literal_columns[] = {"T"};
+    static const char *const count_having_literal_values[] = {"T"};
+    static const char *const count_having_name_columns[] = {"name"};
+    static const char *const count_having_name_values[] = {"a"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -364,6 +368,20 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += create_empty_grouped_table(database, "empty_grouped_numbers");
     failures += create_grouped_table(database, "grouped_numbers");
     failures += create_string_grouped_table(database, "string_grouped");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE no_group_having_names(name VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO no_group_having_names VALUES ('a'), ('b'), ('b'), ('c'), ('c'), ('c')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -383,6 +401,39 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = g_count_values,
             .row_count = 3U,
             .context = "count star grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT 'T' FROM grouped_numbers HAVING COUNT(*) > 1",
+            .columns = count_having_literal_columns,
+            .column_count = 1U,
+            .values = count_having_literal_values,
+            .row_count = 1U,
+            .context = "aggregate having without group gates row-scalar projection",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT 'T' FROM grouped_numbers HAVING COUNT(*) > 100",
+            .columns = count_having_literal_columns,
+            .column_count = 1U,
+            .values = count_having_literal_values,
+            .row_count = 0U,
+            .context = "aggregate having without group suppresses row-scalar projection",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT DISTINCT name FROM no_group_having_names HAVING COUNT(*) > 1",
+            .columns = count_having_name_columns,
+            .column_count = 1U,
+            .values = count_having_name_values,
+            .row_count = 1U,
+            .context = "aggregate having without group keeps MySQL arbitrary descriptor row",
         }
     );
     failures += expect_grouped_query(

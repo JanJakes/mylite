@@ -36,6 +36,7 @@ static int plan_select(
     struct select_optional_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
+    struct planned_select_predicate having_predicate = {0};
     struct select_predicate_plan_options predicate_options = {
         .allow_exists = true,
         .allow_in_subquery = true,
@@ -116,6 +117,21 @@ static int plan_select(
             &out_plan->predicate
         );
     }
+    if (rc == MYLITE_OK && clauses.having_clause != NULL) {
+        rc = plan_select_having_predicate_with_options(
+            database,
+            clauses.having_clause,
+            &source_context,
+            table_columns,
+            table_column_count,
+            &predicate_options,
+            &having_predicate
+        );
+    }
+    if (rc == MYLITE_OK && clauses.having_clause != NULL) {
+        rc = merge_select_predicate_with_and(database, &out_plan->predicate, &having_predicate);
+    }
+    planned_select_predicate_deinit(&having_predicate);
     if (rc == MYLITE_OK && out_plan->predicate.qualify_column_references) {
         out_plan->requires_source_alias = true;
     }
@@ -198,12 +214,17 @@ static int collect_select_optional_clauses(
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             out_clauses->where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_HAVING_CLAUSE) {
+            out_clauses->having_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
             out_clauses->order_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
             out_clauses->limit_clause = optional_clause;
         } else {
-            set_unsupported_error(database, "SELECT supports only WHERE, ORDER BY, and LIMIT");
+            set_unsupported_error(
+                database,
+                "SELECT supports only WHERE, HAVING, ORDER BY, and LIMIT"
+            );
             return MYLITE_ERROR;
         }
         optional_clause = optional_clause->next_sibling;
@@ -302,6 +323,10 @@ static int plan_joined_select(
         return MYLITE_ERROR;
     }
     rc = collect_select_optional_clauses(database, joined_select->statement, &clauses);
+    if (rc == MYLITE_OK && clauses.having_clause != NULL) {
+        set_unsupported_error(database, "joined SELECT does not yet support HAVING");
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc =
             prepare_joined_select_plan(database, joined_select->from_clause, out_plan, &temp_nodes);

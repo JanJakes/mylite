@@ -97,6 +97,7 @@ static int test_like_predicate_queries(void) {
     static const char *const escaped_percent_ids[] = {"5"};
     static const char *const concat_escaped_underscore_ids[] = {"4"};
     static const char *const joined_concat_ids[] = {"1", "8"};
+    static const char *const visible_having_names[] = {"visible_1", "visible_2"};
     static const char *const not_like_ab_ids[] = {"8"};
     static const char *const aggregate_count[] = {"6"};
     static const char *const logical_ids[] = {"1", "8"};
@@ -164,6 +165,28 @@ static int test_like_predicate_queries(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "LIKE accepts CONCAT pattern expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE having_names(name VARCHAR(32))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO having_names VALUES "
+        "('visible_1'), ('_hidden'), ('visible_2'), ('_internal')",
+        NULL
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT name FROM having_names WHERE name IS NOT NULL "
+                   "HAVING name NOT LIKE CONCAT('\\_', '%') ORDER BY name LIMIT 2",
+            .values = visible_having_names,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "SELECT DISTINCT HAVING accepts NOT LIKE CONCAT predicate",
         }
     );
     failures += execute_ok(

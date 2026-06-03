@@ -132,6 +132,9 @@ numbers" "$engine_in"
 rows_string=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE \`Rows\` = '3';" | row_names)
 expect_value "rows string comparison" "numbers" "$rows_string"
 
+rows_integer=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE \`Rows\` = 3;" | row_names)
+expect_value "rows integer comparison" "numbers" "$rows_integer"
+
 rows_leading_zero=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE \`Rows\` = '03';" | row_names)
 expect_value "rows leading-zero numeric string comparison" "numbers" "$rows_leading_zero"
 
@@ -162,6 +165,13 @@ auto_is_not_null=$(
 )
 expect_value "auto increment is not null" "auto_numbers" "$auto_is_not_null"
 
+auto_integer=$(
+    run_mysql \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE Auto_increment >= 3 AND Name IN ('numbers','auto_numbers');" \
+        | row_names
+)
+expect_value "auto increment integer comparison" "auto_numbers" "$auto_integer"
+
 auto_null_safe=$(
     run_mysql \
         "SHOW TABLE STATUS FROM ${DATABASE} WHERE Auto_increment <=> NULL AND Name IN ('numbers','auto_numbers');" \
@@ -175,6 +185,13 @@ auto_in_leading_zero=$(
         | row_names
 )
 expect_value "auto increment numeric in leading zero" "auto_numbers" "$auto_in_leading_zero"
+
+auto_in_integer=$(
+    run_mysql \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE Auto_increment IN (NULL, 3) AND Name IN ('numbers','auto_numbers');" \
+        | row_names
+)
+expect_value "auto increment numeric in integer" "auto_numbers" "$auto_in_integer"
 
 not_in_null_status=$(
     run_mysql \

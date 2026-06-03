@@ -283,7 +283,8 @@ static int evaluate_show_table_status_where_in_predicate(
         if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL) {
             set_unsupported_error(
                 database,
-                "SHOW TABLE STATUS WHERE IN supports only string and NULL literals"
+                "SHOW TABLE STATUS WHERE IN supports only string, unsigned integer, and NULL "
+                "literals"
             );
             return MYLITE_ERROR;
         }
@@ -293,7 +294,13 @@ static int evaluate_show_table_status_where_in_predicate(
             saw_null = true;
             continue;
         }
-        rc = decode_show_table_status_where_string_literal(database, value_node, &right);
+        rc = decode_show_table_status_where_comparable_literal(
+            database,
+            value_node,
+            column_index,
+            "SHOW TABLE STATUS WHERE IN supports only string, unsigned integer, and NULL literals",
+            &right
+        );
         if (rc == MYLITE_OK) {
             bool equal = false;
 
@@ -447,7 +454,8 @@ static int compare_show_table_status_where_literal(
     if (right->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
-            "SHOW TABLE STATUS WHERE comparisons support only string and NULL literals"
+            "SHOW TABLE STATUS WHERE comparisons support only string, unsigned integer, and NULL "
+            "literals"
         );
         return MYLITE_ERROR;
     }
@@ -462,7 +470,14 @@ static int compare_show_table_status_where_literal(
         return MYLITE_OK;
     }
 
-    rc = decode_show_table_status_where_string_literal(database, right, &right_text);
+    rc = decode_show_table_status_where_comparable_literal(
+        database,
+        right,
+        column_index,
+        "SHOW TABLE STATUS WHERE comparisons support only string, unsigned integer, and NULL "
+        "literals",
+        &right_text
+    );
     if (rc != MYLITE_OK) {
         free(right_text);
         return rc;
@@ -481,6 +496,47 @@ static int compare_show_table_status_where_literal(
 
     free(right_text);
     return rc;
+}
+
+static int decode_show_table_status_where_comparable_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    size_t column_index,
+    const char *unsupported_message,
+    char **out_text
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t value = 0U;
+
+    if (literal_node == NULL || out_text == NULL) {
+        set_runtime_error(database, "invalid SHOW TABLE STATUS WHERE literal");
+        return MYLITE_ERROR;
+    }
+
+    *out_text = NULL;
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return decode_show_table_status_where_string_literal(database, literal_node, out_text);
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (!show_table_status_where_column_is_numeric(column_index)) {
+        set_unsupported_error(
+            database,
+            "SHOW TABLE STATUS WHERE integer literal predicates support only numeric columns"
+        );
+        return MYLITE_ERROR;
+    }
+    if (parse_unsigned_integer_literal(&literal_node->span, &value) != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "SHOW TABLE STATUS WHERE numeric columns support only unsigned decimal predicates"
+        );
+        return MYLITE_ERROR;
+    }
+    return copy_source_span_text(database, &literal_node->span, out_text);
 }
 
 static int show_table_status_where_compare_text(

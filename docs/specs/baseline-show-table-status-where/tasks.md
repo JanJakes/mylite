@@ -16,6 +16,8 @@
   metadata or changing catalog/file-format state.
 - [x] Preserve existing `LIKE` behavior and reject `LIKE ... WHERE`, `ORDER BY`,
   and unsupported predicate forms.
+- [x] Admit unsigned integer literals for numeric displayed status columns while
+  preserving deterministic rejection of coercive nonnumeric predicates.
 - [x] Add MySQL expectation script coverage.
 - [x] Extend parser and runtime C tests.
 - [x] Update `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md`.

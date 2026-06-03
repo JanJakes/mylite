@@ -591,6 +591,13 @@ static int test_show_table_status_where_filters(void) {
     );
     failures += expect_show_table_status_result(
         database,
+        "SHOW TABLE STATUS WHERE `Rows` = 3",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where rows numeric integer comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
         "SHOW TABLE STATUS WHERE `Rows` = '03'",
         numbers_row,
         sizeof(numbers_row) / sizeof(numbers_row[0]),
@@ -627,6 +634,13 @@ static int test_show_table_status_where_filters(void) {
     );
     failures += expect_show_table_status_result(
         database,
+        "SHOW TABLE STATUS WHERE Auto_increment >= 3 AND Name IN ('numbers','auto_numbers')",
+        auto_row,
+        sizeof(auto_row) / sizeof(auto_row[0]),
+        "where auto increment numeric integer comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
         "SHOW TABLE STATUS WHERE Auto_increment REGEXP '^3$' AND Name IN "
         "('numbers','auto_numbers')",
         auto_row,
@@ -654,6 +668,14 @@ static int test_show_table_status_where_filters(void) {
         auto_row,
         sizeof(auto_row) / sizeof(auto_row[0]),
         "where auto increment numeric in leading zero"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment IN (NULL, 3) AND Name IN "
+        "('numbers','auto_numbers')",
+        auto_row,
+        sizeof(auto_row) / sizeof(auto_row[0]),
+        "where auto increment numeric integer in"
     );
     failures += expect_show_table_status_result(
         database,
@@ -712,6 +734,9 @@ static int test_show_table_status_where_filters(void) {
 }
 
 static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
+    static const struct expected_status_row numbers_row[] = {
+        {.name = "numbers", .rows = "3", .average_row_length = "5461"},
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -760,14 +785,12 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
             .message_part = "Unknown column 'missing' in 'where clause'",
         }
     );
-    failures += execute_error(
+    failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS FROM empty_schema WHERE `Rows` = 3",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SHOW TABLE STATUS WHERE supports only string literal predicates",
-        }
+        NULL,
+        0U,
+        "empty schema numeric integer where"
     );
 
     failures += execute_statement_ok(database, "USE app");
@@ -814,13 +837,21 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
             .message_part = "Unknown column 'tables.Name' in 'where clause'",
         }
     );
-    failures += execute_error(
+    failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS WHERE `Rows` = 3",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "diagnostic numeric integer where"
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 3",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SHOW TABLE STATUS WHERE supports only string literal predicates",
+            .message_part =
+                "SHOW TABLE STATUS WHERE integer literal predicates support only numeric columns",
         }
     );
     failures += execute_error(

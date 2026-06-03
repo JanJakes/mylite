@@ -21181,6 +21181,13 @@ static int compare_show_table_status_where_literal(
     const struct mylite_sql_ast_node *right,
     enum show_variables_where_truth *out_truth
 );
+static int decode_show_table_status_where_comparable_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    size_t column_index,
+    const char *unsupported_message,
+    char **out_text
+);
 static int show_table_status_where_compare_text(
     struct mylite_db *database,
     const char *left,

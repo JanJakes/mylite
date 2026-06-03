@@ -65,8 +65,9 @@ expectations for this slice:
   `Auto_increment <=> NULL` follow normal SQL `NULL` truth behavior over the
   displayed cells.
 - Numeric comparisons such as `` `Rows` = 3 `` are accepted by MySQL. MyLite
-  deliberately defers warning-producing and type-coercing `SHOW` predicates in
-  this slice; quoted numeric text such as `` `Rows` = '3' `` is admitted.
+  admits unsigned integer literals for numeric status columns and continues to
+  defer warning-producing and type-coercing `SHOW` predicates over nonnumeric
+  columns. Quoted numeric text such as `` `Rows` = '3' `` remains admitted.
 - Successful supported `WHERE` filters leave `@@warning_count == 0`,
   `@@error_count == 0`, and make `ROW_COUNT()` return `-1`.
 - Unknown output columns report `1054` / `42S22` (`Unknown column ... in 'where
@@ -179,19 +180,19 @@ the `WHERE` clause.
 
 The admitted predicate subset is:
 
-- `column = string_literal`
-- `column <=> string_literal`
-- `column <> string_literal`
-- `column != string_literal`
-- `column < string_literal`
-- `column <= string_literal`
-- `column > string_literal`
-- `column >= string_literal`
+- `column = string_literal_or_unsigned_integer_literal`
+- `column <=> string_literal_or_unsigned_integer_literal`
+- `column <> string_literal_or_unsigned_integer_literal`
+- `column != string_literal_or_unsigned_integer_literal`
+- `column < string_literal_or_unsigned_integer_literal`
+- `column <= string_literal_or_unsigned_integer_literal`
+- `column > string_literal_or_unsigned_integer_literal`
+- `column >= string_literal_or_unsigned_integer_literal`
 - `column <=> NULL`
 - `column LIKE string_literal`
 - `column NOT LIKE string_literal`
-- `column IN (string_literal_or_NULL [, ...])`
-- `column NOT IN (string_literal_or_NULL [, ...])`
+- `column IN (string_literal_or_unsigned_integer_literal_or_NULL [, ...])`
+- `column NOT IN (string_literal_or_unsigned_integer_literal_or_NULL [, ...])`
 - `column IS NULL`
 - `column IS NOT NULL`
 - parenthesized predicates
@@ -199,15 +200,17 @@ The admitted predicate subset is:
 - `predicate AND predicate`
 - `predicate OR predicate`
 
-Comparisons for numeric status columns use unsigned decimal string conversion
-for the admitted string literals, so leading zeroes do not affect equality or
-ordering. The current numeric status columns are `Version`, `Rows`,
+Comparisons for numeric status columns use unsigned decimal conversion for the
+admitted string and integer literals, so leading zeroes do not affect equality
+or ordering. The current numeric status columns are `Version`, `Rows`,
 `Avg_row_length`, `Data_length`, `Max_data_length`, `Index_length`,
-`Data_free`, `Auto_increment`, and `Checksum`. Non-decimal numeric status
-strings remain outside this slice because MySQL accepts them through
-warning-producing coercions. String comparisons for `Name` use the existing
-case-sensitive catalog table name policy. String comparisons for the other
-current descriptor-generated status text use ASCII case-insensitive comparison.
+`Data_free`, `Auto_increment`, and `Checksum`. Unsigned integer literals are
+supported only for these numeric status columns. Numeric comparisons against
+nonnumeric columns, signed literals, decimal/float literals, and other MySQL
+warning-producing coercions remain outside this slice. String comparisons for
+`Name` use the existing case-sensitive catalog table name policy. String
+comparisons for the other current descriptor-generated status text use ASCII
+case-insensitive comparison.
 `LIKE` uses the same case-sensitivity rule as equality for the referenced
 column: `%` matches any byte sequence, `_` matches one byte, and backslash
 escapes the next byte.
@@ -221,8 +224,9 @@ auto-increment tables, and `Auto_increment IN (NULL, '3')` matches the row with
 The following are intentionally outside this slice and must fail
 deterministically rather than being approximated:
 
-- numeric, decimal, float, hex, bit, boolean, national-string, introducer, or
-  parameter literals in `WHERE`;
+- signed integer, decimal, float, hex, bit, boolean, national-string,
+  introducer, or parameter literals in `WHERE`;
+- unsigned integer literals for nonnumeric output columns;
 - warning-producing string/numeric comparison coercions;
 - column-to-column comparisons;
 - functions such as `LOWER(Name)`, which may fail during parsing before

@@ -18,6 +18,10 @@ static int plan_single_table_delete(
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
+    const struct mylite_sql_ast_node *target_node = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *table_node = target_node;
+    struct select_source_context source_context = {0};
+    const struct select_source_context *predicate_source_context = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
@@ -38,12 +42,19 @@ static int plan_single_table_delete(
         optional_clause = optional_clause->next_sibling;
     }
 
+    if (target_node != NULL && target_node->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        table_node = child_at(target_node, 0U);
+    }
     rc = resolve_visible_writable_table_reference(
         database,
-        child_at(statement, 0U),
+        table_node,
         &out_plan->target,
         &out_plan->table
     );
+    if (rc == MYLITE_OK && target_node != table_node) {
+        rc = init_select_source_context(database, target_node, &out_plan->target, &source_context);
+        predicate_source_context = &source_context;
+    }
     if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL)) {
         rc = mylite_execution_load_table_columns(
             database,
@@ -56,7 +67,7 @@ static int plan_single_table_delete(
         rc = plan_select_predicate(
             database,
             where_clause,
-            NULL,
+            predicate_source_context,
             table_columns,
             table_column_count,
             &out_plan->predicate
@@ -66,7 +77,7 @@ static int plan_single_table_delete(
         rc = plan_select_order(
             database,
             order_clause,
-            NULL,
+            predicate_source_context,
             NULL,
             table_columns,
             table_column_count,

@@ -2490,8 +2490,12 @@ load_data_column_list(A) ::= LPAREN identifier_list(L) RPAREN. {
 }
 
 delete_statement(A) ::=
-    DELETE(D) FROM table_name(T) where_clause_opt(W) order_clause_opt(O) delete_limit_clause_opt(L). {
+    DELETE(D) FROM delete_table_reference(T) where_clause_opt(W) order_clause_opt(O)
+    delete_limit_clause_opt(L). {
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
+}
+delete_table_reference(A) ::= table_name(T) table_alias_opt(AL). {
+    A = AL == NULL ? T : mylite_sql_parser_make_table_source(state, T, AL, NULL);
 }
 joined_delete_statement(A) ::=
     DELETE(D) table_name_list(T) FROM(F) table_source(LT) join_operator(JO) table_source(RT)

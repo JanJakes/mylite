@@ -277,6 +277,17 @@ static int test_delete_success_persistence_rename_and_drop(void) {
         "null-safe predicate delete"
     );
 
+    failures += create_numbers_table(database, "del_alias");
+    failures += expect_delete_remaining(
+        database,
+        "del_alias",
+        1,
+        "DELETE FROM del_alias AS d WHERE d.id = 1 LIMIT 1",
+        ids_2_3_4,
+        sizeof(ids_2_3_4) / sizeof(ids_2_3_4[0]),
+        "aliased single-table delete"
+    );
+
     failures += create_numbers_table(database, "del_is_null");
     failures += expect_delete_remaining(
         database,
@@ -794,15 +805,6 @@ static int test_delete_diagnostics(void) {
     failures += execute_error(
         database,
         "DELETE FROM numbers ORDER BY 1 LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DELETE FROM numbers AS n WHERE id = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

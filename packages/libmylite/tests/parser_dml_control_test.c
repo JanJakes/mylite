@@ -1777,6 +1777,30 @@ static int test_delete_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "DELETE FROM simple_lifecycle AS s WHERE s.id = 1 LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_FROM_TABLE,
+        "aliased delete target"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 1U),
+        "s",
+        "aliased delete target alias"
+    );
+    where_clause = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(where_clause, 0U), 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "aliased delete qualified predicate column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "DELETE FROM simple_lifecycle ORDER BY simple_lifecycle.id LIMIT 1;",
         MYLITE_SQL_PARSE_OK,
         &result

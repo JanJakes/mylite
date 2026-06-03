@@ -2494,13 +2494,22 @@ delete_statement(A) ::=
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
 }
 joined_delete_statement(A) ::=
-    DELETE(D) table_name(T) FROM(F) table_source(LT) join_operator(JO) table_source(RT)
+    DELETE(D) table_name_list(T) FROM(F) table_source(LT) join_operator(JO) table_source(RT)
     join_condition_opt(J) where_clause_opt(W). {
     A = mylite_sql_parser_make_joined_delete_statement(
         state,
         D,
         T,
         mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J),
+        W);
+}
+joined_delete_statement(A) ::=
+    DELETE(D) table_name_list(T) FROM comma_table_sources(S) where_clause_opt(W). {
+    A = mylite_sql_parser_make_joined_delete_statement(
+        state,
+        D,
+        T,
+        S,
         W);
 }
 joined_delete_statement(A) ::=

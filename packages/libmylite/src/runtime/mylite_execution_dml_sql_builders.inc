@@ -95,10 +95,38 @@ static int append_joined_delete_rowid_subquery_sql(
     const struct planned_delete *plan,
     size_t *next_parameter
 ) {
+    int rc = MYLITE_OK;
+
+    if (plan->target_source_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->target_source_count; ++index) {
+        if (index > 0U) {
+            rc = mylite_dynamic_string_append(string, " UNION ALL ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_joined_delete_rowid_select_sql(
+                string,
+                plan,
+                next_parameter,
+                plan->target_source_indexes[index]
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int append_joined_delete_rowid_select_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter,
+    size_t target_source_index
+) {
     int rc = mylite_dynamic_string_append(string, "SELECT ");
 
     if (rc == MYLITE_OK) {
-        rc = append_joined_delete_target_rowid_sql(string, plan);
+        rc = append_joined_delete_target_rowid_sql(string, plan, target_source_index);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " FROM ");
@@ -115,9 +143,10 @@ static int append_joined_delete_rowid_subquery_sql(
 
 static int append_joined_delete_target_rowid_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_delete *plan
+    const struct planned_delete *plan,
+    size_t target_source_index
 ) {
-    int rc = append_select_source_alias(string, plan->target_source_index);
+    int rc = append_select_source_alias(string, target_source_index);
 
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, '.');

@@ -2707,6 +2707,8 @@ struct planned_delete {
     enum mylite_sql_ast_join_kind join_kind;
     struct planned_select_join_condition join_condition;
     size_t target_source_index;
+    size_t target_source_indexes[2];
+    size_t target_source_count;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
@@ -13641,6 +13643,28 @@ static int resolve_joined_delete_target(
     size_t source_count,
     size_t *out_source_index
 );
+static int resolve_joined_delete_targets(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target_node,
+    const struct planned_select_source *sources,
+    size_t source_count,
+    size_t *out_source_indexes,
+    size_t source_index_capacity,
+    size_t *out_source_index_count
+);
+static int append_joined_delete_target_source_index(
+    struct mylite_db *database,
+    size_t source_index,
+    size_t *out_source_indexes,
+    size_t source_index_capacity,
+    size_t *out_source_index_count
+);
+static int reject_joined_delete_mixed_physical_targets(
+    struct mylite_db *database,
+    const struct planned_select_source *sources,
+    const size_t *target_source_indexes,
+    size_t target_source_count
+);
 static int reject_reserved_joined_delete_target(
     struct mylite_db *database,
     char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
@@ -23518,9 +23542,16 @@ static int append_joined_delete_rowid_subquery_sql(
     const struct planned_delete *plan,
     size_t *next_parameter
 );
+static int append_joined_delete_rowid_select_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter,
+    size_t target_source_index
+);
 static int append_joined_delete_target_rowid_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_delete *plan
+    const struct planned_delete *plan,
+    size_t target_source_index
 );
 static int append_joined_delete_from_sql(
     struct mylite_dynamic_string *string,

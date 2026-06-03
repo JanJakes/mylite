@@ -512,6 +512,19 @@ static int plan_comparison_predicate(
             );
         } else if (predicate_comparison_value_is_null(child_at(predicate_node, 1U))) {
             node.value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        } else if (
+            column_descriptor_is_string_family(&node.column) &&
+            child_at(predicate_node, 1U) != NULL &&
+            child_at(predicate_node, 1U)->kind != MYLITE_SQL_AST_LITERAL
+        ) {
+            rc = plan_predicate_row_scalar_value_expression(
+                database,
+                child_at(predicate_node, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                &node
+            );
         } else {
             rc = convert_predicate_value_with_date_comparison_mode(
                 database,

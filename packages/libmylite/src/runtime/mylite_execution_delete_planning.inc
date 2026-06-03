@@ -113,10 +113,6 @@ static int plan_joined_delete(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    rc = reject_builtin_schema_write_target(database, target_node);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     if (where_clause != NULL && where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
         set_unsupported_error(
             database,
@@ -180,18 +176,29 @@ static int plan_joined_delete(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = resolve_joined_delete_target(
+        rc = resolve_joined_delete_targets(
             database,
             target_node,
             out_plan->sources,
             out_plan->source_count,
-            &out_plan->target_source_index
+            out_plan->target_source_indexes,
+            sizeof(out_plan->target_source_indexes) / sizeof(out_plan->target_source_indexes[0]),
+            &out_plan->target_source_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_joined_delete_mixed_physical_targets(
+            database,
+            out_plan->sources,
+            out_plan->target_source_indexes,
+            out_plan->target_source_count
         );
     }
     if (rc == MYLITE_OK) {
         const struct planned_select_source *target_source =
-            &out_plan->sources[out_plan->target_source_index];
+            &out_plan->sources[out_plan->target_source_indexes[0]];
 
+        out_plan->target_source_index = out_plan->target_source_indexes[0];
         out_plan->target = target_source->source;
         out_plan->table = target_source->table;
         rc = choose_sqlite_rowid_alias(
@@ -205,6 +212,68 @@ static int plan_joined_delete(
 
     if (rc != MYLITE_OK) {
         planned_delete_deinit(out_plan);
+    }
+    return rc;
+}
+
+static int resolve_joined_delete_targets(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target_node,
+    const struct planned_select_source *sources,
+    size_t source_count,
+    size_t *out_source_indexes,
+    size_t source_index_capacity,
+    size_t *out_source_index_count
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    int rc = MYLITE_OK;
+
+    *out_source_index_count = 0U;
+    if (target_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (target_node->kind != MYLITE_SQL_AST_TABLE_NAME_LIST) {
+        size_t source_index = 0U;
+
+        rc = resolve_joined_delete_target(
+            database,
+            target_node,
+            sources,
+            source_count,
+            &source_index
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_joined_delete_target_source_index(
+                database,
+                source_index,
+                out_source_indexes,
+                source_index_capacity,
+                out_source_index_count
+            );
+        }
+        return rc;
+    }
+
+    target = child_at(target_node, 0U);
+    while (rc == MYLITE_OK && target != NULL) {
+        size_t source_index = 0U;
+
+        rc = resolve_joined_delete_target(database, target, sources, source_count, &source_index);
+        if (rc == MYLITE_OK) {
+            rc = append_joined_delete_target_source_index(
+                database,
+                source_index,
+                out_source_indexes,
+                source_index_capacity,
+                out_source_index_count
+            );
+        }
+        target = target->next_sibling;
+    }
+    if (rc == MYLITE_OK && *out_source_index_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
     }
     return rc;
 }
@@ -225,13 +294,16 @@ static int resolve_joined_delete_target(
     int rc = MYLITE_OK;
 
     *out_source_index = 0U;
-    rc = collect_identifier_parts(
-        target_node,
-        parts,
-        table_name_part_capacity,
-        &part_count,
-        database
-    );
+    rc = reject_builtin_schema_write_target(database, target_node);
+    if (rc == MYLITE_OK) {
+        rc = collect_identifier_parts(
+            target_node,
+            parts,
+            table_name_part_capacity,
+            &part_count,
+            database
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = reject_reserved_joined_delete_target(database, parts, part_count);
     }
@@ -271,6 +343,52 @@ static int resolve_joined_delete_target(
         return MYLITE_ERROR;
     }
     *out_source_index = matching_source_index;
+    return MYLITE_OK;
+}
+
+static int append_joined_delete_target_source_index(
+    struct mylite_db *database,
+    size_t source_index,
+    size_t *out_source_indexes,
+    size_t source_index_capacity,
+    size_t *out_source_index_count
+) {
+    for (size_t index = 0U; index < *out_source_index_count; ++index) {
+        if (out_source_indexes[index] == source_index) {
+            return MYLITE_OK;
+        }
+    }
+    if (*out_source_index_count >= source_index_capacity) {
+        set_unsupported_error(database, "joined DELETE supports only two target table aliases");
+        return MYLITE_ERROR;
+    }
+    out_source_indexes[*out_source_index_count] = source_index;
+    ++(*out_source_index_count);
+    return MYLITE_OK;
+}
+
+static int reject_joined_delete_mixed_physical_targets(
+    struct mylite_db *database,
+    const struct planned_select_source *sources,
+    const size_t *target_source_indexes,
+    size_t target_source_count
+) {
+    int64_t table_id = 0;
+
+    if (target_source_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    table_id = sources[target_source_indexes[0]].table.table_id;
+    for (size_t index = 1U; index < target_source_count; ++index) {
+        if (sources[target_source_indexes[index]].table.table_id != table_id) {
+            set_unsupported_error(
+                database,
+                "multi-target joined DELETE supports only aliases of the same physical table"
+            );
+            return MYLITE_ERROR;
+        }
+    }
     return MYLITE_OK;
 }
 
@@ -328,6 +446,7 @@ static void planned_delete_deinit(struct planned_delete *plan) {
         free(plan->sources[source_index].columns);
     }
     free(plan->sources);
+    planned_select_join_condition_deinit(&plan->join_condition);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_order_deinit(&plan->order);
     *plan = (struct planned_delete){0};

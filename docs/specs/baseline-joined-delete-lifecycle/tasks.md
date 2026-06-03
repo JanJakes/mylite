@@ -7,6 +7,8 @@
 - [x] Reuse descriptor-driven joined source, `ON`, and `WHERE` planning.
 - [x] Resolve one delete target against joined sources with MySQL-compatible
       alias/default-schema behavior.
+- [x] Resolve multiple delete targets when every target is an alias of the same
+      physical table.
 - [x] Generate rowid-selector SQLite `DELETE` with quoted identifiers and bound
       predicate parameters.
 - [x] Preserve direct parent-side FK delete actions with the same joined target
@@ -20,9 +22,9 @@
 
 Out of scope for this slice:
 
-- multi-target deletes;
+- multi-physical-table target deletes;
 - `target.*`;
-- comma table references and nested/derived table references;
+- more-than-two-source comma references and nested/derived table references;
 - joined-delete `ORDER BY` / `LIMIT`;
 - `LOW_PRIORITY`, `QUICK`, `IGNORE`, `PARTITION`, CTEs, subqueries, triggers,
   privileges, and recursive cascades.

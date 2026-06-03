@@ -95,6 +95,11 @@ static int test_joined_delete_success_persistence_and_table_lifecycle(void) {
     static const char *const ids_2_3_4[] = {"2", "3", "4"};
     static const char *const ids_1_3[] = {"1", "3"};
     static const char *const count_zero[] = {"0"};
+    static const char *const remaining_transient_names[] = {
+        "_transient_keep",
+        "_transient_timeout_keep",
+        "regular",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -227,6 +232,40 @@ static int test_joined_delete_success_persistence_and_table_lifecycle(void) {
             .row_count = 1U,
             .column_count = 1U,
             .context = "joined delete without ON uses joined source WHERE",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_options (option_id INT, option_name VARCHAR(255), "
+        "option_value LONGTEXT, autoload VARCHAR(20))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO wp_options VALUES "
+        "(1, '_transient_old', 'payload', 'no'), "
+        "(2, '_transient_timeout_old', '1', 'no'), "
+        "(3, '_transient_keep', 'payload', 'no'), "
+        "(4, '_transient_timeout_keep', '9999999999', 'no'), "
+        "(5, 'regular', 'value', 'yes')"
+    );
+    failures += expect_delete_ok(
+        database,
+        "DELETE a, b FROM wp_options a, wp_options b "
+        "WHERE a.option_name LIKE '\\_transient\\_%' "
+        "AND a.option_name NOT LIKE '\\_transient\\_timeout_%' "
+        "AND b.option_name = CONCAT( '_transient_timeout_', SUBSTRING( a.option_name, 12 ) ) "
+        "AND b.option_value < UNIX_TIMESTAMP()",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT option_name FROM wp_options ORDER BY option_id",
+            .values = remaining_transient_names,
+            .row_count = 3U,
+            .column_count = 1U,
+            .context = "multi-target comma joined delete removes expired transient pair",
         }
     );
 

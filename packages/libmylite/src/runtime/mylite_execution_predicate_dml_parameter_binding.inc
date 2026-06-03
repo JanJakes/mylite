@@ -351,13 +351,21 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     int rc = MYLITE_OK;
 
     if (plan->is_joined) {
-        rc = bind_select_join_condition_parameters(
-            statement,
-            &plan->join_condition,
-            &parameter_index
-        );
-    }
-    if (rc == MYLITE_OK) {
+        for (size_t index = 0U; rc == MYLITE_OK && index < plan->target_source_count; ++index) {
+            rc = bind_select_join_condition_parameters(
+                statement,
+                &plan->join_condition,
+                &parameter_index
+            );
+            if (rc == MYLITE_OK) {
+                rc = bind_select_predicate_parameters(
+                    statement,
+                    &plan->predicate,
+                    &parameter_index
+                );
+            }
+        }
+    } else {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {

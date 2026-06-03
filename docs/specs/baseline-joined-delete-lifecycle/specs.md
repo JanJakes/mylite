@@ -27,6 +27,9 @@ script added for this feature:
 - `DELETE FROM t USING t JOIN u ON t.k = u.k WHERE u.v > 900` is accepted.
 - Target aliases are accepted when declared in `table_references`, for example
   `DELETE a FROM t AS a JOIN u AS b ON a.k = b.k`.
+- `DELETE a, b FROM t AS a, t AS b WHERE ...` is accepted when all delete
+  targets resolve to aliases of the same physical table; each physical row is
+  deleted once even if more than one target alias or join match selects it.
 - When a source alias is declared, the delete target must use that alias.
   `DELETE t FROM t AS a JOIN u AS b ...` reports `1109 / 42S02` with
   `Unknown table 't' in MULTI DELETE`.
@@ -46,9 +49,12 @@ MyLite supports the smallest coherent joined delete path:
 
 - persistent base tables and shadowing session temporary base tables already
   admitted by readable table resolution;
-- exactly one delete target;
+- exactly one delete target, or multiple delete targets when every target
+  resolves to an alias of the same physical table;
 - first multiple-table syntax:
-  `DELETE target FROM table_source join_operator table_source [ON equality] [WHERE predicate]`;
+  `DELETE target[, target] FROM table_source join_operator table_source [ON equality] [WHERE predicate]`;
+- first syntax with two comma table sources:
+  `DELETE target[, target] FROM table_source, table_source [WHERE predicate]`;
 - second multiple-table syntax:
   `DELETE FROM target USING table_source join_operator table_source [ON equality] [WHERE predicate]`;
 - target may be the unqualified source table name, schema-qualified source table
@@ -56,17 +62,18 @@ MyLite supports the smallest coherent joined delete path:
 - the existing two-source join envelope: `JOIN`, `INNER JOIN`, `CROSS JOIN`,
   `LEFT JOIN`, and `LEFT OUTER JOIN`;
 - the existing joined `ON` equality subset;
-- the existing joined `WHERE` predicate subset;
+- the existing joined `WHERE` predicate subset, plus row-scalar RHS expressions
+  admitted by the current row-scalar planner for string comparisons;
 - exact affected-row counts for target rows deleted once;
 - warning count `0` for supported in-range deletes;
 - result shape follows existing non-query statement result conventions.
 
 The feature deliberately excludes:
 
-- deleting from more than one target;
+- deleting from more than one physical target table;
 - `target.*` compatibility spelling;
-- comma table references, nested joins, derived tables, subqueries, CTEs, and
-  parenthesized table references;
+- more than two comma table references, nested joins, derived tables,
+  subqueries, CTEs, and parenthesized table references;
 - `ORDER BY` and `LIMIT` on joined deletes;
 - `LOW_PRIORITY`, `QUICK`, `IGNORE`, `PARTITION`, and optimizer hints beyond
   the existing no-op/index-hint validation on admitted table sources;
@@ -84,19 +91,25 @@ delete_statement ::=
     DELETE FROM table_name where_clause_opt order_clause_opt delete_limit_clause_opt.
 
 joined_delete_statement ::=
-    DELETE delete_target FROM table_source join_operator table_source
+    DELETE delete_target_list FROM table_source join_operator table_source
     join_condition_opt where_clause_opt.
+
+joined_delete_statement ::=
+    DELETE delete_target_list FROM table_source COMMA table_source
+    where_clause_opt.
 
 joined_delete_statement ::=
     DELETE FROM delete_target USING table_source join_operator table_source
     join_condition_opt where_clause_opt.
 
+delete_target_list ::= delete_target.
+delete_target_list ::= delete_target_list COMMA delete_target.
 delete_target ::= table_name.
 ```
 
-`DELETE target.* ...`, comma target lists, comma table references, `ORDER BY`,
-and `LIMIT` in `joined_delete_statement` are intentionally outside the grammar
-for this slice.
+`DELETE target.* ...`, multi-physical-table target lists, more-than-two-source
+comma references, `ORDER BY`, and `LIMIT` in `joined_delete_statement` are
+intentionally outside the grammar for this slice.
 
 ## Architecture Boundaries
 
@@ -234,6 +247,8 @@ Add a fast C runtime lifecycle test and MySQL 8.4.9 expectation script covering:
 - unknown target, source table, `ON` column, and `WHERE` column diagnostics;
 - ambiguous joined `WHERE` columns;
 - inner, cross/no-`ON`, and left-join unmatched deletes;
+- same-physical-table multi-target comma-source deletion for the WordPress
+  transient cleanup shape;
 - persistence after close/reopen and table rename;
 - direct FK cascade/set-null preservation for joined-delete target rows;
 - rowid shadow diagnostic;
@@ -244,7 +259,8 @@ Add a fast C runtime lifecycle test and MySQL 8.4.9 expectation script covering:
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-dml.md` to mark
-multi-table `DELETE` as limited to one target over the current two-source
-joined-source envelope. Do not claim full multi-target deletes, `target.*`,
-partitioned deletes, modifiers, arbitrary joins, joined-delete ordering,
-joined-delete limits, triggers, privileges, or recursive cascades.
+multi-table `DELETE` as limited to one target, or multiple aliases of the same
+physical table, over the current two-source joined-source envelope. Do not
+claim full multi-physical-table target deletes, `target.*`, partitioned
+deletes, modifiers, arbitrary joins, joined-delete ordering, joined-delete
+limits, triggers, privileges, or recursive cascades.

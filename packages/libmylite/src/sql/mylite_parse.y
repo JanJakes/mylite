@@ -4287,6 +4287,9 @@ predicate_comparison_value(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
 }
+predicate_comparison_value(A) ::= current_timestamp_value(T). {
+    A = T;
+}
 predicate_comparison_value(A) ::= DATABASE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);

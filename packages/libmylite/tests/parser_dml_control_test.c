@@ -1801,6 +1801,20 @@ static int test_delete_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "DELETE FROM simple_lifecycle WHERE updated_at = CURRENT_TIMESTAMP();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    where_clause = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(where_clause, 0U), 1U),
+        MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE,
+        "delete current timestamp predicate value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "DELETE FROM simple_lifecycle ORDER BY simple_lifecycle.id LIMIT 1;",
         MYLITE_SQL_PARSE_OK,
         &result

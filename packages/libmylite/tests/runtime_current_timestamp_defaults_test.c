@@ -373,6 +373,7 @@ static int test_current_timestamp_defaults_updates_metadata_and_persistence(void
         "2023-11-14 22:16:20",
         "2023-11-14 22:16:20",
     };
+    static const char *const predicate_remaining_values[] = {"2", "2023-01-01 00:00:00"};
     static const char *const persisted_rows[] = {
         "2",
         "2023-11-14 22:16:20",
@@ -519,6 +520,31 @@ static int test_current_timestamp_defaults_updates_metadata_and_persistence(void
             .column_count = automatic_temporal_data_column_count,
             .row_count = 1U,
             .context = "explicit current timestamp assignment",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE timestamp_predicate (id INT, v DATETIME)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO timestamp_predicate VALUES (1, CURRENT_TIMESTAMP()), "
+        "(2, '2023-01-01 00:00:00')",
+        2
+    );
+    failures += expect_dml_ok(
+        database,
+        "DELETE FROM timestamp_predicate WHERE v = CURRENT_TIMESTAMP()",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM timestamp_predicate",
+            .values = predicate_remaining_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "current timestamp predicate value",
         }
     );
 

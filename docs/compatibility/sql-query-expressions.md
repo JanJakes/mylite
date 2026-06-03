@@ -12,6 +12,10 @@ member-ordinal behavior for `FIND_IN_SET()`, does not yet implement non-ASCII
 collation parity for `STRCMP()` or substring predicates, and does not yet
 implement full ICU regular-expression semantics for `REGEXP_LIKE()`.
 
+The limited `WHERE` predicate operand set also admits statement-current
+`CURRENT_TIMESTAMP` / `NOW()` values for compatible nonbinary string,
+`DATETIME`, and `TIMESTAMP` descriptor comparisons.
+
 The limited row-scalar control-flow family includes `IF()`, `IFNULL()`,
 `COALESCE()`, `NULLIF()`, and `ISNULL()` in single-table projection lists over
 admitted descriptor and scalar value operands. It does not make those functions

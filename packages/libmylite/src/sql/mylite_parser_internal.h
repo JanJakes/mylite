@@ -1355,6 +1355,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_source(
     struct mylite_sql_ast_node *alias,
     struct mylite_sql_ast_node *index_hints
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_derived_table_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_parenthesis,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_parenthesis,
+    struct mylite_sql_ast_node *alias
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,

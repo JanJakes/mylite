@@ -757,22 +757,37 @@ static int validate_select_index_hint_names(
     const struct mylite_sql_ast_node *name_list,
     const struct mylite_catalog_table_descriptor *table
 ) {
+    char first_missing_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
+    bool has_name = false;
+    bool has_existing_name = false;
+
     for (const struct mylite_sql_ast_node *name_node = child_at(name_list, 0U); name_node != NULL;
          name_node = name_node->next_sibling) {
         char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
         bool exists = false;
         int rc = copy_identifier_text(name_node, index_name, sizeof(index_name), database);
 
+        has_name = true;
         if (rc == MYLITE_OK) {
             rc = select_index_hint_name_exists(database, table->table_id, index_name, &exists);
         }
         if (rc != MYLITE_OK) {
             return rc;
         }
-        if (!exists) {
-            set_key_does_not_exist_in_table_error(database, index_name, table->name);
-            return MYLITE_ERROR;
+        if (exists) {
+            has_existing_name = true;
+        } else if (first_missing_name[0] == '\0') {
+            int copied = snprintf(first_missing_name, sizeof(first_missing_name), "%s", index_name);
+
+            if (copied < 0 || (size_t)copied >= sizeof(first_missing_name)) {
+                set_identifier_too_long_error(database, "index");
+                return MYLITE_ERROR;
+            }
         }
+    }
+    if (has_name && !has_existing_name) {
+        set_key_does_not_exist_in_table_error(database, first_missing_name, table->name);
+        return MYLITE_ERROR;
     }
 
     return MYLITE_OK;

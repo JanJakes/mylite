@@ -1331,8 +1331,7 @@ static int column_descriptor_index_part_key_bytes(
         return rc;
     }
     if (column_descriptor_is_text_family(column)) {
-        set_blob_key_without_length_error(database, column->name);
-        return MYLITE_ERROR;
+        return text_family_full_key_bytes(database, column->logical_type, out_key_bytes);
     }
     if (column_descriptor_is_binary_string_family(column)) {
         struct binary_string_type_info storage = {0};

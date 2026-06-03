@@ -280,7 +280,9 @@ MySQL-compatible diagnostics for the admitted subset:
 - duplicate key name: `1061 / 42000`;
 - duplicate unique value: `1062 / 23000`;
 - unknown key column: `1072 / 42000`;
-- `TEXT` family key without prefix: `1170 / 42000`;
+- BLOB-family key without prefix: `1170 / 42000`; full-column `TEXT` family
+  unique keys are accepted by the documented WordPress bridge and enforce
+  full-value uniqueness;
 - explicit `PRIMARY` nonprimary index name: `1280 / 42000`.
 
 MyLite-specific deterministic unsupported diagnostics:

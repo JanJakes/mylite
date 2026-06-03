@@ -65,8 +65,10 @@ Observed behavior shaping this slice:
   (`1064 / 42000`).
 - `PRIMARY` is accepted as an unquoted hint name for a primary key.
 - Duplicate hint names are accepted.
-- Unknown hint names fail with `1176 / 42000` and the message shape
-  `Key '<name>' doesn't exist in table '<table>'`.
+- All-missing hint name lists fail with `1176 / 42000` and the message shape
+  `Key '<name>' doesn't exist in table '<table>'`. MyLite additionally accepts
+  the WordPress compatibility shape where at least one name in the list
+  resolves and later stale names are ignored.
 - Combining `USE INDEX` and `FORCE INDEX` on the same table reference fails
   with `1221 / HY000` and `Incorrect usage of USE INDEX and FORCE INDEX`,
   including when scopes differ.
@@ -108,6 +110,8 @@ Supported:
   secondary indexes currently represented in the MyLite catalog;
 - MySQL-compatible case-insensitive full-name and unambiguous prefix matching
   for hint names, including `PRIMARY` prefixes;
+- WordPress-compatible mixed valid/stale name lists when at least one hint name
+  resolves for the hinted table;
 - MySQL-compatible diagnostics for unknown index names and combined
   `USE INDEX` plus `FORCE INDEX` on the same table reference;
 - successful supported hints as no-op planner directives with no warnings.
@@ -304,7 +308,7 @@ Supported MySQL-compatible diagnostics:
 
 - unsupported grammar or malformed hint syntax:
   `1064 / 42000`;
-- unknown index name:
+- all-missing index name list:
   `1176 / 42000`, `Key '<name>' doesn't exist in table '<table>'`;
 - combined `USE INDEX` and `FORCE INDEX` on one table source:
   `1221 / HY000`, `Incorrect usage of USE INDEX and FORCE INDEX`;

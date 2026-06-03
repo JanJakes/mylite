@@ -386,11 +386,30 @@ static int test_select_index_hints_noop(void) {
 
     failures += execute_ok(
         database,
+        "SELECT id FROM t FORCE INDEX (PRIMARY, post_parent) WHERE id = 1",
+        &result
+    );
+    failures += expect_rows(result, primary_rows, 1U, 0U, "mixed stale force index no-op row");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
         "SELECT n, COUNT(*) FROM t USE INDEX FOR GROUP BY (k_n) "
         "WHERE n IS NOT NULL GROUP BY n ORDER BY n",
         &result
     );
     failures += expect_grid(result, grouped_values, 2U, 2U, 0U, "group index no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT n, COUNT(*) FROM t USE KEY FOR GROUP BY (PRIMARY, post_parent) "
+        "WHERE n IS NOT NULL GROUP BY n ORDER BY n",
+        &result
+    );
+    failures += expect_grid(result, grouped_values, 2U, 2U, 0U, "mixed stale group key no-op rows");
     mylite_result_free(result);
     result = NULL;
 

@@ -214,7 +214,8 @@ feature-level diagnostics for:
 - unknown character sets or collations;
 - invalid default values under the current SQL mode;
 - invalid, unsupported, or out-of-range quoted integer string defaults;
-- unsupported key parts and unsupported text/blob full-column indexes;
+- unsupported key parts and unsupported BLOB-family full-column indexes; full
+  text-family key parts are covered by the WordPress indexes-bucket bridge;
 - duplicate primary/unique keys;
 - allocation and physical SQLite failures;
 - public API misuse.

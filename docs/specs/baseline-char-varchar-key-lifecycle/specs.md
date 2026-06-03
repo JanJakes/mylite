@@ -189,8 +189,9 @@ Deferred:
   `ALTER TABLE ADD UNIQUE` in this phase; later feature slices cover limited
   forms;
 - prefix key parts such as `UNIQUE KEY u (v(10))`;
-- `TEXT` family keys without prefixes, `BINARY`, `VARBINARY`, `BLOB`, `ENUM`,
-  `SET`, `JSON`, `CHARACTER`, `CHARACTER VARYING`, `NCHAR`, and `NVARCHAR`;
+- BINARY/BLOB-family keys without prefixes, `ENUM`, `SET`, `JSON`,
+  `CHARACTER`, `CHARACTER VARYING`, `NCHAR`, and `NVARCHAR`; full `TEXT`
+  family key parts are covered by the documented WordPress bridge;
 - explicit string defaults beyond the existing `CHAR` / `VARCHAR` default
   support already in the row-value/defaults slices;
 - named constraints, foreign keys, cascades, check constraints, invisible

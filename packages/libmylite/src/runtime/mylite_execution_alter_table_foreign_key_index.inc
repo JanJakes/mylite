@@ -1461,8 +1461,7 @@ static int validate_alter_table_add_index_column(
         return MYLITE_ERROR;
     }
     if (column_descriptor_is_text_family(column)) {
-        set_blob_key_without_length_error(database, column->name);
-        return MYLITE_ERROR;
+        return MYLITE_OK;
     }
     if (column_descriptor_is_binary_blob_family(column)) {
         set_blob_key_without_length_error(database, column->name);

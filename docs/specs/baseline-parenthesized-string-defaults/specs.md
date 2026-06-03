@@ -194,8 +194,9 @@ default.
 
 ## Diagnostics
 
-- Bare `TEXT` family defaults, including `TEXT DEFAULT 'x'`, continue to return
-  MyLite's deterministic invalid-default diagnostic.
+- Bare nonempty `TEXT` family defaults, including `TEXT DEFAULT 'x'`, continue
+  to return MyLite's deterministic invalid-default diagnostic. The separate
+  WordPress indexes-bucket bridge accepts only empty ordinary text defaults.
 - Parenthesized `TEXT` family defaults whose inner expression is not a single
   string or `NULL` literal return the same deterministic invalid-default
   diagnostic.
@@ -229,11 +230,11 @@ Add or extend fast C tests under `packages/libmylite/tests/` to cover:
 - `ALTER TABLE ... ADD COLUMN ... DEFAULT ('x')` and `ALTER TABLE ...
   MODIFY/CHANGE COLUMN ... DEFAULT ('x')`;
 - rejected `ALTER TABLE ... ALTER COLUMN text_col SET DEFAULT ('x')`;
-- rejected bare `TEXT DEFAULT 'x'`, unsupported numeric/function/expression
-  defaults, unsupported binary/JSON defaults, and still-deferred
+- rejected bare nonempty `TEXT DEFAULT 'x'`, unsupported
+  numeric/function/expression defaults, unsupported binary/JSON defaults, and
+  still-deferred
   `VARCHAR DEFAULT ('x')`;
 - persistence after close/reopen, `CREATE TABLE ... LIKE`, table rename/drop,
   independent file-backed handles, and `.mylite` preamble preservation;
 - existing string-default, text-type, DML default, modify/change column, SHOW,
   information-schema, catalog, storage, and lifecycle tests.
-

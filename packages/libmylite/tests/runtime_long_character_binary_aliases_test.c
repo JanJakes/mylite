@@ -28,6 +28,7 @@ enum {
     mediumblob_result_display_length = 16777215,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
+    mysql_error_blob_text_cant_have_default = 1101,
 };
 
 struct expected_sql_error {
@@ -439,9 +440,9 @@ static int test_alias_diagnostics(void) {
         database,
         "CREATE TABLE bad_long_default_literal (a LONG DEFAULT 'abc')",
         (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
+            .code = mysql_error_blob_text_cant_have_default,
             .sqlstate = "42000",
-            .message_part = "Invalid default value for 'a'",
+            .message_part = "can't have a default value",
         }
     );
     failures +=

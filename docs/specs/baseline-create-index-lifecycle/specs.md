@@ -77,6 +77,9 @@ Runtime probes for this phase establish:
   in the index-name position is a syntax error.
 - Unknown key columns fail with `1072 / 42000`.
 - `TEXT` without a prefix fails with `1170 / 42000`.
+- MyLite's later WordPress indexes-bucket bridge intentionally accepts
+  full-column `TEXT` family key parts without a prefix as descriptor-owned
+  full-value indexes, even though MySQL rejects that shape.
 - `CHAR(0)` and `VARCHAR(0)` cannot be indexed by the tested InnoDB runtime and
   fail with `1167 / 42000`.
 - Creating a unique index over existing duplicate non-`NULL` values fails with
@@ -134,10 +137,11 @@ Deferred:
   and implicit-commit emulation;
 - multiple key parts, duplicate key parts, prefix lengths, descending key
   parts, functional key parts, expression key parts, table-qualified key parts,
-  ordinal key parts, and string-literal key parts;
+  ordinal key parts, and string-literal key parts in this original slice;
 - index type clauses, comments, parser options, `KEY_BLOCK_SIZE`, visibility,
   engine attributes, algorithms, locks, and partitions;
-- `TEXT` family key parts until prefix-length semantics are implemented;
+- broad text/blob key-part behavior beyond the later prefix, ordering, comment,
+  and WordPress full-text-family bridge slices;
 - non-ASCII string key values and full Unicode collation weights;
 - optimizer/index-use guarantees beyond creating a physical SQLite index that
   SQLite may use.
@@ -310,7 +314,7 @@ Required diagnostics for this slice:
 - duplicate index name: `1061 / 42000`;
 - quoted `PRIMARY` index name: `1280 / 42000`;
 - unknown key column: `1072 / 42000`;
-- `TEXT` key without prefix: `1170 / 42000`;
+- BLOB-family key without prefix: `1170 / 42000`;
 - `CHAR(0)` / `VARCHAR(0)` key part: `1167 / 42000`;
 - existing duplicate rows for unique indexes: `1062 / 23000`;
 - non-ASCII string unique key values: existing MyLite unsupported diagnostic;
@@ -341,7 +345,8 @@ The C runtime test covers:
   behavior using standalone-created descriptors;
 - schema-qualified and unqualified targets, missing default schema, unknown
   schema, unknown table, reserved names, duplicate names, quoted `PRIMARY`,
-  unknown columns, `TEXT` without prefix, and zero-length string key columns;
+  unknown columns, BLOB-family without prefix, and zero-length string key
+  columns;
 - parser tests for admitted forms and deferred syntax;
 - reopen persistence, table rename/drop interaction, independent handles,
   `.mylite` preamble preservation, and zero-initialized cleanup paths.

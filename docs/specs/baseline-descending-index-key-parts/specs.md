@@ -319,7 +319,9 @@ The slice reuses existing diagnostics where possible:
 - duplicate key-part column: `1060 / 42S21`;
 - unsupported indexed column type: existing MySQL-shaped storage-engine
   diagnostic for the relevant index class;
-- `TEXT` family key without prefix: `1170 / 42000`;
+- BLOB-family key without prefix: `1170 / 42000`; full-column `TEXT` family
+  key parts are accepted by the documented WordPress bridge and may carry
+  ascending or descending direction metadata;
 - prefix length `0`: `1391 / HY000`;
 - prefix length on non-string descriptor or beyond bounded string length:
   `1089 / HY000`;

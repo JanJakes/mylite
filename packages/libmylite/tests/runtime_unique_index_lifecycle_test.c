@@ -807,14 +807,18 @@ static int test_unique_index_diagnostics(void) {
             .message_part = "Incorrect index name 'PRIMARY'",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE text_unique (body TEXT, UNIQUE KEY u_body (body))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO text_unique VALUES ('body')", 1);
     failures += execute_error(
         database,
-        "CREATE TABLE text_unique (body TEXT, UNIQUE KEY u_body (body))",
+        "INSERT INTO text_unique VALUES ('body')",
         (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part =
-                "BLOB/TEXT column 'body' used in key specification without a key length",
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'body' for key 'text_unique.u_body'",
         }
     );
     failures += execute_error(

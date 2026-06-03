@@ -78,8 +78,8 @@ Details:
 - key column must name an existing descriptor column in the same `CREATE TABLE`;
 - admitted key columns may be current descriptor-supported integer-family,
   exact `DECIMAL`, canonical `DATE`, `CHAR`, `VARCHAR`, or bare `TEXT` family
-  columns, except bare `TEXT` family indexes require prefix support and are
-  rejected for now;
+  columns, including full-column `TEXT` family indexes through the documented
+  WordPress bridge;
 - no index prefix length, `ASC`/`DESC`, `USING`, `COMMENT`, visibility,
   `KEY_BLOCK_SIZE`, parser attributes, engine attributes, expression key parts,
   functional indexes, `FULLTEXT`, `SPATIAL`, `UNIQUE`, named constraints,
@@ -267,8 +267,8 @@ Provide deterministic diagnostics for:
 - duplicate explicit index names with MySQL error `1061` / SQLSTATE `42000`;
 - explicit index name `PRIMARY` with MySQL error `1280` / SQLSTATE `42000`;
 - unknown key columns with MySQL error `1072` / SQLSTATE `42000`;
-- bare `TEXT` family key columns without prefix length with MySQL error `1170`
-  / SQLSTATE `42000`;
+- BLOB-family key columns without prefix length with MySQL error `1170` /
+  SQLSTATE `42000`;
 - unsupported key prefix lengths, non-string key prefixes, key direction,
   `USING`, options, unique/fulltext/spatial/foreign/check constraints,
   expression key parts, multiple key parts, named constraints, and standalone

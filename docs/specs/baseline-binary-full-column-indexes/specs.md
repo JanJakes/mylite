@@ -211,7 +211,8 @@ The supported subset must produce deterministic diagnostics for:
 - unknown key columns;
 - duplicate key part columns;
 - duplicate index names;
-- `BLOB`/`TEXT` full key parts without a prefix;
+- BLOB-family full key parts without a prefix; full `TEXT` family key parts
+  are covered by the documented WordPress bridge;
 - `VARBINARY` or composite full binary key parts exceeding 3072 bytes;
 - unsupported primary binary keys;
 - unsupported `BIT`, `ENUM`, `SET`, JSON, spatial, functional, expression, or

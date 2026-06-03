@@ -53,7 +53,15 @@ static int validate_column_default_value(
         if (column_default_value_is_parenthesized_text_expression(default_node)) {
             return MYLITE_OK;
         }
-        set_invalid_default_error(database, column->name);
+        if (column_default_value_is_parenthesized_expression(default_node)) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+            return MYLITE_OK;
+        }
+        set_json_cant_have_default_error(database, column->name);
         return MYLITE_ERROR;
     }
     if (planned_column_is_binary_string_family(column)) {
@@ -218,6 +226,9 @@ static int finalize_planned_column_type_default(
     }
     if (planned_column_is_bit(column)) {
         return finalize_planned_column_bit_default(database, column);
+    }
+    if (planned_column_is_text_family(column)) {
+        return finalize_planned_column_text_literal_default(database, column);
     }
     if (planned_column_is_binary_string_family(column)) {
         return finalize_planned_column_binary_default(database, column);
@@ -421,10 +432,58 @@ static int finalize_planned_column_text_expression_default(
     }
     planned_value_deinit(&value);
     if (rc == MYLITE_OK) {
-        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION;
     }
 
     return rc;
+}
+
+static int finalize_planned_column_text_literal_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    const struct mylite_sql_ast_node *value_node = child_at(column->default_node, 0U);
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_json_cant_have_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "TEXT defaults support only string literals",
+        "TEXT defaults do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        free(text);
+        if (rc != MYLITE_NOMEM) {
+            set_json_cant_have_default_error(database, column->name);
+            rc = MYLITE_ERROR;
+        }
+        return rc;
+    }
+    if (text_length != 0U) {
+        free(text);
+        set_json_cant_have_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    free(text);
+
+    rc = append_blob_text_cant_have_default_warning(database, column->name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    column->default_kind = column->is_nullable ? MYLITE_CATALOG_COLUMN_DEFAULT_NONE
+                                               : MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    column->default_text[0] = '\0';
+    return MYLITE_OK;
 }
 
 static int finalize_planned_column_character_expression_default(

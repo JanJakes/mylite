@@ -1347,16 +1347,8 @@ static int test_unique_prefix_diagnostics(void) {
             .message_part = "Specified key was too long",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE text_unique (body TEXT, UNIQUE KEY u (body))",
-        (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part =
-                "BLOB/TEXT column 'body' used in key specification without a key length",
-        }
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE text_unique (body TEXT, UNIQUE KEY u (body))");
     failures += execute_error(
         database,
         "CREATE TABLE binary_zero_prefix (b BINARY(4), UNIQUE KEY u (b(0)))",

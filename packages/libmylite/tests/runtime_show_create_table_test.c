@@ -101,6 +101,26 @@ static const char *const pair_column_create_sql =
     "  `value` bigint DEFAULT NULL\n"
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
 
+static const char *const wordpress_text_key_create_sql =
+    "CREATE TABLE `wp_text_key` (\n"
+    "  `ID` bigint NOT NULL AUTO_INCREMENT,\n"
+    "  `option_name` varchar(255) DEFAULT '',\n"
+    "  `option_value` text NOT NULL,\n"
+    "  PRIMARY KEY (`ID`),\n"
+    "  UNIQUE KEY `option_name` (`option_name`),\n"
+    "  KEY `composite` (`option_name`,`option_value`)\n"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+
+static const char *const wordpress_text_default_column_keys_create_sql =
+    "CREATE TABLE `wp_text_default_keys` (\n"
+    "  `ID` bigint NOT NULL AUTO_INCREMENT,\n"
+    "  `option_name` varchar(255) DEFAULT '',\n"
+    "  `option_value` text NOT NULL,\n"
+    "  PRIMARY KEY (`ID`),\n"
+    "  UNIQUE KEY `wp_text_default_keys__option_name` (`option_name`),\n"
+    "  KEY `wp_text_default_keys__composite` (`option_name`,`option_value`)\n"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+
 static int test_show_create_values_persistence_rename_and_drop(void);
 static int test_show_create_diagnostics_and_unsupported_forms(void);
 static int test_show_create_descriptor_failure_paths(void);
@@ -227,6 +247,42 @@ static int test_show_create_values_persistence_rename_and_drop(void) {
             .create_sql = null_forms_create_sql,
         },
         "implicit and explicit nullable show create"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE wp_text_key ("
+        "ID BIGINT PRIMARY KEY AUTO_INCREMENT NOT NULL, "
+        "option_name VARCHAR(255) DEFAULT '', "
+        "option_value TEXT NOT NULL, "
+        "UNIQUE KEY option_name (option_name), "
+        "KEY composite (option_name, option_value))"
+    );
+    failures += expect_show_create_result(
+        database,
+        "SHOW CREATE TABLE wp_text_key",
+        (struct expected_show_create_result){
+            .table_name = "wp_text_key",
+            .create_sql = wordpress_text_key_create_sql,
+        },
+        "WordPress composite text key show create"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE wp_text_default_keys ("
+        "`ID` BIGINT PRIMARY KEY AUTO_INCREMENT NOT NULL, "
+        "`option_name` VARCHAR(255) DEFAULT '', "
+        "`option_value` TEXT NOT NULL DEFAULT '', "
+        "KEY wp_text_default_keys__composite (option_name, option_value), "
+        "UNIQUE KEY wp_text_default_keys__option_name (option_name))"
+    );
+    failures += expect_show_create_result(
+        database,
+        "SHOW CREATE TABLE `wp_text_default_keys`",
+        (struct expected_show_create_result){
+            .table_name = "wp_text_default_keys",
+            .create_sql = wordpress_text_default_column_keys_create_sql,
+        },
+        "WordPress empty text default key show create"
     );
     failures += expect_row_count(database, -1, "row count after show create");
     failures += expect_single_row_result(

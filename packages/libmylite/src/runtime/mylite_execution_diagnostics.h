@@ -574,6 +574,10 @@ void mylite_execution_diagnostics_set_json_cant_have_default_error(
     struct mylite_db *database,
     const char *column_name
 );
+int mylite_execution_diagnostics_append_blob_text_cant_have_default_warning(
+    struct mylite_db *database,
+    const char *column_name
+);
 void mylite_execution_diagnostics_set_invalid_json_text_error(
     struct mylite_db *database,
     size_t position,
@@ -1034,6 +1038,8 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
 #  define set_invalid_default_error mylite_execution_diagnostics_set_invalid_default_error
 #  define set_json_cant_have_default_error                                                         \
       mylite_execution_diagnostics_set_json_cant_have_default_error
+#  define append_blob_text_cant_have_default_warning                                               \
+      mylite_execution_diagnostics_append_blob_text_cant_have_default_warning
 #  define set_invalid_json_text_error mylite_execution_diagnostics_set_invalid_json_text_error
 #  define set_no_default_error mylite_execution_diagnostics_set_no_default_error
 #  define set_default_function_expression_error                                                    \

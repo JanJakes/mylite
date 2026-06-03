@@ -14528,6 +14528,10 @@ static int finalize_planned_column_text_expression_default(
     struct planned_column *column,
     const struct mylite_sql_ast_node *value_node
 );
+static int finalize_planned_column_text_literal_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_character_expression_default(
     struct mylite_db *database,
     struct planned_column *column,

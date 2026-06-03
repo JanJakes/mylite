@@ -24,6 +24,7 @@ enum {
     information_schema_column_count = 7,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
+    mysql_error_blob_text_cant_have_default = 1101,
     mysql_error_bad_null = 1048,
     mysql_error_data_too_long = 1406,
     mysql_error_no_default = 1364,
@@ -906,9 +907,9 @@ static int test_string_defaults_diagnostics(void) {
         database,
         "CREATE TABLE bad_text (t TEXT DEFAULT 'abc')",
         (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
+            .code = mysql_error_blob_text_cant_have_default,
             .sqlstate = "42000",
-            .message_part = "Invalid default value for 't'",
+            .message_part = "can't have a default value",
         }
     );
     failures +=

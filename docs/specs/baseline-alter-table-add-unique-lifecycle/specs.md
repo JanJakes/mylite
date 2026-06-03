@@ -92,6 +92,9 @@ Runtime probes for this phase establish:
   `VARCHAR(1..255)` columns can be used as one-part unique keys for this
   subset. `TEXT` without a prefix fails with `1170 / 42000`, and
   `CHAR(0)` / `VARCHAR(0)` fail with `1167 / 42000`.
+- MyLite's later WordPress indexes-bucket bridge intentionally accepts
+  full-column `TEXT` family key parts without a prefix as descriptor-owned
+  full-value unique indexes, even though MySQL rejects that shape.
 - Existing duplicate non-`NULL` values fail with `1062 / 23000`; duplicate
   `NULL` values are permitted.
 - For the default `utf8mb4_0900_ai_ci` collation, `VARCHAR` unique keys are
@@ -135,6 +138,7 @@ Supported:
   - exact `DECIMAL` / `NUMERIC` / `FIXED`;
   - canonical `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
   - ASCII-valued `CHAR(1..255)` and `VARCHAR(1..255)` full columns;
+  - full-column `TEXT` family parts through the documented WordPress bridge;
   - supported `CHAR`, `VARCHAR`, and bare `TEXT` family prefix parts;
 - nullable and `NOT NULL` key target columns;
 - empty and nonempty tables, with existing-row duplicate validation;
@@ -165,7 +169,8 @@ Deferred:
 - index type clauses, comments, parser options, `KEY_BLOCK_SIZE`, visibility,
   engine attributes, algorithms, locks, partitions, temporary tables, views,
   foreign keys, cascades, triggers, privileges, and implicit-commit emulation;
-- full `TEXT` family key parts without a prefix;
+- broad text/blob key-part behavior beyond the documented full text-family
+  bridge and prefix slices;
 - non-ASCII string key values and full collation-aware comparison;
 - warnings for redundant duplicate unique indexes that MySQL accepts but marks
   with a warning;
@@ -311,8 +316,9 @@ Column resolution is descriptor-owned:
 - unknown columns fail with `1072 / 42000`;
 - supported invisible columns may be explicitly indexed because existing
   descriptor DML and metadata paths already allow explicit references;
-- `TEXT` family columns fail with the MySQL `1170 / 42000` no-prefix
-  diagnostic;
+- full-column `TEXT` family columns are accepted only by the documented
+  WordPress bridge; BLOB-family columns fail with the MySQL `1170 / 42000`
+  no-prefix diagnostic unless a supported prefix length is present;
 - zero-length `CHAR(0)` and `VARCHAR(0)` columns fail with
   `1167 / 42000`;
 - all other unsupported descriptor types fail with a deterministic MyLite
@@ -414,7 +420,7 @@ Diagnostics for the supported surface:
 - duplicate explicit index name: `1061 / 42000`;
 - explicit quoted `PRIMARY` unique-index name: `1280 / 42000`;
 - unknown key column: `1072 / 42000`;
-- `TEXT` family key column without prefix: `1170 / 42000`;
+- BLOB-family key column without prefix: `1170 / 42000`;
 - zero-length `CHAR(0)` / `VARCHAR(0)` key column: `1167 / 42000`;
 - unsupported key column type: deterministic MyLite unsupported diagnostic;
 - duplicate existing non-`NULL` values: `1062 / 23000`;

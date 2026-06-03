@@ -1007,6 +1007,9 @@ static int append_show_create_table_non_integer_column_default(
     }
     if (column_descriptor_is_text_family(column) &&
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        if (column->default_text[0] == '\0') {
+            return MYLITE_OK;
+        }
         return append_show_create_table_text_expression_default(string, column);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY) {

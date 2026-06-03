@@ -3283,6 +3283,29 @@ void mylite_execution_diagnostics_set_json_cant_have_default_error(
     );
 }
 
+int mylite_execution_diagnostics_append_blob_text_cant_have_default_warning(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "BLOB, TEXT, GEOMETRY or JSON column '%s' can't have a default value",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_blob_text_cant_have_default,
+        "42000",
+        message
+    );
+}
+
 void mylite_execution_diagnostics_set_invalid_json_text_error(
     struct mylite_db *database,
     size_t position,

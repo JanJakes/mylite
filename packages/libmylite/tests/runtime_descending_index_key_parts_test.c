@@ -367,16 +367,7 @@ static int test_descending_key_part_diagnostics(void) {
             .message_part = "Incorrect prefix key",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_text_desc (body TEXT, KEY k (body DESC))",
-        (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part =
-                "BLOB/TEXT column 'body' used in key specification without a key length",
-        }
-    );
+    failures += expect_ddl_ok(database, "CREATE TABLE text_desc (body TEXT, KEY k (body DESC))");
     failures += execute_error(
         database,
         "CREATE TABLE qualified_part (a INT, KEY k (qualified_part.a DESC))",

@@ -71,6 +71,9 @@ Runtime probes for this phase establish:
   `VARCHAR(1..255)` columns can be indexed without a prefix for this subset.
   `TEXT` without a prefix fails with `1170 / 42000`, and `CHAR(0)` /
   `VARCHAR(0)` fail with `1167 / 42000`.
+- MyLite's later WordPress indexes-bucket bridge intentionally accepts
+  full-column `TEXT` family key parts without a prefix as descriptor-owned
+  full-value indexes, even though MySQL rejects that shape.
 - A duplicate explicit index name fails with `1061 / 42000`.
 - A quoted index name `PRIMARY` fails with `1280 / 42000`; unquoted
   `PRIMARY` in the index-name position is a syntax error.
@@ -125,7 +128,8 @@ Deferred:
 - index type clauses, comments, parser options, `KEY_BLOCK_SIZE`, visibility,
   engine attributes, algorithms, locks, partitions, temporary tables, views,
   foreign keys, cascades, triggers, privileges, and implicit-commit emulation;
-- `TEXT` family key parts until prefix-length semantics are implemented;
+- broad text/blob key-part behavior beyond the later prefix, ordering, comment,
+  and WordPress full-text-family bridge slices;
 - string unique or primary-key semantics and collation-aware comparison;
 - optimizer/index-use guarantees beyond creating a physical SQLite index that
   SQLite may use.
@@ -289,10 +293,11 @@ current nonunique descriptor subset:
 - `NULL` values are indexed normally by SQLite and rendered as nullable
   metadata.
 
-`TEXT` family columns are rejected without prefix support because MySQL requires
-a key length for those columns in ordinary InnoDB indexes. This phase does not
-implement prefix truncation, byte/character prefix accounting, or warning/error
-differences by SQL mode.
+Full-column `TEXT` family columns are accepted only by the documented
+WordPress bridge. BLOB-family columns remain rejected without explicit prefix
+support because MySQL requires a key length for those columns in ordinary
+InnoDB indexes. Prefix support is specified in
+`docs/specs/baseline-index-prefix-key-parts/specs.md`.
 
 ## Introspection
 
@@ -327,7 +332,7 @@ Supported diagnostics:
 - duplicate explicit index name: `1061 / 42000`;
 - quoted `PRIMARY` index name: `1280 / 42000`;
 - unknown key column: `1072 / 42000`;
-- unsupported key target type, including `TEXT` without prefix:
+- unsupported key target type, including BLOB-family without prefix:
   `1170 / 42000` where MySQL has an equivalent, or an explicit MyLite
   unsupported diagnostic for future descriptor kinds;
 - `CHAR(0)` / `VARCHAR(0)` key part: `1167 / 42000`;
@@ -369,7 +374,7 @@ Coverage must include:
 - cleanup-safe zero initialization for any new planner/result objects;
 - diagnostics for missing default schema, unknown schema, unknown table,
   reserved names, duplicate explicit names, quoted `PRIMARY`, unknown key
-  columns, `TEXT` without prefix, zero-length `CHAR` / `VARCHAR` key columns,
+  columns, BLOB-family without prefix, zero-length `CHAR` / `VARCHAR` key columns,
   and unsupported syntax;
 - unsupported forms for this nonunique-index phase: `ADD FULLTEXT`,
   `ADD SPATIAL`, multi-action alter, multiple key parts, key prefixes, table-qualified key

@@ -1376,6 +1376,22 @@ static bool planned_index_name_is_used(
     return false;
 }
 
+static int text_family_full_key_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t *out_key_bytes
+) {
+    const struct text_family_type_info *info = text_family_type_info_for_logical_type(logical_type);
+
+    if (info == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid text-family key part");
+        return MYLITE_ERROR;
+    }
+
+    *out_key_bytes = utf8mb4_max_bytes_per_character;
+    return MYLITE_OK;
+}
+
 static int validate_secondary_index_column(
     struct mylite_db *database,
     const struct planned_column *column
@@ -1389,8 +1405,7 @@ static int validate_secondary_index_column(
         return MYLITE_ERROR;
     }
     if (planned_column_is_text_family(column)) {
-        set_blob_key_without_length_error(database, column->name);
-        return MYLITE_ERROR;
+        return MYLITE_OK;
     }
     if (planned_column_is_binary_blob_family(column)) {
         set_blob_key_without_length_error(database, column->name);
@@ -1699,8 +1714,7 @@ static int planned_index_part_key_bytes(
         return rc;
     }
     if (planned_column_is_text_family(column)) {
-        set_blob_key_without_length_error(database, column->name);
-        return MYLITE_ERROR;
+        return text_family_full_key_bytes(database, column->logical_type, out_key_bytes);
     }
     if (planned_column_is_binary_string_family(column)) {
         struct binary_string_type_info storage = {0};
@@ -1741,8 +1755,7 @@ static int validate_unique_index_column(
         return MYLITE_ERROR;
     }
     if (planned_column_is_text_family(column)) {
-        set_blob_key_without_length_error(database, column->name);
-        return MYLITE_ERROR;
+        return MYLITE_OK;
     }
     if (planned_column_is_binary_blob_family(column)) {
         set_blob_key_without_length_error(database, column->name);

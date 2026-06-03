@@ -735,7 +735,8 @@ static bool catalog_logical_type_accepts_text_expression_default(const char *log
     return (text_has_ascii_case_insensitive_prefix(logical_type, "CHAR(") ||
             text_has_ascii_case_insensitive_prefix(logical_type, "VARCHAR(") ||
             text_has_ascii_case_insensitive_prefix(logical_type, "NCHAR(") ||
-            text_has_ascii_case_insensitive_prefix(logical_type, "NVARCHAR(")) != 0;
+            text_has_ascii_case_insensitive_prefix(logical_type, "NVARCHAR(") ||
+            catalog_logical_type_is_text_family(logical_type)) != 0;
 }
 
 static bool catalog_logical_type_accepts_current_timestamp(const char *logical_type) {

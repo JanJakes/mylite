@@ -663,15 +663,7 @@ static int test_alter_add_unique_diagnostics(void) {
             .message_part = "Key column 'missing' doesn't exist in table",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE diag ADD UNIQUE u_txt (txt)",
-        (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part = "BLOB/TEXT column 'txt' used in key specification without a key length",
-        }
-    );
+    failures += expect_alter_unique_ok(database, "ALTER TABLE diag ADD UNIQUE u_txt (txt)");
     failures += expect_alter_unique_ok(database, "ALTER TABLE diag ADD UNIQUE u_multi (id, v)");
     failures +=
         expect_statement_ok(database, "CREATE TABLE prefix_diag (a VARCHAR(10), b VARCHAR(10))");

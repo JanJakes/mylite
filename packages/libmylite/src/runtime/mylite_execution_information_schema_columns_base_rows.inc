@@ -384,6 +384,9 @@ static int column_default_display_text(
         return MYLITE_OK;
     case MYLITE_CATALOG_COLUMN_DEFAULT_TEXT:
         if (column_descriptor_is_text_family(column)) {
+            if (column->default_text[0] == '\0') {
+                return MYLITE_OK;
+            }
             int rc = format_mysql_utf8mb4_expression_text(
                 column->default_text,
                 default_text,

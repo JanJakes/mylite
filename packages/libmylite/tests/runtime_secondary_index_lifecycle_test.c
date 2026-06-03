@@ -878,15 +878,9 @@ static int test_secondary_index_diagnostics(void) {
             .message_part = "Incorrect index name 'PRIMARY'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE text_key (id INT, body TEXT, KEY k_body (body))",
-        (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part =
-                "BLOB/TEXT column 'body' used in key specification without a key length",
-        }
+        "CREATE TABLE text_key (id INT, body TEXT, KEY k_body (body))"
     );
     failures +=
         expect_statement_ok(database, "CREATE TABLE composite_key (id INT, v INT, KEY k (id, v))");

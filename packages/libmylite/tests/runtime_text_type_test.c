@@ -18,6 +18,7 @@ enum {
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
+    mysql_error_blob_text_cant_have_default = 1101,
     mysql_error_bad_null = 1048,
     mysql_error_no_default = 1364,
     mysql_error_data_too_long = 1406,
@@ -1173,10 +1174,28 @@ static int test_text_diagnostics(void) {
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
     static const char *const text_predicate_row[] = {"1"};
+    static const char *const empty_text_default_warnings[] = {
+        "Warning",
+        "1101",
+        "BLOB, TEXT, GEOMETRY or JSON column 'v' can't have a default value",
+        "Warning",
+        "1101",
+        "BLOB, TEXT, GEOMETRY or JSON column 'nullable' can't have a default value",
+    };
+    static const char *const empty_text_default_show_create[] = {
+        "empty_text_default",
+        "CREATE TABLE `empty_text_default` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `v` text NOT NULL,\n"
+        "  `nullable` text\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const empty_text_default_rows[] = {"1", "", NULL};
     char path[test_path_capacity];
     char too_long_sql
         [sizeof("INSERT INTO diag VALUES (1, '', 'x')") + tinytext_overlength_byte_count];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
     const char too_long_prefix[] = "INSERT INTO diag VALUES (1, '";
     const char too_long_suffix[] = "', 'x')";
@@ -1270,18 +1289,60 @@ static int test_text_diagnostics(void) {
         database,
         "CREATE TABLE bad_default (v TEXT DEFAULT 1)",
         (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
+            .code = mysql_error_blob_text_cant_have_default,
             .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
+            .message_part = "can't have a default value",
         }
     );
     failures += execute_error(
         database,
         "CREATE TABLE bad_string_default (v TEXT DEFAULT 'x')",
         (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
+            .code = mysql_error_blob_text_cant_have_default,
             .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
+            .message_part = "can't have a default value",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE empty_text_default (id INT NOT NULL, v TEXT NOT NULL DEFAULT '', "
+        "nullable TEXT DEFAULT '')",
+        &result
+    );
+    failures += expect_size(mylite_result_column_count(result), 0U, "empty text default columns");
+    failures += expect_size(mylite_result_row_count(result), 0U, "empty text default rows");
+    failures += expect_size(mylite_result_warning_count(result), 2U, "empty text default warnings");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = empty_text_default_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "empty text default warning rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE empty_text_default",
+            .values = empty_text_default_show_create,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "empty text default SHOW CREATE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO empty_text_default (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, nullable FROM empty_text_default",
+            .values = empty_text_default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "empty text default materialization",
         }
     );
     failures += execute_error(

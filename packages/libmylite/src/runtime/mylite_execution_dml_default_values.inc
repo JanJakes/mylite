@@ -135,6 +135,9 @@ static int materialize_character_expression_default_value(
     if (column == NULL) {
         return MYLITE_MISUSE;
     }
+    if (column_descriptor_is_text_family(column)) {
+        return copy_text_value(database, column->default_text, out_value);
+    }
     text = malloc(text_length + 1U);
     if (text == NULL) {
         set_nomem_error(database);

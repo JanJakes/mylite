@@ -911,15 +911,9 @@ static int test_change_column_text_family_replacement(void) {
         execute_ok(database, "CREATE TABLE full_key_change (v VARCHAR(20), KEY k_v (v))", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "ALTER TABLE full_key_change CHANGE v v TEXT",
-        (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part = "BLOB/TEXT column 'v' used in key specification without a key length",
-        }
-    );
+    failures += execute_ok(database, "ALTER TABLE full_key_change CHANGE v v TEXT", &result);
+    mylite_result_free(result);
+    result = NULL;
 
     mylite_close(database);
     database = NULL;

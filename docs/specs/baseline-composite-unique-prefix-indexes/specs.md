@@ -269,7 +269,9 @@ This phase reuses existing diagnostics for:
 - invalid prefix length zero: `1391 / HY000`;
 - invalid prefix type or overlong bounded prefix: `1089 / HY000`;
 - key length above the current InnoDB envelope: `1071 / 42000`;
-- `TEXT` full-column key parts without prefix: `1170 / 42000`;
+- BLOB-family full-column key parts without prefix: `1170 / 42000`; full
+  `TEXT` family unique key parts are accepted only by the documented WordPress
+  bridge;
 - duplicate populated prefix tuples: `1062 / 23000`;
 - unsupported non-ASCII string key values: existing MyLite-specific
   unsupported diagnostic;

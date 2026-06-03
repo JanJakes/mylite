@@ -8,9 +8,10 @@ string storage, DML `DEFAULT` keyword, `ALTER TABLE ... ALTER COLUMN
 SET/DROP DEFAULT`, `CREATE TABLE ... LIKE`, and introspection paths.
 
 This is not a full default-expression or collation feature. It admits ordinary
-literal defaults for `CHAR` and `VARCHAR` only. `TEXT` family literal defaults
-remain rejected in this slice, and expression defaults remain deferred for all
-types.
+literal defaults for `CHAR` and `VARCHAR`. Nonempty `TEXT` family literal
+defaults remain rejected in this slice; the separate WordPress indexes-bucket
+bridge accepts only empty ordinary `TEXT` family defaults and records a MySQL
+`1101` warning.
 
 ## Sources
 
@@ -95,8 +96,9 @@ slice:
 - `CREATE TABLE ... SELECT` preserves selected source column defaults in the
   current descriptor-inference shape.
 - `TEXT DEFAULT 'abc'` is rejected by MySQL as a literal default; expression
-  defaults such as `TEXT DEFAULT ('abc')` are accepted upstream but remain out
-  of scope because MyLite does not yet support expression defaults.
+  defaults such as `TEXT DEFAULT ('abc')` are accepted upstream. MyLite's
+  WordPress bridge additionally accepts only `TEXT DEFAULT ''`, warns, and
+  suppresses the visible metadata default.
 
 ## Scope
 
@@ -132,7 +134,8 @@ The implementation must add:
 
 This feature must not implement:
 
-- literal defaults for `TEXT`, `TINYTEXT`, `MEDIUMTEXT`, or `LONGTEXT`;
+- nonempty literal defaults for `TEXT`, `TINYTEXT`, `MEDIUMTEXT`, or
+  `LONGTEXT`;
 - expression defaults such as `DEFAULT ('abc')`, function defaults, column
   references, `DEFAULT(col_name)`, parameters, user variables, or subqueries;
 - warning-producing truncation of overlength `CHAR` or `VARCHAR` defaults;
@@ -164,9 +167,10 @@ This feature must not implement:
   the existing text default descriptor field and may widen the in-memory
   capacity so `CHAR(255)` and `VARCHAR(255)` defaults fit; the on-disk catalog
   column is already SQLite `TEXT`, so no catalog schema migration is required.
-  Catalog validation accepts empty text defaults only for `CHAR` and `VARCHAR`
-  logical descriptors; decimal and temporal text-backed defaults must stay
-  nonempty, and `TEXT` family descriptors do not admit defaults in this slice.
+  Catalog validation accepts ordinary string defaults for `CHAR` and `VARCHAR`
+  logical descriptors and only the documented empty-literal bridge for `TEXT`
+  family descriptors; decimal and temporal text-backed defaults must stay
+  nonempty.
 - Result and introspection builders render defaults from MyLite descriptors.
   SQLite schema text and `sqlite_schema` are not metadata authority.
 - SQLite owns physical row storage and DDL execution for generated statements.
@@ -243,8 +247,9 @@ For `VARCHAR(n)`:
 `DEFAULT NULL` is accepted only for nullable columns. `DEFAULT NULL` on a
 `NOT NULL` column fails with `1067 / 42000`.
 
-`TEXT` family literal defaults stay rejected with the existing deterministic
-invalid-default diagnostic until expression defaults are specified.
+Nonempty `TEXT` family literal defaults stay rejected with the existing
+deterministic invalid-default diagnostic. Empty ordinary text defaults are
+accepted only by the documented WordPress bridge.
 
 ## Physical SQLite Handling
 
@@ -309,8 +314,8 @@ The supported diagnostics for this slice are:
 - nonempty `CHAR(0)` or `VARCHAR(0)` default: `1067 / 42000`;
 - embedded `NUL` or invalid UTF-8 default text: deterministic MyLite
   diagnostics matching current string row-value policy;
-- `TEXT` family literal default: existing deterministic invalid-default
-  diagnostic;
+- nonempty `TEXT` family literal default: existing deterministic
+  invalid-default diagnostic;
 - physical SQLite failures and allocation failures: existing internal
   diagnostics, with cleanup leaving catalog and physical storage unchanged.
 
@@ -342,7 +347,7 @@ Add MySQL-runtime-verified expectation coverage for:
   preamble preservation;
 - invalid defaults: `DEFAULT NULL` on `NOT NULL`, non-string values,
   nonspace-overlength strings, nonempty zero-length columns, embedded `NUL`,
-  invalid UTF-8 where constructible, `TEXT DEFAULT 'x'`, expression defaults,
-  functions, parameters, and `DEFAULT(col_name)`;
+  invalid UTF-8 where constructible, nonempty `TEXT DEFAULT 'x'`, expression
+  defaults, functions, parameters, and `DEFAULT(col_name)`;
 - existing `CHAR`, `VARCHAR`, `TEXT`, parser, DML default, `SHOW`, catalog,
   file-backed, and compatibility lifecycle tests still pass.

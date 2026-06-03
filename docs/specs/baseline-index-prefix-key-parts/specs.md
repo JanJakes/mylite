@@ -59,6 +59,9 @@ Runtime probes for this phase establish:
   as `191`.
 - `KEY body_prefix (body(20))` succeeds for `TEXT`, and `TEXT` without a
   prefix fails with `1170 / 42000`.
+- MyLite's later WordPress indexes-bucket bridge intentionally accepts
+  full-column `TEXT` family key parts without a prefix as descriptor-owned
+  full-value indexes, even though MySQL rejects that shape.
 - Composite nonunique string prefix indexes such as `KEY k_ab (a(3), b(4))`
   succeed and report one metadata row per ordered part with `Seq_in_index`
   values starting at `1`.
@@ -107,7 +110,8 @@ Supported:
   nonunique index lifecycle;
 - optional positive decimal integer prefix lengths for `CHAR`, `VARCHAR`, and
   baseline `TEXT` family columns;
-- `TEXT` family nonunique indexes only when a valid prefix length is present;
+- `TEXT` family nonunique indexes when a valid prefix length is present, plus
+  full-column `TEXT` family key parts accepted by the WordPress bridge;
 - descriptor-backed `SHOW COLUMNS`, `SHOW CREATE TABLE`, `SHOW INDEX`,
   limited `INFORMATION_SCHEMA.STATISTICS`, `CREATE TABLE ... LIKE`,
   index drops, DML, reopen persistence, independent handles, and `.mylite`
@@ -218,8 +222,10 @@ Each key part resolves against MyLite column descriptors:
 - duplicate key parts fail with `1060 / 42S21`;
 - full-column key parts keep the existing accepted type set for nonunique
   indexes;
-- `TEXT` family key parts require a prefix and otherwise fail with
-  `1170 / 42000`;
+- full-column `TEXT` family key parts are accepted only by the documented
+  WordPress bridge and store no prefix metadata; BLOB-family full-column key
+  parts still require explicit prefix support or fail through the existing
+  MySQL-shaped diagnostics;
 - prefix lengths are allowed only for `CHAR`, `VARCHAR`, and baseline `TEXT`
   family descriptors;
 - prefix length `0` fails with `1391 / HY000`;
@@ -327,7 +333,7 @@ Supported diagnostics include:
 - duplicate key part column name: `1060 / 42S21`;
 - incorrect index name `PRIMARY`: `1280 / 42000`;
 - unknown key column: `1072 / 42000`;
-- `TEXT` family key without prefix: `1170 / 42000`;
+- BLOB-family key without prefix: `1170 / 42000`;
 - zero prefix length: `1391 / HY000`;
 - prefix on non-string or oversized bounded string column: `1089 / HY000`;
 - key length over the current type-family byte cap or the combined 3072-byte
@@ -362,8 +368,9 @@ Add a MySQL-runtime expectation script covering:
 - missing default schema, unknown schema/table, duplicate index names, quoted
   `PRIMARY`, and unknown key columns;
 - invalid integer prefix, zero prefix, oversized `VARCHAR` prefix, oversized
-  `TINYTEXT` prefix, `TEXT` without prefix, unique prefix duplicate behavior
-  as deferred evidence, and primary prefix behavior as deferred evidence.
+  `TINYTEXT` prefix, BLOB-family without prefix, the documented full
+  text-family bridge, unique prefix duplicate behavior as deferred evidence,
+  and primary prefix behavior as deferred evidence.
 
 Add fast C tests under `packages/libmylite/tests/` for:
 

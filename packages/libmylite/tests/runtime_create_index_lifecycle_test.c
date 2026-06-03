@@ -586,15 +586,7 @@ static int test_create_index_diagnostics(void) {
             .message_part = "Key column 'missing' doesn't exist in table",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE INDEX k_txt ON diag (txt)",
-        (struct expected_sql_error){
-            .code = mysql_error_blob_key_without_length,
-            .sqlstate = "42000",
-            .message_part = "BLOB/TEXT column 'txt' used in key specification without a key length",
-        }
-    );
+    failures += expect_create_index_ok(database, "CREATE INDEX k_txt ON diag (txt)");
     failures += expect_create_index_ok(database, "CREATE INDEX k_multi ON diag (id, v)");
     failures +=
         expect_statement_ok(database, "CREATE TABLE prefix_diag (a VARCHAR(10), b VARCHAR(10))");

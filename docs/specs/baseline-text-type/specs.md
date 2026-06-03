@@ -83,9 +83,11 @@ runtime probes for this feature. Observed behavior that shapes this slice:
   columns succeeds with a warning and truncates to fit. MyLite defers this
   warning-producing truncation in this slice and admits only values already
   within the declared byte limit.
-- `TEXT` family columns cannot have literal defaults. MySQL accepts expression
-  defaults such as `DEFAULT ('abc')`, but MyLite defers expression defaults and
-  string default catalog storage.
+- `TEXT` family columns cannot have nonempty literal defaults. MySQL accepts
+  expression defaults such as `DEFAULT ('abc')`. MyLite also accepts the
+  WordPress setup bridge `DEFAULT ''` for `TEXT` family columns, records the
+  MySQL `1101` warning shape, stores no visible nullable default, and stores
+  the implicit empty string for `NOT NULL` default materialization.
 - `INSERT IGNORE` converts `NULL` into `TEXT NOT NULL` and no-default failures
   into warnings and stores the implicit empty string.
 - Single-table `UPDATE` reports changed-row affected counts for `TEXT` family
@@ -120,6 +122,9 @@ The implementation must add:
 - `NULL` assignment and effective nullable `DEFAULT NULL` materialization for
   `TEXT` family columns, while `SHOW CREATE TABLE` omits a visible `DEFAULT`
   clause for these columns;
+- ordinary empty string literal defaults on `TEXT` family columns as a narrow
+  WordPress setup bridge; nonempty ordinary string literal defaults remain
+  rejected;
 - limited `INSERT IGNORE ... VALUES` and `INSERT IGNORE ... SET` adjustment for
   `NULL` into `TEXT NOT NULL` and omitted or explicit `DEFAULT` for no-
   explicit-default `TEXT NOT NULL`, storing the MySQL implicit empty string and
@@ -149,8 +154,9 @@ This feature must not implement:
 - `TEXT` family primary keys, secondary indexes, prefix indexes, `FULLTEXT`
   indexes, or index prefix length handling;
 - column-level `CHARACTER SET`, `COLLATE`, or `BINARY` attributes;
-- literal defaults, expression defaults, `DEFAULT(col_name)`, or string default
-  catalog storage;
+- nonempty literal defaults, `DEFAULT(col_name)`, or broad string default
+  catalog storage outside the documented empty-literal and generated-default
+  bridges;
 - string-to-integer or integer-to-string DML conversion;
 - string comparison predicates, `LIKE` over table data, `REGEXP`, collations,
   coercibility, `ORDER BY` over string columns, grouped string keys, string

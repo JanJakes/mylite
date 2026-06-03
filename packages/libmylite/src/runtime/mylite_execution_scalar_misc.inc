@@ -1423,6 +1423,18 @@ static int evaluate_greatest_least_scalar_argument(
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+             mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_FLOAT)) {
+            return evaluate_greatest_least_scalar_decimal_argument(
+                database,
+                expression,
+                out_argument
+            );
+        }
         return evaluate_greatest_least_scalar_integer_argument(database, expression, out_argument);
     }
     if (expression->kind != MYLITE_SQL_AST_LITERAL) {
@@ -1439,13 +1451,18 @@ static int evaluate_greatest_least_scalar_argument(
         return evaluate_greatest_least_scalar_string_argument(database, expression, out_argument);
     case MYLITE_SQL_AST_LITERAL_INTEGER:
         return evaluate_greatest_least_scalar_integer_argument(database, expression, out_argument);
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        return evaluate_greatest_least_scalar_decimal_argument(database, expression, out_argument);
     case MYLITE_SQL_AST_LITERAL_TRUE:
         out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
         out_argument->integer = 1;
+        out_argument->numeric_real = 1.0;
         return MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_FALSE:
         out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
         out_argument->integer = 0;
+        out_argument->numeric_real = 0.0;
         return MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_NULL:
         out_argument->is_null = true;
@@ -1546,6 +1563,83 @@ static int evaluate_greatest_least_scalar_integer_argument(
     } else {
         out_argument->integer = (int64_t)magnitude;
     }
+    out_argument->numeric_real = (double)out_argument->integer;
+    return MYLITE_OK;
+}
+
+static int evaluate_greatest_least_scalar_decimal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    const struct mylite_sql_source_span *span = NULL;
+    char *text = NULL;
+    char *parse_end = NULL;
+    size_t prefix_size = 0U;
+
+    if (out_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "GREATEST() and LEAST() support only signed decimal literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        prefix_size = 1U;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_FLOAT)) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    span = &literal->span;
+    if (span->text == NULL || span->length == 0U ||
+        span->length > SIZE_MAX - prefix_size - 1U) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    text = (char *)malloc(prefix_size + span->length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (prefix_size != 0U) {
+        text[0] = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? '-' : '+';
+    }
+    memcpy(&text[prefix_size], span->text, span->length);
+    text[prefix_size + span->length] = '\0';
+
+    errno = 0;
+    out_argument->numeric_real = strtod(text, &parse_end);
+    if (errno != 0 || parse_end == text || parse_end == NULL || *parse_end != '\0') {
+        free(text);
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    out_argument->has_numeric_real = true;
+    out_argument->text = text;
+    out_argument->text_length = prefix_size + span->length;
     return MYLITE_OK;
 }
 
@@ -1612,6 +1706,18 @@ static int compare_greatest_least_scalar_arguments(
             right->text_length
         );
     }
+    if (left->has_numeric_real || right->has_numeric_real) {
+        double left_value = left->has_numeric_real ? left->numeric_real : (double)left->integer;
+        double right_value = right->has_numeric_real ? right->numeric_real : (double)right->integer;
+
+        if (left_value < right_value) {
+            return -1;
+        }
+        if (left_value > right_value) {
+            return 1;
+        }
+        return 0;
+    }
     if (left->integer < right->integer) {
         return -1;
     }
@@ -1661,6 +1767,20 @@ static int format_greatest_least_scalar_result(
         return MYLITE_MISUSE;
     }
     if (value->domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING) {
+        out_cell->owned_text = (char *)malloc(value->text_length + 1U);
+        if (out_cell->owned_text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(out_cell->owned_text, value->text, value->text_length);
+        out_cell->owned_text[value->text_length] = '\0';
+        out_cell->value = out_cell->owned_text;
+        out_cell->value_size = value->text_length;
+        out_cell->has_value_size = true;
+        return MYLITE_OK;
+    }
+
+    if (value->has_numeric_real && value->text != NULL) {
         out_cell->owned_text = (char *)malloc(value->text_length + 1U);
         if (out_cell->owned_text == NULL) {
             set_nomem_error(database);

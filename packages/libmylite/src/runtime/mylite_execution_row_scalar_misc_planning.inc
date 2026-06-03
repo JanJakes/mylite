@@ -340,7 +340,16 @@ static int plan_row_scalar_greatest_least_argument(
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         rc = plan_row_scalar_greatest_least_literal_value(database, expression, out_expression);
     } else if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        rc = plan_row_scalar_greatest_least_integer_value(database, expression, out_expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+             mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_FLOAT)) {
+            rc = plan_row_scalar_greatest_least_decimal_value(database, expression, out_expression);
+        } else {
+            rc = plan_row_scalar_greatest_least_integer_value(database, expression, out_expression);
+        }
     } else if (
         expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
@@ -475,6 +484,9 @@ static int plan_row_scalar_greatest_least_literal_value(
         return rc;
     case MYLITE_SQL_AST_LITERAL_INTEGER:
         return plan_row_scalar_greatest_least_integer_value(database, literal, out_expression);
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        return plan_row_scalar_greatest_least_decimal_value(database, literal, out_expression);
     case MYLITE_SQL_AST_LITERAL_TRUE:
         out_expression->value = (struct planned_value){.is_null = false, .integer = 1};
         return MYLITE_OK;
@@ -548,6 +560,85 @@ static int plan_row_scalar_greatest_least_integer_value(
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     out_expression->value = (struct planned_value){.is_null = false, .integer = value};
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_greatest_least_decimal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    const struct mylite_sql_source_span *span = NULL;
+    char *text = NULL;
+    char *parse_end = NULL;
+    double value = 0.0;
+    size_t prefix_size = 0U;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "GREATEST() and LEAST() support only signed decimal literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        prefix_size = 1U;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_FLOAT)) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only signed decimal literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    span = &literal->span;
+    if (span->text == NULL || span->length == 0U ||
+        span->length > SIZE_MAX - prefix_size - 1U) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only signed decimal literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    text = (char *)malloc(prefix_size + span->length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (prefix_size != 0U) {
+        text[0] = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? '-' : '+';
+    }
+    memcpy(&text[prefix_size], span->text, span->length);
+    text[prefix_size + span->length] = '\0';
+
+    errno = 0;
+    value = strtod(text, &parse_end);
+    if (errno != 0 || parse_end == text || parse_end == NULL || *parse_end != '\0') {
+        free(text);
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only signed decimal literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){
+        .is_null = false,
+        .is_real = true,
+        .real = value == 0.0 ? 0.0 : value,
+        .text = text,
+        .text_length = prefix_size + span->length,
+    };
     return MYLITE_OK;
 }
 

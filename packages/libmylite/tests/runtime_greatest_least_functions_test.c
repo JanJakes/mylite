@@ -76,6 +76,8 @@ static int test_no_source_dual_and_do_greatest_least(void) {
     static const char *const columns_no_source[] = {
         "GREATEST(2, 0)",
         "LEAST(2, 0)",
+        "GREATEST(2, 1.5)",
+        "LEAST(2, 1.5, 1.0)",
         "GREATEST(-2, +3, 1)",
         "LEAST(TRUE, FALSE, 2)",
         "GREATEST(NULL, 1)",
@@ -91,6 +93,8 @@ static int test_no_source_dual_and_do_greatest_least(void) {
     static const char *const values_no_source[] = {
         "2",
         "0",
+        "2",
+        "1",
         "3",
         "0",
         NULL,
@@ -117,7 +121,9 @@ static int test_no_source_dual_and_do_greatest_least(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT GREATEST(2, 0), LEAST(2, 0), GREATEST(-2, +3, 1), "
+            .sql = "SELECT GREATEST(2, 0), LEAST(2, 0), "
+                   "GREATEST(2, 1.5), LEAST(2, 1.5, 1.0), "
+                   "GREATEST(-2, +3, 1), "
                    "LEAST(TRUE, FALSE, 2), GREATEST(NULL, 1), LEAST(1, NULL), "
                    "GREATEST('a', 'A'), LEAST('a', 'A'), GREATEST('', 'a'), "
                    "LEAST('a', ''), "
@@ -305,6 +311,8 @@ static int test_table_backed_greatest_least(void) {
 }
 
 static int test_greatest_least_diagnostics(void) {
+    static const char *const columns_decimal[] = {"GREATEST(1.5, 1.25)"};
+    static const char *const values_decimal[] = {"1.5"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -388,14 +396,15 @@ static int test_greatest_least_diagnostics(void) {
             .message_part = "GREATEST() and LEAST() string literals support only ASCII values",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT GREATEST(1.5, 1.25)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments",
+        (struct expected_query){
+            .sql = "SELECT GREATEST(1.5, 1.25)",
+            .columns = columns_decimal,
+            .column_count = sizeof(columns_decimal) / sizeof(columns_decimal[0]),
+            .values = values_decimal,
+            .row_count = 1U,
+            .context = "decimal greatest least",
         }
     );
     failures += execute_error(

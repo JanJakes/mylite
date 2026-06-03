@@ -3219,6 +3219,8 @@ struct field_scalar_argument {
     enum planned_row_scalar_field_domain domain;
     bool is_null;
     int64_t integer;
+    bool has_numeric_real;
+    double numeric_real;
     char *text;
     size_t text_length;
 };
@@ -20187,6 +20189,11 @@ static int plan_row_scalar_greatest_least_literal_value(
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_greatest_least_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_greatest_least_decimal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression

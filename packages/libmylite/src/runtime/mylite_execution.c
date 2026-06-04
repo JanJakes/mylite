@@ -64,6 +64,7 @@
 #include "mylite_weight_string.h"
 #include "sqlite3.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
@@ -10997,8 +10998,13 @@ static int append_select_column_from_source(
 );
 static void planned_select_order_deinit(struct planned_select_order *order);
 static void planned_select_source_deinit(struct planned_select_source *source);
+static void planned_select_source_deinit_shallow(struct planned_select_source *source);
 static void planned_select_join_condition_deinit(struct planned_select_join_condition *condition);
 static void planned_select_deinit(struct planned_select *plan);
+static void planned_select_deinit_shallow(struct planned_select *plan);
+static struct planned_select_source *planned_select_find_deepest_derived_source(
+    struct planned_select *plan
+);
 static int execute_select_from_plan(
     struct mylite_db *database,
     const struct planned_select *plan,

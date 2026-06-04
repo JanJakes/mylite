@@ -1478,8 +1478,26 @@ static void planned_select_deinit(struct planned_select *plan) {
         return;
     }
 
+    struct planned_select_source *derived_source = planned_select_find_deepest_derived_source(plan);
+
+    while (derived_source != NULL) {
+        planned_select_deinit_shallow(derived_source->derived_select);
+        free(derived_source->derived_select);
+        derived_source->derived_select = NULL;
+        derived_source->is_derived = false;
+        derived_source = planned_select_find_deepest_derived_source(plan);
+    }
+
+    planned_select_deinit_shallow(plan);
+}
+
+static void planned_select_deinit_shallow(struct planned_select *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
-        planned_select_source_deinit(&plan->sources[source_index]);
+        planned_select_source_deinit_shallow(&plan->sources[source_index]);
     }
     free(plan->sources);
     free(plan->columns);
@@ -1499,15 +1517,49 @@ static void planned_select_deinit(struct planned_select *plan) {
     *plan = (struct planned_select){0};
 }
 
+static struct planned_select_source *planned_select_find_deepest_derived_source(
+    struct planned_select *plan
+) {
+    struct planned_select_source *deepest_source = NULL;
+    struct planned_select *current_plan = plan;
+    bool descended = true;
+
+    while (current_plan != NULL && descended) {
+        descended = false;
+        for (size_t source_index = 0U; source_index < current_plan->source_count;
+             ++source_index) {
+            struct planned_select_source *source = &current_plan->sources[source_index];
+
+            if (source->derived_select != NULL) {
+                deepest_source = source;
+                current_plan = source->derived_select;
+                descended = true;
+                break;
+            }
+        }
+    }
+
+    return deepest_source;
+}
+
 static void planned_select_source_deinit(struct planned_select_source *source) {
     if (source == NULL) {
         return;
     }
-    free(source->columns);
     if (source->derived_select != NULL) {
         planned_select_deinit(source->derived_select);
         free(source->derived_select);
+        source->derived_select = NULL;
     }
+    planned_select_source_deinit_shallow(source);
+}
+
+static void planned_select_source_deinit_shallow(struct planned_select_source *source) {
+    if (source == NULL) {
+        return;
+    }
+    assert(source->derived_select == NULL);
+    free(source->columns);
     *source = (struct planned_select_source){0};
 }
 

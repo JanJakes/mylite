@@ -189,7 +189,7 @@ static void planned_exists_subquery_deinit(struct planned_exists_subquery *subqu
         return;
     }
 
-    planned_select_source_deinit(&subquery->source);
+    planned_select_source_deinit_shallow(&subquery->source);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_exists_subquery){.has_table_source = false};
 }
@@ -199,7 +199,7 @@ static void planned_in_subquery_deinit(struct planned_in_subquery *subquery) {
         return;
     }
 
-    planned_select_source_deinit(&subquery->source);
+    planned_select_source_deinit_shallow(&subquery->source);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_in_subquery){0};
 }

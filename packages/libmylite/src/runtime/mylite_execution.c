@@ -2172,6 +2172,31 @@ struct select_parameter_bind_stack {
     size_t capacity;
 };
 
+enum row_scalar_integer_width_frame_kind {
+    ROW_SCALAR_INTEGER_WIDTH_ENTER = 0,
+    ROW_SCALAR_INTEGER_WIDTH_FINISH_UNARY = 1,
+    ROW_SCALAR_INTEGER_WIDTH_FINISH_BINARY = 2,
+};
+
+struct row_scalar_integer_width_frame {
+    enum row_scalar_integer_width_frame_kind kind;
+    const struct mylite_sql_ast_node *expression;
+};
+
+struct row_scalar_integer_width_result {
+    bool matched;
+    uint64_t width;
+};
+
+struct row_scalar_integer_width_stack {
+    struct row_scalar_integer_width_frame *frames;
+    size_t frame_count;
+    size_t frame_capacity;
+    struct row_scalar_integer_width_result *results;
+    size_t result_count;
+    size_t result_capacity;
+};
+
 struct planned_select_order_item {
     enum planned_select_order_item_kind kind;
     enum planned_select_order_direction direction;
@@ -11364,6 +11389,31 @@ static int row_scalar_integer_expression_token_width(
     const struct mylite_sql_ast_node *expression,
     bool *out_matched,
     uint64_t *out_width
+);
+static int row_scalar_integer_width_enter_frame(
+    struct row_scalar_integer_width_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int row_scalar_integer_width_finish_unary_frame(
+    struct row_scalar_integer_width_stack *stack
+);
+static int row_scalar_integer_width_finish_binary_frame(
+    struct row_scalar_integer_width_stack *stack
+);
+static int row_scalar_integer_width_push_frame(
+    struct row_scalar_integer_width_stack *stack,
+    struct row_scalar_integer_width_frame frame
+);
+static int row_scalar_integer_width_push_result(
+    struct row_scalar_integer_width_stack *stack,
+    struct row_scalar_integer_width_result result
+);
+static int row_scalar_integer_width_pop_result(
+    struct row_scalar_integer_width_stack *stack,
+    struct row_scalar_integer_width_result *out_result
+);
+static void row_scalar_integer_width_stack_deinit(
+    struct row_scalar_integer_width_stack *stack
 );
 static bool row_scalar_expression_is_date_target_conversion(
     const struct mylite_sql_ast_node *expression

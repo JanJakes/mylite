@@ -1211,16 +1211,63 @@ static int row_scalar_integer_expression_token_width(
     bool *out_matched,
     uint64_t *out_width
 ) {
-    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    struct row_scalar_integer_width_stack stack = {0};
+    struct row_scalar_integer_width_result result = {0};
+    int rc = MYLITE_OK;
 
     if (out_matched == NULL || out_width == NULL) {
         return MYLITE_MISUSE;
     }
     *out_matched = false;
     *out_width = 0U;
+    rc = row_scalar_integer_width_push_frame(
+        &stack,
+        (struct row_scalar_integer_width_frame){
+            .kind = ROW_SCALAR_INTEGER_WIDTH_ENTER,
+            .expression = expression,
+        }
+    );
+    while (rc == MYLITE_OK && stack.frame_count != 0U) {
+        struct row_scalar_integer_width_frame frame = stack.frames[--stack.frame_count];
+
+        switch (frame.kind) {
+        case ROW_SCALAR_INTEGER_WIDTH_ENTER:
+            rc = row_scalar_integer_width_enter_frame(&stack, frame.expression);
+            break;
+        case ROW_SCALAR_INTEGER_WIDTH_FINISH_UNARY:
+            rc = row_scalar_integer_width_finish_unary_frame(&stack);
+            break;
+        case ROW_SCALAR_INTEGER_WIDTH_FINISH_BINARY:
+            rc = row_scalar_integer_width_finish_binary_frame(&stack);
+            break;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = row_scalar_integer_width_pop_result(&stack, &result);
+    }
+    if (rc == MYLITE_OK && stack.result_count != 0U) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_matched = result.matched;
+        *out_width = result.width;
+    }
+    row_scalar_integer_width_stack_deinit(&stack);
+    return rc;
+}
+
+static int row_scalar_integer_width_enter_frame(
+    struct row_scalar_integer_width_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
-        return MYLITE_OK;
+        return row_scalar_integer_width_push_result(
+            stack,
+            (struct row_scalar_integer_width_result){0}
+        );
     }
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         enum mylite_sql_ast_literal_kind literal_kind =
@@ -1228,77 +1275,233 @@ static int row_scalar_integer_expression_token_width(
 
         if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
             literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
-            *out_width = 1U;
-            *out_matched = true;
-            return MYLITE_OK;
+            return row_scalar_integer_width_push_result(
+                stack,
+                (struct row_scalar_integer_width_result){.matched = true, .width = 1U}
+            );
         }
         if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
-            return MYLITE_OK;
+            return row_scalar_integer_width_push_result(
+                stack,
+                (struct row_scalar_integer_width_result){0}
+            );
         }
-        *out_width = (uint64_t)expression->span.length;
-        *out_matched = true;
-        return MYLITE_OK;
+        return row_scalar_integer_width_push_result(
+            stack,
+            (struct row_scalar_integer_width_result){
+                .matched = true,
+                .width = (uint64_t)expression->span.length,
+            }
+        );
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        bool operand_matched = false;
-        uint64_t operand_width = 0U;
-        int rc = row_scalar_integer_expression_token_width(
-            child_at(expression, 0U),
-            &operand_matched,
-            &operand_width
-        );
-
-        if (rc != MYLITE_OK || !operand_matched) {
-            return rc;
-        }
         operator_kind = mylite_sql_ast_node_operator(expression);
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
             operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-            return MYLITE_OK;
+            return row_scalar_integer_width_push_result(
+                stack,
+                (struct row_scalar_integer_width_result){0}
+            );
         }
-        *out_width = operand_width + 1U;
-        *out_matched = true;
-        return MYLITE_OK;
+        int rc = row_scalar_integer_width_push_frame(
+            stack,
+            (struct row_scalar_integer_width_frame){
+                .kind = ROW_SCALAR_INTEGER_WIDTH_FINISH_UNARY,
+            }
+        );
+
+        if (rc == MYLITE_OK) {
+            rc = row_scalar_integer_width_push_frame(
+                stack,
+                (struct row_scalar_integer_width_frame){
+                    .kind = ROW_SCALAR_INTEGER_WIDTH_ENTER,
+                    .expression = child_at(expression, 0U),
+                }
+            );
+        }
+        return rc;
     }
     if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        bool left_matched = false;
-        bool right_matched = false;
-        uint64_t left_width = 0U;
-        uint64_t right_width = 0U;
-        int rc = MYLITE_OK;
-
         operator_kind = mylite_sql_ast_node_operator(expression);
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
             operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT &&
             operator_kind != MYLITE_SQL_AST_OPERATOR_MULTIPLY) {
-            return MYLITE_OK;
-        }
-        rc = row_scalar_integer_expression_token_width(
-            child_at(expression, 0U),
-            &left_matched,
-            &left_width
-        );
-        if (rc == MYLITE_OK) {
-            rc = row_scalar_integer_expression_token_width(
-                child_at(expression, 1U),
-                &right_matched,
-                &right_width
+            return row_scalar_integer_width_push_result(
+                stack,
+                (struct row_scalar_integer_width_result){0}
             );
         }
-        if (rc != MYLITE_OK || !left_matched || !right_matched) {
-            return rc;
+        int rc = row_scalar_integer_width_push_frame(
+            stack,
+            (struct row_scalar_integer_width_frame){
+                .kind = ROW_SCALAR_INTEGER_WIDTH_FINISH_BINARY,
+            }
+        );
+        if (rc == MYLITE_OK) {
+            rc = row_scalar_integer_width_push_frame(
+                stack,
+                (struct row_scalar_integer_width_frame){
+                    .kind = ROW_SCALAR_INTEGER_WIDTH_ENTER,
+                    .expression = child_at(expression, 1U),
+                }
+            );
         }
-        if (left_width > UINT64_MAX - right_width) {
-            return MYLITE_NOMEM;
+        if (rc == MYLITE_OK) {
+            rc = row_scalar_integer_width_push_frame(
+                stack,
+                (struct row_scalar_integer_width_frame){
+                    .kind = ROW_SCALAR_INTEGER_WIDTH_ENTER,
+                    .expression = child_at(expression, 0U),
+                }
+            );
         }
-        left_width += right_width;
-        if (left_width == UINT64_MAX) {
-            return MYLITE_NOMEM;
-        }
-        *out_width = left_width + 1U;
-        *out_matched = true;
+        return rc;
     }
+    return row_scalar_integer_width_push_result(
+        stack,
+        (struct row_scalar_integer_width_result){0}
+    );
+}
+
+static int row_scalar_integer_width_finish_unary_frame(
+    struct row_scalar_integer_width_stack *stack
+) {
+    struct row_scalar_integer_width_result operand = {0};
+    int rc = row_scalar_integer_width_pop_result(stack, &operand);
+
+    if (rc != MYLITE_OK || !operand.matched) {
+        return rc == MYLITE_OK
+                   ? row_scalar_integer_width_push_result(
+                         stack,
+                         (struct row_scalar_integer_width_result){0}
+                     )
+                   : rc;
+    }
+    if (operand.width == UINT64_MAX) {
+        return MYLITE_NOMEM;
+    }
+    return row_scalar_integer_width_push_result(
+        stack,
+        (struct row_scalar_integer_width_result){
+            .matched = true,
+            .width = operand.width + 1U,
+        }
+    );
+}
+
+static int row_scalar_integer_width_finish_binary_frame(
+    struct row_scalar_integer_width_stack *stack
+) {
+    struct row_scalar_integer_width_result left = {0};
+    struct row_scalar_integer_width_result right = {0};
+    int rc = row_scalar_integer_width_pop_result(stack, &right);
+
+    if (rc == MYLITE_OK) {
+        rc = row_scalar_integer_width_pop_result(stack, &left);
+    }
+    if (rc != MYLITE_OK || !left.matched || !right.matched) {
+        return rc == MYLITE_OK
+                   ? row_scalar_integer_width_push_result(
+                         stack,
+                         (struct row_scalar_integer_width_result){0}
+                     )
+                   : rc;
+    }
+    if (left.width > UINT64_MAX - right.width) {
+        return MYLITE_NOMEM;
+    }
+    left.width += right.width;
+    if (left.width == UINT64_MAX) {
+        return MYLITE_NOMEM;
+    }
+    return row_scalar_integer_width_push_result(
+        stack,
+        (struct row_scalar_integer_width_result){
+            .matched = true,
+            .width = left.width + 1U,
+        }
+    );
+}
+
+static int row_scalar_integer_width_push_frame(
+    struct row_scalar_integer_width_stack *stack,
+    struct row_scalar_integer_width_frame frame
+) {
+    struct row_scalar_integer_width_frame *frames = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (stack->frame_count == stack->frame_capacity) {
+        capacity =
+            stack->frame_capacity == 0U ? if_stack_initial_capacity : stack->frame_capacity * 2U;
+        if (capacity < stack->frame_capacity || capacity > SIZE_MAX / sizeof(*frames)) {
+            return MYLITE_NOMEM;
+        }
+        frames = realloc(stack->frames, capacity * sizeof(*frames));
+        if (frames == NULL) {
+            return MYLITE_NOMEM;
+        }
+        stack->frames = frames;
+        stack->frame_capacity = capacity;
+    }
+    stack->frames[stack->frame_count] = frame;
+    ++stack->frame_count;
     return MYLITE_OK;
+}
+
+static int row_scalar_integer_width_push_result(
+    struct row_scalar_integer_width_stack *stack,
+    struct row_scalar_integer_width_result result
+) {
+    struct row_scalar_integer_width_result *results = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (stack->result_count == stack->result_capacity) {
+        capacity =
+            stack->result_capacity == 0U ? if_stack_initial_capacity : stack->result_capacity * 2U;
+        if (capacity < stack->result_capacity || capacity > SIZE_MAX / sizeof(*results)) {
+            return MYLITE_NOMEM;
+        }
+        results = realloc(stack->results, capacity * sizeof(*results));
+        if (results == NULL) {
+            return MYLITE_NOMEM;
+        }
+        stack->results = results;
+        stack->result_capacity = capacity;
+    }
+    stack->results[stack->result_count] = result;
+    ++stack->result_count;
+    return MYLITE_OK;
+}
+
+static int row_scalar_integer_width_pop_result(
+    struct row_scalar_integer_width_stack *stack,
+    struct row_scalar_integer_width_result *out_result
+) {
+    if (stack == NULL || out_result == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (stack->result_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    *out_result = stack->results[--stack->result_count];
+    return MYLITE_OK;
+}
+
+static void row_scalar_integer_width_stack_deinit(
+    struct row_scalar_integer_width_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->frames);
+    free(stack->results);
+    *stack = (struct row_scalar_integer_width_stack){0};
 }
 
 static bool row_scalar_expression_is_date_target_conversion(

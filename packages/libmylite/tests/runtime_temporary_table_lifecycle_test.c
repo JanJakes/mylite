@@ -96,28 +96,12 @@ int main(void) {
 }
 
 static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
-    static const char *const temp_rows[] = {"2", "250", "3", "300"};
+    static const char *const temp_rows[] = {"2", "250", "40", "3", "300", NULL};
     static const char *const persistent_rows[] = {"1", "10"};
     static const char *const persistent_reopened_rows[] = {"1", "10", "2", "20"};
     static const char *const temp_columns[] = {
-        "id",
-        "int",
-        "NO",
-        "PRI",
-        NULL,
-        "",
-        "v",
-        "int",
-        "YES",
-        "",
-        NULL,
-        "",
-        "note",
-        "varchar(10)",
-        "YES",
-        "MUL",
-        NULL,
-        "",
+        "id",   "int",         "NO",  "PRI", NULL, "", "v",     "int", "YES", "", NULL, "",
+        "note", "varchar(10)", "YES", "MUL", NULL, "", "added", "int", "YES", "", NULL, "",
     };
     static const char *const temp_indexes[] = {
         "shadowed", "0", "PRIMARY", "1",   "id",  "A",        "0", NULL,       NULL,  "",
@@ -171,14 +155,24 @@ static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
         "DELETE FROM shadowed WHERE id = 1",
         (struct expected_statement){1, 0U}
     );
+    failures += expect_statement(
+        database,
+        "ALTER TABLE shadowed ADD COLUMN added INT",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "UPDATE shadowed SET added = 40 WHERE id = 2",
+        (struct expected_statement){1, 0U}
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v FROM shadowed ORDER BY id",
+            .sql = "SELECT id, v, added FROM shadowed ORDER BY id",
             .values = temp_rows,
-            .column_count = 2U,
+            .column_count = 3U,
             .row_count = 2U,
-            .context = "temporary table shadows persistent table for DML",
+            .context = "temporary table shadows persistent table for DML and ALTER",
         }
     );
     failures += expect_query_values(
@@ -187,8 +181,8 @@ static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
             .sql = "SHOW COLUMNS FROM shadowed",
             .values = temp_columns,
             .column_count = show_columns_column_count,
-            .row_count = 3U,
-            .context = "SHOW COLUMNS sees temporary descriptor",
+            .row_count = 4U,
+            .context = "SHOW COLUMNS sees altered temporary descriptor",
         }
     );
     failures += expect_query_values(
@@ -216,6 +210,14 @@ static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
         1U,
         "KEY `note_idx` (`note`(3))",
         "SHOW CREATE TABLE renders temporary prefix index"
+    );
+    failures += expect_query_contains(
+        database,
+        "SHOW CREATE TABLE shadowed",
+        0U,
+        1U,
+        "`added` int",
+        "SHOW CREATE TABLE renders added temporary column"
     );
     failures += expect_query_values(
         database,

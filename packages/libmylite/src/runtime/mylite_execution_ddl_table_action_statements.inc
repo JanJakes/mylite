@@ -615,6 +615,13 @@ static int reject_warning_producing_multi_action_add_column(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 ) {
+    if (plan != NULL && plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE supports only persistent base tables"
+        );
+        return MYLITE_ERROR;
+    }
     if (plan != NULL && plan->zero_temporal_default_warnings.count > 0U) {
         set_unsupported_error(
             database,

@@ -8547,6 +8547,19 @@ static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 );
+static int add_persistent_column_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+);
+static int add_temporary_column_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+);
+static int build_temporary_added_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan,
+    struct mylite_catalog_column_descriptor *out_column
+);
 static int alter_table_add_column_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

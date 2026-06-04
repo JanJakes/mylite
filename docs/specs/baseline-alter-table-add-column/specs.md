@@ -10,10 +10,11 @@ create/drop/rename/truncate lifecycle, integer/`NULL` row storage, descriptor
 `SELECT`, and descriptor DML.
 
 The feature is intentionally not full MySQL `ALTER TABLE` support. It supports
-one append-only integer column action for persistent base tables. It does not
-implement defaults, positioning, multiple actions, rebuild algorithms, locks,
-indexes, constraints, temporary tables, views, metadata locks, or implicit
-commit behavior.
+one append-only integer column action for persistent base tables and the same
+single-action add-column shape for visible session temporary tables. It does
+not implement defaults, positioning, multiple actions, rebuild algorithms,
+locks, inline indexes/constraints on temporary targets, views, metadata locks,
+or implicit commit behavior.
 
 ## Sources
 
@@ -72,7 +73,8 @@ The implementation must add:
   `ALTER TABLE table_name ADD [COLUMN] column_definition` statement;
 - one action and one new column only;
 - append-only placement at the logical end of the table;
-- persistent MyLite base-table descriptors only;
+- visible persistent MyLite base-table descriptors and shadowing session
+  temporary table descriptors;
 - unqualified and schema-qualified target table resolution;
 - `INT`, `INTEGER`, and `BIGINT`, each optionally `UNSIGNED`;
 - optional `NULL` and `NOT NULL`; omitted nullability means nullable;
@@ -99,8 +101,10 @@ This feature must not implement:
 - non-integer column types;
 - `DROP COLUMN`, `RENAME COLUMN`, `CHANGE COLUMN`, `MODIFY COLUMN`, index/key
   actions, constraints, partition actions, or table-option changes;
-- temporary tables, views, triggers, privileges, metadata locks, foreign keys,
-  cascades, routines, events, or `INFORMATION_SCHEMA`;
+- views, triggers, privileges, metadata locks, foreign keys, cascades,
+  routines, events, or `INFORMATION_SCHEMA`;
+- inline primary-key or unique-key add-column forms on temporary tables;
+- multi-action `ALTER TABLE` on temporary tables;
 - reconstructing descriptors from SQLite schema text;
 - SQLite fork patches.
 
@@ -117,11 +121,15 @@ conversion, table rebuild, or type work.
   backend status, and the top-level statement boundary.
 - Lexer/parser/AST own syntax admission and source spans. They remain
   independent of runtime, catalog, storage, and SQLite.
-- Analyzer/planner code resolves the target table and new column descriptor,
-  rejects unsupported scope, and builds a fixed add-column plan.
+- Analyzer/planner code resolves the visible target table and new column
+  descriptor, preferring a shadowing session temporary table before the
+  persistent descriptor, rejects unsupported scope, and builds a fixed
+  add-column plan.
 - The catalog module owns `_mylite_catalog_*` tables, table descriptor version
   changes, column descriptor insertion, catalog generation advancement, and
   descriptor-cache invalidation.
+- The temporary catalog owns session-local column descriptor insertion and
+  cleanup for temporary add-column targets.
 - SQLite owns durable b-tree row storage and the physical schema change for the
   generated physical table. SQLite schema text and `PRAGMA` output remain
   physical implementation details, not MySQL-visible metadata authority.
@@ -201,11 +209,13 @@ schema. Unknown explicit schemas return MySQL error `1049`, SQLSTATE `42000`,
 and message `Unknown database '<schema>'`. Unknown tables return MySQL error
 `1146`, SQLSTATE `42S02`, and message `Table '<schema>.<table>' doesn't exist`.
 
-The target table descriptor is resolved by logical schema id and logical table
-name. The current catalog comparison policy remains case-insensitive for name
-lookup and duplicate detection. Only `MYLITE_CATALOG_TABLE_KIND_BASE` is
-supported. Later temporary tables, views, or other object kinds must be
-rejected before any physical SQLite SQL is generated.
+The target table descriptor is resolved by logical schema name and table name,
+preferring a visible session temporary table over a persistent table of the
+same schema/name. The current catalog comparison policy remains
+case-insensitive for name lookup and duplicate detection.
+`MYLITE_CATALOG_TABLE_KIND_BASE` and `MYLITE_CATALOG_TABLE_KIND_TEMPORARY` are
+supported. Views or other object kinds must be rejected before any physical
+SQLite SQL is generated.
 
 Reserved `_mylite_*` schema, table, and column names are MyLite-owned internals
 and must be rejected before generated SQLite SQL.
@@ -345,6 +355,8 @@ The test suite must cover:
   `@@warning_count`;
 - descriptor version/generation, column ordinal, physical SQLite schema
   generation, rollback on physical failure, and descriptor-cache invalidation;
+- session temporary table shadowing, temporary descriptor metadata, and
+  persistent table preservation after dropping the temporary table;
 - reopen persistence, independent file-backed handles, and preamble safety;
 - zero-initialized cleanup for new planner objects.
 
@@ -353,8 +365,9 @@ The test suite must cover:
 After implementation, update `COMPATIBILITY.md` and
 `docs/compatibility/sql-table-ddl.md` only for the exact limited appended
 integer-column subset. Do not overclaim full `ALTER TABLE`, defaults,
-positioning, metadata locks, algorithms, keys, constraints, temporary tables,
-views, table rebuilds, arbitrary SQLite pass-through, or non-integer types.
+positioning, metadata locks, algorithms, keys, constraints, temporary inline
+keys, temporary multi-action ALTER, views, table rebuilds, arbitrary SQLite
+pass-through, or non-integer types.
 
 ## Verification
 
@@ -366,4 +379,3 @@ Before marking the implementation complete:
 3. Run
    `packages/libmylite/tests/mysql_baseline_alter_table_add_column_expectations.sh`.
 4. `cmake --workflow --preset check`
-

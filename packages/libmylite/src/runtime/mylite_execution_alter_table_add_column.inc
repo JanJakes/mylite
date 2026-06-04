@@ -9,13 +9,22 @@ static int plan_alter_table_add_column(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_column){0};
-    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
+    rc = resolve_visible_writable_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        const struct mylite_sql_ast_node *column_definition = child_at(statement, 1U);
+
+        out_plan->adds_inline_primary_key =
+            child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL;
+        out_plan->adds_inline_unique_key =
+            child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_UNIQUE_KEY) != NULL;
     }
     if (rc == MYLITE_OK) {
         rc = reject_unsupported_alter_add_column_planned_column(database, &out_plan->column);
@@ -34,26 +43,11 @@ static int plan_alter_table_add_column(
             "ALTER TABLE ADD COLUMN does not support AUTO_INCREMENT"
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_read_table_by_name(
-            database,
-            out_plan->target.schema.schema_id,
-            out_plan->target.table_name,
-            &out_plan->table
-        );
-        if (rc != MYLITE_OK) {
-            set_table_does_not_exist_error(
-                database,
-                out_plan->target.schema.name,
-                out_plan->target.table_name
-            );
-            rc = MYLITE_ERROR;
-        }
-    }
-    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         set_unsupported_error(
             database,
-            "ALTER TABLE ADD COLUMN supports only persistent base tables"
+            "ALTER TABLE ADD COLUMN supports only persistent base tables or temporary tables"
         );
         rc = MYLITE_ERROR;
     }
@@ -381,9 +375,25 @@ static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 ) {
-    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
-    int rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (plan != NULL && plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        return add_temporary_column_from_plan(database, plan);
+    }
 
+    return add_persistent_column_from_plan(database, plan);
+}
+
+static int add_persistent_column_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_runtime_error(database, "invalid persistent add-column plan");
+        return MYLITE_ERROR;
+    }
+    rc = mylite_catalog_begin_mutation(database, &mutation);
     if (rc == MYLITE_OK) {
         rc = alter_table_add_column_in_mutation(database, &mutation, plan);
     }
@@ -398,6 +408,131 @@ static int alter_table_add_column_from_plan(
 
     ++database->session.sqlite_schema_generation;
 
+    return MYLITE_OK;
+}
+
+static int add_temporary_column_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    bool descriptor_appended = false;
+    int rc = build_temporary_added_column_descriptor(database, plan, &column);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_append_column(
+            &database->session.temporary_catalog,
+            plan->table.table_id,
+            &column,
+            plan->target_column_index
+        );
+        descriptor_appended = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_alter_table_add_column(database, plan);
+    }
+    if (rc != MYLITE_OK) {
+        if (descriptor_appended) {
+            (void)mylite_temporary_catalog_remove_column_by_id(
+                &database->session.temporary_catalog,
+                plan->table.table_id,
+                column.column_id
+            );
+        }
+        set_internal_error_if_clear(database, rc, "failed to add temporary table column");
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+    return MYLITE_OK;
+}
+
+static int build_temporary_added_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    int64_t column_id = 0;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || out_column == NULL ||
+        plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY ||
+        plan->target_column_index > plan->column_count || plan->target_column_index >= INT64_MAX) {
+        set_runtime_error(database, "invalid temporary add-column plan");
+        return MYLITE_ERROR;
+    }
+    if (plan->adds_inline_primary_key || plan->adds_inline_unique_key) {
+        set_runtime_error(database, "invalid temporary add-column inline key plan");
+        return MYLITE_ERROR;
+    }
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    rc = mylite_temporary_catalog_allocate_column_id(
+        &database->session.temporary_catalog,
+        &column_id
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to allocate temporary column id");
+        return rc;
+    }
+
+    *out_column = (struct mylite_catalog_column_descriptor){
+        .column_id = column_id,
+        .table_id = plan->table.table_id,
+        .ordinal_position = (int64_t)plan->target_column_index + 1,
+        .is_nullable = plan->column.is_nullable,
+        .is_visible = true,
+        .is_auto_increment = false,
+        .default_kind = plan->column.default_kind,
+        .default_integer = plan->column.default_integer,
+        .on_update_current_timestamp = plan->column.on_update_current_timestamp,
+        .is_generated = plan->column.is_generated,
+        .generated_kind = plan->column.generated_kind,
+    };
+    snprintf(out_column->name, sizeof(out_column->name), "%s", plan->column.name);
+    snprintf(
+        out_column->logical_type,
+        sizeof(out_column->logical_type),
+        "%s",
+        plan->column.logical_type
+    );
+    snprintf(
+        out_column->physical_type,
+        sizeof(out_column->physical_type),
+        "%s",
+        plan->column.physical_type
+    );
+    snprintf(
+        out_column->default_text,
+        sizeof(out_column->default_text),
+        "%s",
+        plan->column.default_text
+    );
+    snprintf(
+        out_column->character_set_name,
+        sizeof(out_column->character_set_name),
+        "%s",
+        plan->column.character_set_name
+    );
+    snprintf(
+        out_column->collation_name,
+        sizeof(out_column->collation_name),
+        "%s",
+        plan->column.collation_name
+    );
+    snprintf(out_column->comment, sizeof(out_column->comment), "%s", plan->column.comment);
+    snprintf(
+        out_column->generation_expression,
+        sizeof(out_column->generation_expression),
+        "%s",
+        plan->column.generation_expression
+    );
+    snprintf(
+        out_column->sqlite_generation_expression,
+        sizeof(out_column->sqlite_generation_expression),
+        "%s",
+        plan->column.sqlite_generation_expression
+    );
     return MYLITE_OK;
 }
 

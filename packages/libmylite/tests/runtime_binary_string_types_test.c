@@ -1264,6 +1264,8 @@ static int test_blob_expression_defaults(void) {
 }
 
 static int test_binary_diagnostics(void) {
+    static const unsigned char numeric_b[] = {0x37U, 0x00U, 0x00U};
+    static const unsigned char explicit_nn[] = {0x01U, 0x02U};
     static const unsigned char truncated_b[] = {0x01U, 0x02U, 0x03U};
     static const unsigned char implicit_nn[] = {0x00U, 0x00U};
     char path[test_path_capacity];
@@ -1338,16 +1340,24 @@ static int test_binary_diagnostics(void) {
             .message_part = "Data too long",
         }
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO d VALUES (2, 7, X'0102')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "Binary string values support only string, hex, NULL, and DEFAULT values",
-        }
+    failures += expect_dml_ok(database, "INSERT INTO d VALUES (2, 7, X'0102')", 1);
+    failures += execute_ok(database, "SELECT b, nn FROM d WHERE id = 2", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = numeric_b, .size = sizeof(numeric_b)},
+        "numeric BINARY conversion"
     );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = explicit_nn, .size = sizeof(explicit_nn)},
+        "numeric row explicit BINARY"
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO d VALUES (1, X'01020304', NULL)",

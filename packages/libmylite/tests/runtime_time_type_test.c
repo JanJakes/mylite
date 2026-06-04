@@ -626,15 +626,8 @@ static int test_time_diagnostics(void) {
         expect_statement_ok(database, "CREATE TABLE time_text_source (id INT, t VARCHAR(16))");
     failures += expect_dml_ok(database, "INSERT INTO time_text_source VALUES (8, '01:00:00')", 1);
     failures += expect_statement_ok(database, "CREATE TABLE time_target (id INT, t TIME)");
-    failures += execute_error(
-        database,
-        "INSERT INTO time_target SELECT id, t FROM time_text_source",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT ... SELECT does not support implicit TIME conversion",
-        }
-    );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO time_target SELECT id, t FROM time_text_source", 1);
 
     mylite_close(database);
     remove_related_files(path);

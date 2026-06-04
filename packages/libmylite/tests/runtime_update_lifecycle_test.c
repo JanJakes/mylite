@@ -891,16 +891,7 @@ static int test_update_diagnostics(void) {
                 "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
         }
     );
-    failures += execute_error(
-        database,
-        "UPDATE numbers SET i = 0x1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
-        }
-    );
+    failures += expect_update_ok(database, "UPDATE numbers SET i = 0x1", 3);
     failures += execute_error(
         database,
         "UPDATE numbers SET i = b'1'",
@@ -945,9 +936,9 @@ static int test_update_diagnostics(void) {
         database,
         "UPDATE numbers, other_numbers SET i = 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.other_numbers' doesn't exist",
         }
     );
     failures += execute_error(

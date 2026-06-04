@@ -326,7 +326,7 @@ static int test_replace_set_success_persistence_rename_and_drop(void) {
 
 static int test_replace_set_schema_resolution_and_diagnostics(void) {
     static const char *const qualified_values[] = {"1", "2"};
-    static const char *const empty_values[] = {NULL};
+    static const char *const hex_values[] = {"1"};
     static const char *const no_key_values[] = {"1", "10", "1", "20"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -579,7 +579,8 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
+            .message_part = "INSERT supports only integer, boolean, string, hex, NULL, and "
+                            "DEFAULT values",
         }
     );
     failures += execute_error(
@@ -588,25 +589,19 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
+            .message_part = "INSERT supports only integer, boolean, string, hex, NULL, and "
+                            "DEFAULT values",
         }
     );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers SET id = 0x1, nn = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
-        }
-    );
+    failures += expect_replace_ok(database, "REPLACE INTO numbers SET id = 0x1, nn = 1");
     failures += execute_error(
         database,
         "REPLACE INTO numbers SET id = b'1', nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
+            .message_part = "INSERT supports only integer, boolean, string, hex, NULL, and "
+                            "DEFAULT values",
         }
     );
 
@@ -614,12 +609,15 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
         database,
         (struct expected_query){
             .sql = "SELECT id FROM numbers",
-            .values = empty_values,
+            .values = hex_values,
             .column_count = 1U,
-            .row_count = 0U,
-            .context = "failed replace set leaves no rows",
+            .row_count = 1U,
+            .context = "hex replace set row",
         }
     );
+    failures += execute_ok(database, "DELETE FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
 
     failures += expect_replace_ok(database, "REPLACE INTO numbers SET id = 1, nn = 10");
     failures += expect_replace_ok(database, "REPLACE INTO numbers SET id = 1, nn = 20");

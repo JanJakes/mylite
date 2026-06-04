@@ -142,6 +142,14 @@ static int plan_joined_delete(
         return MYLITE_ERROR;
     }
 
+    rc = reject_builtin_schema_joined_delete_source(database, child_at(from_clause, 0U));
+    if (rc == MYLITE_OK) {
+        rc = reject_builtin_schema_joined_delete_source(database, child_at(from_clause, 1U));
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
     out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
     if (out_plan->sources == NULL) {
         set_nomem_error(database);
@@ -225,6 +233,16 @@ static int plan_joined_delete(
         planned_delete_deinit(out_plan);
     }
     return rc;
+}
+
+static int reject_builtin_schema_joined_delete_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node
+) {
+    if (source_node == NULL || source_node->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+    return reject_builtin_schema_write_target(database, child_at(source_node, 0U));
 }
 
 static int resolve_joined_delete_targets(

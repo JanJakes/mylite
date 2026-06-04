@@ -109,13 +109,17 @@ Rejected with the built-in schema diagnostic:
   `CREATE TABLE ... SELECT` whose created table target is in a built-in schema.
 - `DROP TABLE` and `DROP TEMPORARY TABLE` targets in a built-in schema,
   including `IF EXISTS` forms.
-- `CREATE INDEX`, `DROP INDEX`, supported `ALTER TABLE` actions, and
-  `TRUNCATE TABLE` whose table write target is in a built-in schema.
+- `CREATE INDEX`, `DROP INDEX`, supported `ALTER TABLE` actions,
+  `TRUNCATE TABLE`, and `LOCK TABLES` whose table target is in a built-in
+  schema.
+- `ANALYZE TABLE`, `CHECK TABLE`, `OPTIMIZE TABLE`, and `REPAIR TABLE` whose
+  table maintenance target is in a built-in schema.
 - `RENAME TABLE` pairs where either source or destination is in a built-in
   schema, and supported `ALTER TABLE ... RENAME` forms where either side is in
   a built-in schema.
-- Current single-table `INSERT`, `REPLACE`, `UPDATE`, and `DELETE` write targets
-  in a built-in schema.
+- Current single-table `INSERT`, `REPLACE`, `UPDATE`, and `DELETE` write
+  targets in a built-in schema, plus supported joined `DELETE` sources where
+  the deleted alias resolves to a built-in schema table.
 
 Out of scope:
 

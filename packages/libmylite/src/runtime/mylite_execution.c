@@ -13785,6 +13785,10 @@ static int plan_joined_delete(
     const struct mylite_sql_ast_node *statement,
     struct planned_delete *out_plan
 );
+static int reject_builtin_schema_joined_delete_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node
+);
 static int resolve_joined_delete_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *target_node,
@@ -13917,6 +13921,30 @@ static int plan_joined_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 );
+static int reject_information_schema_joined_update_ambiguous_where(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    const struct mylite_sql_ast_node *where_clause
+);
+static int count_information_schema_joined_update_sources(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    size_t *in_out_count
+);
+static int information_schema_joined_update_source_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    bool *out_matches
+);
+static bool ast_subtree_has_unqualified_identifier(
+    const struct mylite_sql_ast_node *node,
+    const char *identifier
+);
+static bool source_span_equals_ascii_case_insensitive(
+    const struct mylite_sql_source_span *span,
+    const char *text
+);
+static int lowercase_ascii_byte(int byte);
 static void planned_update_deinit(struct planned_update *plan);
 static bool planned_update_has_multiple_assignments(const struct planned_update *plan);
 static bool planned_update_assignment_is_noop(const struct planned_update_assignment *assignment);

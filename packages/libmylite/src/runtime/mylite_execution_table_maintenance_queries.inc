@@ -469,6 +469,11 @@ static int resolve_table_maintenance_target(
     int rc = MYLITE_OK;
 
     *out_target = (struct table_maintenance_target){0};
+    rc = reject_builtin_schema_write_target(database, node);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
     rc = collect_identifier_parts(node, parts, table_name_part_capacity, &part_count, database);
     if (rc != MYLITE_OK) {
         return rc;

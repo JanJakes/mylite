@@ -2604,6 +2604,19 @@ joined_update_statement(A) ::=
         L);
 }
 joined_update_statement(A) ::=
+    UPDATE(U) joined_update_table_source(LT) COMMA joined_update_table_source(RT)
+    SET update_assignment_list(AL) where_clause_opt(W) order_clause_opt(O)
+    update_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_joined_update_statement(
+        state,
+        U,
+        mylite_sql_parser_make_from_join(state, U, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL),
+        AL,
+        W,
+        O,
+        L);
+}
+joined_update_statement(A) ::=
     UPDATE(U) joined_update_table_source(LT) join_operator(JO) joined_update_table_source(RT)
     ON join_condition(J)
     SET update_assignment_list(S) where_clause_opt(W) order_clause_opt(O)

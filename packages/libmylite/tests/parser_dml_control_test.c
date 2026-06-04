@@ -2095,6 +2095,29 @@ static int test_delete_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "UPDATE lefts, rights SET lefts.v = 1 WHERE rights.id = 9;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT,
+        "comma joined update statement"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_FROM_JOIN,
+        "comma joined update source"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_join_kind(parser_test_child_at(statement, 0U)) ==
+            MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "comma joined update kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "UPDATE lefts l JOIN rights r ON l.k = r.k SET l.v = 1;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result

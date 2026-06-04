@@ -341,6 +341,14 @@ static int plan_joined_update(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    rc = reject_information_schema_joined_update_ambiguous_where(
+        database,
+        from_clause,
+        where_clause
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     rc = reject_builtin_schema_joined_update_assignment_target(database, assignment_list);
     if (rc != MYLITE_OK) {
         return rc;
@@ -401,6 +409,154 @@ static int plan_joined_update(
         planned_update_deinit(out_plan);
     }
     return rc;
+}
+
+static int reject_information_schema_joined_update_ambiguous_where(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    const struct mylite_sql_ast_node *where_clause
+) {
+    size_t information_schema_source_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        return MYLITE_OK;
+    }
+
+    rc = count_information_schema_joined_update_sources(
+        database,
+        from_clause,
+        &information_schema_source_count
+    );
+    if (rc != MYLITE_OK || information_schema_source_count < 2U) {
+        return rc;
+    }
+    if (ast_subtree_has_unqualified_identifier(child_at(where_clause, 0U), "table_name")) {
+        set_ambiguous_column_reference_error(database, COLUMN_REFERENCE_WHERE, "table_name");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int count_information_schema_joined_update_sources(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    size_t *in_out_count
+) {
+    bool matches = false;
+    int rc = MYLITE_OK;
+
+    if (source_node == NULL || in_out_count == NULL) {
+        return MYLITE_OK;
+    }
+    if (source_node->kind == MYLITE_SQL_AST_FROM_JOIN) {
+        rc = count_information_schema_joined_update_sources(
+            database,
+            child_at(source_node, 0U),
+            in_out_count
+        );
+        if (rc == MYLITE_OK) {
+            rc = count_information_schema_joined_update_sources(
+                database,
+                child_at(source_node, 1U),
+                in_out_count
+            );
+        }
+        return rc;
+    }
+
+    rc = information_schema_joined_update_source_matches(database, source_node, &matches);
+    if (rc == MYLITE_OK && matches) {
+        ++(*in_out_count);
+    }
+    return rc;
+}
+
+static int information_schema_joined_update_source_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    bool *out_matches
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_sql_ast_node *table_node = NULL;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (source_node == NULL || source_node->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    table_node = child_at(source_node, 0U);
+    rc = collect_identifier_parts(
+        table_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U) {
+        *out_matches = schema_name_is_information_schema(parts[0]);
+    } else if (part_count == 1U) {
+        *out_matches = selected_schema_is_information_schema(database);
+    }
+    return MYLITE_OK;
+}
+
+static bool ast_subtree_has_unqualified_identifier(
+    const struct mylite_sql_ast_node *node,
+    const char *identifier
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (node == NULL || identifier == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        source_span_equals_ascii_case_insensitive(&node->span, identifier)) {
+        return true;
+    }
+
+    child = child_at(node, 0U);
+    while (child != NULL) {
+        if (ast_subtree_has_unqualified_identifier(child, identifier)) {
+            return true;
+        }
+        child = child->next_sibling;
+    }
+    return false;
+}
+
+static bool source_span_equals_ascii_case_insensitive(
+    const struct mylite_sql_source_span *span,
+    const char *text
+) {
+    size_t text_length = text == NULL ? 0U : strlen(text);
+
+    if (span == NULL || span->text == NULL || text == NULL || span->length != text_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (lowercase_ascii_byte((unsigned char)span->text[index]) !=
+            lowercase_ascii_byte((unsigned char)text[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int lowercase_ascii_byte(int byte) {
+    if (byte >= 'A' && byte <= 'Z') {
+        return byte - 'A' + 'a';
+    }
+    return byte;
 }
 
 static int reject_builtin_schema_joined_update_assignment_target(

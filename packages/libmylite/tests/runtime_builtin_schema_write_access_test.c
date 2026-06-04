@@ -15,6 +15,7 @@ enum {
     test_path_capacity = 1024,
     sql_buffer_capacity = 512,
     mysql_error_database_access_denied = 1044,
+    mysql_error_column_ambiguous = 1052,
     mysql_error_system_schema_access = 3552,
 };
 
@@ -37,6 +38,13 @@ static int test_builtin_schema_write_access(void);
 static int seed_app_schema(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int expect_error(
+    mylite_db *database,
+    const char *sql,
+    int code,
+    const char *sqlstate,
+    const char *message_part
+);
 static int expect_write_rejected(
     mylite_db *database,
     const struct built_in_schema_expectation *schema,
@@ -121,10 +129,16 @@ static int test_builtin_schema_write_access(void) {
         "DROP INDEX idx_builtin_write ON %s.SCHEMATA",
         "ALTER TABLE %s.SCHEMATA ADD COLUMN x INT",
         "TRUNCATE TABLE %s.SCHEMATA",
+        "LOCK TABLES %s.SCHEMATA READ",
+        "ANALYZE TABLE %s.SCHEMATA",
+        "CHECK TABLE %s.SCHEMATA",
+        "OPTIMIZE TABLE %s.SCHEMATA",
+        "REPAIR TABLE %s.SCHEMATA",
         "INSERT INTO %s.SCHEMATA (SCHEMA_NAME) VALUES ('x')",
         "REPLACE INTO %s.SCHEMATA (SCHEMA_NAME) VALUES ('x')",
         "UPDATE %s.SCHEMATA SET SCHEMA_NAME = 'x'",
         "DELETE FROM %s.SCHEMATA",
+        "DELETE s FROM app.t, %s.SCHEMATA s WHERE s.SCHEMA_NAME = 'app'",
         "RENAME TABLE app.t TO %s._mylite_denied",
         "RENAME TABLE %s.SCHEMATA TO app.schemata_copy",
         "ALTER TABLE app.t RENAME TO %s._mylite_denied",
@@ -146,10 +160,16 @@ static int test_builtin_schema_write_access(void) {
         "DROP INDEX idx_selected_builtin_write ON SCHEMATA",
         "ALTER TABLE SCHEMATA ADD COLUMN x INT",
         "TRUNCATE TABLE SCHEMATA",
+        "LOCK TABLES SCHEMATA READ",
+        "ANALYZE TABLE SCHEMATA",
+        "CHECK TABLE SCHEMATA",
+        "OPTIMIZE TABLE SCHEMATA",
+        "REPAIR TABLE SCHEMATA",
         "INSERT INTO SCHEMATA (SCHEMA_NAME) VALUES ('x')",
         "REPLACE INTO SCHEMATA (SCHEMA_NAME) VALUES ('x')",
         "UPDATE SCHEMATA SET SCHEMA_NAME = 'x'",
         "DELETE FROM SCHEMATA",
+        "DELETE s FROM app.t, SCHEMATA s WHERE s.SCHEMA_NAME = 'app'",
         "RENAME TABLE SCHEMATA TO app.schemata_copy",
         "ALTER TABLE app.t RENAME TO _mylite_selected_denied",
     };
@@ -256,6 +276,23 @@ static int seed_app_schema(mylite_db *database) {
     failures += expect_statement_ok(database, "USE app", -1);
     failures += expect_statement_ok(database, "CREATE TABLE t (id INT, v INT)", 0);
     failures += expect_statement_ok(database, "INSERT INTO t VALUES (1, 10)", 1);
+    failures += expect_error(
+        database,
+        "UPDATE information_schema.tables, information_schema.columns "
+        "SET table_name = 'new_t' WHERE table_name = 't'",
+        mysql_error_column_ambiguous,
+        "23000",
+        "Column 'table_name' in where clause is ambiguous"
+    );
+    failures += expect_statement_ok(database, "USE information_schema", -1);
+    failures += expect_error(
+        database,
+        "UPDATE tables, columns SET table_name = 'new_t' WHERE table_name = 't'",
+        mysql_error_column_ambiguous,
+        "23000",
+        "Column 'table_name' in where clause is ambiguous"
+    );
+    failures += expect_statement_ok(database, "USE app", -1);
 
     return failures;
 }
@@ -323,6 +360,29 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         }
     }
 
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_error(
+    mylite_db *database,
+    const char *sql,
+    int code,
+    const char *sqlstate,
+    const char *message_part
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_ERROR) {
+        fprintf(stderr, "%s: expected error, got %d\n", sql, rc);
+        failures += 1;
+    }
+    failures += expect_int(mylite_errcode(database), code, sql);
+    failures += expect_text_or_null(mylite_sqlstate(database), sqlstate, sql);
+    failures += expect_contains(mylite_errmsg(database), message_part, sql);
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
     mylite_result_free(result);
     return failures;
 }

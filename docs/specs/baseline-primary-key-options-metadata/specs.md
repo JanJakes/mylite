@@ -7,8 +7,8 @@ MySQL-compatible option surface already implemented for supported secondary
 indexes:
 
 ```sql
-CREATE TABLE t (..., PRIMARY KEY [USING {BTREE|HASH}] (col[, ...]) [index_option] ...)
-ALTER TABLE t ADD PRIMARY KEY [USING {BTREE|HASH}] (col[, ...]) [index_option] ...
+CREATE TABLE t (..., PRIMARY KEY [index_name] [USING {BTREE|HASH}] (col[, ...]) [index_option] ...)
+ALTER TABLE t ADD PRIMARY KEY [index_name] [USING {BTREE|HASH}] (col[, ...]) [index_option] ...
 
 index_option:
     USING {BTREE|HASH}
@@ -53,6 +53,9 @@ Runtime probes establish:
 
 - Table-level and `ALTER TABLE ... ADD PRIMARY KEY` forms accept explicit
   `USING BTREE` before the key-part list and as a trailing option.
+- An optional identifier between `PRIMARY KEY` and the key-part list is
+  accepted and ignored; the primary key remains named `PRIMARY`, and a
+  secondary index may reuse the ignored spelling.
 - `SHOW CREATE TABLE` renders explicit BTREE after the key-part list:
   `PRIMARY KEY (...) USING BTREE`.
 - Omitted primary-key type renders no `USING` clause.
@@ -87,6 +90,8 @@ Supported:
 
 - persistent MyLite base tables through existing `CREATE TABLE` table-level
   primary-key definitions and `ALTER TABLE ... ADD PRIMARY KEY`;
+- optional primary-key index names after `PRIMARY KEY`, ignored like MySQL and
+  not reserved in the secondary-index namespace;
 - existing primary-key key-part types, counts, key-length limits, duplicate
   validation, `NOT NULL` conversion, string-key ASCII limits, and `ASC`/`DESC`
   direction metadata;
@@ -150,8 +155,11 @@ MyLite Lemon-syntax sketch:
 
 ```lemon
 primary_key_definition ::=
-    PRIMARY KEY index_type_opt LPAREN primary_key_part_list RPAREN
+    PRIMARY KEY primary_key_index_name_opt index_type_opt LPAREN primary_key_part_list RPAREN
     index_option_list_opt.
+
+primary_key_index_name_opt ::= .
+primary_key_index_name_opt ::= identifier.
 
 index_type_opt ::= .
 index_type_opt ::= USING identifier.
@@ -177,6 +185,8 @@ existing deterministic parse diagnostic.
 The planner resolves primary-key options after resolving the target table
 context and before catalog mutation:
 
+- an optional primary-key index name is discarded and has no effect on the
+  descriptor name, duplicate-name validation, or `SHOW CREATE TABLE` rendering;
 - `USING BTREE` sets `show_create_explicit_btree = true`.
 - omitted type sets `show_create_explicit_btree = false`.
 - `USING HASH` sets `show_create_explicit_btree = false`, stages warning 3502,
@@ -201,7 +211,8 @@ unsupported string-key values, key length, existing duplicate rows, and existing
 
 Catalog insertion for the primary index stores:
 
-- name `PRIMARY`;
+- name `PRIMARY`, regardless of any ignored optional primary-key index name in
+  the input SQL;
 - generated physical index name;
 - kind `PRIMARY`;
 - uniqueness `true`;

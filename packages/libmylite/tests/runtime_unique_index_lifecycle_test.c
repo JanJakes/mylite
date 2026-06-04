@@ -809,6 +809,11 @@ static int test_unique_index_diagnostics(void) {
     );
     failures += expect_statement_ok(
         database,
+        "CREATE TABLE ignored_primary_key_name "
+        "(id1 INT, id2 INT, PRIMARY KEY idx (id1), INDEX idx (id2))"
+    );
+    failures += expect_statement_ok(
+        database,
         "CREATE TABLE text_unique (body TEXT, UNIQUE KEY u_body (body))"
     );
     failures += expect_dml_ok(database, "INSERT INTO text_unique VALUES ('body')", 1);

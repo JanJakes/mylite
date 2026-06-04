@@ -1866,6 +1866,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
 struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,
+    struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *index_type,
     struct mylite_sql_ast_node *key_parts,
     struct mylite_sql_token right_paren,

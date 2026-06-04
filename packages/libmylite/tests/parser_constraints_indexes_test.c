@@ -232,6 +232,27 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "CREATE TABLE parser_named_pk_index (id INT, PRIMARY KEY idx (id), KEY idx (id));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    items = parser_test_child_at(statement, 1U);
+    primary_key = parser_test_child_at(items, 1U);
+    key_parts = parser_test_child_at(primary_key, 0U);
+    failures += parser_test_expect_child_count(primary_key, 1U, "named table pk child count");
+    failures +=
+        parser_test_expect_span_text(primary_key, "PRIMARY KEY idx (id)", "named table pk span");
+    failures +=
+        parser_test_expect_span_text(parser_test_child_at(key_parts, 0U), "id", "named pk part");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(items, 2U), 0U),
+        "idx",
+        "secondary key reuses ignored primary key name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TABLE parser_composite_pk (a INT, b INT, PRIMARY KEY (a, `b`));",
         MYLITE_SQL_PARSE_OK,
         &result

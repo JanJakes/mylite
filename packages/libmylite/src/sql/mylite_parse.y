@@ -8658,13 +8658,21 @@ create_table_item(A) ::= check_constraint_definition(B). {
 }
 
 primary_key_definition(A) ::=
-    PRIMARY(P) KEY index_type_opt(Y) LPAREN primary_key_part_list(L) RPAREN(R)
+    PRIMARY(P) KEY primary_key_index_name_opt(N) index_type_opt(Y) LPAREN primary_key_part_list(L)
+    RPAREN(R)
     index_option_list_opt(O). {
-    A = mylite_sql_parser_make_primary_key_definition(state, P, Y, L, R, O);
+    A = mylite_sql_parser_make_primary_key_definition(state, P, N, Y, L, R, O);
 }
 
 named_primary_key_definition(A) ::= CONSTRAINT identifier primary_key_definition(P). {
     A = P;
+}
+
+primary_key_index_name_opt(A) ::= . {
+    A = NULL;
+}
+primary_key_index_name_opt(A) ::= identifier(B). {
+    A = B;
 }
 
 primary_key_part_list(A) ::= primary_key_part(B). {

@@ -6395,6 +6395,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
 struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,
+    struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *index_type,
     struct mylite_sql_ast_node *key_parts,
     struct mylite_sql_token right_paren,
@@ -6408,6 +6409,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
         return NULL;
     }
 
+    (void)index_name;
     mylite_sql_ast_node_append_child(primary_key, key_parts);
     if (index_type != NULL) {
         mylite_sql_ast_node_append_child(primary_key, index_type);

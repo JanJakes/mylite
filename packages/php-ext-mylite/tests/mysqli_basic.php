@@ -28,6 +28,24 @@ expect_same(['id' => '1', 'views' => '10'], $result->fetch_assoc(), 'first assoc
 expect_same(['2', '20'], $result->fetch_row(), 'second numeric row');
 expect_same(null, $result->fetch_assoc(), 'result exhausted');
 
+expect_true(
+    $mysqli->query(
+        "CREATE TABLE auto_posts (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(20)
+        )"
+    ),
+    'create auto table'
+);
+expect_true($mysqli->query("INSERT INTO auto_posts (title) VALUES ('a')"), 'insert auto row');
+expect_same(1, $mysqli->insert_id, 'auto insert id property');
+expect_same(1, mysqli_insert_id($mysqli), 'auto insert id function');
+expect_true(
+    $mysqli->query("INSERT INTO auto_posts (title) VALUES ('b'), ('c')"),
+    'insert multi auto row'
+);
+expect_same(2, $mysqli->insert_id, 'multi auto insert id property');
+
 $result->data_seek(0);
 $field = $result->fetch_field();
 expect_same('id', $field->name, 'field name');

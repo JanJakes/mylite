@@ -4246,7 +4246,7 @@ static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_r
     link->warning_count = (zend_long)mylite_result_warning_count(source);
     if (column_count == 0U) {
         link->affected_rows = (zend_long)mylite_result_affected_rows(source);
-        link->insert_id = 0;
+        link->insert_id = (zend_long)mylite_result_insert_id(source);
         ZVAL_TRUE(out_result);
         return true;
     }
@@ -4301,7 +4301,7 @@ static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_r
     }
 
     link->affected_rows = -1;
-    link->insert_id = 0;
+    link->insert_id = (zend_long)mylite_result_insert_id(source);
     mylite_mysqli_update_result_properties(result);
     return true;
 }

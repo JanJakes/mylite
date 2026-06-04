@@ -94,10 +94,12 @@ static int plan_exists_predicate(
     rc = plan_exists_subquery(
         database,
         child_at(predicate_node, 0U),
-        source_context,
-        table_columns,
-        table_column_count,
-        outer_source_count,
+        &(const struct exists_subquery_outer_context){
+            .source_context = source_context,
+            .columns = table_columns,
+            .column_count = table_column_count,
+            .source_count = outer_source_count,
+        },
         subquery
     );
     if (rc != MYLITE_OK) {
@@ -121,10 +123,7 @@ static int plan_exists_predicate(
 static int plan_exists_subquery(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    const struct select_source_context *outer_source_context,
-    const struct mylite_catalog_column_descriptor *outer_columns,
-    size_t outer_column_count,
-    size_t outer_source_count,
+    const struct exists_subquery_outer_context *outer_context,
     struct planned_exists_subquery *out_subquery
 ) {
     const struct mylite_sql_ast_node *select_list = NULL;
@@ -136,7 +135,7 @@ static int plan_exists_subquery(
 
     *out_subquery = (struct planned_exists_subquery){
         .has_table_source = false,
-        .inner_source_index = outer_source_count,
+        .inner_source_index = outer_context->source_count,
     };
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         set_unsupported_error(database, "EXISTS supports only SELECT subqueries");
@@ -175,9 +174,9 @@ static int plan_exists_subquery(
         rc = plan_exists_inner_predicate(
             database,
             where_clause,
-            outer_source_context,
-            outer_columns,
-            outer_column_count,
+            outer_context->source_context,
+            outer_context->columns,
+            outer_context->column_count,
             out_subquery
         );
     }

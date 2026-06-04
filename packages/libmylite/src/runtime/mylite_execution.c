@@ -2136,6 +2136,11 @@ struct select_order_ast_item_nodes {
     const struct mylite_sql_ast_node *direction;
 };
 
+struct joined_select_having_reference_request {
+    const struct mylite_sql_ast_node *select_list;
+    const struct mylite_sql_ast_node *having_node;
+};
+
 struct planned_select_limit {
     bool has_limit;
     int64_t row_count;
@@ -2188,6 +2193,13 @@ struct planned_exists_subquery {
     struct planned_select_source source;
     struct planned_select_predicate predicate;
     struct planned_select_limit limit;
+};
+
+struct exists_subquery_outer_context {
+    const struct select_source_context *source_context;
+    const struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+    size_t source_count;
 };
 
 struct planned_in_subquery {
@@ -10873,8 +10885,7 @@ static int reject_unsupported_joined_select_having(
 );
 static int reject_joined_select_having_reference_error(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *select_list,
-    const struct mylite_sql_ast_node *having_node
+    struct joined_select_having_reference_request request
 );
 static const struct mylite_sql_ast_node *joined_select_having_reference_node(
     const struct mylite_sql_ast_node *having_node
@@ -18987,6 +18998,50 @@ static int plan_regexp_like_predicate_integer_value(
 static bool comparison_predicate_rhs_is_column_reference(
     const struct mylite_sql_ast_node *predicate_node
 );
+static int plan_scalar_literal_or_literal_column_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
+static int plan_rhs_column_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
+static int plan_comparison_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_comparison_predicate_like_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static bool comparison_predicate_rhs_requires_row_scalar_value(
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct planned_select_predicate_node *node
+);
+static void planned_select_predicate_node_deinit_runtime_values(
+    struct planned_select_predicate_node *node
+);
 static int validate_comparison_predicate_column(
     struct mylite_db *database,
     const struct planned_select_predicate_node *node
@@ -19012,10 +19067,7 @@ static int plan_exists_predicate(
 static int plan_exists_subquery(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    const struct select_source_context *outer_source_context,
-    const struct mylite_catalog_column_descriptor *outer_columns,
-    size_t outer_column_count,
-    size_t outer_source_count,
+    const struct exists_subquery_outer_context *outer_context,
     struct planned_exists_subquery *out_subquery
 );
 static int plan_exists_table_source(
@@ -19493,6 +19545,13 @@ static int plan_select_order_ast_item(
     bool allow_field_order,
     bool allow_rand_order,
     struct planned_select_order_item *out_item
+);
+static void apply_select_order_item_direction(
+    const struct mylite_sql_ast_node *direction,
+    struct planned_select_order_item *out_item
+);
+static bool select_order_column_needs_integer_validation(
+    const struct mylite_catalog_column_descriptor *column
 );
 static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items);
 static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items);

@@ -192,9 +192,8 @@ static int plan_select_order_ast_item(
             table_column_count,
             out_item
         );
-        if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
-                                   MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-            out_item->direction = PLANNED_SELECT_ORDER_DESC;
+        if (rc == MYLITE_OK) {
+            apply_select_order_item_direction(item_nodes.direction, out_item);
         }
         return rc;
     }
@@ -204,9 +203,8 @@ static int plan_select_order_ast_item(
             return MYLITE_ERROR;
         }
         rc = plan_select_order_rand_expression(database, item_nodes.order_key, out_item);
-        if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
-                                   MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-            out_item->direction = PLANNED_SELECT_ORDER_DESC;
+        if (rc == MYLITE_OK) {
+            apply_select_order_item_direction(item_nodes.direction, out_item);
         }
         return rc;
     }
@@ -224,9 +222,8 @@ static int plan_select_order_ast_item(
             table_column_count,
             out_item
         );
-        if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
-                                   MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-            out_item->direction = PLANNED_SELECT_ORDER_DESC;
+        if (rc == MYLITE_OK) {
+            apply_select_order_item_direction(item_nodes.direction, out_item);
         }
         return rc;
     }
@@ -257,13 +254,7 @@ static int plan_select_order_ast_item(
         set_unsupported_error(database, "ORDER BY does not yet support SET columns");
         return MYLITE_ERROR;
     }
-    if (!column_descriptor_is_string_family(&out_item->column) &&
-        !column_descriptor_is_date(&out_item->column) &&
-        !column_descriptor_is_time(&out_item->column) &&
-        !column_descriptor_is_datetime(&out_item->column) &&
-        !column_descriptor_is_timestamp(&out_item->column) &&
-        !column_descriptor_is_year(&out_item->column) &&
-        !column_descriptor_is_bit(&out_item->column)) {
+    if (select_order_column_needs_integer_validation(&out_item->column)) {
         struct integer_column_range range = {0};
 
         rc = integer_range_for_column(
@@ -278,12 +269,27 @@ static int plan_select_order_ast_item(
         }
     }
 
-    if (mylite_sql_ast_node_order_direction(item_nodes.direction) ==
-        MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-        out_item->direction = PLANNED_SELECT_ORDER_DESC;
-    }
+    apply_select_order_item_direction(item_nodes.direction, out_item);
 
     return MYLITE_OK;
+}
+
+static void apply_select_order_item_direction(
+    const struct mylite_sql_ast_node *direction,
+    struct planned_select_order_item *out_item
+) {
+    if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+        out_item->direction = PLANNED_SELECT_ORDER_DESC;
+    }
+}
+
+static bool select_order_column_needs_integer_validation(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return !column_descriptor_is_string_family(column) && !column_descriptor_is_date(column) &&
+           !column_descriptor_is_time(column) && !column_descriptor_is_datetime(column) &&
+           !column_descriptor_is_timestamp(column) && !column_descriptor_is_year(column) &&
+           !column_descriptor_is_bit(column);
 }
 
 static bool order_item_list_contains_field_order_key(

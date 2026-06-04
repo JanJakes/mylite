@@ -504,8 +504,10 @@ static int reject_unsupported_joined_select_having(
 
     rc = reject_joined_select_having_reference_error(
         database,
-        select_list,
-        child_at(having_clause, 0U)
+        (struct joined_select_having_reference_request){
+            .select_list = select_list,
+            .having_node = child_at(having_clause, 0U),
+        }
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -517,11 +519,11 @@ static int reject_unsupported_joined_select_having(
 
 static int reject_joined_select_having_reference_error(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *select_list,
-    const struct mylite_sql_ast_node *having_node
+    struct joined_select_having_reference_request request
 ) {
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    const struct mylite_sql_ast_node *reference = joined_select_having_reference_node(having_node);
+    const struct mylite_sql_ast_node *reference =
+        joined_select_having_reference_node(request.having_node);
     size_t match_count = 0U;
     int rc = MYLITE_OK;
 
@@ -532,7 +534,12 @@ static int reject_joined_select_having_reference_error(
     rc = copy_identifier_text(reference, column_name, sizeof(column_name), database);
     if (rc == MYLITE_OK) {
         rc =
-            count_select_list_output_name_matches(database, select_list, column_name, &match_count);
+            count_select_list_output_name_matches(
+                database,
+                request.select_list,
+                column_name,
+                &match_count
+            );
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -1842,10 +1849,12 @@ static int plan_row_scalar_select_exists_filter(
     rc = plan_exists_subquery(
         database,
         child_at(predicate, 0U),
-        NULL,
-        NULL,
-        0U,
-        0U,
+        &(const struct exists_subquery_outer_context){
+            .source_context = NULL,
+            .columns = NULL,
+            .column_count = 0U,
+            .source_count = 0U,
+        },
         &out_plan->tableless_filter.subquery
     );
     if (rc == MYLITE_OK) {

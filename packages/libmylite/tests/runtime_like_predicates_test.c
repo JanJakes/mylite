@@ -19,7 +19,9 @@ enum {
     mysql_error_unknown_column = 1054,
     string_row_count = 8,
     like_ab_match_count = 6,
+    like_binary_ab_match_count = 5,
     like_remaining_row_count = 5,
+    decimal_parse_base = 10,
 };
 
 #define WP_UTF8_TEXT                                                                               \
@@ -165,7 +167,7 @@ static int test_like_predicate_queries(void) {
             .sql = "SELECT id FROM strings WHERE v LIKE BINARY 'ab%' ORDER BY id",
             .values = like_binary_ab_ids,
             .column_count = 1U,
-            .row_count = 5U,
+            .row_count = like_binary_ab_match_count,
             .context = "LIKE BINARY prefix is case-sensitive",
         }
     );
@@ -320,7 +322,7 @@ static int test_like_predicate_queries(void) {
             failures += expect_size(age_row_count, 1U, "unix_timestamp text arithmetic rows");
             if (age_column_count == 1U && age_row_count == 1U) {
                 age_text = mylite_result_value_text(age_result, 0U, 0U);
-                age = age_text == NULL ? -1LL : strtoll(age_text, &age_end, 10);
+                age = age_text == NULL ? -1LL : strtoll(age_text, &age_end, decimal_parse_base);
             }
             if (age_text == NULL || age_end == age_text || *age_end != '\0' || age <= 0) {
                 fprintf(

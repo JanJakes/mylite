@@ -2,6 +2,7 @@
 
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_table_lifecycle_bool_identifier_statements(void);
 static int test_alter_table_multi_action_statements(void);
 static int test_create_table_generated_column_statements(void);
 static int test_create_table_comment_option_statements(void);
@@ -946,38 +947,7 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "CREATE TABLE bool_identifiers (BOOL INT, BOOLEAN TINYINT);",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    statement = parser_test_child_at(result.root, 0U);
-    columns = parser_test_child_at(statement, 1U);
-    column = parser_test_child_at(columns, 0U);
-    failures += parser_test_expect_span_text(
-        parser_test_child_at(column, 0U),
-        "BOOL",
-        "bool identifier column name"
-    );
-    failures += parser_test_expect_integer_type(
-        parser_test_child_at(column, 1U),
-        MYLITE_SQL_AST_INTEGER_TYPE_INT,
-        0,
-        "bool identifier column type"
-    );
-    column = parser_test_child_at(columns, 1U);
-    failures += parser_test_expect_span_text(
-        parser_test_child_at(column, 0U),
-        "BOOLEAN",
-        "boolean identifier column name"
-    );
-    failures += parser_test_expect_integer_type(
-        parser_test_child_at(column, 1U),
-        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
-        0,
-        "boolean identifier column type"
-    );
-    mylite_sql_parse_result_deinit(&result);
+    failures += test_table_lifecycle_bool_identifier_statements();
 
     failures += parser_test_parse_sql(
         "CREATE TABLE IF NOT EXISTS app.if_missing (id INT) ENGINE=InnoDB;",
@@ -2916,6 +2886,49 @@ static int test_table_lifecycle_statements(void) {
         parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_table_lifecycle_bool_identifier_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE bool_identifiers (BOOL INT, BOOLEAN TINYINT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    columns = parser_test_child_at(statement, 1U);
+    column = parser_test_child_at(columns, 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(column, 0U),
+        "BOOL",
+        "bool identifier column name"
+    );
+    failures += parser_test_expect_integer_type(
+        parser_test_child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "bool identifier column type"
+    );
+    column = parser_test_child_at(columns, 1U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(column, 0U),
+        "BOOLEAN",
+        "boolean identifier column name"
+    );
+    failures += parser_test_expect_integer_type(
+        parser_test_child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "boolean identifier column type"
     );
     mylite_sql_parse_result_deinit(&result);
 

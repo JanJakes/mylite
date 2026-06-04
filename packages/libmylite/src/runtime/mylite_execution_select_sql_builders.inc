@@ -24,8 +24,70 @@ static int append_select_sql_query(
     const struct planned_select *plan,
     size_t *next_parameter
 ) {
+    struct select_sql_work_stack stack = {0};
     int rc = MYLITE_OK;
 
+    rc = select_sql_work_stack_push(
+        &stack,
+        (struct select_sql_work_item){
+            .kind = SELECT_SQL_WORK_QUERY,
+            .plan = plan,
+        }
+    );
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        struct select_sql_work_item item = stack.items[--stack.count];
+
+        rc = append_select_sql_work_item(string, &stack, &item, next_parameter);
+    }
+
+    select_sql_work_stack_deinit(&stack);
+    return rc;
+}
+
+static int append_select_sql_work_item(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct select_sql_work_item *item,
+    size_t *next_parameter
+) {
+    if (item == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (item->kind) {
+    case SELECT_SQL_WORK_QUERY:
+        return append_select_sql_work_query(string, stack, item->plan);
+    case SELECT_SQL_WORK_FROM:
+        return append_select_sql_work_from(string, stack, item->plan);
+    case SELECT_SQL_WORK_SOURCE:
+        return append_select_sql_work_source(string, stack, item->source, item->source_index);
+    case SELECT_SQL_WORK_JOIN_CONDITION:
+        return append_select_join_condition_sql(string, item->join_condition, next_parameter);
+    case SELECT_SQL_WORK_PREDICATE:
+        return append_select_predicate_sql(string, item->predicate, next_parameter);
+    case SELECT_SQL_WORK_ORDER:
+        return append_select_order_sql(string, item->order, next_parameter);
+    case SELECT_SQL_WORK_LIMIT:
+        return append_select_limit_sql(string, item->limit, next_parameter);
+    case SELECT_SQL_WORK_TEXT:
+        return mylite_dynamic_string_append(string, item->text);
+    case SELECT_SQL_WORK_SOURCE_ALIAS:
+        return append_select_source_alias(string, item->source_index);
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_select_sql_work_query(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct planned_select *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_ERROR;
+    }
     if (plan->is_distinct) {
         rc = mylite_dynamic_string_append(string, "SELECT DISTINCT ");
     } else {
@@ -44,19 +106,212 @@ static int append_select_sql_query(
         rc = mylite_dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_from_sql(string, plan, next_parameter);
+        rc = select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_LIMIT,
+                .limit = &plan->limit,
+            }
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+        rc = select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_ORDER,
+                .order = &plan->order,
+            }
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(string, &plan->order, next_parameter);
+        rc = select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_PREDICATE,
+                .predicate = &plan->predicate,
+            }
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+        rc = select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_FROM,
+                .plan = plan,
+            }
+        );
     }
 
     return rc;
+}
+
+static int append_select_sql_work_from(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct planned_select *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (plan->source_count == 0U) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+        if (rc == MYLITE_OK && plan->requires_source_alias) {
+            rc = mylite_dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK && plan->requires_source_alias) {
+            rc = append_select_source_alias(string, 0U);
+        }
+        return rc;
+    }
+    if (plan->join_count != plan->source_count - 1U || plan->join_kinds == NULL ||
+        plan->join_conditions == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t remaining = plan->join_count; rc == MYLITE_OK && remaining != 0U; --remaining) {
+        size_t join_index = remaining - 1U;
+        size_t right_source_index = join_index + 1U;
+        const char *join_sql = " JOIN ";
+
+        if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+            join_sql = " LEFT JOIN ";
+        } else if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+            join_sql = " RIGHT JOIN ";
+        }
+        rc = select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_JOIN_CONDITION,
+                .join_condition = &plan->join_conditions[join_index],
+            }
+        );
+        if (rc == MYLITE_OK) {
+            rc = select_sql_work_stack_push(
+                stack,
+                (struct select_sql_work_item){
+                    .kind = SELECT_SQL_WORK_SOURCE,
+                    .source = &plan->sources[right_source_index],
+                    .source_index = right_source_index,
+                }
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = select_sql_work_stack_push(
+                stack,
+                (struct select_sql_work_item){
+                    .kind = SELECT_SQL_WORK_TEXT,
+                    .text = join_sql,
+                }
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_SOURCE,
+                .source = &plan->sources[0],
+                .source_index = 0U,
+            }
+        );
+    }
+
+    return rc;
+}
+
+static int append_select_sql_work_source(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct planned_select_source *source,
+    size_t source_index
+) {
+    int rc = MYLITE_OK;
+
+    if (source == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (source->is_derived) {
+        if (source->derived_select == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append_char(string, '(');
+        if (rc == MYLITE_OK) {
+            rc = select_sql_work_stack_push(
+                stack,
+                (struct select_sql_work_item){
+                    .kind = SELECT_SQL_WORK_SOURCE_ALIAS,
+                    .source_index = source_index,
+                }
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = select_sql_work_stack_push(
+                stack,
+                (struct select_sql_work_item){
+                    .kind = SELECT_SQL_WORK_TEXT,
+                    .text = ") AS ",
+                }
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = select_sql_work_stack_push(
+                stack,
+                (struct select_sql_work_item){
+                    .kind = SELECT_SQL_WORK_QUERY,
+                    .plan = source->derived_select,
+                }
+            );
+        }
+        return rc;
+    }
+
+    rc = mylite_dynamic_string_append_quoted_identifier(string, source->table.physical_name);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, source_index);
+    }
+
+    return rc;
+}
+
+static int select_sql_work_stack_push(
+    struct select_sql_work_stack *stack,
+    struct select_sql_work_item item
+) {
+    struct select_sql_work_item *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            return MYLITE_NOMEM;
+        }
+        items = realloc(stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+
+    stack->items[stack->count] = item;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static void select_sql_work_stack_deinit(struct select_sql_work_stack *stack) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct select_sql_work_stack){0};
 }
 
 static int append_select_projection_column_sql(

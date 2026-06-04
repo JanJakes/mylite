@@ -2114,6 +2114,36 @@ struct predicate_sql_work_item {
     const char *text;
 };
 
+enum select_sql_work_item_kind {
+    SELECT_SQL_WORK_QUERY = 0,
+    SELECT_SQL_WORK_FROM = 1,
+    SELECT_SQL_WORK_SOURCE = 2,
+    SELECT_SQL_WORK_JOIN_CONDITION = 3,
+    SELECT_SQL_WORK_PREDICATE = 4,
+    SELECT_SQL_WORK_ORDER = 5,
+    SELECT_SQL_WORK_LIMIT = 6,
+    SELECT_SQL_WORK_TEXT = 7,
+    SELECT_SQL_WORK_SOURCE_ALIAS = 8,
+};
+
+struct select_sql_work_item {
+    enum select_sql_work_item_kind kind;
+    const struct planned_select *plan;
+    const struct planned_select_source *source;
+    const struct planned_select_join_condition *join_condition;
+    const struct planned_select_predicate *predicate;
+    const struct planned_select_order *order;
+    const struct planned_select_limit *limit;
+    const char *text;
+    size_t source_index;
+};
+
+struct select_sql_work_stack {
+    struct select_sql_work_item *items;
+    size_t count;
+    size_t capacity;
+};
+
 struct planned_select_order_item {
     enum planned_select_order_item_kind kind;
     enum planned_select_order_direction direction;
@@ -23446,6 +23476,33 @@ static int append_select_sql_query(
     const struct planned_select *plan,
     size_t *next_parameter
 );
+static int append_select_sql_work_item(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct select_sql_work_item *item,
+    size_t *next_parameter
+);
+static int append_select_sql_work_query(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct planned_select *plan
+);
+static int append_select_sql_work_from(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct planned_select *plan
+);
+static int append_select_sql_work_source(
+    struct mylite_dynamic_string *string,
+    struct select_sql_work_stack *stack,
+    const struct planned_select_source *source,
+    size_t source_index
+);
+static int select_sql_work_stack_push(
+    struct select_sql_work_stack *stack,
+    struct select_sql_work_item item
+);
+static void select_sql_work_stack_deinit(struct select_sql_work_stack *stack);
 static int append_create_table_index_sql_close(struct mylite_dynamic_string *string);
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
 static int build_alter_table_add_column_sql(

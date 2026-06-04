@@ -228,12 +228,15 @@ static int test_scalar_subquery_no_selected_schema(void) {
 }
 
 static int test_scalar_subquery_diagnostics(void) {
+    static const char *const row_scalar_columns[] = {"CONCAT(id, '')", "(SELECT DATABASE())"};
+    static const char *const row_scalar_values[] = {"1", "app"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
     failures += execute_ok(database, "CREATE TABLE t (id INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO t VALUES (1)", NULL);
     failures += execute_error(
         database,
         "SELECT (SELECT DATABASE(), SCHEMA())",
@@ -270,14 +273,15 @@ static int test_scalar_subquery_diagnostics(void) {
             .message_part = "scalar subquery supports only DATABASE(), SCHEMA(), integer, boolean",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CONCAT(id, ''), (SELECT DATABASE()) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "row-scalar SELECT supports scalar subqueries only as CONCAT() arguments",
+        (struct expected_query){
+            .sql = "SELECT CONCAT(id, ''), (SELECT DATABASE()) FROM t",
+            .columns = row_scalar_columns,
+            .column_count = 2U,
+            .values = row_scalar_values,
+            .row_count = 1U,
+            .context = "row scalar scalar-subquery projection",
         }
     );
 

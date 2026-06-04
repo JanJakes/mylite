@@ -369,7 +369,7 @@ static int test_prepared_statement_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "multiple statements are not supported",
+            .message_part = "near 'EXECUTE arg_count'",
         }
     );
     failures += expect_statement_result(
@@ -393,7 +393,7 @@ static int test_prepared_statement_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "multiple statements are not supported",
+            .message_part = "near 'EXECUTE arg_count USING @a, @b'",
         }
     );
     failures += execute_statement_ok(database, "SET @a = 1, @b = 2");

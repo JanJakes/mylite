@@ -584,6 +584,8 @@ static int plan_row_scalar_session_value(
     struct planned_row_scalar_expression *out_expression
 ) {
     struct session_scalar_cell cell = {0};
+    uint64_t magnitude = 0U;
+    bool is_negative = false;
     int rc = session_scalar_value(database, expression, &cell);
 
     if (rc != MYLITE_OK) {
@@ -592,6 +594,27 @@ static int plan_row_scalar_session_value(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     if (cell.value == NULL) {
         out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (is_scalar_arithmetic_projection_expression(expression) &&
+        mylite_execution_parse_signed_integer_text(
+            cell.value,
+            strlen(cell.value),
+            &magnitude,
+            &is_negative
+        ) == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
+        ((!is_negative && magnitude <= (uint64_t)INT64_MAX) ||
+         (is_negative && magnitude <= (uint64_t)INT64_MAX + 1U))) {
+        if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+            out_expression->value =
+                (struct planned_value){.is_null = false, .integer = INT64_MIN};
+        } else if (is_negative) {
+            out_expression->value =
+                (struct planned_value){.is_null = false, .integer = -(int64_t)magnitude};
+        } else {
+            out_expression->value =
+                (struct planned_value){.is_null = false, .integer = (int64_t)magnitude};
+        }
         return MYLITE_OK;
     }
 

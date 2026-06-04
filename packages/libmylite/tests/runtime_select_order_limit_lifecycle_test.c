@@ -1616,13 +1616,13 @@ static int test_order_limit_diagnostics(void) {
             .context = "grouped selected column with ordered limit",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM ordered_numbers HAVING id > 0 ORDER BY id LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only WHERE, ORDER BY, and LIMIT",
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers HAVING id > 0 ORDER BY id LIMIT 1",
+            .values = alias_first,
+            .value_count = sizeof(alias_first) / sizeof(alias_first[0]),
+            .context = "HAVING with ordered limit",
         }
     );
     failures += execute_error(

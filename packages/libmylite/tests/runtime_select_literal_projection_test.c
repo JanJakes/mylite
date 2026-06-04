@@ -82,7 +82,7 @@ int main(void) {
 
 static int test_literal_projection_values_and_file_safety(void) {
     static const char *const columns_core[] =
-        {"0001", "0001", "-0001", "NULL", "TRUE", "false", "'x'", "\"y\""};
+        {"0001", "0001", "-0001", "NULL", "TRUE", "false", "x", "y"};
     static const char *const values_core[] = {"1", "1", "-1", NULL, "1", "0", "x", "y"};
     static const char *const columns_dual_all[] = {"1", "1", "-1", "NULL", "TRUE", "FALSE"};
     static const char *const values_dual_all[] = {"1", "1", "-1", NULL, "1", "0"};

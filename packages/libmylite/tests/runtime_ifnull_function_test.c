@@ -252,6 +252,8 @@ static int test_ifnull_function_values_and_file_safety(void) {
 static int test_ifnull_function_unsupported_forms(void) {
     static const char *const identifier_columns[] = {"ifnull"};
     static const char *const identifier_values[] = {"7"};
+    static const char *const row_expression_columns[] = {"IFNULL(1+2,3)"};
+    static const char *const row_expression_values[] = {"3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -442,13 +444,15 @@ static int test_ifnull_function_unsupported_forms(void) {
             .message_part = "SELECT IFNULL() supports only signed 64-bit integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT IFNULL(1+2,3) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT supports only CONCAT()",
+        (struct expected_query){
+            .sql = "SELECT IFNULL(1+2,3) FROM t",
+            .columns = row_expression_columns,
+            .column_count = 1U,
+            .values = row_expression_values,
+            .row_count = 1U,
+            .context = "IFNULL row expression projection",
         }
     );
     failures += execute_error(

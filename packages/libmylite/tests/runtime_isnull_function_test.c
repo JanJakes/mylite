@@ -253,6 +253,8 @@ static int test_isnull_function_values_and_file_safety(void) {
 static int test_isnull_function_unsupported_forms(void) {
     static const char *const identifier_columns[] = {"isnull"};
     static const char *const identifier_values[] = {"13"};
+    static const char *const row_expression_columns[] = {"ISNULL(1+1)"};
+    static const char *const row_expression_values[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -434,13 +436,15 @@ static int test_isnull_function_unsupported_forms(void) {
             .message_part = "SELECT ISNULL() supports only signed 64-bit integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT ISNULL(1+1) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT supports only CONCAT()",
+        (struct expected_query){
+            .sql = "SELECT ISNULL(1+1) FROM t",
+            .columns = row_expression_columns,
+            .column_count = 1U,
+            .values = row_expression_values,
+            .row_count = 1U,
+            .context = "ISNULL row expression projection",
         }
     );
     failures += execute_error(

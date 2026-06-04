@@ -660,6 +660,7 @@ static int plan_in_subquery_inner_predicate(
     };
     const struct select_predicate_plan_options options = {
         .allow_column_reference_rhs = true,
+        .exists_inner_source_index = 1U,
         .outer_source_context = outer_source_context,
         .outer_columns = outer_columns,
         .outer_column_count = outer_column_count,

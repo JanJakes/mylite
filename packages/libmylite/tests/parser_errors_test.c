@@ -1233,7 +1233,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name MODIFY old_col BIGINT, MODIFY other_col BIGINT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1289,7 +1289,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name CHANGE old_col new_col BIGINT, CHANGE other_col final_col BIGINT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

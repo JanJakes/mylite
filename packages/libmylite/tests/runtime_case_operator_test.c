@@ -353,6 +353,8 @@ static int test_case_operator_warnings(void) {
 }
 
 static int test_case_operator_unsupported_forms(void) {
+    static const char *const row_case_columns[] = {"CASE WHEN id THEN 2 ELSE 3 END"};
+    static const char *const row_case_values[] = {"2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -467,13 +469,17 @@ static int test_case_operator_unsupported_forms(void) {
             .message_part = "SELECT CASE supports only",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CASE WHEN id THEN 2 ELSE 3 END FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT CASE WHEN id THEN 2 ELSE 3 END FROM t",
+            .columns = row_case_columns,
+            .column_count = 1U,
+            .values = row_case_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-column CASE condition",
         }
     );
     failures += execute_error(

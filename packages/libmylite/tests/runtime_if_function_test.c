@@ -238,6 +238,8 @@ static int test_if_function_values_and_file_safety(void) {
 }
 
 static int test_if_function_unsupported_forms(void) {
+    static const char *const row_expression_columns[] = {"IF(id,2+3,4)"};
+    static const char *const row_expression_values[] = {"5"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -478,13 +480,15 @@ static int test_if_function_unsupported_forms(void) {
             .message_part = "near 'ORDER'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT IF(id,2+3,4) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT supports only CONCAT()",
+        (struct expected_query){
+            .sql = "SELECT IF(id,2+3,4) FROM t",
+            .columns = row_expression_columns,
+            .column_count = 1U,
+            .values = row_expression_values,
+            .row_count = 1U,
+            .context = "IF row expression projection",
         }
     );
     failures += execute_error(

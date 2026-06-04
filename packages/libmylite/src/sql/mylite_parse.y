@@ -4680,29 +4680,33 @@ limit_integer(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
 
-select_item_list(A) ::= select_item(B). {
+select_item_list(A) ::= first_select_item(B). {
     A = mylite_sql_parser_make_select_list(state, B);
 }
-select_item_list(A) ::= select_item_list(B) COMMA select_item(C). {
+select_item_list(A) ::= select_item_list(B) COMMA trailing_select_item(C). {
     A = mylite_sql_parser_append_select_item(state, B, C);
 }
 
-select_item(A) ::= expression(B). {
-    A = mylite_sql_parser_make_select_item(state, B, NULL);
-}
-select_item(A) ::= expression(B) AS select_alias(C). {
-    A = mylite_sql_parser_make_select_item(state, B, C);
-}
-select_item(A) ::= expression(B) select_alias(C). {
-    A = mylite_sql_parser_make_select_item(state, B, C);
-}
-select_item(A) ::= STAR(S). {
+first_select_item(A) ::= STAR(S). {
     A = mylite_sql_parser_make_select_item(
         state,
         mylite_sql_parser_make_wildcard(state, S),
         NULL);
 }
-select_item(A) ::= qualified_wildcard(B). {
+first_select_item(A) ::= trailing_select_item(B). {
+    A = B;
+}
+
+trailing_select_item(A) ::= expression(B). {
+    A = mylite_sql_parser_make_select_item(state, B, NULL);
+}
+trailing_select_item(A) ::= expression(B) AS select_alias(C). {
+    A = mylite_sql_parser_make_select_item(state, B, C);
+}
+trailing_select_item(A) ::= expression(B) select_alias(C). {
+    A = mylite_sql_parser_make_select_item(state, B, C);
+}
+trailing_select_item(A) ::= qualified_wildcard(B). {
     A = mylite_sql_parser_make_select_item(state, B, NULL);
 }
 
@@ -7854,7 +7858,7 @@ searched_case_when_list(A) ::= searched_case_when(B). {
 searched_case_when_list(A) ::= searched_case_when_list(B) searched_case_when(C). {
     A = mylite_sql_parser_append_case_when(state, B, C);
 }
-searched_case_when(A) ::= WHEN(W) predicate(C) THEN expression(R). {
+searched_case_when(A) ::= WHEN(W) expression(C) THEN expression(R). {
     A = mylite_sql_parser_make_case_when_clause(state, W, C, R);
 }
 

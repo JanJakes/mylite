@@ -643,6 +643,40 @@ static int test_insert_select_statement(void) {
 
     failures += parser_test_parse_sql(
         "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT 1, 'ok' FROM DUAL WHERE (SELECT NULL FROM DUAL) IS NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_first_child_kind(
+                parser_test_child_at(statement, 2U),
+                MYLITE_SQL_AST_WHERE_CLAUSE
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_IS_NULL_PREDICATE,
+        "insert select dual scalar subquery is null predicate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_first_child_kind(
+                    parser_test_child_at(statement, 2U),
+                    MYLITE_SQL_AST_WHERE_CLAUSE
+                ),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_SCALAR_SUBQUERY,
+        "insert select dual scalar subquery predicate operand"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
         "SELECT id, amount FROM app.source_a UNION ALL SELECT id, amount FROM app.source_b;",
         MYLITE_SQL_PARSE_OK,
         &result

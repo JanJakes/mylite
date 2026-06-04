@@ -3847,6 +3847,22 @@ predicate_primary(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
 predicate_atom(A) ::= EXISTS(E) LPAREN select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_exists_predicate(state, E, S, R);
 }
+predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state,
+        mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R),
+        I,
+        MYLITE_SQL_AST_OPERATOR_IS_NULL,
+        N);
+}
+predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state,
+        mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R),
+        I,
+        MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
+        N);
+}
 predicate_atom(A) ::= predicate_scalar_literal(V). {
     A = V;
 }

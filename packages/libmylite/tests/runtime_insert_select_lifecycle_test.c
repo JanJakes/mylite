@@ -18,7 +18,7 @@ enum {
     test_path_capacity = 1024,
     sql_capacity = 2048,
     copied_query_column_count = 9,
-    dual_source_inserted_row_count = 14,
+    dual_source_inserted_row_count = 15,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -366,6 +366,7 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
         "11", "null-safe",   "7", "12", "logical",      "7", "13", "is-true",    "7",
         "14", "is-false",    "7", "15", "is-null",      "7", "16", "is-unknown", "7",
         "17", "is-not-true", "7", "18", "xor",          "7",
+        "21", "subquery-null", "7",
     };
     static const char *const select_visible[] = {"visible"};
     static const char *const zero_rows[] = {"0"};
@@ -519,6 +520,18 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
     failures += expect_dml_ok(
         database,
         "INSERT INTO dst(id, label) SELECT 20, 'skip' FROM DUAL WHERE 1 XOR 2",
+        0
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 21, 'subquery-null' FROM DUAL "
+        "WHERE (SELECT NULL FROM DUAL) IS NULL",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 22, 'skip' FROM DUAL "
+        "WHERE (SELECT NULL FROM DUAL) IS NOT NULL",
         0
     );
     catalog = mylite_connection_catalog_for_test(database);

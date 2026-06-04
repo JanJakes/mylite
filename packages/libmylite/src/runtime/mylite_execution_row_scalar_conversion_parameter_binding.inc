@@ -17,7 +17,7 @@ static int bind_row_scalar_rand_expression_parameters(
         if (expression->arguments == NULL || expression->argument_count != 1U) {
             return MYLITE_ERROR;
         }
-        return bind_row_scalar_expression_parameters(
+        return bind_row_scalar_conversion_expression_parameters(
             statement,
             &expression->arguments[0],
             parameter_index

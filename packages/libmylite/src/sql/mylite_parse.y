@@ -72,6 +72,11 @@
 %type table_or_tables { struct mylite_sql_token }
 %type trim_direction { enum mylite_sql_ast_node_kind }
 %type cast_basic_target { enum mylite_sql_ast_node_kind }
+%type cast_length_opt { int }
+%type cast_character_set_opt { int }
+%type cast_binary_attribute_opt { int }
+%type cast_decimal_precision_opt { int }
+%type cast_float_precision_opt { int }
 %type alter_table_option_tail_opt { struct mylite_sql_alter_table_options }
 %type alter_table_algorithm_lock_option_list { struct mylite_sql_alter_table_options }
 %type alter_table_algorithm_lock_option { struct mylite_sql_alter_table_options }
@@ -4704,13 +4709,13 @@ expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
 expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
 }
-expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY RPAREN(R). {
+expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY cast_length_opt RPAREN(R). {
     A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
 }
 expression(A) ::= CAST(T) LPAREN expression(V) AS cast_basic_target(K) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(state, T, K, V, R);
 }
-expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY RPAREN(R). {
+expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY cast_length_opt RPAREN(R). {
     A = mylite_sql_parser_make_convert_binary_type_expression(state, T, V, R);
 }
 expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA cast_basic_target(K) RPAREN(R). {
@@ -4899,10 +4904,46 @@ window_order_clause(A) ::= ORDER(T) BY qualified_identifier(C) order_direction_o
     A = mylite_sql_parser_make_window_order_clause(state, T, C, D);
 }
 
-cast_basic_target(A) ::= CHAR. {
+cast_basic_target(A) ::= CHAR cast_length_opt cast_character_set_opt cast_binary_attribute_opt. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
 }
 cast_basic_target(A) ::= DATE. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= TIME. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= DATETIME. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= TIMESTAMP. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= NCHAR cast_length_opt. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= NATIONAL CHAR cast_length_opt. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= NATIONAL CHARACTER cast_length_opt. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= decimal_type_name cast_decimal_precision_opt. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= FLOAT_TYPE cast_float_precision_opt. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= REAL. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= DOUBLE. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= DOUBLE PRECISION. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= JSON. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
 }
 cast_basic_target(A) ::= SIGNED. {
@@ -4922,6 +4963,45 @@ cast_basic_target(A) ::= UNSIGNED INTEGER_TYPE. {
 }
 cast_basic_target(A) ::= UNSIGNED INT. {
     A = MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION;
+}
+cast_length_opt(A) ::= . {
+    A = 0;
+}
+cast_length_opt(A) ::= LPAREN INTEGER RPAREN. {
+    A = 0;
+}
+cast_character_set_opt(A) ::= . {
+    A = 0;
+}
+cast_character_set_opt(A) ::= CHARACTER SET option_name. {
+    A = 0;
+}
+cast_character_set_opt(A) ::= CHARACTER SET BINARY. {
+    A = 0;
+}
+cast_binary_attribute_opt(A) ::= . {
+    A = 0;
+}
+cast_binary_attribute_opt(A) ::= BINARY. {
+    A = 0;
+}
+cast_decimal_precision_opt(A) ::= . {
+    A = 0;
+}
+cast_decimal_precision_opt(A) ::= LPAREN INTEGER RPAREN. {
+    A = 0;
+}
+cast_decimal_precision_opt(A) ::= LPAREN INTEGER COMMA INTEGER RPAREN. {
+    A = 0;
+}
+cast_float_precision_opt(A) ::= . {
+    A = 0;
+}
+cast_float_precision_opt(A) ::= LPAREN INTEGER RPAREN. {
+    A = 0;
+}
+cast_float_precision_opt(A) ::= LPAREN INTEGER COMMA INTEGER RPAREN. {
+    A = 0;
 }
 date_interval_unit(A) ::= YEAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);

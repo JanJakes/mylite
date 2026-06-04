@@ -156,10 +156,14 @@ static int test_cast_binary_expression(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT CAST('ABC' AS BINARY(5));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("SELECT CAST('ABC' AS BINARY(5));", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_CAST_BINARY_EXPRESSION,
+        "cast binary length compatibility expression"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
@@ -216,11 +220,39 @@ static int test_cast_binary_expression(void) {
         "cast date compatibility expression"
     );
     mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parser_test_parse_sql("SELECT CAST('ABC' AS CHAR(5));", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_CAST_CHAR_EXPRESSION,
+        "cast char length compatibility expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
-        "SELECT CAST('ABC' AS CHAR(5));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "SELECT CAST('abc' AS CHAR(2) CHARACTER SET utf8 BINARY), "
+        "CAST('abc' AS NCHAR), CAST('abc' AS NATIONAL CHAR (2)), "
+        "CAST('2025-10-05 14:05:28' AS TIME), "
+        "CAST('2025-10-05 14:05:28' AS DATETIME), "
+        "CAST('123.456' AS DECIMAL(10,1)), CAST('123.456' AS FLOAT), "
+        "CAST('123.456' AS REAL), CAST('123.456' AS DOUBLE), "
+        "CAST('{\"name\":\"value\"}' AS JSON), CONVERT('123.456', DECIMAL);",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    failures +=
+        parser_test_expect_child_count(select_list, 11U, "expanded cast target select item count");
+    for (size_t item = 0U; item < 11U; ++item) {
+        failures += parser_test_expect_node(
+            parser_test_child_at(parser_test_child_at(select_list, item), 0U),
+            item == 10U ? MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION
+                        : MYLITE_SQL_AST_CAST_CHAR_EXPRESSION,
+            "expanded cast target compatibility expression"
+        );
+    }
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT CAST('1' AS INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -363,10 +395,14 @@ static int test_cast_binary_expression(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT CONVERT('ABC', BINARY(5));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("SELECT CONVERT('ABC', BINARY(5));", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION,
+        "convert binary length compatibility expression"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
@@ -424,10 +460,14 @@ static int test_cast_binary_expression(void) {
         "convert unsigned int type expression"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT CONVERT('ABC', CHAR(5));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("SELECT CONVERT('ABC', CHAR(5));", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION,
+        "convert char length compatibility expression"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(

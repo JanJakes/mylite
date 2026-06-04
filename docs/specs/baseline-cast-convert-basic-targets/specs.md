@@ -7,11 +7,19 @@ of additional MySQL cast targets:
 
 ```sql
 SELECT CAST(value AS CHAR)[, ...]
+SELECT CAST(value AS CHAR(N) [CHARACTER SET charset] [BINARY])[, ...]
 SELECT CAST(value AS DATE)[, ...]
+SELECT CAST(value AS TIME|DATETIME|TIMESTAMP)[, ...]
+SELECT CAST(value AS DECIMAL[(precision[, scale])])[, ...]
+SELECT CAST(value AS JSON)[, ...]
 SELECT CAST(value AS SIGNED [INTEGER|INT])[, ...]
 SELECT CAST(value AS UNSIGNED [INTEGER|INT])[, ...]
 SELECT CONVERT(value, CHAR)[, ...]
+SELECT CONVERT(value, CHAR(N))[, ...]
 SELECT CONVERT(value, DATE)[, ...]
+SELECT CONVERT(value, TIME|DATETIME|TIMESTAMP)[, ...]
+SELECT CONVERT(value, DECIMAL[(precision[, scale])])[, ...]
+SELECT CONVERT(value, JSON)[, ...]
 SELECT CONVERT(value, SIGNED [INTEGER|INT])[, ...]
 SELECT CONVERT(value, UNSIGNED [INTEGER|INT])[, ...]
 SELECT ... FROM DUAL
@@ -21,11 +29,11 @@ DO ...
 The admitted `value` remains deliberately small: ordinary string literals,
 decimal integer literals with optional unary sign, `TRUE`, `FALSE`, and `NULL`,
 with optional parenthesization. This phase does not add table-backed casts,
-DML-assignment casts, predicate casts, `CHAR(N)`, explicit cast character-set
-clauses, full temporal target semantics, decimal or approximate targets,
-JSON/spatial casts, parameters, subqueries, or arbitrary expression conversion.
-The `DATE` target is admitted only as a metadata-compatibility placeholder and
-currently follows the `CHAR` conversion behavior.
+DML-assignment casts, predicate casts, full temporal target semantics, full
+decimal or approximate numeric target semantics, writable JSON/spatial casts,
+parameters, subqueries, or arbitrary expression conversion. The scalar `DATE`,
+`TIME`, `DATETIME`, `TIMESTAMP`, `DECIMAL`, and `JSON` targets are admitted as
+compatibility placeholders with the limited result shaping described below.
 
 The goal is to unlock the most common non-binary explicit cast targets while
 preserving the current scalar-expression architecture and leaving table-backed
@@ -53,9 +61,23 @@ establish this slice's expected behavior:
 
 - `CAST(value AS CHAR)` and `CONVERT(value, CHAR)` return text for admitted
   string, integer, boolean, and `NULL` operands, with no warnings.
-- `CAST(value AS DATE)` and `CONVERT(value, DATE)` are accepted for
-  compatibility but use the current `CHAR` target behavior until full temporal
-  cast semantics are implemented.
+- `CAST(value AS BINARY(N))`, `CONVERT(value, BINARY(N))`, `CAST(value AS
+  CHAR(N))`, and `CONVERT(value, CHAR(N))` truncate the current public scalar
+  text result to the requested byte length and do not synthesize NUL padding.
+- Character target clauses `CHAR(N) CHARACTER SET name [BINARY]`, `NCHAR(N)`,
+  `NATIONAL CHAR(N)`, and `NATIONAL CHARACTER(N)` are accepted in scalar
+  contexts and use the same byte-length result shaping.
+- `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP` targets are accepted in scalar
+  contexts and extract canonical date/time/datetime text from canonical
+  datetime string inputs.
+- `DECIMAL[(precision[, scale])]` targets are accepted in scalar contexts and
+  format the admitted scalar text input at the requested scale, defaulting to
+  scale `0`.
+- `FLOAT`, `REAL`, `DOUBLE`, and `DOUBLE PRECISION` targets are accepted as
+  scalar placeholder targets and currently return the current public scalar text
+  result unchanged.
+- `JSON` targets are accepted in scalar contexts and normalize valid JSON text
+  through MyLite's existing JSON normalizer.
 - `CAST(value AS SIGNED)` / `CONVERT(value, SIGNED)` return signed `BIGINT`
   text for admitted operands.
 - `CAST(value AS UNSIGNED)` / `CONVERT(value, UNSIGNED)` return unsigned
@@ -123,7 +145,19 @@ cast_convert_scalar:
 
 cast_convert_target:
     CHAR
+  | CHAR ( integer_literal ) [ CHARACTER SET charset_name ] [ BINARY ]
+  | NCHAR [ ( integer_literal ) ]
+  | NATIONAL CHAR [ ( integer_literal ) ]
+  | NATIONAL CHARACTER [ ( integer_literal ) ]
   | DATE
+  | TIME
+  | DATETIME
+  | TIMESTAMP
+  | DECIMAL [ ( integer_literal [ , integer_literal ] ) ]
+  | FLOAT [ ( integer_literal [ , integer_literal ] ) ]
+  | REAL
+  | DOUBLE [ PRECISION ]
+  | JSON
   | SIGNED
   | SIGNED INTEGER
   | SIGNED INT
@@ -152,11 +186,19 @@ The parser grammar is authored independently and extends MyLite's expression
 grammar with cast-target nodes:
 
 ```lemon
+expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY cast_length_opt(N) RPAREN(R).
 expression(A) ::= CAST(T) LPAREN expression(V) AS cast_basic_target(C) RPAREN(R).
+expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY cast_length_opt(N) RPAREN(R).
 expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA cast_basic_target(C) RPAREN(R).
 
-cast_basic_target(A) ::= CHAR(T).
+cast_basic_target(A) ::= CHAR(T) cast_length_opt(N) cast_character_set_opt(C) cast_binary_attribute_opt(B).
 cast_basic_target(A) ::= DATE(T).
+cast_basic_target(A) ::= TIME(T).
+cast_basic_target(A) ::= DATETIME(T).
+cast_basic_target(A) ::= TIMESTAMP(T).
+cast_basic_target(A) ::= NCHAR(T) cast_length_opt(N).
+cast_basic_target(A) ::= NATIONAL(T) CHAR(C) cast_length_opt(N).
+cast_basic_target(A) ::= decimal_type_name(T) cast_decimal_precision_opt(P).
 cast_basic_target(A) ::= SIGNED(T) cast_integer_name_opt(N).
 cast_basic_target(A) ::= UNSIGNED(T) cast_integer_name_opt(N).
 
@@ -165,11 +207,10 @@ cast_integer_name_opt(A) ::= INTEGER(T).
 cast_integer_name_opt(A) ::= INTEGER_TYPE(T). /* INT spelling only */
 ```
 
-The existing bare `BINARY` cast and `CONVERT(... USING ...)` productions remain
-separate. `DATE` is a placeholder target mapped to the current character
-conversion path. `CHAR(N)`, `CHAR CHARACTER SET ...`, `NCHAR`, bare
-`INT`/`INTEGER`, other temporal targets, decimal/approximate targets, and
-length-bearing binary casts remain outside this grammar slice.
+The existing `CONVERT(... USING ...)` productions remain separate. Bare
+`INT`/`INTEGER` remain syntax errors in cast target position. Temporal,
+decimal, approximate, and JSON targets in this slice are scalar placeholders,
+not full MySQL type semantics.
 
 ## Runtime Semantics
 
@@ -225,8 +266,7 @@ Unsupported or rejected behavior:
 | --- | --- |
 | `CAST(value AS INT)` / `CAST(value AS INTEGER)` | MySQL-style syntax error |
 | `CONVERT(value, INT)` / `CONVERT(value, INTEGER)` | MySQL-style syntax error |
-| `CHAR(N)` / `BINARY(N)` / explicit cast charset clauses | deterministic unsupported syntax for this phase |
-| temporal targets other than the `DATE` placeholder, decimal, approximate, JSON, spatial, or national targets | deterministic unsupported syntax for this phase |
+| spatial targets | deterministic unsupported syntax for this phase |
 | table-backed `SELECT CAST(column AS SIGNED) FROM t` | deterministic unsupported table-backed expression diagnostic |
 | predicate, DML-assignment, default-expression, or generated-column casts | deterministic unsupported expression diagnostic |
 | embedded `NUL` in scalar text operand | deterministic unsupported runtime error |
@@ -247,9 +287,11 @@ Add a MySQL expectation script and fast C tests covering:
   and warning publication;
 - signed and unsigned boundary values, complement behavior, and truncation
   diagnostics for string and decimal integer literal operands;
-- deterministic rejection of unsupported `CHAR(N)`, explicit charset target
-  clauses, table-backed casts, predicate casts, DML assignments, parameters,
-  subqueries, and arbitrary expression operands;
+- scalar placeholder behavior for length-bearing binary/character targets,
+  character-set target clauses, national-character targets, temporal targets,
+  decimal scale formatting, approximate placeholders, and JSON normalization;
+- deterministic rejection of unsupported table-backed casts, predicate casts,
+  DML assignments, parameters, subqueries, and arbitrary expression operands;
 - unchanged existing parser/scalar/cast/convert tests.
 
 Verification before marking done:
@@ -265,6 +307,6 @@ Update `COMPATIBILITY.md`, `docs/compatibility/functions-casts.md`,
 `docs/compatibility/sql-query-expressions.md`, and
 `docs/compatibility/type-system-literals-conversion.md` only for this exact
 no-source/`DUAL`/`DO` subset. Do not claim table-backed casts, expression
-assignments, predicate casts, `CHAR(N)`, character-set target clauses, full
-temporal cast semantics, decimal/float target casts, JSON/spatial casts,
-protocol-grade metadata, or general expression conversion.
+assignments, predicate casts, full temporal cast semantics, full decimal/float
+target semantics, spatial casts, protocol-grade metadata, or general expression
+conversion.

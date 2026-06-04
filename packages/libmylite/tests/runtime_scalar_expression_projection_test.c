@@ -199,6 +199,14 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         "(CAST('x' AS BINARY))",
     };
     static const char *const cast_binary_label_values[] = {"ABC", "ABC", "x"};
+    static const char *const cast_convert_length_columns[] = {
+        "CAST('ABC' AS BINARY(5))",
+        "CAST('ABC' AS BINARY(2))",
+        "CAST('ABC' AS CHAR(2))",
+        "CONVERT('ABC', BINARY(2))",
+        "CONVERT('ABC', CHAR(2))",
+    };
+    static const char *const cast_convert_length_values[] = {"ABC", "AB", "AB", "AB", "AB"};
     static const char *const convert_binary_type_columns[] = {
         "binary",
         "CONVERT('', BINARY)",
@@ -372,6 +380,22 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     };
     static const char *const cast_convert_basic_label_values[] =
         {"1", "1", "2", "123", "3", "4", "ABC"};
+    static const char *const cast_convert_expanded_target_columns[] = {
+        "CAST('2025-10-05 14:05:28' AS DATE)",
+        "CAST('2025-10-05 14:05:28' AS TIME)",
+        "CAST('2025-10-05 14:05:28' AS DATETIME)",
+        "CAST('123.456' AS DECIMAL(10,1))",
+        "CONVERT('123.456', DECIMAL)",
+        "CAST('{\"name\":\"value\"}' AS JSON)",
+    };
+    static const char *const cast_convert_expanded_target_values[] = {
+        "2025-10-05",
+        "14:05:28",
+        "2025-10-05 14:05:28",
+        "123.5",
+        "123",
+        "{\"name\": \"value\"}",
+    };
     static const char *const cast_convert_basic_status_columns[] = {
         "ROW_COUNT()",
         "@@warning_count"
@@ -482,8 +506,11 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             );
             ++failures;
         } else {
-            failures +=
-                expect_size(mylite_result_column_count(result), 3U, "decoded string literal labels");
+            failures += expect_size(
+                mylite_result_column_count(result),
+                3U,
+                "decoded string literal labels"
+            );
             failures +=
                 expect_size(mylite_result_row_count(result), 1U, "decoded string literal labels");
             failures += expect_text(
@@ -564,6 +591,19 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .values = cast_binary_label_values,
             .row_count = 1U,
             .context = "cast binary labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('ABC' AS BINARY(5)), CAST('ABC' AS BINARY(2)), "
+                   "CAST('ABC' AS CHAR(2)), CONVERT('ABC', BINARY(2)), "
+                   "CONVERT('ABC', CHAR(2))",
+            .columns = cast_convert_length_columns,
+            .column_count = 5U,
+            .values = cast_convert_length_values,
+            .row_count = 1U,
+            .context = "cast convert length targets",
         }
     );
     failures += expect_query(
@@ -807,6 +847,21 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .context = "cast convert labels and target synonyms",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('2025-10-05 14:05:28' AS DATE), "
+                   "CAST('2025-10-05 14:05:28' AS TIME), "
+                   "CAST('2025-10-05 14:05:28' AS DATETIME), "
+                   "CAST('123.456' AS DECIMAL(10,1)), "
+                   "CONVERT('123.456', DECIMAL), CAST('{\"name\":\"value\"}' AS JSON)",
+            .columns = cast_convert_expanded_target_columns,
+            .column_count = 6U,
+            .values = cast_convert_expanded_target_values,
+            .row_count = 1U,
+            .context = "cast convert expanded target placeholders",
+        }
+    );
 
     failures += execute_ok(database, "DO CAST('ABC' AS BINARY), CAST(NULL AS BINARY)", &result);
     if (result != NULL) {
@@ -980,15 +1035,10 @@ static int test_scalar_binary_literal_projection(void) {
         failures += expect_result_bytes(result, 0U, 5U, az_bytes, sizeof(az_bytes), "0b literal");
         failures += expect_result_bytes(result, 0U, 6U, one_byte, sizeof(one_byte), "0b1 literal");
         failures += expect_result_bytes(result, 0U, 7U, one_byte, sizeof(one_byte), "0b01 literal");
-        failures += expect_result_bytes(result, 0U, 8U, one_byte, sizeof(one_byte), "0b001 literal");
-        failures += expect_result_bytes(
-            result,
-            0U,
-            9U,
-            one_byte,
-            sizeof(one_byte),
-            "0b00000001 literal"
-        );
+        failures +=
+            expect_result_bytes(result, 0U, 8U, one_byte, sizeof(one_byte), "0b001 literal");
+        failures +=
+            expect_result_bytes(result, 0U, 9U, one_byte, sizeof(one_byte), "0b00000001 literal");
         failures += expect_result_bytes(
             result,
             0U,
@@ -1080,24 +1130,6 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CAST('ABC' AS BINARY(5))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CAST('ABC' AS CHAR(2))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT CAST('1' AS INT)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -1162,25 +1194,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC', BINARY(5))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT CONVERT('ABC', BINARY, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CONVERT('ABC', CHAR(2))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

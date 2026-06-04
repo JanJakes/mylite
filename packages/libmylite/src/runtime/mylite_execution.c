@@ -3283,6 +3283,16 @@ enum scalar_integer_cast_target {
     SCALAR_INTEGER_CAST_UNSIGNED,
 };
 
+enum scalar_placeholder_cast_target {
+    SCALAR_PLACEHOLDER_CAST_TEXT,
+    SCALAR_PLACEHOLDER_CAST_BINARY,
+    SCALAR_PLACEHOLDER_CAST_DATE,
+    SCALAR_PLACEHOLDER_CAST_TIME,
+    SCALAR_PLACEHOLDER_CAST_DATETIME,
+    SCALAR_PLACEHOLDER_CAST_DECIMAL,
+    SCALAR_PLACEHOLDER_CAST_JSON,
+};
+
 struct scalar_integer_cast_parse {
     bool is_negative;
     bool saw_digits;
@@ -3308,6 +3318,14 @@ struct scalar_text_conversion_messages {
     const char *signed_value;
     const char *string_unsupported;
     const char *embedded_nul;
+};
+
+struct scalar_placeholder_cast_info {
+    enum scalar_placeholder_cast_target target;
+    bool has_length;
+    bool has_decimal_scale;
+    size_t length;
+    size_t decimal_scale;
 };
 
 struct field_scalar_argument {
@@ -12357,6 +12375,83 @@ static int scalar_convert_charset_info_by_name(
     const char *charset_name,
     struct scalar_convert_charset_info *out_info
 );
+static int apply_scalar_placeholder_cast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum scalar_placeholder_cast_target default_target,
+    bool convert_syntax,
+    struct session_scalar_cell *inout_cell
+);
+static int parse_scalar_placeholder_cast_info(
+    const struct mylite_sql_ast_node *expression,
+    enum scalar_placeholder_cast_target default_target,
+    bool convert_syntax,
+    struct scalar_placeholder_cast_info *out_info
+);
+static int scalar_placeholder_target_span(
+    const struct mylite_sql_ast_node *expression,
+    bool convert_syntax,
+    struct mylite_sql_source_span *out_span
+);
+static int apply_scalar_placeholder_text_length(
+    struct mylite_db *database,
+    const struct scalar_placeholder_cast_info *info,
+    struct session_scalar_cell *inout_cell
+);
+static int apply_scalar_placeholder_date(
+    struct mylite_db *database,
+    struct session_scalar_cell *inout_cell
+);
+static int apply_scalar_placeholder_time(
+    struct mylite_db *database,
+    struct session_scalar_cell *inout_cell
+);
+static int apply_scalar_placeholder_datetime(
+    struct mylite_db *database,
+    struct session_scalar_cell *inout_cell
+);
+static int apply_scalar_placeholder_decimal(
+    struct mylite_db *database,
+    const struct scalar_placeholder_cast_info *info,
+    struct session_scalar_cell *inout_cell
+);
+static int apply_scalar_placeholder_json(
+    struct mylite_db *database,
+    struct session_scalar_cell *inout_cell
+);
+static int assign_scalar_cell_text(
+    struct mylite_db *database,
+    struct session_scalar_cell *inout_cell,
+    const char *text,
+    size_t text_length
+);
+static int assign_scalar_cell_owned_text(
+    struct mylite_db *database,
+    struct session_scalar_cell *inout_cell,
+    char *text,
+    size_t text_length
+);
+static size_t scalar_cell_text_length(const struct session_scalar_cell *cell);
+static void trim_scalar_span(struct mylite_sql_source_span *span);
+static bool scalar_span_consume_keyword(struct mylite_sql_source_span *span, const char *keyword);
+static bool scalar_span_parse_optional_length(
+    struct mylite_sql_source_span *span,
+    size_t *out_length
+);
+static bool scalar_span_parse_decimal_scale(struct mylite_sql_source_span *span, size_t *out_scale);
+static bool scalar_span_parse_unsigned(
+    const struct mylite_sql_source_span *span,
+    size_t *inout_index,
+    size_t *out_value
+);
+static bool scalar_span_keyword_at(
+    const char *text,
+    size_t text_length,
+    size_t index,
+    const char *keyword,
+    size_t *out_end
+);
+static bool scalar_span_is_identifier_byte(unsigned char byte);
 static int scalar_text_conversion_input_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

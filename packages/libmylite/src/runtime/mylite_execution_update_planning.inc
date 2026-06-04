@@ -766,6 +766,7 @@ static void planned_update_deinit(struct planned_update *plan) {
         free(plan->sources[source_index].columns);
     }
     free(plan->sources);
+    planned_select_join_condition_deinit(&plan->join_condition);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_deinit(&plan->assignment_subquery);
     planned_value_deinit(&plan->assignment_value);

@@ -165,6 +165,7 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     free(plan->projections);
     free(plan->groups);
     free(plan->sources);
+    planned_select_join_condition_deinit(&plan->join_condition);
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->having.value);
     planned_select_order_deinit(&plan->order);

@@ -81,7 +81,8 @@ int mylite_catalog_validate_column_default_kind(enum mylite_catalog_column_defau
         kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE &&
         kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME &&
         kind != MYLITE_CATALOG_COLUMN_DEFAULT_BINARY &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION) {
+        kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION &&
+        kind != MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION) {
         return MYLITE_MISUSE;
     }
 

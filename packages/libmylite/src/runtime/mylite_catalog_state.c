@@ -478,7 +478,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "is_visible INTEGER NOT NULL CHECK(is_visible IN (0, 1)),"
         "is_auto_increment INTEGER NOT NULL CHECK(is_auto_increment IN (0, 1)),"
         "default_kind INTEGER NOT NULL CHECK(default_kind IN "
-        "(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)),"
+        "(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)),"
         "default_integer INTEGER,"
         "default_text TEXT,"
         "on_update_current_timestamp INTEGER NOT NULL "

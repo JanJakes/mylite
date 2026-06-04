@@ -44,6 +44,14 @@ static int materialize_dml_default_value(
             out_value
         );
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION) {
+        return materialize_scalar_expression_default_value(
+            database,
+            column,
+            dml_allows_string_truncation_adjustment(database, adjust_missing_default),
+            out_value
+        );
+    }
     if (column_descriptor_is_approximate(column) &&
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_approximate_default_value(database, column, out_value);
@@ -164,6 +172,273 @@ static int materialize_character_expression_default_value(
     }
 
     return assign_text_value(database, text, conversion.text_length, out_value);
+}
+
+static int materialize_scalar_expression_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool allow_nonspace_truncation,
+    struct planned_value *out_value
+) {
+    if (column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strcmp(column->default_text, "now()") == 0) {
+        return make_current_timestamp_value(database, out_value);
+    }
+    if (text_has_ascii_case_insensitive_prefix(column->default_text, "(now() + interval ")) {
+        return materialize_scalar_expression_date_add_default_value(database, column, out_value);
+    }
+    if (text_has_ascii_case_insensitive_prefix(column->default_text, "concat(")) {
+        return materialize_scalar_expression_concat_default_value(
+            database,
+            column,
+            allow_nonspace_truncation,
+            out_value
+        );
+    }
+
+    set_runtime_error(database, "invalid scalar expression default descriptor");
+    return MYLITE_ERROR;
+}
+
+static int materialize_scalar_expression_date_add_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    char current_timestamp[datetime_text_length + 1U];
+    char *text = NULL;
+    bool is_null = false;
+    int64_t interval = 0;
+    enum mylite_date_interval_unit unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
+    int rc = MYLITE_OK;
+
+    if (!parse_scalar_expression_date_add_default_text(column->default_text, &interval, &unit)) {
+        set_runtime_error(database, "invalid DATE_ADD scalar expression default descriptor");
+        return MYLITE_ERROR;
+    }
+    rc = format_current_timestamp_text(database, current_timestamp, sizeof(current_timestamp));
+    if (rc == MYLITE_OK) {
+        rc = mylite_date_interval_value(
+            database,
+            current_timestamp,
+            strlen(current_timestamp),
+            MYLITE_DATE_INTERVAL_SECOND_INPUT_DATETIME,
+            false,
+            interval,
+            false,
+            unit,
+            false,
+            &text,
+            &is_null
+        );
+    }
+    if (rc == MYLITE_OK && is_null) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    } else if (rc == MYLITE_OK) {
+        rc = assign_text_value(database, text, strlen(text), out_value);
+        text = NULL;
+    }
+    free(text);
+    return rc;
+}
+
+static int materialize_scalar_expression_concat_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool allow_nonspace_truncation,
+    struct planned_value *out_value
+) {
+    static const char prefix[] = "concat(";
+    const char *cursor = column->default_text + sizeof(prefix) - 1U;
+    struct mylite_dynamic_string string = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    mylite_dynamic_string_init(&string);
+    if (*cursor == ')') {
+        set_runtime_error(database, "invalid CONCAT scalar expression default descriptor");
+        rc = MYLITE_ERROR;
+    }
+    while (rc == MYLITE_OK) {
+        rc = append_scalar_expression_concat_literal_value(database, &string, &cursor);
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        if (*cursor == ',') {
+            ++cursor;
+            continue;
+        }
+        if (*cursor == ')' && cursor[1] == '\0') {
+            break;
+        }
+        set_runtime_error(database, "invalid CONCAT scalar expression default descriptor");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        text_length = string.length;
+        text = mylite_dynamic_string_take(&string);
+        if (text == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = materialize_scalar_expression_text_default_value(
+            database,
+            column,
+            allow_nonspace_truncation,
+            text,
+            text_length,
+            out_value
+        );
+        text = NULL;
+    }
+    free(text);
+    mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int materialize_scalar_expression_text_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool allow_nonspace_truncation,
+    char *text,
+    size_t text_length,
+    struct planned_value *out_value
+) {
+    struct char_text_conversion conversion = {
+        .text = text,
+        .text_length = text_length,
+        .row_number = 1U,
+    };
+    int rc = MYLITE_OK;
+
+    if (column_descriptor_is_char(column)) {
+        rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
+    } else if (column_descriptor_is_varchar(column)) {
+        rc = convert_varchar_text(database, column, &conversion, allow_nonspace_truncation);
+    } else {
+        set_runtime_error(database, "invalid scalar expression text default descriptor");
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        free(text);
+        return rc;
+    }
+
+    return assign_text_value(database, text, conversion.text_length, out_value);
+}
+
+static bool parse_scalar_expression_date_add_default_text(
+    const char *text,
+    int64_t *out_interval,
+    enum mylite_date_interval_unit *out_unit
+) {
+    static const char prefix[] = "(now() + interval ";
+    const char *start = NULL;
+    char *end = NULL;
+    intmax_t interval = 0;
+    size_t unit_length = 0U;
+
+    if (text == NULL || out_interval == NULL || out_unit == NULL ||
+        !text_has_ascii_case_insensitive_prefix(text, prefix)) {
+        return false;
+    }
+    start = text + sizeof(prefix) - 1U;
+    errno = 0;
+    interval = strtoimax(start, &end, 10);
+    if (start == end || errno == ERANGE || interval < INT64_MIN || interval > INT64_MAX ||
+        end == NULL || *end != ' ') {
+        return false;
+    }
+    ++end;
+    for (; end[unit_length] != '\0' && end[unit_length] != ')'; ++unit_length) {}
+    if (unit_length == 0U || end[unit_length] != ')' || end[unit_length + 1U] != '\0') {
+        return false;
+    }
+    if (!mylite_date_interval_unit_from_name(end, unit_length, out_unit) ||
+        *out_unit == MYLITE_DATE_INTERVAL_UNIT_MICROSECOND) {
+        return false;
+    }
+
+    *out_interval = (int64_t)interval;
+    return true;
+}
+
+static int append_scalar_expression_concat_literal_value(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const char **in_out_cursor
+) {
+    static const char introducer[] = "_utf8mb4";
+    const char *cursor = in_out_cursor == NULL ? NULL : *in_out_cursor;
+    const char *literal_end = NULL;
+    struct mylite_sql_ast_node literal_node = {
+        .kind = MYLITE_SQL_AST_LITERAL,
+        .payload.literal = {.kind = MYLITE_SQL_AST_LITERAL_STRING},
+    };
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (cursor == NULL || strncmp(cursor, introducer, sizeof(introducer) - 1U) != 0) {
+        set_runtime_error(database, "invalid CONCAT scalar expression default descriptor");
+        return MYLITE_ERROR;
+    }
+    cursor += sizeof(introducer) - 1U;
+    literal_end = scalar_expression_concat_literal_end(cursor);
+    if (literal_end == NULL) {
+        set_runtime_error(database, "invalid CONCAT scalar expression default descriptor");
+        return MYLITE_ERROR;
+    }
+    literal_node.span = (struct mylite_sql_source_span){
+        .text = cursor,
+        .length = (size_t)(literal_end - cursor),
+    };
+
+    rc = decode_sql_string_literal(
+        database,
+        &literal_node,
+        "CONCAT scalar expression default supports only string literals",
+        "CONCAT scalar expression default literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_bytes(string, text, text_length);
+    }
+    free(text);
+    if (rc == MYLITE_OK) {
+        *in_out_cursor = literal_end;
+    }
+    return rc;
+}
+
+static const char *scalar_expression_concat_literal_end(const char *literal) {
+    if (literal == NULL || literal[0] != '\'') {
+        return NULL;
+    }
+    for (const char *cursor = literal + 1; *cursor != '\0'; ++cursor) {
+        if (*cursor == '\\') {
+            if (cursor[1] == '\0') {
+                return NULL;
+            }
+            ++cursor;
+            continue;
+        }
+        if (*cursor != '\'') {
+            continue;
+        }
+        if (cursor[1] == '\'') {
+            ++cursor;
+            continue;
+        }
+        return cursor + 1;
+    }
+    return NULL;
 }
 
 static int materialize_binary_default_value(

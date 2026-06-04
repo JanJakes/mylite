@@ -382,6 +382,13 @@ static int column_default_display_text(
     case MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION:
         *out_default_text = column->default_text;
         return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION:
+        return format_scalar_expression_default_display_text(
+            column,
+            default_text,
+            default_text_size,
+            out_default_text
+        );
     case MYLITE_CATALOG_COLUMN_DEFAULT_TEXT:
         if (column_descriptor_is_text_family(column)) {
             if (column->default_text[0] == '\0') {
@@ -443,6 +450,53 @@ static int column_default_display_text(
         return MYLITE_OK;
     }
 
+    return MYLITE_OK;
+}
+
+static int format_scalar_expression_default_display_text(
+    const struct mylite_catalog_column_descriptor *column,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+) {
+    if (text_has_ascii_case_insensitive_prefix(column->default_text, "concat(")) {
+        return format_concat_scalar_expression_default_display_text(
+            column->default_text,
+            default_text,
+            default_text_size,
+            out_default_text
+        );
+    }
+
+    *out_default_text = column->default_text;
+    return MYLITE_OK;
+}
+
+static int format_concat_scalar_expression_default_display_text(
+    const char *source,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+) {
+    size_t write_index = 0U;
+
+    if (source == NULL || default_text_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t read_index = 0U; source[read_index] != '\0'; ++read_index) {
+        if (source[read_index] == '\'') {
+            if (write_index + 1U >= default_text_size) {
+                return MYLITE_NOMEM;
+            }
+            default_text[write_index++] = '\\';
+        }
+        if (write_index + 1U >= default_text_size) {
+            return MYLITE_NOMEM;
+        }
+        default_text[write_index++] = source[read_index];
+    }
+    default_text[write_index] = '\0';
+    *out_default_text = default_text;
     return MYLITE_OK;
 }
 

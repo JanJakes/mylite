@@ -33,6 +33,7 @@ enum {
     catalog_schema_version_v30 = 30U,
     catalog_schema_version_v31 = 31U,
     catalog_schema_version_v32 = 32U,
+    catalog_schema_version_v33 = 33U,
 };
 
 static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite);
@@ -67,6 +68,7 @@ static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite);
 static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite);
 static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite);
 static int migrate_catalog_schema_v32_to_v33(sqlite3 *sqlite);
+static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite);
 static void rollback_catalog_transaction(sqlite3 *sqlite);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version) {
@@ -204,6 +206,10 @@ int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v32:
         rc = migrate_catalog_schema_v32_to_v33(sqlite);
+        next_schema_version = catalog_schema_version_v33;
+        break;
+    case catalog_schema_version_v33:
+        rc = migrate_catalog_schema_v33_to_v34(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -1262,11 +1268,70 @@ static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v32_to_v33(sqlite3 *sqlite) {
+    static const char *sql = "BEGIN IMMEDIATE;"
+                             "ALTER TABLE _mylite_catalog_tables "
+                             "ADD COLUMN auto_increment_status INTEGER NOT NULL DEFAULT 0 "
+                             "CHECK(auto_increment_status >= 0);"
+                             "UPDATE _mylite_catalog_state "
+                             "SET schema_version = 33, minimum_reader_schema_version = 33;"
+                             "COMMIT;";
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite) {
     static const char *sql =
         "BEGIN IMMEDIATE;"
-        "ALTER TABLE _mylite_catalog_tables "
-        "ADD COLUMN auto_increment_status INTEGER NOT NULL DEFAULT 0 "
-        "CHECK(auto_increment_status >= 0);"
+        "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v33;"
+        "CREATE TABLE _mylite_catalog_columns ("
+        "column_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "name TEXT NOT NULL,"
+        "logical_type TEXT NOT NULL,"
+        "physical_type TEXT NOT NULL,"
+        "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
+        "is_visible INTEGER NOT NULL CHECK(is_visible IN (0, 1)),"
+        "is_auto_increment INTEGER NOT NULL CHECK(is_auto_increment IN (0, 1)),"
+        "default_kind INTEGER NOT NULL CHECK(default_kind IN "
+        "(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)),"
+        "default_integer INTEGER,"
+        "default_text TEXT,"
+        "on_update_current_timestamp INTEGER NOT NULL "
+        "CHECK(on_update_current_timestamp IN (0, 1)),"
+        "character_set_name TEXT NOT NULL,"
+        "collation_name TEXT NOT NULL,"
+        "comment TEXT NOT NULL,"
+        "is_generated INTEGER NOT NULL CHECK(is_generated IN (0, 1)),"
+        "generated_kind INTEGER NOT NULL CHECK(generated_kind IN (0, 1, 2)),"
+        "generation_expression TEXT NOT NULL,"
+        "sqlite_generation_expression TEXT NOT NULL,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, ordinal_position),"
+        "UNIQUE(table_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_columns "
+        "(column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
+        "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+        "comment, is_generated, generated_kind, generation_expression, "
+        "sqlite_generation_expression, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation) "
+        "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
+        "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+        "comment, is_generated, generated_kind, generation_expression, "
+        "sqlite_generation_expression, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation FROM _mylite_catalog_columns_v33;"
+        "DROP TABLE _mylite_catalog_columns_v33;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
         ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ";"

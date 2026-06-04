@@ -73,6 +73,7 @@ static int validate_catalog_text_default_value(
 );
 static bool catalog_logical_type_accepts_integer_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_text_expression_default(const char *logical_type);
+static bool catalog_logical_type_accepts_scalar_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_current_timestamp(const char *logical_type);
 static bool catalog_logical_type_accepts_current_date(const char *logical_type);
 static bool catalog_logical_type_accepts_current_time(const char *logical_type);
@@ -322,6 +323,7 @@ bool mylite_catalog_column_default_kind_stores_text(
     return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
@@ -706,6 +708,13 @@ static int validate_catalog_text_default_value(
         }
         return MYLITE_OK;
     }
+    if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION) {
+        if (text_length == 0U ||
+            !catalog_logical_type_accepts_scalar_expression_default(values->logical_type)) {
+            return MYLITE_MISUSE;
+        }
+        return MYLITE_OK;
+    }
     if (!catalog_logical_type_accepts_text_default(values->logical_type)) {
         return MYLITE_MISUSE;
     }
@@ -739,6 +748,15 @@ static bool catalog_logical_type_accepts_text_expression_default(const char *log
             text_has_ascii_case_insensitive_prefix(logical_type, "NCHAR(") ||
             text_has_ascii_case_insensitive_prefix(logical_type, "NVARCHAR(") ||
             catalog_logical_type_is_text_family(logical_type)) != 0;
+}
+
+static bool catalog_logical_type_accepts_scalar_expression_default(const char *logical_type) {
+    return (text_has_ascii_case_insensitive_prefix(logical_type, "CHAR(") ||
+            text_has_ascii_case_insensitive_prefix(logical_type, "VARCHAR(") ||
+            text_has_ascii_case_insensitive_prefix(logical_type, "NCHAR(") ||
+            text_has_ascii_case_insensitive_prefix(logical_type, "NVARCHAR(") ||
+            catalog_logical_type_equals(logical_type, "DATETIME") ||
+            catalog_logical_type_equals(logical_type, "TIMESTAMP")) != 0;
 }
 
 static bool catalog_logical_type_accepts_current_timestamp(const char *logical_type) {

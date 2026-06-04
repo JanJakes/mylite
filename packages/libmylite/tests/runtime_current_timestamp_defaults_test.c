@@ -47,6 +47,8 @@ struct expected_query {
 static int test_current_timestamp_scalar_and_system_variable(void);
 static int test_current_timestamp_defaults_updates_metadata_and_persistence(void);
 static int test_parenthesized_current_timestamp_defaults(void);
+static int test_lowercase_now_default_metadata(void);
+static int test_scalar_expression_defaults(void);
 static int test_current_timestamp_alter_add_and_file_safety(void);
 static int test_current_timestamp_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -85,6 +87,8 @@ int main(void) {
     failures += test_current_timestamp_scalar_and_system_variable();
     failures += test_current_timestamp_defaults_updates_metadata_and_persistence();
     failures += test_parenthesized_current_timestamp_defaults();
+    failures += test_lowercase_now_default_metadata();
+    failures += test_scalar_expression_defaults();
     failures += test_current_timestamp_alter_add_and_file_safety();
     failures += test_current_timestamp_diagnostics();
 
@@ -914,6 +918,197 @@ static int test_parenthesized_current_timestamp_defaults(void) {
     );
 
     mylite_close(second_database);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_lowercase_now_default_metadata(void) {
+    enum {
+        lower_now_row_count = 2,
+        lower_now_data_column_count = 2,
+    };
+
+    static const char *const show_columns_rows[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "updated",
+        "timestamp",
+        "NO",
+        "",
+        "now()",
+        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    };
+    static const char *const show_create_rows[] = {
+        "lower_now",
+        "CREATE TABLE `lower_now` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `updated` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const inserted_rows[] = {
+        "1",
+        "2023-11-14 22:13:20",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "lowercase-now") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open lowercase now");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "SET timestamp = 1700000000");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE lower_now (id INT NOT NULL, "
+        "updated TIMESTAMP NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM lower_now",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = lower_now_row_count,
+            .context = "lowercase now default SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE lower_now",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "lowercase now default SHOW CREATE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO lower_now (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, updated FROM lower_now",
+            .values = inserted_rows,
+            .column_count = lower_now_data_column_count,
+            .row_count = 1U,
+            .context = "lowercase now default materialization",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_scalar_expression_defaults(void) {
+    enum {
+        scalar_expression_row_count = 4,
+        scalar_expression_data_column_count = 4,
+    };
+
+    static const char *const show_columns_rows[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "col1",
+        "int",
+        "NO",
+        "",
+        "(1 + 2)",
+        "DEFAULT_GENERATED",
+        "col2",
+        "datetime",
+        "NO",
+        "",
+        "(now() + interval 1 year)",
+        "DEFAULT_GENERATED",
+        "col3",
+        "varchar(255)",
+        "NO",
+        "",
+        "concat(_utf8mb4\\'a\\',_utf8mb4\\'b\\')",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const show_create_rows[] = {
+        "scalar_defaults",
+        "CREATE TABLE `scalar_defaults` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `col1` int NOT NULL DEFAULT ((1 + 2)),\n"
+        "  `col2` datetime NOT NULL DEFAULT ((now() + interval 1 year)),\n"
+        "  `col3` varchar(255) NOT NULL DEFAULT (concat(_utf8mb4'a',_utf8mb4'b'))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const inserted_rows[] = {
+        "1",
+        "3",
+        "2024-11-14 22:13:20",
+        "ab",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "scalar-expression-defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open scalar defaults");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "SET timestamp = 1700000000");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE scalar_defaults ("
+        "id INT NOT NULL, "
+        "col1 INT NOT NULL DEFAULT (1 + 2), "
+        "col2 DATETIME NOT NULL DEFAULT (DATE_ADD(NOW(), INTERVAL 1 YEAR)), "
+        "col3 VARCHAR(255) NOT NULL DEFAULT (CONCAT('a','b')))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM scalar_defaults",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = scalar_expression_row_count,
+            .context = "scalar expression defaults SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE scalar_defaults",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "scalar expression defaults SHOW CREATE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO scalar_defaults (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, col1, col2, col3 FROM scalar_defaults",
+            .values = inserted_rows,
+            .column_count = scalar_expression_data_column_count,
+            .row_count = 1U,
+            .context = "scalar expression defaults materialization",
+        }
+    );
+
     mylite_close(database);
     remove_related_files(path);
     return failures;

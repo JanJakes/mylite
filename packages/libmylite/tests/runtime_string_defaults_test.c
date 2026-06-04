@@ -52,6 +52,7 @@ struct expected_dml_result {
 static int test_string_defaults_success_persistence_and_introspection(void);
 static int test_character_expression_defaults(void);
 static int test_catalog_v28_character_expression_migration(void);
+static int test_catalog_v33_scalar_expression_migration(void);
 static int test_string_defaults_diagnostics(void);
 static int test_string_defaults_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -96,6 +97,7 @@ int main(void) {
     failures += test_string_defaults_success_persistence_and_introspection();
     failures += test_character_expression_defaults();
     failures += test_catalog_v28_character_expression_migration();
+    failures += test_catalog_v33_scalar_expression_migration();
     failures += test_string_defaults_diagnostics();
     failures += test_string_defaults_independent_handles();
 
@@ -535,6 +537,7 @@ static int test_character_expression_defaults(void) {
         "  `v` varchar(5) DEFAULT 'set'\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const function_generated_rows[] = {"ab"};
     static const char *const like_show_create_rows[] = {
         "character_like",
         "CREATE TABLE `character_like` (\n"
@@ -743,13 +746,19 @@ static int test_character_expression_defaults(void) {
             .message_part = "Invalid default value for 'v'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE bad_function_generated (v VARCHAR(3) DEFAULT (CONCAT('a','b')))",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
+        "CREATE TABLE function_generated (v VARCHAR(3) DEFAULT (CONCAT('a','b')))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO function_generated () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM function_generated",
+            .values = function_generated_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "character expression defaults CONCAT materialization",
         }
     );
 
@@ -843,6 +852,105 @@ static int test_catalog_v28_character_expression_migration(void) {
             .column_count = show_columns_field_count,
             .row_count = 1U,
             .context = "v28 migration admits generated character defaults",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_catalog_v33_scalar_expression_migration(void) {
+    static const char *const generated_rows[] = {
+        "v",
+        "varchar(3)",
+        "YES",
+        "",
+        "concat(_utf8mb4\\'a\\',_utf8mb4\\'b\\')",
+        "DEFAULT_GENERATED",
+    };
+    static const char downgrade_catalog_columns_sql[] =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v33_test;"
+        "CREATE TABLE _mylite_catalog_columns ("
+        "column_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "name TEXT NOT NULL,"
+        "logical_type TEXT NOT NULL,"
+        "physical_type TEXT NOT NULL,"
+        "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
+        "is_visible INTEGER NOT NULL CHECK(is_visible IN (0, 1)),"
+        "is_auto_increment INTEGER NOT NULL CHECK(is_auto_increment IN (0, 1)),"
+        "default_kind INTEGER NOT NULL CHECK(default_kind IN "
+        "(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)),"
+        "default_integer INTEGER,"
+        "default_text TEXT,"
+        "on_update_current_timestamp INTEGER NOT NULL "
+        "CHECK(on_update_current_timestamp IN (0, 1)),"
+        "character_set_name TEXT NOT NULL,"
+        "collation_name TEXT NOT NULL,"
+        "comment TEXT NOT NULL,"
+        "is_generated INTEGER NOT NULL CHECK(is_generated IN (0, 1)),"
+        "generated_kind INTEGER NOT NULL CHECK(generated_kind IN (0, 1, 2)),"
+        "generation_expression TEXT NOT NULL,"
+        "sqlite_generation_expression TEXT NOT NULL,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, ordinal_position),"
+        "UNIQUE(table_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_columns "
+        "(column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
+        "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+        "comment, is_generated, generated_kind, generation_expression, "
+        "sqlite_generation_expression, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation) "
+        "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
+        "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+        "comment, is_generated, generated_kind, generation_expression, "
+        "sqlite_generation_expression, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation FROM _mylite_catalog_columns_v33_test;"
+        "DROP TABLE _mylite_catalog_columns_v33_test;"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 33, minimum_reader_schema_version = 33;"
+        "COMMIT;";
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "scalar-expression-migration") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open v33 migration file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "CREATE TABLE existing_defaults (id INT)");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += execute_sql(sqlite, downgrade_catalog_columns_sql);
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen v33 migration file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE generated_after_migration (v VARCHAR(3) DEFAULT (CONCAT('a','b')))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM generated_after_migration",
+            .values = generated_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "v33 migration admits scalar expression defaults",
         }
     );
 

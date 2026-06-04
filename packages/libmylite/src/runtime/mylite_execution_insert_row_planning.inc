@@ -604,6 +604,14 @@ static int allocate_insert_column_value(
             out_value
         );
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION) {
+        return materialize_scalar_expression_default_value(
+            database,
+            column,
+            dml_allows_string_truncation_adjustment(database, adjust_implicit_default),
+            out_value
+        );
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
     }

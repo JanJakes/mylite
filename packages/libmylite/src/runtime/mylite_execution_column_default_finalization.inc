@@ -146,6 +146,13 @@ static int finalize_planned_column_default(
     value_node = child_at(column->default_node, 0U);
     if (column_default_value_is_current_timestamp_expression(value_node)) {
         if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+            if (current_timestamp_default_should_preserve_now_text(value_node)) {
+                return finalize_planned_column_now_scalar_expression_default(
+                    database,
+                    column,
+                    value_node
+                );
+            }
             column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP;
             return MYLITE_OK;
         }
@@ -200,12 +207,62 @@ static int finalize_planned_column_parenthesized_default(
     if (planned_column_is_year(column)) {
         return finalize_planned_column_year_expression_default(database, column, value_node);
     }
+    if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+        return finalize_planned_column_temporal_scalar_expression_default(
+            database,
+            column,
+            value_node
+        );
+    }
     if (planned_column_is_enum(column) || planned_column_is_set(column) ||
         planned_column_is_json(column) || planned_column_is_spatial(column)) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
     return finalize_planned_column_integer_expression_default(database, column, value_node);
+}
+
+static int finalize_planned_column_now_scalar_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *expression = unwrap_parenthesized_expression(value_node);
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->span.text == NULL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = copy_planned_character_expression_default_text(
+        database,
+        column,
+        expression->span.text,
+        expression->span.length
+    );
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION;
+    }
+    return rc;
+}
+
+static int finalize_planned_column_temporal_scalar_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *expression = unwrap_parenthesized_expression(value_node);
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_DATE_ADD_FUNCTION) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = copy_planned_date_add_current_timestamp_default_text(database, column, expression);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION;
+    }
+    return rc;
 }
 
 static int finalize_planned_column_type_default(
@@ -497,6 +554,13 @@ static int finalize_planned_column_character_expression_default(
     size_t character_count = 0U;
     int rc = MYLITE_OK;
 
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+        return finalize_planned_column_concat_scalar_expression_default(
+            database,
+            column,
+            expression
+        );
+    }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
@@ -534,6 +598,19 @@ static int finalize_planned_column_character_expression_default(
         column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION;
     }
 
+    return rc;
+}
+
+static int finalize_planned_column_concat_scalar_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *expression
+) {
+    int rc = copy_planned_concat_scalar_expression_default_text(database, column, expression);
+
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION;
+    }
     return rc;
 }
 

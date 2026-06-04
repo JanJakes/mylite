@@ -6701,6 +6701,18 @@ static int column_default_display_text(
     size_t default_text_size,
     const char **out_default_text
 );
+static int format_scalar_expression_default_display_text(
+    const struct mylite_catalog_column_descriptor *column,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+);
+static int format_concat_scalar_expression_default_display_text(
+    const char *source,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+);
 static int format_binary_default_display_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -15465,6 +15477,16 @@ static int finalize_planned_column_parenthesized_default(
     struct planned_column *column,
     const struct mylite_sql_ast_node *value_node
 );
+static int finalize_planned_column_now_scalar_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
+static int finalize_planned_column_temporal_scalar_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
 static int finalize_planned_column_type_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -15583,6 +15605,11 @@ static int finalize_planned_column_character_expression_default(
     struct planned_column *column,
     const struct mylite_sql_ast_node *value_node
 );
+static int finalize_planned_column_concat_scalar_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *expression
+);
 static int finalize_planned_column_parenthesized_string_literal_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -15594,6 +15621,9 @@ static bool column_default_value_is_current_time_expression(
     const struct mylite_sql_ast_node *value_node
 );
 static bool column_default_value_is_current_timestamp_expression(
+    const struct mylite_sql_ast_node *value_node
+);
+static bool current_timestamp_default_should_preserve_now_text(
     const struct mylite_sql_ast_node *value_node
 );
 static bool column_default_value_is_parenthesized_text_expression(
@@ -15631,6 +15661,28 @@ static int copy_planned_integer_expression_default_text(
     struct mylite_db *database,
     struct planned_column *column,
     const struct mylite_sql_ast_node *expression
+);
+static int copy_planned_date_add_current_timestamp_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *expression
+);
+static int copy_planned_concat_scalar_expression_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_concat_scalar_expression_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    struct mylite_dynamic_string *string,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_concat_scalar_expression_argument_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    struct mylite_dynamic_string *string,
+    const struct mylite_sql_ast_node *argument
 );
 static int append_integer_expression_default_text(
     struct mylite_dynamic_string *string,
@@ -16792,6 +16844,42 @@ static int materialize_character_expression_default_value(
     bool allow_nonspace_truncation,
     struct planned_value *out_value
 );
+static int materialize_scalar_expression_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool allow_nonspace_truncation,
+    struct planned_value *out_value
+);
+static int materialize_scalar_expression_date_add_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int materialize_scalar_expression_concat_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool allow_nonspace_truncation,
+    struct planned_value *out_value
+);
+static int materialize_scalar_expression_text_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool allow_nonspace_truncation,
+    char *text,
+    size_t text_length,
+    struct planned_value *out_value
+);
+static bool parse_scalar_expression_date_add_default_text(
+    const char *text,
+    int64_t *out_interval,
+    enum mylite_date_interval_unit *out_unit
+);
+static int append_scalar_expression_concat_literal_value(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const char **in_out_cursor
+);
+static const char *scalar_expression_concat_literal_end(const char *literal);
 static int materialize_binary_default_value(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,

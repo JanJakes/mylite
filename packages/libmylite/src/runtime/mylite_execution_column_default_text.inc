@@ -19,6 +19,17 @@ static bool column_default_value_is_current_timestamp_expression(
     return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) != 0;
 }
 
+static bool current_timestamp_default_should_preserve_now_text(
+    const struct mylite_sql_ast_node *value_node
+) {
+    static const char now_text[] = "now()";
+    const struct mylite_sql_ast_node *expression = unwrap_parenthesized_expression(value_node);
+
+    return (expression != NULL && expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE &&
+            expression->span.text != NULL && expression->span.length == sizeof(now_text) - 1U &&
+            memcmp(expression->span.text, now_text, sizeof(now_text) - 1U) == 0) != 0;
+}
+
 static void planned_column_descriptor_for_default(
     const struct planned_column *column,
     struct mylite_catalog_column_descriptor *out_descriptor
@@ -159,6 +170,165 @@ static int copy_planned_integer_expression_default_text(
     }
 
     mylite_dynamic_string_deinit(&text);
+    return rc;
+}
+
+static int copy_planned_date_add_current_timestamp_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *temporal_node = NULL;
+    const struct mylite_sql_ast_node *interval_node = NULL;
+    const struct mylite_sql_ast_node *unit_node = NULL;
+    struct scalar_arithmetic_value interval = {.is_null = false, .integer = 0};
+    enum mylite_date_interval_unit unit = MYLITE_DATE_INTERVAL_UNIT_SECOND;
+    char unit_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char unit_text[sizeof("microsecond")];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 3U) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    temporal_node = unwrap_parenthesized_expression(child_at(expression, 0U));
+    interval_node = child_at(expression, 1U);
+    unit_node = child_at(expression, 2U);
+    if (temporal_node == NULL || temporal_node->kind != MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE ||
+        !source_span_equals_ascii_case_insensitive(&temporal_node->span, "now()")) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_integer_default_expression(database, interval_node, &interval);
+    if (rc != MYLITE_OK || interval.is_null) {
+        if (rc == MYLITE_NOMEM) {
+            return rc;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(unit_node, unit_name, sizeof(unit_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!mylite_date_interval_unit_from_name(unit_name, strlen(unit_name), &unit) ||
+        unit == MYLITE_DATE_INTERVAL_UNIT_MICROSECOND) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    snprintf(unit_text, sizeof(unit_text), "%s", mylite_date_interval_unit_name(unit));
+    for (size_t index = 0U; unit_text[index] != '\0'; ++index) {
+        unit_text[index] = (char)tolower((unsigned char)unit_text[index]);
+    }
+
+    written = snprintf(
+        column->default_text,
+        sizeof(column->default_text),
+        "(now() + interval %" PRId64 " %s)",
+        interval.integer,
+        unit_text
+    );
+    if (written < 0 || (size_t)written >= sizeof(column->default_text)) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int copy_planned_concat_scalar_expression_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct mylite_dynamic_string text = {0};
+    int rc = MYLITE_OK;
+
+    mylite_dynamic_string_init(&text);
+    rc = append_concat_scalar_expression_default_text(database, column, &text, expression);
+    if (rc == MYLITE_OK && (text.length == 0U || text.length >= sizeof(column->default_text))) {
+        set_invalid_default_error(database, column->name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(column->default_text, text.text, text.length);
+        column->default_text[text.length] = '\0';
+    }
+
+    mylite_dynamic_string_deinit(&text);
+    return rc;
+}
+
+static int append_concat_scalar_expression_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    struct mylite_dynamic_string *string,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U ||
+        arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count == 0U) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "concat(");
+    argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = mylite_dynamic_string_append_char(string, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_concat_scalar_expression_argument_text(database, column, string, argument);
+        }
+        argument = argument->next_sibling;
+    }
+    if (rc == MYLITE_OK && argument != NULL) {
+        set_invalid_default_error(database, column->name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_concat_scalar_expression_argument_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    struct mylite_dynamic_string *string,
+    const struct mylite_sql_ast_node *argument
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(argument);
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING ||
+        literal->span.text == NULL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "_utf8mb4");
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_bytes(string, literal->span.text, literal->span.length);
+    }
     return rc;
 }
 

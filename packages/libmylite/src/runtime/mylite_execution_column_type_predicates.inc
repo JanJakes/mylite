@@ -331,6 +331,7 @@ static bool column_default_kind_has_text_value(
     return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
@@ -340,7 +341,8 @@ static bool column_default_kind_is_expression(
     enum mylite_catalog_column_default_kind default_kind
 ) {
     return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
-            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION) != 0;
 }
 
 static bool column_default_kind_materializes_value(
@@ -351,6 +353,7 @@ static bool column_default_kind_materializes_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_SCALAR_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||

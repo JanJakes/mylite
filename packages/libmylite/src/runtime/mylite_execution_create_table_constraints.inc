@@ -572,6 +572,7 @@ static int append_planned_foreign_key_part(
     struct mylite_db *database,
     struct planned_foreign_key *foreign_key,
     size_t child_column_index,
+    size_t parent_column_index,
     const struct mylite_catalog_column_descriptor *parent_column
 ) {
     int rc = reserve_planned_foreign_key_parts(database, foreign_key, foreign_key->part_count + 1U);
@@ -582,6 +583,7 @@ static int append_planned_foreign_key_part(
 
     foreign_key->parts[foreign_key->part_count] = (struct planned_foreign_key_part){
         .child_column_index = child_column_index,
+        .parent_column_index = parent_column_index,
         .parent_column = *parent_column,
     };
     ++foreign_key->part_count;
@@ -641,6 +643,16 @@ static int plan_create_table_foreign_key_parent(
     if (rc == MYLITE_OK && parent_resolution.schema.schema_id != plan->target.schema.schema_id) {
         set_unsupported_error(database, "FOREIGN KEY does not yet support cross-schema references");
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK &&
+        create_table_foreign_key_parent_is_self_reference(plan, &parent_resolution)) {
+        return plan_create_table_self_referencing_foreign_key_parent(
+            database,
+            plan,
+            &parent_resolution,
+            names,
+            foreign_key
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_read_table_by_name(
@@ -705,6 +717,7 @@ static int plan_create_table_foreign_key_parent(
                 database,
                 foreign_key,
                 child_column_index,
+                parent_column_index,
                 &parent_columns[parent_column_index]
             );
         }
@@ -720,6 +733,246 @@ static int plan_create_table_foreign_key_parent(
 
     free(parent_columns);
     return rc;
+}
+
+static bool create_table_foreign_key_parent_is_self_reference(
+    const struct planned_create_table *plan,
+    const struct table_name_resolution *parent_resolution
+) {
+    if (plan == NULL || parent_resolution == NULL) {
+        return false;
+    }
+    return parent_resolution->schema.schema_id == plan->target.schema.schema_id &&
+           text_equals_ascii_case_insensitive(parent_resolution->table_name, plan->target.table_name);
+}
+
+static int plan_create_table_self_referencing_foreign_key_parent(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct table_name_resolution *parent_resolution,
+    const struct foreign_key_column_names *names,
+    struct planned_foreign_key *foreign_key
+) {
+    int copied = 0;
+    int rc = MYLITE_OK;
+
+    if (names->child_part_count != 1U) {
+        set_unsupported_error(
+            database,
+            "Self-referential CREATE TABLE FOREIGN KEY supports only one-column keys"
+        );
+        return MYLITE_ERROR;
+    }
+    if (foreign_key_rule_is_cascade(foreign_key->delete_rule) ||
+        foreign_key_rule_is_cascade(foreign_key->update_rule) ||
+        foreign_key_rule_is_set_null(foreign_key->delete_rule) ||
+        foreign_key_rule_is_set_null(foreign_key->update_rule)) {
+        set_unsupported_error(
+            database,
+            "Self-referential CREATE TABLE FOREIGN KEY actions are not yet supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    foreign_key->parent_is_self_reference = true;
+    foreign_key->parent_table = (struct mylite_catalog_table_descriptor){
+        .schema_id = plan->target.schema.schema_id,
+        .kind = MYLITE_CATALOG_TABLE_KIND_BASE,
+    };
+    copied = snprintf(
+        foreign_key->parent_table.name,
+        sizeof(foreign_key->parent_table.name),
+        "%s",
+        parent_resolution->table_name
+    );
+    if (copied < 0 || (size_t)copied >= sizeof(foreign_key->parent_table.name)) {
+        set_identifier_too_long_error(database, "table");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < names->child_part_count;
+         ++part_index) {
+        struct mylite_catalog_column_descriptor parent_column = {0};
+        size_t child_column_index = 0U;
+        size_t parent_column_index = 0U;
+
+        rc = find_planned_column_index(
+            plan->columns,
+            plan->column_count,
+            names->child_parts[part_index].name,
+            &child_column_index
+        );
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, names->child_parts[part_index].name);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = find_planned_column_index(
+                plan->columns,
+                plan->column_count,
+                names->parent_parts[part_index].name,
+                &parent_column_index
+            );
+            if (rc != MYLITE_OK) {
+                set_key_column_missing_error(database, names->parent_parts[part_index].name);
+                rc = MYLITE_ERROR;
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_to_self_foreign_key_parent(
+                database,
+                &plan->columns[parent_column_index],
+                parent_column_index,
+                &parent_column
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_foreign_key_integer_columns(
+                database,
+                plan->columns[child_column_index].logical_type,
+                parent_column.logical_type
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_planned_foreign_key_part(
+                database,
+                foreign_key,
+                child_column_index,
+                parent_column_index,
+                &parent_column
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_create_table_self_foreign_key_parent_index(database, plan, foreign_key);
+    }
+
+    return rc;
+}
+
+static int copy_planned_column_to_self_foreign_key_parent(
+    struct mylite_db *database,
+    const struct planned_column *planned,
+    size_t column_index,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    int copied = 0;
+
+    if (planned == NULL || out_column == NULL) {
+        set_runtime_error(database, "invalid self-referencing foreign-key descriptor");
+        return MYLITE_ERROR;
+    }
+
+    *out_column = (struct mylite_catalog_column_descriptor){
+        .ordinal_position = (int64_t)column_index + 1,
+        .is_nullable = planned->is_nullable,
+        .is_visible = planned->is_visible,
+        .is_auto_increment = planned->is_auto_increment,
+        .default_kind = planned->default_kind,
+        .default_integer = planned->default_integer,
+        .on_update_current_timestamp = planned->on_update_current_timestamp,
+        .is_generated = planned->is_generated,
+        .generated_kind = planned->generated_kind,
+    };
+    copied = snprintf(out_column->name, sizeof(out_column->name), "%s", planned->name);
+    if (copied < 0 || (size_t)copied >= sizeof(out_column->name)) {
+        set_identifier_too_long_error(database, "column");
+        return MYLITE_ERROR;
+    }
+    copied = snprintf(
+        out_column->logical_type,
+        sizeof(out_column->logical_type),
+        "%s",
+        planned->logical_type
+    );
+    if (copied < 0 || (size_t)copied >= sizeof(out_column->logical_type)) {
+        set_identifier_too_long_error(database, "type");
+        return MYLITE_ERROR;
+    }
+    copied = snprintf(
+        out_column->physical_type,
+        sizeof(out_column->physical_type),
+        "%s",
+        planned->physical_type
+    );
+    if (copied < 0 || (size_t)copied >= sizeof(out_column->physical_type)) {
+        set_identifier_too_long_error(database, "type");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int find_create_table_self_foreign_key_parent_index(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    struct planned_foreign_key *foreign_key
+) {
+    if (plan->has_primary_key && plan->primary_key_part_count == foreign_key->part_count) {
+        bool matches = true;
+
+        for (size_t part_index = 0U; matches && part_index < foreign_key->part_count;
+             ++part_index) {
+            if (plan->primary_key_parts[part_index].column_index !=
+                foreign_key->parts[part_index].parent_column_index) {
+                matches = false;
+            }
+        }
+        if (matches) {
+            foreign_key->parent_index = (struct mylite_catalog_index_descriptor){
+                .kind = MYLITE_CATALOG_INDEX_KIND_PRIMARY,
+                .is_unique = true,
+                .is_visible = true,
+            };
+            snprintf(
+                foreign_key->parent_index.name,
+                sizeof(foreign_key->parent_index.name),
+                "%s",
+                "PRIMARY"
+            );
+            foreign_key->parent_index_is_primary = true;
+            return MYLITE_OK;
+        }
+    }
+
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        const struct planned_secondary_index *candidate = &plan->secondary_indexes[index];
+        bool matches = false;
+
+        if (!candidate->is_unique || candidate->part_count != foreign_key->part_count) {
+            continue;
+        }
+        matches = true;
+        for (size_t part_index = 0U; matches && part_index < foreign_key->part_count;
+             ++part_index) {
+            const struct planned_secondary_index_part *candidate_part = &candidate->parts[part_index];
+
+            if (candidate_part->has_prefix_length ||
+                candidate_part->column_index != foreign_key->parts[part_index].parent_column_index) {
+                matches = false;
+            }
+        }
+        if (matches) {
+            foreign_key->parent_index = (struct mylite_catalog_index_descriptor){
+                .kind = candidate->kind,
+                .is_unique = true,
+                .is_visible = candidate->is_visible,
+                .show_create_explicit_btree = candidate->show_create_explicit_btree,
+            };
+            snprintf(
+                foreign_key->parent_index.name,
+                sizeof(foreign_key->parent_index.name),
+                "%s",
+                candidate->name
+            );
+            foreign_key->parent_secondary_index_index = index;
+            foreign_key->parent_index_is_primary = false;
+            return MYLITE_OK;
+        }
+    }
+
+    set_foreign_key_missing_unique_error(database);
+    return MYLITE_ERROR;
 }
 
 static int find_foreign_key_parent_index(

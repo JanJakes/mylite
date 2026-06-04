@@ -1116,6 +1116,7 @@ struct planned_primary_key_part {
 
 struct planned_foreign_key_part {
     size_t child_column_index;
+    size_t parent_column_index;
     struct mylite_catalog_column_descriptor parent_column;
 };
 
@@ -1132,7 +1133,10 @@ struct planned_foreign_key {
     struct mylite_catalog_index_descriptor parent_index;
     int64_t child_index_id;
     size_t child_secondary_index_index;
+    size_t parent_secondary_index_index;
     bool child_index_is_primary;
+    bool parent_is_self_reference;
+    bool parent_index_is_primary;
     bool has_explicit_name;
 };
 
@@ -8362,6 +8366,7 @@ static int assign_create_table_index_ids(
 static int assign_create_table_foreign_key_ids(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
     struct planned_create_table *plan
 );
 static int assign_create_table_check_constraint_ids(
@@ -14859,6 +14864,7 @@ static int append_planned_foreign_key_part(
     struct mylite_db *database,
     struct planned_foreign_key *foreign_key,
     size_t child_column_index,
+    size_t parent_column_index,
     const struct mylite_catalog_column_descriptor *parent_column
 );
 static int reserve_planned_foreign_key_parts(
@@ -14871,6 +14877,28 @@ static int plan_create_table_foreign_key_parent(
     const struct planned_create_table *plan,
     const struct mylite_sql_ast_node *parent_table_node,
     const struct foreign_key_column_names *names,
+    struct planned_foreign_key *foreign_key
+);
+static bool create_table_foreign_key_parent_is_self_reference(
+    const struct planned_create_table *plan,
+    const struct table_name_resolution *parent_resolution
+);
+static int plan_create_table_self_referencing_foreign_key_parent(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct table_name_resolution *parent_resolution,
+    const struct foreign_key_column_names *names,
+    struct planned_foreign_key *foreign_key
+);
+static int copy_planned_column_to_self_foreign_key_parent(
+    struct mylite_db *database,
+    const struct planned_column *planned,
+    size_t column_index,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int find_create_table_self_foreign_key_parent_index(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
     struct planned_foreign_key *foreign_key
 );
 static int find_foreign_key_parent_index(

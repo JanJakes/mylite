@@ -191,6 +191,72 @@ expect_value "referential named fk" \
 
 run_mysql \
     "USE ${DATABASE};
+     CREATE TABLE self_ref(
+       id INT PRIMARY KEY,
+       parent_id INT,
+       CONSTRAINT parent_id_fk FOREIGN KEY(parent_id) REFERENCES self_ref(id)
+     ) ENGINE=InnoDB;" >/dev/null
+
+self_show=$(run_mysql "USE ${DATABASE}; SHOW CREATE TABLE self_ref;")
+case "$self_show" in
+    *"KEY \`parent_id_fk\` (\`parent_id\`)"*) ;;
+    *) fail "SHOW CREATE self-ref missing auto-created child key: [$self_show]" ;;
+esac
+case "$self_show" in
+    *"CONSTRAINT \`parent_id_fk\` FOREIGN KEY (\`parent_id\`) REFERENCES \`self_ref\` (\`id\`)"*) ;;
+    *) fail "SHOW CREATE self-ref missing FK definition: [$self_show]" ;;
+esac
+
+self_key_usage=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT CONSTRAINT_NAME, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION,
+            POSITION_IN_UNIQUE_CONSTRAINT, REFERENCED_TABLE_NAME,
+            REFERENCED_COLUMN_NAME
+       FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'self_ref'
+        AND CONSTRAINT_NAME = 'parent_id_fk';")
+expect_value "self-ref key usage" \
+    "parent_id_fk	self_ref	parent_id	1	1	self_ref	id" \
+    "$self_key_usage"
+
+self_rows=$(run_mysql \
+    "USE ${DATABASE};
+     INSERT INTO self_ref VALUES (1,NULL),(2,1),(3,3);
+     SELECT id, parent_id FROM self_ref ORDER BY id;")
+expect_value "self-ref root row" "1	NULL" "$(printf '%s\n' "$self_rows" | sed -n '1p')"
+expect_value "self-ref child row" "2	1" "$(printf '%s\n' "$self_rows" | sed -n '2p')"
+expect_value "self-ref same-row reference" "3	3" "$(printf '%s\n' "$self_rows" | sed -n '3p')"
+
+expect_error \
+    "self-ref missing parent insert" \
+    1452 \
+    "23000" \
+    "Cannot add or update a child row" \
+    "USE ${DATABASE}; INSERT INTO self_ref VALUES (4,99);"
+expect_error \
+    "self-ref referenced parent delete" \
+    1451 \
+    "23000" \
+    "Cannot delete or update a parent row" \
+    "USE ${DATABASE}; DELETE FROM self_ref WHERE id = 1;"
+
+run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE self_unique(
+       slug INT UNIQUE,
+       parent_slug INT,
+       CONSTRAINT unique_parent_fk FOREIGN KEY(parent_slug) REFERENCES self_unique(slug)
+     ) ENGINE=InnoDB;
+     INSERT INTO self_unique VALUES (1,NULL),(2,1);" >/dev/null
+expect_error \
+    "self-ref unique missing parent insert" \
+    1452 \
+    "23000" \
+    "Cannot add or update a child row" \
+    "USE ${DATABASE}; INSERT INTO self_unique VALUES (3,99);"
+
+run_mysql \
+    "USE ${DATABASE};
      INSERT INTO parent VALUES (1,10),(2,20);
      INSERT INTO child VALUES (1,1),(2,NULL);
      INSERT INTO child SET id = 3, parent_id = 2;

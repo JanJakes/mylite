@@ -43,7 +43,7 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
         rc = assign_create_table_index_ids(database, &mutation, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = assign_create_table_foreign_key_ids(database, &mutation, plan);
+        rc = assign_create_table_foreign_key_ids(database, &mutation, table_id, plan);
     }
     if (rc == MYLITE_OK) {
         rc = assign_create_table_check_constraint_ids(database, &mutation, plan);
@@ -231,6 +231,7 @@ static int assign_create_table_index_ids(
 static int assign_create_table_foreign_key_ids(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
     struct planned_create_table *plan
 ) {
     int64_t next_foreign_key_id = 0;
@@ -254,6 +255,20 @@ static int assign_create_table_foreign_key_ids(
         } else if (foreign_key->child_secondary_index_index < plan->secondary_index_count) {
             foreign_key->child_index_id =
                 plan->secondary_indexes[foreign_key->child_secondary_index_index].index_id;
+        }
+        if (foreign_key->parent_is_self_reference) {
+            foreign_key->parent_table.table_id = table_id;
+            foreign_key->parent_index.table_id = table_id;
+            if (foreign_key->parent_index_is_primary) {
+                foreign_key->parent_index.index_id = plan->primary_key_index_id;
+            } else if (foreign_key->parent_secondary_index_index < plan->secondary_index_count) {
+                foreign_key->parent_index.index_id =
+                    plan->secondary_indexes[foreign_key->parent_secondary_index_index].index_id;
+            }
+            if (foreign_key->parent_index.index_id <= 0) {
+                set_runtime_error(database, "invalid self-referencing foreign-key parent index");
+                return MYLITE_ERROR;
+            }
         }
         if (foreign_key->child_index_id <= 0) {
             set_runtime_error(database, "invalid foreign-key child index descriptor");
@@ -557,9 +572,12 @@ static int insert_create_table_foreign_key_catalog_rows(
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
         const struct planned_foreign_key *foreign_key = &plan->foreign_keys[index];
+        int64_t parent_table_id =
+            foreign_key->parent_is_self_reference ? table_id : foreign_key->parent_table.table_id;
 
         if (foreign_key->part_count == 0U || foreign_key->foreign_key_id <= 0 ||
-            foreign_key->parent_index.index_id <= 0 || foreign_key->child_index_id <= 0) {
+            parent_table_id <= 0 || foreign_key->parent_index.index_id <= 0 ||
+            foreign_key->child_index_id <= 0) {
             set_runtime_error(database, "invalid foreign-key descriptor");
             return MYLITE_ERROR;
         }
@@ -569,7 +587,7 @@ static int insert_create_table_foreign_key_catalog_rows(
             mutation,
             foreign_key->foreign_key_id,
             table_id,
-            foreign_key->parent_table.table_id,
+            parent_table_id,
             foreign_key->name,
             foreign_key->parent_index.index_id,
             foreign_key->child_index_id,
@@ -582,9 +600,22 @@ static int insert_create_table_foreign_key_catalog_rows(
              ++part_index) {
             const struct planned_foreign_key_part *part = &foreign_key->parts[part_index];
             int64_t child_column_id = 0;
+            int64_t parent_column_id = part->parent_column.column_id;
 
             if (part->child_column_index >= plan->column_count ||
-                column_ids[part->child_column_index] <= 0 || part->parent_column.column_id <= 0) {
+                column_ids[part->child_column_index] <= 0) {
+                set_runtime_error(database, "invalid foreign-key descriptor");
+                return MYLITE_ERROR;
+            }
+            if (foreign_key->parent_is_self_reference) {
+                if (part->parent_column_index >= plan->column_count ||
+                    column_ids[part->parent_column_index] <= 0) {
+                    set_runtime_error(database, "invalid self-referencing foreign-key descriptor");
+                    return MYLITE_ERROR;
+                }
+                parent_column_id = column_ids[part->parent_column_index];
+            }
+            if (parent_column_id <= 0) {
                 set_runtime_error(database, "invalid foreign-key descriptor");
                 return MYLITE_ERROR;
             }
@@ -594,9 +625,9 @@ static int insert_create_table_foreign_key_catalog_rows(
                 mutation,
                 foreign_key->foreign_key_id,
                 table_id,
-                foreign_key->parent_table.table_id,
+                parent_table_id,
                 child_column_id,
-                part->parent_column.column_id,
+                parent_column_id,
                 (int64_t)part_index + 1,
                 (int64_t)part_index + 1,
                 NULL

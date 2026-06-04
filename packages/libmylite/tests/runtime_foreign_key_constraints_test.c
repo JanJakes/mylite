@@ -56,6 +56,7 @@ struct expected_dml_status {
 };
 
 static int test_create_table_foreign_key_lifecycle(void);
+static int test_self_referencing_foreign_key_lifecycle(void);
 static int test_inline_foreign_key_references_are_ignored(void);
 static int test_foreign_key_metadata_name_order(void);
 static int test_composite_foreign_key_lifecycle(void);
@@ -110,6 +111,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_create_table_foreign_key_lifecycle();
+    failures += test_self_referencing_foreign_key_lifecycle();
     failures += test_inline_foreign_key_references_are_ignored();
     failures += test_foreign_key_metadata_name_order();
     failures += test_composite_foreign_key_lifecycle();
@@ -292,6 +294,98 @@ static int test_create_table_foreign_key_lifecycle(void) {
         database,
         "REPLACE INTO select_child SELECT id, parent_id FROM select_source",
         0
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_self_referencing_foreign_key_lifecycle(void) {
+    static const char *const self_rows[] = {"1", NULL, "2", "1", "3", "3"};
+    static const char *const key_usage_values[] = {
+        "parent_id_fk",
+        "self_ref",
+        "parent_id",
+        "1",
+        "1",
+        "self_ref",
+        "id",
+    };
+    mylite_db *database = NULL;
+    mylite_result *show_create_result = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE self_ref (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT parent_id_fk FOREIGN KEY (parent_id) REFERENCES self_ref (id))"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE self_ref", &show_create_result);
+    if (failures == 0) {
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "KEY `parent_id_fk` (`parent_id`)",
+            "SHOW CREATE self-referencing foreign-key child index"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "CONSTRAINT `parent_id_fk` FOREIGN KEY (`parent_id`) REFERENCES `self_ref` (`id`)",
+            "SHOW CREATE self-referencing foreign-key definition"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, "
+            "POSITION_IN_UNIQUE_CONSTRAINT, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME "
+            "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'self_ref' AND "
+            "CONSTRAINT_NAME = 'parent_id_fk'",
+            key_usage_values,
+            1U,
+            7U,
+            "self-referencing foreign-key key-column metadata",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO self_ref VALUES (1, NULL), (2, 1), (3, 3)", 3);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM self_ref ORDER BY id",
+            self_rows,
+            3U,
+            2U,
+            "self-referencing foreign-key rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO self_ref VALUES (4, 99)",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM self_ref WHERE id = 1",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE self_unique (slug INT UNIQUE, parent_slug INT, "
+        "CONSTRAINT unique_parent_fk FOREIGN KEY (parent_slug) REFERENCES self_unique (slug))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO self_unique VALUES (1, NULL), (2, 1)", 2);
+    failures += execute_error(
+        database,
+        "INSERT INTO self_unique VALUES (3, 99)",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE self_cascade (id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES self_cascade (id) ON DELETE CASCADE)",
+        (struct expected_sql_error){mysql_error_parse, "42000", "actions are not yet supported"}
     );
 
     mylite_close(database);

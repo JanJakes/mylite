@@ -15,11 +15,12 @@ CREATE TABLE child (
 ```
 
 The slice is deliberately narrow. It supports one-column integer-family foreign
-keys with default `RESTRICT` / `NO ACTION` behavior, metadata, and enforcement
-for the current descriptor-driven DML paths that can safely participate. It
-does not add cascades, `SET NULL`, composite keys, mutable
-`foreign_key_checks`, temporary-table foreign keys, self-referential edge cases,
-or arbitrary `ALTER TABLE` combinations.
+keys, including table-level create-time self-references to the same table's
+primary or unique key, with default `RESTRICT` / `NO ACTION` behavior, metadata,
+and enforcement for the current descriptor-driven DML paths that can safely
+participate. It does not add cascades, `SET NULL`, composite keys, mutable
+`foreign_key_checks`, temporary-table foreign keys, composite self-referential
+edge cases, or arbitrary `ALTER TABLE` combinations.
 
 ## Sources
 
@@ -75,6 +76,12 @@ slice:
 - `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` exposes
   `UNIQUE_CONSTRAINT_NAME`, `MATCH_OPTION = 'NONE'`, and default
   `UPDATE_RULE = DELETE_RULE = 'NO ACTION'`.
+- A same-table one-column foreign key declared in `CREATE TABLE` may reference a
+  primary key that is being created by the same statement. MySQL creates the
+  child index normally, renders the same-table `REFERENCES` target in
+  `SHOW CREATE TABLE`, accepts rows whose child value references the row being
+  inserted, and rejects missing-parent child writes and referenced-parent deletes
+  with the usual foreign-key errors.
 - Inserting or updating a child row to a missing non-`NULL` parent value fails
   with `1452 / 23000`.
 - `INSERT IGNORE` on a child row with a missing non-`NULL` parent value skips
@@ -90,7 +97,7 @@ Supported DDL:
 
 - persistent base tables only;
 - table-level `FOREIGN KEY (child_column) REFERENCES parent_table(parent_column)`
-  in `CREATE TABLE`;
+  in `CREATE TABLE`, including the one-column same-table form;
 - optional `CONSTRAINT constraint_name` before the table-level foreign key;
 - single-action `ALTER TABLE child ADD CONSTRAINT constraint_name FOREIGN KEY
   (child_column) REFERENCES parent_table(parent_column)`;
@@ -98,7 +105,9 @@ Supported DDL:
 - child and parent columns must be existing descriptor-owned integer-family
   columns with exactly compatible logical integer type and signedness;
 - parent column must be the first and only part of an existing primary or unique
-  descriptor key with no prefix length;
+  descriptor key with no prefix length, or the matching planned primary or
+  unique key when the `CREATE TABLE` statement declares a one-column
+  self-reference;
 - child column may be nullable;
 - omitted child index creates a descriptor-owned nonunique secondary index;
 - existing child index whose first key part is the child column is reused;
@@ -151,7 +160,8 @@ Out of scope:
 - `CASCADE`, `SET NULL`, `SET DEFAULT`, action timing, and trigger-like effects;
 - `MATCH` clauses, composite keys, prefix keys, functional keys, descending
   keys, generated columns, invisible columns, and non-integer keys;
-- self-referential foreign keys;
+- composite self-referential foreign keys and self-references that require
+  deferred parent-key planning outside the one-column `CREATE TABLE` form;
 - references across schemas in this first slice;
 - temporary tables, views, partitioned tables, storage-engine variants, and
   privilege semantics;

@@ -458,6 +458,54 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .context = "dual aliases and all",
         }
     );
+    {
+        static const char literal_sql[] = "SELECT 'abc', ('xyz'), 'abc\0def'";
+        static const unsigned char expected_nul_value[] = {'a', 'b', 'c', '\0', 'd', 'e', 'f'};
+        int rc = mylite_execute(database, literal_sql, sizeof(literal_sql) - 1U, &result);
+
+        if (rc != MYLITE_OK) {
+            fprintf(
+                stderr,
+                "decoded string literal labels: expected success, got %d: %s\n",
+                rc,
+                mylite_errmsg(database)
+            );
+            ++failures;
+        } else {
+            failures +=
+                expect_size(mylite_result_column_count(result), 3U, "decoded string literal labels");
+            failures +=
+                expect_size(mylite_result_row_count(result), 1U, "decoded string literal labels");
+            failures += expect_text(
+                mylite_result_column_name(result, 0U),
+                "abc",
+                "decoded string literal labels"
+            );
+            failures += expect_text(
+                mylite_result_column_name(result, 1U),
+                "xyz",
+                "decoded string literal labels"
+            );
+            failures += expect_text(
+                mylite_result_column_name(result, 2U),
+                "abc",
+                "decoded string literal labels"
+            );
+            failures += expect_size(
+                mylite_result_value_size(result, 0U, 2U),
+                sizeof(expected_nul_value),
+                "decoded string literal NUL value size"
+            );
+            failures += expect_bytes(
+                mylite_result_value_bytes(result, 0U, 2U),
+                expected_nul_value,
+                sizeof(expected_nul_value),
+                "decoded string literal NUL value"
+            );
+        }
+        mylite_result_free(result);
+        result = NULL;
+    }
     failures += expect_query(
         database,
         (struct expected_query){

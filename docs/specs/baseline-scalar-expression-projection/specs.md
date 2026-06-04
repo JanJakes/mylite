@@ -75,8 +75,9 @@ Runtime probes against MySQL 8.4.9 confirm:
 - explicit aliases override default expression labels, including bare aliases;
 - default labels preserve expression source text for supported scalar
   functions and most parenthesized expressions, with MySQL-observed literal
-  exceptions such as `+2` and `(+2)` labeling as `2`, `(1)` labeling as `1`,
-  and `(NULL)` labeling as `NULL`;
+  exceptions such as string literals labeling as their decoded string value,
+  `+2` and `(+2)` labeling as `2`, `(1)` labeling as `1`, and `(NULL)`
+  labeling as `NULL`;
 - parenthesized top-level scalar values and parenthesized scalar function
   operands are accepted;
 - `TRUE` and `FALSE` render as `1` and `0`;
@@ -210,6 +211,8 @@ matches MySQL's observed labels:
 - `SELECT +2` labels the column `2`;
 - `SELECT (1)` labels the column `1`;
 - `SELECT (+2)` labels the column `2`;
+- `SELECT 'abc'` labels the column `abc`;
+- `SELECT ('abc')` labels the column `abc`;
 - `SELECT (NULL)` labels the column `NULL`;
 - `SELECT (TRUE)` labels the column `(TRUE)`;
 - `SELECT (-3)` labels the column `(-3)`;

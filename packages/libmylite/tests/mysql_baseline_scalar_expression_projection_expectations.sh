@@ -111,6 +111,13 @@ expect_output_with_headers \
     "$DATABASE"
 
 expect_output_with_headers \
+    "string literal labels" \
+    "abc	xyz
+abc	xyz" \
+    "SELECT 'abc', ('xyz');" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "parenthesized top-level and nested values" \
     "1	NULL	(TRUE)	2	(-3)	(IF(1,4,5))	IFNULL((NULL),(6))	COALESCE((NULL),(7))	NULLIF((8),(8))	ISNULL((NULL))
 1	NULL	1	2	-3	4	6	7	NULL	1" \

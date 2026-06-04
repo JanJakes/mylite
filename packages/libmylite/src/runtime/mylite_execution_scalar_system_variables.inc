@@ -72,21 +72,13 @@ static int system_variable_value(
         out_cell->value = "binary";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE:
-        if (global_scope) {
-            out_cell->value = default_sql_mode_value();
-        } else {
-            out_cell->value = database->session.sql_mode_text;
-        }
+        out_cell->value = global_scope ? default_sql_mode_value() : database->session.sql_mode_text;
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
         out_cell->value = "UTC";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE:
-        if (global_scope) {
-            out_cell->value = "SYSTEM";
-        } else {
-            out_cell->value = database->session.time_zone;
-        }
+        out_cell->value = global_scope ? "SYSTEM" : database->session.time_zone;
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_MODE:
         out_cell->value = "OFF";
@@ -158,16 +150,10 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
-        if (global_scope) {
-            return format_session_scalar_uint64_value(
-                database,
-                group_concat_max_len_default_value,
-                out_cell
-            );
-        }
         return format_session_scalar_uint64_value(
             database,
-            database->session.group_concat_max_len,
+            global_scope ? group_concat_max_len_default_value
+                         : database->session.group_concat_max_len,
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
@@ -795,21 +781,13 @@ static int show_system_variable_value(
         *out_value = "binary";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE:
-        if (global_scope) {
-            *out_value = default_sql_mode_value();
-        } else {
-            *out_value = database->session.sql_mode_text;
-        }
+        *out_value = global_scope ? default_sql_mode_value() : database->session.sql_mode_text;
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
         *out_value = "UTC";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE:
-        if (global_scope) {
-            *out_value = "SYSTEM";
-        } else {
-            *out_value = database->session.time_zone;
-        }
+        *out_value = global_scope ? "SYSTEM" : database->session.time_zone;
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_MODE:
         *out_value = "OFF";
@@ -877,18 +855,10 @@ static int show_system_variable_value(
             out_value
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
-        if (global_scope) {
-            return format_show_system_variable_uint64_value(
-                database,
-                group_concat_max_len_default_value,
-                integer_buffer,
-                integer_buffer_size,
-                out_value
-            );
-        }
         return format_show_system_variable_uint64_value(
             database,
-            database->session.group_concat_max_len,
+            global_scope ? group_concat_max_len_default_value
+                         : database->session.group_concat_max_len,
             integer_buffer,
             integer_buffer_size,
             out_value
@@ -985,21 +955,16 @@ static int show_system_variable_value(
         return rc;
     }
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
-        if (global_scope) {
-            *out_value =
-                transaction_isolation_value_text(MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ);
-        } else {
-            *out_value =
-                transaction_isolation_value_text(database->session.session_transaction_isolation);
-        }
+        *out_value = transaction_isolation_value_text(
+            global_scope ? MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ
+                         : database->session.session_transaction_isolation
+        );
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
-        if (global_scope) {
-            *out_value = transaction_read_only_show_text(MYLITE_TRANSACTION_ACCESS_READ_WRITE);
-        } else {
-            *out_value =
-                transaction_read_only_show_text(database->session.session_transaction_access_mode);
-        }
+        *out_value = transaction_read_only_show_text(
+            global_scope ? MYLITE_TRANSACTION_ACCESS_READ_WRITE
+                         : database->session.session_transaction_access_mode
+        );
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
         int rc = format_uint64(

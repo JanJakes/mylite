@@ -93,11 +93,7 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
-        target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
-        target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
-        mylite_execution_system_variable_is_read_only_server_build(target.kind) ||
-        mylite_execution_system_variable_is_read_only_server_environment(target.kind)) {
+    if (set_system_variable_target_is_read_only(target.kind)) {
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
@@ -110,12 +106,9 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    if (mylite_execution_system_variable_is_global_read_only_toggle(target.kind)) {
-        if (target.scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
-            set_global_variable_set_global_required_error(database, target.name);
-            return MYLITE_ERROR;
-        }
-        return validate_set_fixed_boolean_value(database, value_node, false);
+    rc = apply_set_global_read_only_toggle_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
     }
     if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
         target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
@@ -162,6 +155,16 @@ static int apply_set_system_variable_assignment(
 
     set_read_only_system_variable_error(database, target.name);
     return MYLITE_ERROR;
+}
+
+static bool set_system_variable_target_is_read_only(
+    enum mylite_execution_system_variable_kind kind
+) {
+    return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
+           mylite_execution_system_variable_is_read_only_server_build(kind) ||
+           mylite_execution_system_variable_is_read_only_server_environment(kind);
 }
 
 static int apply_set_server_identity_binary_log_system_variable_assignment(
@@ -1009,6 +1012,24 @@ static int ensure_session_system_variable_override_capacity(struct mylite_db *da
     return MYLITE_OK;
 }
 
+static int apply_set_global_read_only_toggle_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    *out_handled = false;
+    if (!mylite_execution_system_variable_is_global_read_only_toggle(target->kind)) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    return validate_set_fixed_boolean_value(database, value_node, false);
+}
+
 static int apply_set_text_session_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1138,10 +1159,6 @@ static int copy_set_text_system_variable_node_value(
     char **out_value,
     size_t *out_value_size
 ) {
-    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    const char *default_value = NULL;
-    int rc = MYLITE_OK;
-
     if (out_value == NULL || out_value_size == NULL) {
         return MYLITE_MISUSE;
     }
@@ -1152,22 +1169,12 @@ static int copy_set_text_system_variable_node_value(
         return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
-        default_value = text_session_system_variable_default_value(kind);
-        if (default_value == NULL) {
-            default_value = mylite_execution_system_variable_default_value(kind);
-        }
-        if (default_value == NULL) {
-            set_runtime_error(database, "invalid SET DEFAULT text system variable");
-            return MYLITE_ERROR;
-        }
-        *out_value_size = strlen(default_value);
-        *out_value = (char *)malloc(*out_value_size + 1U);
-        if (*out_value == NULL) {
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        memcpy(*out_value, default_value, *out_value_size + 1U);
-        return MYLITE_OK;
+        return copy_set_text_system_variable_default_value(
+            database,
+            kind,
+            out_value,
+            out_value_size
+        );
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
@@ -1181,47 +1188,104 @@ static int copy_set_text_system_variable_node_value(
         );
     }
     if (value_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        rc = copy_identifier_text(value_node, identifier, sizeof(identifier), database);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        *out_value_size = strlen(identifier);
-        *out_value = (char *)malloc(*out_value_size + 1U);
-        if (*out_value == NULL) {
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        memcpy(*out_value, identifier, *out_value_size + 1U);
-        return MYLITE_OK;
+        return copy_set_text_system_variable_identifier_value(
+            database,
+            value_node,
+            out_value,
+            out_value_size
+        );
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL ||
         value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        struct session_scalar_cell value = {0};
-
-        rc = session_scalar_value(database, value_node, &value);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (value.value == NULL) {
-            set_system_variable_cant_be_set_value_error(database, variable_name, "NULL");
-            session_scalar_cell_deinit(&value);
-            return MYLITE_ERROR;
-        }
-        *out_value_size = value.has_value_size ? value.value_size : strlen(value.value);
-        *out_value = (char *)malloc(*out_value_size + 1U);
-        if (*out_value == NULL) {
-            set_nomem_error(database);
-            session_scalar_cell_deinit(&value);
-            return MYLITE_NOMEM;
-        }
-        memcpy(*out_value, value.value, *out_value_size);
-        (*out_value)[*out_value_size] = '\0';
-        session_scalar_cell_deinit(&value);
-        return MYLITE_OK;
+        return copy_set_text_system_variable_scalar_value(
+            database,
+            value_node,
+            variable_name,
+            out_value,
+            out_value_size
+        );
     }
 
     set_system_variable_cant_be_set_value_error(database, variable_name, "");
     return MYLITE_ERROR;
+}
+
+static int copy_set_text_system_variable_default_value(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    char **out_value,
+    size_t *out_value_size
+) {
+    const char *default_value = text_session_system_variable_default_value(kind);
+
+    if (default_value == NULL) {
+        default_value = mylite_execution_system_variable_default_value(kind);
+    }
+    if (default_value == NULL) {
+        set_runtime_error(database, "invalid SET DEFAULT text system variable");
+        return MYLITE_ERROR;
+    }
+    *out_value_size = strlen(default_value);
+    *out_value = (char *)malloc(*out_value_size + 1U);
+    if (*out_value == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_value, default_value, *out_value_size + 1U);
+    return MYLITE_OK;
+}
+
+static int copy_set_text_system_variable_identifier_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value,
+    size_t *out_value_size
+) {
+    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = copy_identifier_text(value_node, identifier, sizeof(identifier), database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    *out_value_size = strlen(identifier);
+    *out_value = (char *)malloc(*out_value_size + 1U);
+    if (*out_value == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_value, identifier, *out_value_size + 1U);
+    return MYLITE_OK;
+}
+
+static int copy_set_text_system_variable_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *variable_name,
+    char **out_value,
+    size_t *out_value_size
+) {
+    struct session_scalar_cell value = {0};
+    int rc = session_scalar_value(database, value_node, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.value == NULL) {
+        set_system_variable_cant_be_set_value_error(database, variable_name, "NULL");
+        session_scalar_cell_deinit(&value);
+        return MYLITE_ERROR;
+    }
+    *out_value_size = value.has_value_size ? value.value_size : strlen(value.value);
+    *out_value = (char *)malloc(*out_value_size + 1U);
+    if (*out_value == NULL) {
+        set_nomem_error(database);
+        session_scalar_cell_deinit(&value);
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_value, value.value, *out_value_size);
+    (*out_value)[*out_value_size] = '\0';
+    session_scalar_cell_deinit(&value);
+    return MYLITE_OK;
 }
 
 static int apply_set_session_placeholder_system_variable_value(

@@ -547,20 +547,30 @@ static bool row_scalar_rand_seed_is_descriptor_expression(
 }
 
 static bool ast_subtree_has_column_reference(const struct mylite_sql_ast_node *node) {
-    if (node == NULL) {
-        return false;
-    }
-    if (node->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool has_reference = false;
+
+    if (node != NULL && !scalar_arithmetic_node_stack_push(&stack, node)) {
         return true;
     }
-    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
-         child = child->next_sibling) {
-        if (ast_subtree_has_column_reference(child)) {
-            return true;
+    while (stack.count != 0U && !has_reference) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+
+        if (current->kind == MYLITE_SQL_AST_IDENTIFIER ||
+            current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+            has_reference = true;
+            break;
+        }
+        for (const struct mylite_sql_ast_node *child = current->first_child; child != NULL;
+             child = child->next_sibling) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child)) {
+                has_reference = true;
+                break;
+            }
         }
     }
-    return false;
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return has_reference;
 }
 
 static bool row_scalar_expression_is_window_function(const struct mylite_sql_ast_node *expression) {

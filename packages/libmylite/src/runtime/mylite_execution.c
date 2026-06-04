@@ -3995,7 +3995,16 @@ static int apply_set_system_variable_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment
 );
+static bool set_system_variable_target_is_read_only(
+    enum mylite_execution_system_variable_kind kind
+);
 static int apply_set_system_variable_user_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_global_read_only_toggle_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node,
@@ -4027,6 +4036,25 @@ static int copy_set_text_system_variable_node_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     enum mylite_execution_system_variable_kind kind,
+    const char *variable_name,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_set_text_system_variable_default_value(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_set_text_system_variable_identifier_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_set_text_system_variable_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
     const char *variable_name,
     char **out_value,
     size_t *out_value_size

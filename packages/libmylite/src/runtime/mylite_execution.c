@@ -369,6 +369,7 @@ enum {
     information_schema_connection_control_failed_login_attempts_column_count = 2,
     information_schema_collation_applicability_column_count = 2,
     information_schema_collations_column_count = 7,
+    information_schema_collations_name_column = 0,
     information_schema_enabled_roles_column_count = 4,
     information_schema_engines_column_count = 6,
     information_schema_events_column_count = 24,

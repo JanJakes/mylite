@@ -498,3 +498,16 @@ const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_
     }
     return &mysql_collation_catalog[index];
 }
+
+bool mylite_execution_catalog_mysql_collation_index_by_name(const char *name, size_t *out_index) {
+    if (name == NULL || out_index == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < mylite_execution_catalog_mysql_collation_count(); ++index) {
+        if (catalog_text_equals_ascii_case_insensitive(name, mysql_collation_catalog[index].name)) {
+            *out_index = index;
+            return true;
+        }
+    }
+    return false;
+}

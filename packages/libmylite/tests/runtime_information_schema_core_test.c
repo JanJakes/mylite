@@ -226,11 +226,16 @@ static int test_information_schema_core_queries(void) {
         "DEFAULT_ENCRYPTION",
     };
     static const char *const schema_name_column[] = {"SCHEMA_NAME"};
+    static const char *const collation_name_column[] = {"COLLATION_NAME"};
     static const char *const builtin_schemata_default_order_values[] = {
         "mysql",
         "information_schema",
         "performance_schema",
         "sys",
+    };
+    static const char *const mysql_collation_name_order_values[] = {
+        "ucs2_romanian_ci",
+        "ucs2_roman_ci",
     };
     static const char *const system_table_columns[] = {
         "TABLE_SCHEMA",
@@ -295,6 +300,20 @@ static int test_information_schema_core_queries(void) {
             .row_count = sizeof(builtin_schemata_default_order_values) /
                          sizeof(builtin_schemata_default_order_values[0]),
             .context = "schemata built-in default order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATIONS "
+                   "WHERE COLLATION_NAME IN ('ucs2_roman_ci', 'ucs2_romanian_ci') "
+                   "ORDER BY COLLATION_NAME",
+            .column_names = collation_name_column,
+            .column_count = sizeof(collation_name_column) / sizeof(collation_name_column[0]),
+            .values = mysql_collation_name_order_values,
+            .row_count = sizeof(mysql_collation_name_order_values) /
+                         sizeof(mysql_collation_name_order_values[0]),
+            .context = "collations MySQL catalog name order",
         }
     );
     failures += expect_query(

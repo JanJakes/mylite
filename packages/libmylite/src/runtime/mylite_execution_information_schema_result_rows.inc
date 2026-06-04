@@ -804,6 +804,21 @@ static int information_schema_compare_rows(
             comparison =
                 information_schema_compare_text(query->definition, query->order_index, left, right);
         }
+    } else if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_COLLATIONS &&
+               query->order_index == information_schema_collations_name_column) {
+        size_t left_index = 0U;
+        size_t right_index = 0U;
+        bool left_known =
+            mylite_execution_catalog_mysql_collation_index_by_name(left, &left_index);
+        bool right_known =
+            mylite_execution_catalog_mysql_collation_index_by_name(right, &right_index);
+
+        if (left_known && right_known) {
+            comparison = (left_index > right_index) - (left_index < right_index);
+        } else {
+            comparison =
+                information_schema_compare_text(query->definition, query->order_index, left, right);
+        }
     } else {
         comparison =
             information_schema_compare_text(query->definition, query->order_index, left, right);

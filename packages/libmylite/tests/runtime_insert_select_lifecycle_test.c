@@ -852,6 +852,7 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
 
 static int test_insert_select_schema_resolution_and_diagnostics(void) {
     static const char *const qualified_rows[] = {"1", "11"};
+    static const char *const row_scalar_ignore_rows[] = {"1", "a", "2", "b", "3", "c"};
     static const char *const zero_rows[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -1122,22 +1123,44 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .message_part = "SELECT supports only descriptor table columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "INSERT IGNORE INTO dst(id) SELECT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT IGNORE ... SELECT does not support row-scalar sources",
+        "CREATE TABLE row_scalar_ignore_dst(id INT PRIMARY KEY, label VARCHAR(8))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT IGNORE INTO row_scalar_ignore_dst(id, label) SELECT 1, 'a'",
+        1
+    );
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO row_scalar_ignore_dst(id, label) SELECT 1, 'dup'",
+        (struct expected_dml_warning_status){
+            .affected_rows = 0,
+            .warning_count = 1U,
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
-        "INSERT IGNORE INTO dst(id) SELECT 1 FROM DUAL",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT IGNORE ... SELECT does not support row-scalar sources",
+        "INSERT IGNORE INTO row_scalar_ignore_dst(id, label) SELECT 2, 'b'",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT IGNORE INTO row_scalar_ignore_dst(id, label) SELECT 3, 'c' FROM DUAL",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM row_scalar_ignore_dst ORDER BY id",
+            .values = row_scalar_ignore_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "insert ignore row-scalar select rows",
         }
     );
     failures += execute_error(

@@ -2381,6 +2381,22 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 85,
 };
 
+enum row_scalar_control_flow_bind_mode {
+    ROW_SCALAR_CONTROL_FLOW_BIND_ARGUMENT = 0,
+    ROW_SCALAR_CONTROL_FLOW_BIND_LEAF_ARGUMENT = 1,
+};
+
+struct row_scalar_control_flow_bind_frame {
+    const struct planned_row_scalar_expression *expression;
+    enum row_scalar_control_flow_bind_mode mode;
+};
+
+struct row_scalar_control_flow_bind_stack {
+    struct row_scalar_control_flow_bind_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
 enum {
     planned_row_scalar_timestampdiff_argument_count = 5,
 };
@@ -25859,20 +25875,34 @@ static int bind_row_scalar_control_flow_expression_parameters(
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
-static int bind_row_scalar_nested_control_flow_expression_parameters(
+static int bind_row_scalar_control_flow_arguments(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    enum row_scalar_control_flow_bind_mode mode,
+    int *parameter_index
+);
+static int bind_row_scalar_control_flow_frame_parameters(
+    sqlite3_stmt *statement,
+    struct row_scalar_control_flow_bind_stack *stack,
+    const struct row_scalar_control_flow_bind_frame *frame,
+    int *parameter_index
+);
+static int bind_row_scalar_control_flow_value_or_column_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
-static int bind_row_scalar_control_flow_argument_parameters(
-    sqlite3_stmt *statement,
+static int row_scalar_control_flow_bind_stack_push_arguments(
+    struct row_scalar_control_flow_bind_stack *stack,
     const struct planned_row_scalar_expression *expression,
-    int *parameter_index
+    enum row_scalar_control_flow_bind_mode mode
 );
-static int bind_row_scalar_control_flow_leaf_argument_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_row_scalar_expression *expression,
-    int *parameter_index
+static int row_scalar_control_flow_bind_stack_push(
+    struct row_scalar_control_flow_bind_stack *stack,
+    struct row_scalar_control_flow_bind_frame frame
+);
+static void row_scalar_control_flow_bind_stack_deinit(
+    struct row_scalar_control_flow_bind_stack *stack
 );
 static int bind_row_scalar_left_right_expression_parameters(
     sqlite3_stmt *statement,

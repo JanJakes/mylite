@@ -562,6 +562,16 @@ static int bind_update_unique_key_conflict_parameters(
     int parameter_index = 1;
     int rc = bind_update_unique_key_assignment_parameters(statement, request, &parameter_index);
 
+    if (rc == MYLITE_OK && request->plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, request->plan);
+    }
+    if (rc == MYLITE_OK && request->plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &request->plan->join_condition,
+            &parameter_index
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(
             statement,
@@ -599,6 +609,16 @@ static int bind_update_unique_key_internal_conflict_parameters(
     int parameter_index = 1;
     int rc = bind_update_unique_key_assignment_parameters(statement, request, &parameter_index);
 
+    if (rc == MYLITE_OK && request->plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, request->plan);
+    }
+    if (rc == MYLITE_OK && request->plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &request->plan->join_condition,
+            &parameter_index
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(
             statement,

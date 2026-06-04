@@ -169,16 +169,7 @@ static int append_joined_delete_from_sql(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_dynamic_string_append_quoted_identifier(
-        string,
-        plan->sources[0].table.physical_name
-    );
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 0U);
-    }
+    rc = append_select_source_sql(string, &plan->sources[0], 0U, next_parameter);
     if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
         rc = mylite_dynamic_string_append(string, " LEFT JOIN ");
     } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
@@ -187,16 +178,7 @@ static int append_joined_delete_from_sql(
         rc = mylite_dynamic_string_append(string, " JOIN ");
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(
-            string,
-            plan->sources[1].table.physical_name
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 1U);
+        rc = append_select_source_sql(string, &plan->sources[1], 1U, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_join_condition_sql(string, &plan->join_condition, next_parameter);
@@ -636,16 +618,7 @@ static int append_joined_update_from_sql(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_dynamic_string_append_quoted_identifier(
-        string,
-        plan->sources[0].table.physical_name
-    );
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 0U);
-    }
+    rc = append_select_source_sql(string, &plan->sources[0], 0U, next_parameter);
     if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
         rc = mylite_dynamic_string_append(string, " LEFT JOIN ");
     } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
@@ -654,16 +627,7 @@ static int append_joined_update_from_sql(
         rc = mylite_dynamic_string_append(string, " JOIN ");
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(
-            string,
-            plan->sources[1].table.physical_name
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 1U);
+        rc = append_select_source_sql(string, &plan->sources[1], 1U, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_join_condition_sql(string, &plan->join_condition, next_parameter);

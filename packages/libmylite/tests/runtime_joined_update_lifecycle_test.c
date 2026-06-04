@@ -139,6 +139,30 @@ static int test_joined_update_success_persistence_and_table_lifecycle(void) {
         "4",
         "400",
     };
+    static const char *const bare_alias_update_values[] = {
+        "1",
+        "19",
+        "2",
+        "200",
+        "3",
+        "300",
+        "4",
+        "400",
+    };
+    static const char *const derived_update_values[] = {
+        "1",
+        "31",
+        "32",
+        "2",
+        "31",
+        "32",
+        "3",
+        "300",
+        "3",
+        "4",
+        "400",
+        "4",
+    };
     static const char *const unqualified_update_values[] = {
         "1",
         "13",
@@ -321,6 +345,48 @@ static int test_joined_update_success_persistence_and_table_lifecycle(void) {
             .row_count = 4U,
             .column_count = 2U,
             .context = "alias-qualified joined update target",
+        }
+    );
+
+    failures += create_join_tables(
+        database,
+        (struct join_table_names){.left_name = "left_bare", .right_name = "right_bare"}
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE left_bare l JOIN right_bare r ON l.k = r.k SET l.v = 19 WHERE r.w = 900",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM left_bare ORDER BY id",
+            .values = bare_alias_update_values,
+            .row_count = 4U,
+            .column_count = 2U,
+            .context = "bare alias joined update target",
+        }
+    );
+
+    failures += create_join_tables(
+        database,
+        (struct join_table_names){.left_name = "left_derived", .right_name = "right_derived"}
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE left_derived l JOIN (SELECT id FROM left_derived WHERE k IS NOT NULL "
+        "ORDER BY id LIMIT 2 FOR UPDATE) picked ON l.id = picked.id "
+        "SET l.v = 31, l.s = 32",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, s FROM left_derived ORDER BY id",
+            .values = derived_update_values,
+            .row_count = 4U,
+            .column_count = 3U,
+            .context = "derived joined update with multiple target assignments",
         }
     );
     failures += create_join_tables(
@@ -683,7 +749,7 @@ static int test_joined_update_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "UPDATE multiple assignments",
+            .message_part = "joined UPDATE supports assignments to one target table",
         }
     );
     failures += execute_error(

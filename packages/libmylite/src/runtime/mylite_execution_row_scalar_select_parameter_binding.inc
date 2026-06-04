@@ -9,7 +9,12 @@ static int bind_select_parameters_at(
     const struct planned_select *plan,
     int *parameter_index
 ) {
-    int rc = MYLITE_OK;
+    int rc = bind_select_source_parameters(
+        statement,
+        plan->sources,
+        plan->source_count,
+        parameter_index
+    );
 
     for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
         rc = bind_select_join_condition_parameters(
@@ -32,6 +37,31 @@ static int bind_select_parameters_at(
     }
     if (rc == MYLITE_OK && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
+    }
+
+    return rc;
+}
+
+static int bind_select_source_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_source *sources,
+    size_t source_count,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t source_index = 0U; rc == MYLITE_OK && source_index < source_count; ++source_index) {
+        if (!sources[source_index].is_derived) {
+            continue;
+        }
+        if (sources[source_index].derived_select == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = bind_select_parameters_at(
+            statement,
+            sources[source_index].derived_select,
+            parameter_index
+        );
     }
 
     return rc;
@@ -73,6 +103,14 @@ static int bind_row_scalar_select_parameters_at(
         rc = bind_row_scalar_expression_parameters(
             statement,
             &plan->items[item_index].expression,
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = bind_select_source_parameters(
+            statement,
+            plan->sources,
+            plan->source_count,
             parameter_index
         );
     }

@@ -6,35 +6,7 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    if (plan->is_distinct) {
-        rc = mylite_dynamic_string_append(&string, "SELECT DISTINCT ");
-    } else {
-        rc = mylite_dynamic_string_append(&string, "SELECT ");
-    }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
-         ++column_index) {
-        if (column_index != 0U) {
-            rc = mylite_dynamic_string_append(&string, ", ");
-        }
-        if (rc == MYLITE_OK) {
-            rc = append_select_projection_column_sql(&string, plan, column_index);
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " FROM ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_from_sql(&string, plan, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(&string, &plan->order, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
-    }
+    rc = append_select_sql_query(&string, plan, &next_parameter);
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
         if (*out_sql == NULL) {
@@ -43,6 +15,46 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     }
 
     mylite_dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_select_sql_query(
+    struct mylite_dynamic_string *string,
+    const struct planned_select *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->is_distinct) {
+        rc = mylite_dynamic_string_append(string, "SELECT DISTINCT ");
+    } else {
+        rc = mylite_dynamic_string_append(string, "SELECT ");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_projection_column_sql(string, plan, column_index);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_from_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_order_sql(string, &plan->order, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+    }
 
     return rc;
 }
@@ -89,16 +101,7 @@ static int append_select_from_sql(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_dynamic_string_append_quoted_identifier(
-        string,
-        plan->sources[0].table.physical_name
-    );
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 0U);
-    }
+    rc = append_select_source_sql(string, &plan->sources[0], 0U, next_parameter);
 
     for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
         size_t right_source_index = join_index + 1U;
@@ -111,16 +114,12 @@ static int append_select_from_sql(
             rc = mylite_dynamic_string_append(string, " JOIN ");
         }
         if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append_quoted_identifier(
+            rc = append_select_source_sql(
                 string,
-                plan->sources[right_source_index].table.physical_name
+                &plan->sources[right_source_index],
+                right_source_index,
+                next_parameter
             );
-        }
-        if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append(string, " AS ");
-        }
-        if (rc == MYLITE_OK) {
-            rc = append_select_source_alias(string, right_source_index);
         }
         if (rc == MYLITE_OK) {
             rc = append_select_join_condition_sql(
@@ -129,6 +128,41 @@ static int append_select_from_sql(
                 next_parameter
             );
         }
+    }
+
+    return rc;
+}
+
+static int append_select_source_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_source *source,
+    size_t source_index,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (source == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (source->is_derived) {
+        if (source->derived_select == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append_char(string, '(');
+        if (rc == MYLITE_OK) {
+            rc = append_select_sql_query(string, source->derived_select, next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, ") AS ");
+        }
+    } else {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, source->table.physical_name);
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " AS ");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, source_index);
     }
 
     return rc;

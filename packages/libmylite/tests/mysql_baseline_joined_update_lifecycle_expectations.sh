@@ -141,6 +141,24 @@ expect_output \
 
 reset_tables
 expect_output \
+    "bare alias assignment target" \
+    "1	0	1:19,2:0,3:5,4:0" \
+    "UPDATE t a JOIN u b ON a.k = b.k SET a.v = 19 WHERE b.w = 100; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM t;" \
+    "$DATABASE"
+
+reset_tables
+expect_output \
+    "derived joined update with multiple target assignments" \
+    "2	0	1:31:updated,2:31:updated,3:5:c,4:0:d" \
+    "UPDATE t a JOIN (SELECT id FROM t WHERE k IS NOT NULL ORDER BY id LIMIT 2 FOR UPDATE) picked "\
+"ON a.id = picked.id SET a.v = 31, a.s = 'updated'; "\
+"SELECT ROW_COUNT(), @@warning_count, "\
+"GROUP_CONCAT(CONCAT(id, ':', v, ':', s) ORDER BY id) FROM t;" \
+    "$DATABASE"
+
+reset_tables
+expect_output \
     "unqualified unique assignment target" \
     "1	0	1:13,2:0,3:5,4:0" \
     "UPDATE t AS a JOIN u AS b ON a.k = b.k SET v = 13 WHERE b.w = 101; "\

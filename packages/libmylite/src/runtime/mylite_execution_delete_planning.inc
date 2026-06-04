@@ -472,7 +472,7 @@ static void planned_delete_deinit(struct planned_delete *plan) {
     }
 
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
-        free(plan->sources[source_index].columns);
+        planned_select_source_deinit(&plan->sources[source_index]);
     }
     free(plan->sources);
     planned_select_join_condition_deinit(&plan->join_condition);

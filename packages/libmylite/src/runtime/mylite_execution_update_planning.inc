@@ -361,9 +361,9 @@ static int plan_joined_update(
     }
     out_plan->source_count = 2U;
 
-    rc = plan_joined_select_source(database, child_at(from_clause, 0U), &out_plan->sources[0]);
+    rc = plan_joined_update_source(database, child_at(from_clause, 0U), &out_plan->sources[0]);
     if (rc == MYLITE_OK) {
-        rc = plan_joined_select_source(database, child_at(from_clause, 1U), &out_plan->sources[1]);
+        rc = plan_joined_update_source(database, child_at(from_clause, 1U), &out_plan->sources[1]);
     }
     if (rc == MYLITE_OK) {
         rc = reject_duplicate_select_source_reference(
@@ -594,6 +594,17 @@ static int reject_builtin_schema_joined_update_assignment_target(
     return MYLITE_OK;
 }
 
+static int plan_joined_update_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
+) {
+    if (source_node != NULL && source_node->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        return plan_joined_select_derived_source(database, source_node, out_source);
+    }
+    return plan_joined_select_source(database, source_node, out_source);
+}
+
 static int plan_joined_update_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list,
@@ -609,9 +620,17 @@ static int plan_joined_update_assignment(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
-        set_update_multiple_assignment_unsupported_error(database);
+    if (mylite_sql_ast_node_child_count(assignment_list) == 0U) {
+        set_parse_error(database, NULL);
         return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
+        return plan_joined_update_multiple_assignments(
+            database,
+            assignment_list,
+            source_context,
+            out_plan
+        );
     }
     if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
         set_parse_error(database, NULL);
@@ -661,6 +680,112 @@ static int plan_joined_update_assignment(
     return MYLITE_OK;
 }
 
+static int plan_joined_update_multiple_assignments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct select_source_context *source_context,
+    struct planned_update *out_plan
+) {
+    size_t assignment_count = mylite_sql_ast_node_child_count(assignment_list);
+    int rc = MYLITE_OK;
+
+    out_plan->assignments = calloc(assignment_count, sizeof(*out_plan->assignments));
+    if (out_plan->assignments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->assignment_count = assignment_count;
+
+    for (size_t assignment_index = 0U; rc == MYLITE_OK && assignment_index < assignment_count;
+         ++assignment_index) {
+        rc = plan_joined_update_multiple_assignment(
+            database,
+            child_at(assignment_list, assignment_index),
+            source_context,
+            out_plan,
+            assignment_index
+        );
+    }
+    if (rc == MYLITE_OK && planned_update_executable_assignment_count(out_plan) == 0U) {
+        out_plan->generated_default_noop = true;
+    }
+
+    return rc;
+}
+
+static int plan_joined_update_multiple_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    const struct select_source_context *source_context,
+    struct planned_update *out_plan,
+    size_t assignment_index
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(assignment, 0U);
+    value_node = child_at(assignment, 1U);
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        target,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "joined UPDATE supports only descriptor assignment columns",
+        NULL,
+        0U,
+        &column,
+        &source_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (assignment_index == 0U) {
+        out_plan->target_source_index = source_index;
+    } else if (source_index != out_plan->target_source_index) {
+        set_unsupported_error(database, "joined UPDATE supports assignments to one target table");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < assignment_index; ++index) {
+        if (out_plan->assignments[index].column.column_id == column.column_id) {
+            set_update_duplicate_assignment_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+    if (column.is_generated) {
+        const struct mylite_sql_ast_node *unwrapped_value =
+            unwrap_parenthesized_expression(value_node);
+
+        if (unwrapped_value != NULL && unwrapped_value->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+            out_plan->assignments[assignment_index].column = column;
+            out_plan->assignments[assignment_index].value_node = value_node;
+            out_plan->assignments[assignment_index].generated_default_noop = true;
+            return MYLITE_OK;
+        }
+        set_generated_column_value_error(
+            database,
+            column.name,
+            source_context->sources[source_index].table.name
+        );
+        return MYLITE_ERROR;
+    }
+    if (!update_assignment_value_is_multi_constant_supported(value_node)) {
+        set_unsupported_error(database, "joined UPDATE supports only constant assignment values");
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignments[assignment_index].column = column;
+    out_plan->assignments[assignment_index].value_node = value_node;
+    return MYLITE_OK;
+}
+
 static int finish_joined_update_target_plan(
     struct mylite_db *database,
     struct planned_update *out_plan
@@ -675,6 +800,10 @@ static int finish_joined_update_target_plan(
     }
 
     target_source = &out_plan->sources[out_plan->target_source_index];
+    if (target_source->is_derived) {
+        set_unsupported_error(database, "joined UPDATE cannot target derived tables");
+        return MYLITE_ERROR;
+    }
     out_plan->target = target_source->source;
     out_plan->table = target_source->table;
 
@@ -713,6 +842,17 @@ static int finish_joined_update_target_plan(
             &out_plan->index_count
         );
     }
+    if (rc == MYLITE_OK && planned_update_has_multiple_assignments(out_plan)) {
+        rc = validate_joined_update_multiple_assignment_targets(database, out_plan);
+    }
+    if (rc == MYLITE_OK && planned_update_has_multiple_assignments(out_plan)) {
+        rc = validate_update_multiple_auto_update_columns(
+            database,
+            out_plan,
+            out_plan->columns,
+            out_plan->column_count
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = validate_update_default_function_sources(
             database,
@@ -733,6 +873,29 @@ static int finish_joined_update_target_plan(
 
     mylite_execution_primary_key_info_deinit(&primary_key);
     return rc;
+}
+
+static int validate_joined_update_multiple_assignment_targets(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        const struct mylite_catalog_column_descriptor *column = &plan->assignments[index].column;
+
+        if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
+        if (column_descriptor_is_auto_increment(column) ||
+            update_column_id_is_keyed(plan, column->column_id)) {
+            set_update_multiple_assignment_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int reject_builtin_schema_joined_update_target(
@@ -763,7 +926,7 @@ static void planned_update_deinit(struct planned_update *plan) {
     }
 
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
-        free(plan->sources[source_index].columns);
+        planned_select_source_deinit(&plan->sources[source_index]);
     }
     free(plan->sources);
     planned_select_join_condition_deinit(&plan->join_condition);

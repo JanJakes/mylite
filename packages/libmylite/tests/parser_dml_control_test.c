@@ -2119,8 +2119,33 @@ static int test_delete_statement(void) {
 
     failures += parser_test_parse_sql(
         "UPDATE lefts l JOIN rights r ON l.k = r.k SET l.v = 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT,
+        "bare alias joined update statement"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 0U), 0U), 1U),
+        "l",
+        "bare alias joined update left alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE lefts l JOIN (SELECT id FROM rights ORDER BY id LIMIT 1 FOR UPDATE) r "
+        "ON l.id = r.id SET l.v = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 1U),
+        MYLITE_SQL_AST_FROM_DERIVED,
+        "joined update derived right source"
     );
     mylite_sql_parse_result_deinit(&result);
 

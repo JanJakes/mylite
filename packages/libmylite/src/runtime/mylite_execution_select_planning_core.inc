@@ -915,10 +915,18 @@ static int plan_joined_select_source(
     const struct mylite_sql_ast_node *source_node,
     struct planned_select_source *out_source
 ) {
+    *out_source = (struct planned_select_source){0};
+    return plan_joined_select_table_source(database, source_node, out_source);
+}
+
+static int plan_joined_select_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
+) {
     const struct mylite_sql_ast_node *alias = NULL;
     int rc = MYLITE_OK;
 
-    *out_source = (struct planned_select_source){0};
     if (source_node == NULL || source_node->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -958,6 +966,102 @@ static int plan_joined_select_source(
         &out_source->columns,
         &out_source->column_count
     );
+}
+
+static int plan_joined_select_derived_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
+) {
+    const struct mylite_sql_ast_node *select_statement = NULL;
+    const struct mylite_sql_ast_node *alias = NULL;
+    int rc = MYLITE_OK;
+
+    if (source_node == NULL || source_node->kind != MYLITE_SQL_AST_FROM_DERIVED) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    select_statement = child_at(source_node, 0U);
+    alias = child_at(source_node, 1U);
+    if (select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "joined source derived tables require an alias");
+        return MYLITE_ERROR;
+    }
+
+    out_source->derived_select = calloc(1U, sizeof(*out_source->derived_select));
+    if (out_source->derived_select == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = copy_identifier_text(alias, out_source->alias, sizeof(out_source->alias), database);
+    if (rc == MYLITE_OK) {
+        out_source->has_alias = true;
+        out_source->is_derived = true;
+        rc = plan_select(database, select_statement, false, out_source->derived_select);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_derived_select_output_columns(database, out_source->derived_select);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_derived_select_source_columns(database, out_source->derived_select, out_source);
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_source_deinit(out_source);
+    }
+    return rc;
+}
+
+static int validate_derived_select_output_columns(
+    struct mylite_db *database,
+    const struct planned_select *derived_plan
+) {
+    if (derived_plan == NULL || derived_plan->column_count == 0U) {
+        set_unsupported_error(database, "joined source derived tables require descriptor columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
+        if (derived_plan->column_aliases != NULL &&
+            derived_plan->column_aliases[column_index] != NULL) {
+            set_unsupported_error(
+                database,
+                "joined source derived tables do not yet support output column aliases"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_derived_select_source_columns(
+    struct mylite_db *database,
+    const struct planned_select *derived_plan,
+    struct planned_select_source *out_source
+) {
+    if (derived_plan == NULL || out_source == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (derived_plan->column_count > SIZE_MAX / sizeof(*out_source->columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_source->columns = calloc(derived_plan->column_count, sizeof(*out_source->columns));
+    if (out_source->columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(
+        out_source->columns,
+        derived_plan->columns,
+        derived_plan->column_count * sizeof(*out_source->columns)
+    );
+    out_source->column_count = derived_plan->column_count;
+    return MYLITE_OK;
 }
 
 static const struct mylite_sql_ast_node *from_table_alias_node(
@@ -1368,7 +1472,7 @@ static void planned_select_deinit(struct planned_select *plan) {
     }
 
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
-        free(plan->sources[source_index].columns);
+        planned_select_source_deinit(&plan->sources[source_index]);
     }
     free(plan->sources);
     free(plan->columns);
@@ -1386,6 +1490,18 @@ static void planned_select_deinit(struct planned_select *plan) {
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_order_deinit(&plan->order);
     *plan = (struct planned_select){0};
+}
+
+static void planned_select_source_deinit(struct planned_select_source *source) {
+    if (source == NULL) {
+        return;
+    }
+    free(source->columns);
+    if (source->derived_select != NULL) {
+        planned_select_deinit(source->derived_select);
+        free(source->derived_select);
+    }
+    *source = (struct planned_select_source){0};
 }
 
 static void planned_select_join_condition_deinit(
@@ -1853,7 +1969,7 @@ static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *p
     }
     free(plan->items);
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
-        free(plan->sources[source_index].columns);
+        planned_select_source_deinit(&plan->sources[source_index]);
     }
     if (plan->join_conditions != NULL) {
         for (size_t join_index = 0U; join_index < plan->join_count; ++join_index) {

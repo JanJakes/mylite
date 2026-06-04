@@ -367,11 +367,19 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
 
     if (plan->is_joined) {
         for (size_t index = 0U; rc == MYLITE_OK && index < plan->target_source_count; ++index) {
-            rc = bind_select_join_condition_parameters(
+            rc = bind_select_source_parameters(
                 statement,
-                &plan->join_condition,
+                plan->sources,
+                plan->source_count,
                 &parameter_index
             );
+            if (rc == MYLITE_OK) {
+                rc = bind_select_join_condition_parameters(
+                    statement,
+                    &plan->join_condition,
+                    &parameter_index
+                );
+            }
             if (rc == MYLITE_OK) {
                 rc = bind_select_predicate_parameters(
                     statement,
@@ -406,6 +414,9 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK) {
         rc = bind_update_auto_update_parameters(statement, &parameter_index, plan);
+    }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
     }
     if (rc == MYLITE_OK && plan->is_joined) {
         rc = bind_select_join_condition_parameters(
@@ -522,6 +533,22 @@ static int bind_update_auto_update_parameters(
     return rc;
 }
 
+static int bind_joined_update_source_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+) {
+    if (plan == NULL) {
+        return MYLITE_ERROR;
+    }
+    return bind_select_source_parameters(
+        statement,
+        plan->sources,
+        plan->source_count,
+        parameter_index
+    );
+}
+
 static int bind_update_multiple_changed_condition_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
@@ -578,8 +605,22 @@ static int bind_update_matched_parameters(
     const struct planned_update *plan
 ) {
     int parameter_index = 1;
+    int rc = MYLITE_OK;
 
-    return bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    if (plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
+    }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_condition,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
+    return rc;
 }
 
 static int bind_update_matched_count_parameters(
@@ -587,7 +628,21 @@ static int bind_update_matched_count_parameters(
     const struct planned_update *plan
 ) {
     int parameter_index = 1;
-    int rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    int rc = MYLITE_OK;
+
+    if (plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
+    }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_condition,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
 
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);

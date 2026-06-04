@@ -40,6 +40,13 @@ script added for this feature:
   joined source, or qualified by source alias, table name, or schema/table name.
 - When a source has an alias, assignment through the underlying table name is
   rejected as `1054 / 42S22` in the `field list`.
+- Bare source aliases such as `UPDATE t a JOIN u b ...` resolve the same way
+  as explicit `AS` aliases for table and assignment references.
+- A descriptor-backed right-side derived table may be joined by alias and may
+  read the same physical target table, including an ignored `FOR UPDATE`
+  locking clause inside the derived `SELECT`.
+- Multiple constant assignments to columns of the same resolved target table
+  update matched rows once and report changed-row affected counts.
 - Ambiguous unqualified assignment columns report `1052 / 23000` in the
   `field list`.
 - Schema-qualified sources and alias-qualified assignments can run without a
@@ -59,10 +66,16 @@ MyLite supports the smallest coherent joined update path:
 - exactly two joined table sources;
 - the existing two-source join envelope: `JOIN`, `INNER JOIN`, `CROSS JOIN`,
   `LEFT JOIN`, and `LEFT OUTER JOIN`;
-- source aliases only in the explicit `AS alias` form for this slice;
+- source aliases in explicit `AS alias` and bare `alias` forms;
+- a right-side derived-table source with a required alias when the derived
+  `SELECT` is descriptor-backed, projects direct descriptor columns without
+  output aliases, and uses the existing single-source `SELECT` predicate,
+  order, limit, and no-op row-locking envelope;
 - the existing joined `ON` equality subset;
 - the existing joined `WHERE` predicate subset;
-- exactly one assignment to one target source table;
+- one or more constant assignments to one target source table, with
+  multi-assignment lists limited to distinct non-key, non-`AUTO_INCREMENT`
+  target columns;
 - assignment target resolution through the joined source context, including
   unqualified, alias-qualified, table-qualified, and schema-table-qualified
   descriptor columns;
@@ -84,10 +97,13 @@ MyLite supports the smallest coherent joined update path:
 The feature deliberately excludes:
 
 - updating more than one table in one statement;
-- multiple assignments;
-- bare source aliases such as `UPDATE t x JOIN u y ...`;
+- multi-assignment lists that touch more than one joined source, duplicate
+  targets, key columns, or `AUTO_INCREMENT` columns;
+- derived-table sources on the update-target side, derived output aliases,
+  derived non-column projections, derived wildcard projections beyond the
+  current direct descriptor-column envelope, and multiple derived sources;
 - `LOW_PRIORITY`, `IGNORE`, `PARTITION`, CTEs, subqueries in predicates,
-  derived tables, nested joins, parenthesized table references, comma joins,
+  nested joins, parenthesized table references, comma joins,
   natural/right joins, `USING` join conditions, optimizer hints beyond existing
   no-op/index-hint validation on admitted table sources, and arbitrary SQLite
   SQL pass-through;
@@ -120,6 +136,13 @@ joined_update_table_source ::=
 
 joined_update_table_alias_opt ::= .
 joined_update_table_alias_opt ::= AS identifier.
+joined_update_table_alias_opt ::= bare_identifier.
+
+joined_update_table_source ::=
+    LPAREN select_statement RPAREN joined_update_derived_alias.
+
+joined_update_derived_alias ::= bare_identifier.
+joined_update_derived_alias ::= AS identifier.
 
 joined_update_order_clause_opt ::= .
 joined_update_order_clause_opt ::= order_clause.
@@ -130,9 +153,10 @@ joined_update_limit_clause_opt ::= update_limit_clause.
 
 `ORDER BY` and `LIMIT` are parsed only so the planner can return MySQL-shaped
 `1221 / HY000` diagnostics for multiple-table update. The semantic subset
-requires both clauses to be absent. Bare source aliases are deferred to avoid
-the `SET` keyword ambiguity in this narrow parser slice; explicit `AS` aliases
-cover the admitted alias-qualified behavior.
+requires both clauses to be absent on the joined `UPDATE` itself. Derived-table
+sources require an alias in the grammar, which avoids the `SET` keyword
+ambiguity after the closing parenthesis and matches the MySQL requirement for
+derived table aliases.
 
 ## Architecture Boundaries
 
@@ -162,9 +186,13 @@ Table sources use the existing selected/default schema policy:
 
 - unqualified source tables require a selected schema;
 - schema-qualified source tables resolve that schema explicitly;
-- aliases are admitted only as `AS alias` and hide the underlying table name for
-  qualified column references, matching the verified MySQL behavior for aliased
-  sources;
+- aliases are admitted as `AS alias` or bare `alias` and hide the underlying
+  table name for qualified column references, matching the verified MySQL
+  behavior for aliased sources;
+- derived sources expose the direct descriptor columns projected by their
+  nested `SELECT` through the required derived-table alias; the current slice
+  rejects derived output aliases because MyLite's derived SQL renderer does not
+  yet rewrite projected output names;
 - `information_schema` write targets are rejected once the assignment target
   resolves to a source table in that schema;
 - reserved `_mylite_*` source names are rejected before generated SQL is
@@ -182,9 +210,8 @@ The assignment target determines the table being updated:
 - unknown assignment columns report `1054 / 42S22` in the `field list`;
 - ambiguous unqualified assignment columns report `1052 / 23000` in the
   `field list`;
-- the resolved source table becomes the single update target; assignments to
-  more than one source are outside this slice because multiple assignments are
-  outside this slice.
+- the resolved source table becomes the single update target; additional
+  assignments in the same statement must resolve to that same source.
 
 `ON` and `WHERE` resolution reuses the existing joined `SELECT` descriptors and
 diagnostics. Current descriptor catalog matching remains ASCII
@@ -218,7 +245,7 @@ table guarded by a rowid selector:
 
 ```sql
 UPDATE "<target_physical>"
-SET "<target_column>" = ?1
+SET "<target_column>" = ?1[, ...]
 WHERE rowid IN (
     SELECT <target_source_alias>.rowid
     FROM "<left_physical>" AS "_mylite_s0"
@@ -228,10 +255,22 @@ WHERE rowid IN (
 AND ("<target_column>" IS NULL OR "<target_column>" <> ?N)
 ```
 
+When the right source is a derived table, MyLite embeds a generated descriptor
+`SELECT` in the rowid selector and continues numbering parameters from the
+outer update assignment list:
+
+```sql
+FROM "<left_physical>" AS "_mylite_s0"
+JOIN (
+    SELECT "<column>" FROM "<source_physical>" WHERE ... ORDER BY ... LIMIT ...
+) AS "_mylite_s1" ON ...
+```
+
 For `LEFT JOIN`, the generated join uses `LEFT JOIN`; for inner/cross/no-`ON`
 forms, the existing inner join generation is used. Physical table names,
 generated aliases, and physical column names are quoted. Assignment values,
-automatic timestamp values, and predicate literals are bound parameters.
+automatic timestamp values, derived-source predicates, joined predicates, and
+outer predicate literals are bound parameters in SQL order.
 
 The selector requires an unshadowed SQLite rowid alias for the target table.
 If the target descriptor has columns named `rowid`, `_rowid_`, and `oid`,
@@ -264,7 +303,7 @@ actions.
 | Ambiguous `WHERE` column | existing `1052 / 23000` diagnostic |
 | Unknown assignment column | `1054 / 42S22` `field list` diagnostic |
 | Ambiguous assignment column | `1052 / 23000` `field list` diagnostic |
-| Multiple assignment list | deterministic unsupported diagnostic |
+| Multiple assignment list spanning sources, keys, or duplicate targets | deterministic unsupported diagnostic |
 | Unsupported assignment expression | deterministic unsupported diagnostic |
 | Assignment conversion failure | existing single-table update diagnostic for the target descriptor |
 | Rowid aliases all shadowed | `1064 / 42000`, `joined UPDATE requires an unshadowed SQLite rowid alias` |
@@ -280,8 +319,10 @@ Add a fast C runtime lifecycle test and MySQL 8.4.9 expectation script covering:
 - `WHERE` over right-source columns;
 - inner join without `ON`;
 - left join unmatched rows;
-- alias-qualified, unqualified unique, right-source, schema-qualified, and
-  no-default-schema update targets;
+- explicit-alias, bare-alias, unqualified unique, right-source,
+  schema-qualified, and no-default-schema update targets;
+- right-side derived source with `ORDER BY`, `LIMIT`, no-op `FOR UPDATE`, and
+  multiple constant assignments to the same target table;
 - table rename, close/reopen persistence, `.mylite` preamble preservation, and
   independent file-backed handles;
 - parent-side `ON UPDATE CASCADE` and `ON UPDATE SET NULL` preservation;
@@ -295,8 +336,10 @@ Add a fast C runtime lifecycle test and MySQL 8.4.9 expectation script covering:
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-dml.md` to mark
-multi-table / joined `UPDATE` as limited to one target assignment over the
-current two-source joined-source envelope. Do not claim full multi-table
-updates, multiple targets, modifiers, partitioned updates, arbitrary joins,
-joined-update ordering or limiting, triggers, privileges, recursive cascades,
-or general expression assignment.
+multi-table / joined `UPDATE` as limited to one resolved physical target over
+the current two-source joined-source envelope, including explicit and bare
+aliases, the documented right-side derived-source slice, and multiple constant
+assignments only when they target distinct non-key columns of that one table.
+Do not claim full multi-table updates, multiple physical targets, modifiers,
+partitioned updates, arbitrary joins, joined-update ordering or limiting,
+triggers, privileges, recursive cascades, or general expression assignment.

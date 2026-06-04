@@ -173,7 +173,7 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     }
 
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
-        free(plan->sources[source_index].columns);
+        planned_select_source_deinit(&plan->sources[source_index]);
     }
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
         planned_select_order_deinit(&plan->aggregates[aggregate_index].aggregate_order);

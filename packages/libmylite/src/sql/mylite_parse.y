@@ -2667,6 +2667,30 @@ joined_update_table_source(A) ::=
     table_name(N) AS identifier(AL) table_index_hints_opt(IH). {
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
 }
+joined_update_table_source(A) ::=
+    table_name(N) joined_update_bare_alias(AL) table_index_hints_opt(IH). {
+    A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+joined_update_table_source(A) ::=
+    joined_update_derived_table_source(S). {
+    A = S;
+}
+joined_update_bare_alias(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+joined_update_bare_alias(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+joined_update_derived_table_source(A) ::=
+    LPAREN(L) select_statement(S) RPAREN(R) joined_update_derived_alias(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
+}
+joined_update_derived_alias(A) ::= joined_update_bare_alias(AL). {
+    A = AL;
+}
+joined_update_derived_alias(A) ::= AS identifier(AL). {
+    A = AL;
+}
 
 update_table_source(A) ::= table_name(N) table_index_hints_opt(IH). {
     A = mylite_sql_parser_make_table_source(state, N, NULL, IH);

@@ -997,6 +997,18 @@ static int bind_parent_update_cascade_parameters(
 
     if (rc == MYLITE_OK) {
         ++parameter_index;
+        if (plan->is_joined) {
+            rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
+        }
+    }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_condition,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
@@ -1018,8 +1030,21 @@ static int bind_parent_update_set_null_parameters(
     const struct planned_update *plan
 ) {
     int parameter_index = 1;
-    int rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    int rc = MYLITE_OK;
 
+    if (plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
+    }
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_condition,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {

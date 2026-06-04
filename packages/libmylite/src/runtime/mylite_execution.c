@@ -2149,6 +2149,8 @@ struct planned_select_source {
     size_t column_count;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;
+    bool is_derived;
+    struct planned_select *derived_select;
 };
 
 struct planned_exists_subquery {
@@ -10695,6 +10697,25 @@ static int plan_joined_select_source(
     const struct mylite_sql_ast_node *source_node,
     struct planned_select_source *out_source
 );
+static int plan_joined_select_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
+);
+static int plan_joined_select_derived_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
+);
+static int copy_derived_select_source_columns(
+    struct mylite_db *database,
+    const struct planned_select *derived_plan,
+    struct planned_select_source *out_source
+);
+static int validate_derived_select_output_columns(
+    struct mylite_db *database,
+    const struct planned_select *derived_plan
+);
 static int init_join_select_source_context(
     const struct planned_select_source *sources,
     size_t source_count,
@@ -10728,6 +10749,7 @@ static int append_select_column_from_source(
     const struct mylite_sql_ast_node *alias
 );
 static void planned_select_order_deinit(struct planned_select_order *order);
+static void planned_select_source_deinit(struct planned_select_source *source);
 static void planned_select_join_condition_deinit(struct planned_select_join_condition *condition);
 static void planned_select_deinit(struct planned_select *plan);
 static int execute_select_from_plan(
@@ -19259,9 +19281,31 @@ static int plan_joined_update_assignment(
     const struct select_source_context *source_context,
     struct planned_update *out_plan
 );
+static int plan_joined_update_multiple_assignments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct select_source_context *source_context,
+    struct planned_update *out_plan
+);
+static int plan_joined_update_multiple_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    const struct select_source_context *source_context,
+    struct planned_update *out_plan,
+    size_t assignment_index
+);
+static int validate_joined_update_multiple_assignment_targets(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
 static int reject_builtin_schema_joined_update_assignment_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list
+);
+static int plan_joined_update_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
 );
 static int finish_joined_update_target_plan(
     struct mylite_db *database,
@@ -23025,6 +23069,11 @@ static int append_select_projection_column_sql(
     const struct planned_select *plan,
     size_t column_index
 );
+static int append_select_sql_query(
+    struct mylite_dynamic_string *string,
+    const struct planned_select *plan,
+    size_t *next_parameter
+);
 static int append_create_table_index_sql_close(struct mylite_dynamic_string *string);
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
 static int build_alter_table_add_column_sql(
@@ -24356,6 +24405,12 @@ static int append_select_from_sql(
     const struct planned_select *plan,
     size_t *next_parameter
 );
+static int append_select_source_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_source *source,
+    size_t source_index,
+    size_t *next_parameter
+);
 static int append_select_join_condition_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_join_condition *condition,
@@ -25050,6 +25105,12 @@ static int bind_select_join_condition_parameters(
     const struct planned_select_join_condition *condition,
     int *parameter_index
 );
+static int bind_select_source_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_source *sources,
+    size_t source_count,
+    int *parameter_index
+);
 static int bind_row_scalar_select_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_select *plan
@@ -25471,6 +25532,11 @@ static int bind_update_date_interval_parameters(
     const struct planned_update *plan
 );
 static int bind_update_auto_update_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+);
+static int bind_joined_update_source_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_update *plan

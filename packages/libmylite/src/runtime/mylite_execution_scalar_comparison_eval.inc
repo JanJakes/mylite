@@ -4,6 +4,11 @@ static int evaluate_scalar_comparison_numeric_expression(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_value *out_value
 );
+static int evaluate_scalar_comparison_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
 static int evaluate_scalar_comparison_numeric_unary_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -51,6 +56,14 @@ static bool scalar_comparison_numeric_result_is_true(
     const struct scalar_arithmetic_value *right
 );
 static double scalar_comparison_numeric_real(const struct scalar_arithmetic_value *value);
+static bool show_like_pattern_matches_with_escape(
+    const char *pattern,
+    size_t pattern_length,
+    const char *value,
+    size_t value_length,
+    bool case_sensitive,
+    bool backslash_escapes
+);
 
 static int scalar_comparison_value(
     struct mylite_db *database,
@@ -259,6 +272,13 @@ static int evaluate_scalar_comparison_enter_frame(
     }
 
     operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
+        rc = evaluate_scalar_comparison_like_expression(database, expression, &value);
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+        }
+        return rc;
+    }
     if (!is_scalar_comparison_operator(operator_kind)) {
         rc = evaluate_scalar_comparison_numeric_expression(database, expression, &value);
         if (rc == MYLITE_OK) {
@@ -312,6 +332,74 @@ static int evaluate_scalar_comparison_enter_frame(
             MYLITE_SQL_AST_OPERATOR_NONE
         );
     }
+    return rc;
+}
+
+static int evaluate_scalar_comparison_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    static const struct scalar_text_conversion_messages value_messages = {
+        .unsupported =
+            "SELECT scalar LIKE supports only string, integer, boolean, and NULL values",
+        .signed_value = "SELECT scalar LIKE supports only signed integer values",
+        .string_unsupported = "SELECT scalar LIKE supports only string value literals",
+        .embedded_nul = "SELECT scalar LIKE value literals do not support NUL bytes",
+    };
+    static const struct scalar_text_conversion_messages pattern_messages = {
+        .unsupported =
+            "SELECT scalar LIKE supports only string, integer, boolean, and NULL patterns",
+        .signed_value = "SELECT scalar LIKE supports only signed integer patterns",
+        .string_unsupported = "SELECT scalar LIKE supports only string pattern literals",
+        .embedded_nul = "SELECT scalar LIKE pattern literals do not support NUL bytes",
+    };
+    struct session_scalar_cell value = {0};
+    struct session_scalar_cell pattern = {0};
+    bool matches = false;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_LIKE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_scalar_comparison_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = scalar_text_conversion_input_value(
+        database,
+        child_at(expression, 0U),
+        &value_messages,
+        &value
+    );
+    if (rc == MYLITE_OK) {
+        rc = scalar_text_conversion_input_value(
+            database,
+            child_at(expression, 1U),
+            &pattern_messages,
+            &pattern
+        );
+    }
+    if (rc == MYLITE_OK && (value.value == NULL || pattern.value == NULL)) {
+        out_value->is_null = true;
+    } else if (rc == MYLITE_OK) {
+        matches = show_like_pattern_matches_with_escape(
+            pattern.value,
+            scalar_cell_text_length(&pattern),
+            value.value,
+            scalar_cell_text_length(&value),
+            false,
+            !session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)
+        );
+        out_value->integer = matches ? 1 : 0;
+    }
+
+    session_scalar_cell_deinit(&pattern);
+    session_scalar_cell_deinit(&value);
     return rc;
 }
 

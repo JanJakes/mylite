@@ -20,6 +20,7 @@ enum {
     null_column_count = 8,
     precedence_column_count = 10,
     numeric_string_column_count = 6,
+    like_column_count = 7,
     boundary_column_count = 4,
     warning_column_count = 6,
     comparison_warning_count = 2,
@@ -161,6 +162,16 @@ static int test_scalar_comparison_values_and_file_safety(void) {
         "1.0<=>1",
     };
     static const char *const numeric_string_values[] = {"1", "1", "1", "1", "1", "1"};
+    static const char *const like_columns[] = {
+        "prefix_match",
+        "prefix_miss",
+        "case_fold",
+        "escaped_match",
+        "escaped_miss",
+        "null_value",
+        "null_pattern",
+    };
+    static const char *const like_values[] = {"1", "0", "1", "1", "0", NULL, NULL};
     static const char *const boundary_columns[] = {
         "9223372036854775807=9223372036854775807",
         "-9223372036854775807<0",
@@ -259,6 +270,25 @@ static int test_scalar_comparison_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "comparison numeric string coercion",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 'alpha' LIKE 'a%' AS prefix_match, "
+                   "'beta' LIKE 'a%' AS prefix_miss, "
+                   "'Alpha' LIKE 'a%' AS case_fold, "
+                   "'a_%' LIKE 'a\\_\\%' AS escaped_match, "
+                   "'aX%' LIKE 'a\\_\\%' AS escaped_miss, "
+                   "NULL LIKE 'a%' AS null_value, "
+                   "'alpha' LIKE NULL AS null_pattern",
+            .columns = like_columns,
+            .column_count = like_column_count,
+            .values = like_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar LIKE comparison values",
         }
     );
     failures += expect_query(

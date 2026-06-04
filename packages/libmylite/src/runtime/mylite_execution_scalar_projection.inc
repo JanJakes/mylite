@@ -2162,6 +2162,7 @@ static bool is_scalar_comparison_operator(enum mylite_sql_ast_operator operator_
     case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_GREATER:
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
         return true;
     default:
         return false;

@@ -611,6 +611,7 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
 }
 
 static int test_show_like_diagnostics_and_unsupported_forms(void) {
+    static const char *const scalar_like_rows[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -866,13 +867,14 @@ static int test_show_like_diagnostics_and_unsupported_forms(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_single_column_result(
         database,
-        "SELECT 'alpha' LIKE 'a%'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct single_column_result_expectation){
+            .sql = "SELECT 'alpha' LIKE 'a%' AS scalar_like",
+            .expected_column_name = "scalar_like",
+            .expected_rows = scalar_like_rows,
+            .expected_row_count = sizeof(scalar_like_rows) / sizeof(scalar_like_rows[0]),
+            .context = "scalar LIKE expression stays separate from SHOW LIKE",
         }
     );
 

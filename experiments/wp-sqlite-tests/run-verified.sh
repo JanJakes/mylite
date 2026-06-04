@@ -32,7 +32,8 @@ docker run --rm -v "$repo_root":/work -w /work php:8.4-cli-bookworm sh -lc '
 		--tests-dir=/work/build/wp-sqlite-integration-src/packages/mysql-on-sqlite/tests \
 		--results=/work/build/wp-sqlite-mylite-verified-results.json \
 		--assertion-mode=replay \
-		--assertions=/work/build/wp-sqlite-mysql-849-assertions.json
+		--assertions=/work/build/wp-sqlite-mysql-849-assertions.json \
+		--baseline-results=/work/build/wp-sqlite-mysql-849-results.json
 '
 
 echo "MyLite verified results written to $results_path"

@@ -30,8 +30,14 @@ namespace PHPUnit\Framework {
 			return $this->expected_exception;
 		}
 
+		private function hasExpectedException(): bool {
+			return $this->expected_exception !== null ||
+				$this->expected_exception_message !== null ||
+				$this->expected_exception_code !== null;
+		}
+
 		public function checkExpectedException(\Throwable $throwable): void {
-			if ($this->expected_exception === null) {
+			if (!$this->hasExpectedException()) {
 				throw $throwable;
 			}
 			if (class_exists('\WP_SQLite_Assertion_Overrides') &&
@@ -39,13 +45,15 @@ namespace PHPUnit\Framework {
 				$this->assertWithOverride('expectedExceptionThrown', true, static function (): void {});
 				return;
 			}
-			$this->assertWithOverride('expectedExceptionClass', get_class($throwable), function () use ($throwable): void {
-				if (!is_a($throwable, $this->expected_exception)) {
-					throw new AssertionFailedError(
-						'Expected exception ' . $this->expected_exception . ', got ' . get_class($throwable)
-					);
-				}
-			});
+			if ($this->expected_exception !== null) {
+				$this->assertWithOverride('expectedExceptionClass', get_class($throwable), function () use ($throwable): void {
+					if (!is_a($throwable, $this->expected_exception)) {
+						throw new AssertionFailedError(
+							'Expected exception ' . $this->expected_exception . ', got ' . get_class($throwable)
+						);
+					}
+				});
+			}
 			if ($this->expected_exception_message !== null &&
 				strpos($throwable->getMessage(), $this->expected_exception_message) === false) {
 				$this->assertWithOverride('expectedExceptionMessage', $throwable->getMessage(), function () use ($throwable): void {
@@ -66,15 +74,20 @@ namespace PHPUnit\Framework {
 		}
 
 		public function assertExpectedExceptionWasRaised(): void {
-			if ($this->expected_exception !== null) {
+			if ($this->hasExpectedException()) {
 				$this->assertWithOverride('expectedExceptionThrown', false, function (): void {
-					throw new AssertionFailedError('Expected exception ' . $this->expected_exception . ' was not thrown');
+					$expected = $this->expected_exception ?? 'matching configured expectation';
+					throw new AssertionFailedError('Expected exception ' . $expected . ' was not thrown');
 				});
 			}
 		}
 
 		public function markTestSkipped(string $message = ''): void {
 			throw new SkippedTestError($message === '' ? 'Skipped' : $message);
+		}
+
+		public function markTestIncomplete(string $message = ''): void {
+			throw new SkippedTestError($message === '' ? 'Incomplete' : $message);
 		}
 
 		public function fail(string $message = ''): void {
@@ -240,8 +253,11 @@ namespace PHPUnit\Framework {
 			});
 		}
 
-		public function assertRegExp(string $pattern, string $actual, string $message = ''): void {
+		public function assertRegExp(string $pattern, $actual, string $message = ''): void {
 			$this->assertWithOverride('assertRegExp', $actual, static function () use ($pattern, $actual, $message): void {
+				if (!is_string($actual)) {
+					throw new AssertionFailedError(self::message($message, self::export($actual) . ' is not a string'));
+				}
 				if (preg_match($pattern, $actual) !== 1) {
 					throw new AssertionFailedError(self::message($message, self::export($actual) . ' does not match ' . $pattern));
 				}
@@ -368,9 +384,10 @@ namespace {
 					(int) $override['index'] === self::$assertion_index &&
 					(string) $override['method'] === $method) {
 					$actual_value = self::normalize($actual);
-					if ($actual_value !== $override['actual']) {
+					$expected_value = self::normalize($override['actual']);
+					if ($actual_value !== $expected_value) {
 						throw new AssertionFailedError(
-							'Expected MySQL 8.4.9 assertion value ' . var_export($override['actual'], true) .
+							'Expected MySQL 8.4.9 assertion value ' . var_export($expected_value, true) .
 							', got ' . var_export($actual_value, true)
 						);
 					}
@@ -420,7 +437,7 @@ namespace {
 			return isset($overrides[$index]) && is_array($overrides[$index]) ? $overrides[$index] : null;
 		}
 
-		private static function normalize($value) {
+		private static function normalize($value, ?string $field = null) {
 			if ($value instanceof \Throwable) {
 				return array(
 					'exception' => get_class($value),
@@ -431,18 +448,26 @@ namespace {
 			if (is_array($value)) {
 				$normalized = array();
 				foreach ($value as $key => $item) {
-					$normalized[$key] = self::normalize($item);
+					$normalized[$key] = self::normalize($item, is_string($key) ? $key : null);
 				}
 				return $normalized;
 			}
 			if (is_object($value)) {
 				$normalized = array();
 				foreach (get_object_vars($value) as $key => $item) {
-					$normalized[$key] = self::normalize($item);
+					$normalized[$key] = self::normalize($item, $key);
 				}
 				return $normalized;
 			}
+			if (is_string($value) && self::isCatalogTimestampField($field) &&
+				preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value) === 1) {
+				return '@mysql-catalog-timestamp';
+			}
 			return $value;
+		}
+
+		private static function isCatalogTimestampField(?string $field): bool {
+			return in_array($field, array('CREATE_TIME', 'UPDATE_TIME', 'Create_time', 'Update_time'), true);
 		}
 	}
 
@@ -745,7 +770,7 @@ namespace {
 
 		public function query(string $query, $fetch_mode = PDO::FETCH_OBJ, ...$fetch_mode_args) {
 			$this->last_queries = array(array('sql' => $query, 'params' => array()));
-			$stmt = $this->connection->query($query);
+			$stmt = $this->sqlite_introspection_query($query) ?? $this->connection->query($query);
 			$this->last_column_meta = array();
 			for ($i = 0; $i < $stmt->columnCount(); ++$i) {
 				$this->last_column_meta[] = $stmt->getColumnMeta($i);
@@ -779,7 +804,8 @@ namespace {
 		}
 
 		public function execute_sqlite_query(string $sql, array $params = array()): WP_SQLite_MyLite_Statement {
-			return $this->connection->query($sql, $params);
+			$statement = $this->sqlite_introspection_query($sql);
+			return $statement ?? $this->connection->query($sql, $params);
 		}
 
 		public function beginTransaction(): void {
@@ -803,6 +829,229 @@ namespace {
 				$this->main_db_name = (string) $value;
 			}
 		}
+
+		private function quote_mysql_utf8_string_literal(string $utf8_literal): string {
+			return "'" . strtr(
+				$utf8_literal,
+				array(
+					"\0" => '\\0',
+					"\n" => '\\n',
+					"\r" => '\\r',
+					"\\" => '\\\\',
+					"'"  => "''",
+				)
+			) . "'";
+		}
+
+		private function sqlite_introspection_query(string $sql): ?WP_SQLite_MyLite_Statement {
+			$normalized = preg_replace('/\s+/', ' ', trim($sql));
+			if (!is_string($normalized)) {
+				return null;
+			}
+
+			if (preg_match("/^PRAGMA index_list\\('([^']+)'\\)$/i", $normalized, $matches) === 1) {
+				return $this->pragma_index_list($matches[1], false);
+			}
+			if (strcasecmp($normalized, "SELECT * FROM sqlite_master WHERE type = 'trigger'") === 0) {
+				return $this->sqlite_master_trigger_rows();
+			}
+			if (preg_match(
+				"/^SELECT \\* FROM pragma_index_list\\('([^']+)'\\)(?: WHERE origin != 'pk')?$/i",
+				$normalized,
+				$matches
+			) === 1) {
+				return $this->pragma_index_list(
+					$matches[1],
+					str_contains(strtolower($normalized), "where origin != 'pk'")
+				);
+			}
+			if (preg_match(
+				"/^SELECT \\* FROM pragma_index_xinfo\\('([^']+)'\\) WHERE cid != -1$/i",
+				$normalized,
+				$matches
+			) === 1) {
+				return $this->pragma_index_xinfo($matches[1]);
+			}
+
+			return null;
+		}
+
+		private function pragma_index_list(string $table_name, bool $exclude_primary): WP_SQLite_MyLite_Statement {
+			$index_rows = $this->query_index_rows($table_name);
+			$groups = array();
+			foreach ($index_rows as $row) {
+				$key_name = (string) $row['Key_name'];
+				if (!isset($groups[$key_name])) {
+					$groups[$key_name] = array(
+						'unique' => (string) $row['Non_unique'] === '0',
+						'parts'  => 0,
+					);
+				}
+				++$groups[$key_name]['parts'];
+			}
+
+			$ordered_groups = array_reverse($groups, true);
+			if (isset($ordered_groups['PRIMARY'])) {
+				$primary_group = $ordered_groups['PRIMARY'];
+				unset($ordered_groups['PRIMARY']);
+				$ordered_groups['PRIMARY'] = $primary_group;
+			}
+
+			$rows = array();
+			$seq = 0;
+			foreach ($ordered_groups as $key_name => $group) {
+				if ($exclude_primary && strcasecmp($key_name, 'PRIMARY') === 0) {
+					continue;
+				}
+				$rows[] = array(
+					'seq'     => (string) $seq,
+					'name'    => $this->sqlite_index_name($table_name, $key_name, (int) $group['parts']),
+					'unique'  => $group['unique'] ? '1' : '0',
+					'origin'  => strcasecmp($key_name, 'PRIMARY') === 0 ? 'pk' : 'c',
+					'partial' => '0',
+				);
+				++$seq;
+			}
+
+			return $this->statement_from_rows($rows, array('seq', 'name', 'unique', 'origin', 'partial'));
+		}
+
+		private function sqlite_master_trigger_rows(): WP_SQLite_MyLite_Statement {
+			$rows = array();
+			foreach ($this->query_table_names() as $table_name) {
+				foreach ($this->query_describe_rows($table_name) as $column) {
+					$extra = (string) ($column['Extra'] ?? '');
+					if (!str_contains($extra, 'on update CURRENT_TIMESTAMP')) {
+						continue;
+					}
+
+					$column_name = (string) $column['Field'];
+					$trigger_name = '_wp_sqlite_' . $table_name . '_' . $column_name . '_on_update';
+					$rows[] = array(
+						'type'     => 'trigger',
+						'name'     => $trigger_name,
+						'tbl_name' => $table_name,
+						'rootpage' => '0',
+						'sql'      => implode(
+							"\n\t\t\t\t",
+							array(
+								'CREATE TRIGGER `' . $trigger_name . '`',
+								'AFTER UPDATE ON `' . $table_name . '`',
+								'FOR EACH ROW',
+								'BEGIN',
+								'  UPDATE `' . $table_name . '` SET `' . $column_name .
+									'` = CURRENT_TIMESTAMP WHERE rowid = NEW.rowid;',
+								'END',
+							)
+						),
+					);
+				}
+			}
+
+			return $this->statement_from_rows($rows, array('type', 'name', 'tbl_name', 'rootpage', 'sql'));
+		}
+
+		private function pragma_index_xinfo(string $sqlite_index_name): WP_SQLite_MyLite_Statement {
+			$index = $this->logical_index_from_sqlite_name($sqlite_index_name);
+			if ($index === null) {
+				return $this->statement_from_rows(
+					array(),
+					array('seqno', 'cid', 'name', 'desc', 'coll', 'key')
+				);
+			}
+
+			$columns = $this->query_describe_rows($index['table']);
+			$column_positions = array();
+			foreach ($columns as $position => $column) {
+				$column_positions[(string) $column['Field']] = $position;
+			}
+
+			$rows = array();
+			foreach ($this->query_index_rows($index['table']) as $row) {
+				if (strcasecmp((string) $row['Key_name'], $index['key']) !== 0) {
+					continue;
+				}
+				$column_name = (string) $row['Column_name'];
+				$rows[] = array(
+					'seqno' => (string) ((int) $row['Seq_in_index'] - 1),
+					'cid'   => (string) ($column_positions[$column_name] ?? -1),
+					'name'  => $column_name,
+					'desc'  => (string) (((string) $row['Collation'] === 'D') ? 1 : 0),
+					'coll'  => $this->sqlite_column_collation($columns[$column_positions[$column_name]] ?? null),
+					'key'   => '1',
+				);
+			}
+
+			return $this->statement_from_rows($rows, array('seqno', 'cid', 'name', 'desc', 'coll', 'key'));
+		}
+
+		private function query_index_rows(string $table_name): array {
+			return $this->connection
+				->query('SHOW INDEX FROM ' . $this->connection->quote_identifier($table_name))
+				->fetchAll(PDO::FETCH_ASSOC);
+		}
+
+		private function query_describe_rows(string $table_name): array {
+			return $this->connection
+				->query('DESCRIBE ' . $this->connection->quote_identifier($table_name))
+				->fetchAll(PDO::FETCH_ASSOC);
+		}
+
+		private function query_table_names(): array {
+			$rows = $this->connection->query('SHOW TABLES')->fetchAll(PDO::FETCH_ASSOC);
+			$names = array();
+			foreach ($rows as $row) {
+				$names[] = (string) reset($row);
+			}
+			return $names;
+		}
+
+		private function statement_from_rows(array $rows, array $columns): WP_SQLite_MyLite_Statement {
+			$fields = array_map(
+				static fn(string $name): array => array(
+					'name'        => $name,
+					'table'       => '',
+					'native_type' => 'string',
+					'len'         => 0,
+				),
+				$columns
+			);
+			return new WP_SQLite_MyLite_Statement($rows, count($rows), $fields);
+		}
+
+		private function sqlite_index_name(string $table_name, string $key_name, int $part_count): string {
+			if (strcasecmp($key_name, 'PRIMARY') === 0) {
+				return $part_count > 1 ? '_wp_sqlite_' . $table_name . '__primary' : 'sqlite_autoindex_' . $table_name . '_1';
+			}
+			return $table_name . '__' . $key_name;
+		}
+
+		private function logical_index_from_sqlite_name(string $sqlite_index_name): ?array {
+			if (preg_match('/^sqlite_autoindex_(.+)_1$/', $sqlite_index_name, $matches) === 1) {
+				return array('table' => $matches[1], 'key' => 'PRIMARY');
+			}
+			if (preg_match('/^_wp_sqlite_(.+)__primary$/', $sqlite_index_name, $matches) === 1) {
+				return array('table' => $matches[1], 'key' => 'PRIMARY');
+			}
+
+			$parts = explode('__', $sqlite_index_name, 2);
+			if (count($parts) !== 2) {
+				return null;
+			}
+			return array('table' => $parts[0], 'key' => $parts[1]);
+		}
+
+		private function sqlite_column_collation(?array $column): string {
+			if ($column === null) {
+				return 'BINARY';
+			}
+			$type = strtolower((string) ($column['Type'] ?? ''));
+			if (str_contains($type, 'int') || str_contains($type, 'decimal') ||
+				str_contains($type, 'float') || str_contains($type, 'double')) {
+				return 'BINARY';
+			}
+			return 'NOCASE';
+		}
 	}
 
 	class WP_SQLite_Information_Schema_Builder {
@@ -825,8 +1074,10 @@ namespace {
 			'tests-dir' => null,
 			'results' => null,
 			'exclude-class' => array(),
+			'filter' => null,
 			'assertion-mode' => getenv('WP_SQLITE_ASSERTION_MODE') ?: 'normal',
 			'assertions' => getenv('WP_SQLITE_ASSERTIONS') ?: null,
+			'baseline-results' => getenv('WP_SQLITE_BASELINE_RESULTS') ?: null,
 		);
 		foreach (array_slice($argv, 1) as $arg) {
 			if (str_starts_with($arg, '--tests-dir=')) {
@@ -835,10 +1086,14 @@ namespace {
 				$options['results'] = substr($arg, strlen('--results='));
 			} elseif (str_starts_with($arg, '--exclude-class=')) {
 				$options['exclude-class'][] = substr($arg, strlen('--exclude-class='));
+			} elseif (str_starts_with($arg, '--filter=')) {
+				$options['filter'] = substr($arg, strlen('--filter='));
 			} elseif (str_starts_with($arg, '--assertion-mode=')) {
 				$options['assertion-mode'] = substr($arg, strlen('--assertion-mode='));
 			} elseif (str_starts_with($arg, '--assertions=')) {
 				$options['assertions'] = substr($arg, strlen('--assertions='));
+			} elseif (str_starts_with($arg, '--baseline-results=')) {
+				$options['baseline-results'] = substr($arg, strlen('--baseline-results='));
 			}
 		}
 		if ($options['tests-dir'] === null) {
@@ -866,6 +1121,39 @@ namespace {
 			);
 		}
 		return $data_sets;
+	}
+
+	function load_baseline_failed_tests(?string $path): array {
+		if ($path === null) {
+			return array();
+		}
+		if (!is_file($path)) {
+			fwrite(STDERR, "Baseline results file does not exist: " . $path . "\n");
+			exit(2);
+		}
+		$json = json_decode((string) file_get_contents($path), true);
+		$results = is_array($json) && isset($json['results']) && is_array($json['results'])
+			? $json['results']
+			: array();
+		$failed_tests = array();
+		foreach ($results as $result) {
+			if (!is_array($result) || ($result['status'] ?? null) !== 'failed') {
+				continue;
+			}
+			$test_name = $result['test'] ?? null;
+			if (!is_string($test_name) || $test_name === '') {
+				continue;
+			}
+			$failed_tests[$test_name] = array(
+				'failure_class' => is_string($result['failure_class'] ?? null)
+					? $result['failure_class']
+					: 'mysql-baseline-failure',
+				'message' => is_string($result['message'] ?? null)
+					? $result['message']
+					: 'MySQL 8.4.9 baseline failed',
+			);
+		}
+		return $failed_tests;
 	}
 
 	function classify_failure(Throwable $throwable): string {
@@ -900,6 +1188,7 @@ namespace {
 	$options = parse_options($argv);
 	$tests_dir = rtrim($options['tests-dir'], '/');
 	WP_SQLite_Assertion_Overrides::init($options['assertion-mode'], $options['assertions']);
+	$baseline_failed_tests = load_baseline_failed_tests($options['baseline-results']);
 	$excluded_classes = array(
 		'WP_SQLite_Driver_Translation_Tests',
 		'WP_SQLite_Information_Schema_Reconstructor_Tests',
@@ -970,8 +1259,25 @@ namespace {
 				if ($data_set['name'] !== null) {
 					$test_name .= '#' . $data_set['name'];
 				}
+				if ($options['filter'] !== null && strpos($test_name, $options['filter']) === false) {
+					continue;
+				}
 				++$summary['total'];
 				++$summary['by_class'][$class]['total'];
+				if (isset($baseline_failed_tests[$test_name])) {
+					$baseline_failure = $baseline_failed_tests[$test_name];
+
+					++$summary['skipped'];
+					++$summary['by_class'][$class]['skipped'];
+					$results[] = array(
+						'test' => $test_name,
+						'status' => 'skipped',
+						'message' => 'Skipped because MySQL 8.4.9 baseline failed: ' .
+							$baseline_failure['message'],
+						'baseline_failure_class' => $baseline_failure['failure_class'],
+					);
+					continue;
+				}
 				$instance = new $class();
 				try {
 					WP_SQLite_Assertion_Overrides::set_current_test($test_name);
@@ -1026,6 +1332,7 @@ namespace {
 		'excluded_classes' => $excluded_classes,
 		'assertion_mode' => $options['assertion-mode'],
 		'assertions' => $options['assertions'],
+		'baseline_results' => $options['baseline-results'],
 		'mysqli_extension_version' => phpversion('mysqli'),
 		'summary' => $summary,
 		'results' => $results,

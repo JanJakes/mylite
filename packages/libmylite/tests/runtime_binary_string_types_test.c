@@ -165,6 +165,11 @@ static int test_binary_success_persistence_and_introspection(void) {
     static const unsigned char mb_initial[] = {0x00U, 0xffU};
     static const unsigned char nn_initial[] = {0x01U, 0x02U};
     static const unsigned char vb_updated[] = {0x5aU, 0x00U};
+    static const unsigned char bit_fixed[] = {0x0aU, 0x00U};
+    static const unsigned char bit_var[] = {0x00U, 0x01U};
+    static const unsigned char bit_zero_b[] = {0xffU, 0x00U};
+    static const unsigned char bit_zero_var[] = {0x01U};
+    static const unsigned char bit_zero_blob[] = {0x01U, 0x00U};
     static const unsigned char clone_b[] = {0x41U, 0x00U, 0x00U};
     static const unsigned char added_fixed[] = {0x00U, 0x00U};
     static const unsigned char no_backslash_value[] = {0x5cU, 0x30U};
@@ -301,6 +306,65 @@ static int test_binary_success_persistence_and_introspection(void) {
         mylite_result_value_bytes(NULL, 0U, 0U) == NULL &&
             mylite_result_value_size(result, binary_family_column_count, 0U) == 0U,
         "binary result byte API misuse"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE bit_binary (id INT, b BINARY(2), "
+                                      "vb VARBINARY(2), bl BLOB)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO bit_binary VALUES "
+        "(1, B'1010', B'000000001', B''), "
+        "(2, 0b11111111, 0b1, 0b100000000)",
+        2
+    );
+    failures += execute_ok(database, "SELECT id, b, vb, bl FROM bit_binary ORDER BY id", &result);
+    failures += expect_size(mylite_result_row_count(result), 2U, "binary bit literal row count");
+    failures += expect_result_value(result, 0U, 0U, "1", "binary bit literal first id");
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = bit_fixed, .size = sizeof(bit_fixed)},
+        "BINARY quoted bit literal"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        2U,
+        (struct expected_bytes){.bytes = bit_var, .size = sizeof(bit_var)},
+        "VARBINARY quoted bit literal"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        3U,
+        (struct expected_bytes){.bytes = (const unsigned char *)"", .size = 0U},
+        "BLOB empty bit literal"
+    );
+    failures += expect_result_value(result, 1U, 0U, "2", "binary 0b bit literal second id");
+    failures += expect_binary_cell(
+        result,
+        1U,
+        1U,
+        (struct expected_bytes){.bytes = bit_zero_b, .size = sizeof(bit_zero_b)},
+        "BINARY 0b bit literal"
+    );
+    failures += expect_binary_cell(
+        result,
+        1U,
+        2U,
+        (struct expected_bytes){.bytes = bit_zero_var, .size = sizeof(bit_zero_var)},
+        "VARBINARY 0b bit literal"
+    );
+    failures += expect_binary_cell(
+        result,
+        1U,
+        3U,
+        (struct expected_bytes){.bytes = bit_zero_blob, .size = sizeof(bit_zero_blob)},
+        "BLOB 0b bit literal"
     );
     mylite_result_free(result);
     result = NULL;
@@ -1274,7 +1338,7 @@ static int test_binary_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT INTO d VALUES (2, b'1010', X'0102')",
+        "INSERT INTO d VALUES (2, 7, X'0102')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

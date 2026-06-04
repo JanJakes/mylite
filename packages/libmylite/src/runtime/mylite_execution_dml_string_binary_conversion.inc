@@ -220,12 +220,73 @@ static int decode_binary_string_literal(
     if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_HEX) {
         return decode_binary_hex_literal(database, value_node, out_bytes, out_byte_count);
     }
+    if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_BIT) {
+        return decode_binary_bit_literal(database, &value_node->span, out_bytes, out_byte_count);
+    }
 
     set_unsupported_error(
         database,
         "Binary string values support only string, hex, NULL, and DEFAULT values"
     );
     return MYLITE_ERROR;
+}
+
+static int decode_binary_bit_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_bytes,
+    size_t *out_byte_count
+) {
+    size_t bit_start = 0U;
+    size_t bit_end = 0U;
+    size_t bit_count = 0U;
+    size_t byte_count = 0U;
+    char *bytes = NULL;
+
+    if (span == NULL || span->text == NULL || out_bytes == NULL || out_byte_count == NULL ||
+        span->length < 2U) {
+        return MYLITE_MISUSE;
+    }
+    if (span->length >= 3U && (span->text[0] == 'b' || span->text[0] == 'B') &&
+        span->text[1] == '\'' && span->text[span->length - 1U] == '\'') {
+        bit_start = 2U;
+        bit_end = span->length - 1U;
+    } else if (
+        span->length >= 3U && span->text[0] == '0' && (span->text[1] == 'b' || span->text[1] == 'B')
+    ) {
+        bit_start = 2U;
+        bit_end = span->length;
+    } else {
+        set_unsupported_error(database, "Binary string values support only valid bit literals");
+        return MYLITE_ERROR;
+    }
+
+    bit_count = bit_end - bit_start;
+    byte_count = (bit_count + 7U) / 8U;
+    bytes = calloc(byte_count + 1U, 1U);
+    if (bytes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t bit_index = 0U; bit_index < bit_count; ++bit_index) {
+        char bit = span->text[bit_start + bit_index];
+        size_t padded_bit_index = (byte_count * 8U) - bit_count + bit_index;
+        size_t byte_index = padded_bit_index / 8U;
+        unsigned int bit_shift = 7U - (unsigned int)(padded_bit_index % 8U);
+
+        if (bit != '0' && bit != '1') {
+            free(bytes);
+            set_unsupported_error(database, "Binary string values support only valid bit literals");
+            return MYLITE_ERROR;
+        }
+        if (bit == '1') {
+            bytes[byte_index] = (char)((unsigned char)bytes[byte_index] | (1U << bit_shift));
+        }
+    }
+
+    *out_bytes = bytes;
+    *out_byte_count = byte_count;
+    return MYLITE_OK;
 }
 
 static int decode_binary_hex_literal(

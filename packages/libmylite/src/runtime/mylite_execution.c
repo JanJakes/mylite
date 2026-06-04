@@ -17408,6 +17408,12 @@ static int decode_binary_string_literal(
     char **out_bytes,
     size_t *out_byte_count
 );
+static int decode_binary_bit_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_bytes,
+    size_t *out_byte_count
+);
 static int decode_binary_hex_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,

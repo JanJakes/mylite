@@ -430,11 +430,20 @@ expect_upstream_accepts \
 "SELECT HEX(b), LENGTH(b) FROM deferred_blob_default;" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "mysql accepts deferred bit literals for binary strings" \
-    "CREATE TABLE deferred_bit_literal (b BINARY(2)); "\
-"INSERT INTO deferred_bit_literal VALUES (b'1010'); "\
-"SELECT HEX(b), LENGTH(b) FROM deferred_bit_literal;" \
+bit_literal_expected=$(cat <<\EXPECTED
+1	0A00	2	0001	2		0
+2	FF00	2	01	1	0100	2
+EXPECTED
+)
+expect_output \
+    "bit literals store as binary string bytes" \
+    "$bit_literal_expected" \
+    "CREATE TABLE bit_binary (id INT, b BINARY(2), v VARBINARY(2), bl BLOB); "\
+"INSERT INTO bit_binary VALUES "\
+"(1, B'1010', B'000000001', B''), "\
+"(2, 0b11111111, 0b1, 0b100000000); "\
+"SELECT id, HEX(b), LENGTH(b), HEX(v), LENGTH(v), HEX(bl), LENGTH(bl) "\
+"FROM bit_binary ORDER BY id;" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_binary_string_types_expectations: ok"

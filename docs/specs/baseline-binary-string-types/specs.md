@@ -12,7 +12,8 @@ strict length checks, fixed-length `BINARY` zero-byte padding, descriptor
 cloning/copying, binary literal defaults for `BINARY` and `VARBINARY`, and
 descriptor-backed introspection. It does not implement expression defaults,
 binary comparisons, binary ordering, binary indexes, string introducers, bit
-literals, parameters, streaming large objects, protocol-grade metadata, or
+literal expression contexts beyond direct row-value assignment, parameters,
+streaming large objects, protocol-grade metadata, or
 SQLite fork patches.
 
 ## Sources
@@ -99,6 +100,11 @@ slice:
 - `X'...'` and `0x...` literals store binary byte strings in binary-string DML
   contexts. `X''` stores a zero-length byte string. Odd-length `0x...` literals
   are accepted by MySQL and represent a leading-zero padded byte sequence.
+- `B'...'` and `0b...` literals store the represented bit string as a minimal
+  big-endian byte string in binary-string DML contexts. The resulting bytes
+  then follow the target descriptor rules: fixed `BINARY(n)` pads with zero
+  bytes, while `VARBINARY` and BLOB family descriptors keep the produced byte
+  length.
 - Strict-mode overlength assignment to `BINARY`, `VARBINARY`, or BLOB family
   columns fails with error `1406`, SQLSTATE `22001`, and `Data too long for
   column ...`.
@@ -145,7 +151,7 @@ The implementation must add:
   padding and length checks applied before binding the updated value;
 - `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`, `SHOW CREATE TABLE`, and
   limited `INFORMATION_SCHEMA.COLUMNS` rendering for binary string descriptors;
-- ordinary string literal values and hexadecimal literal values for
+- ordinary string literal, hexadecimal literal, and bit literal values for
   `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE ... VALUES`,
   `REPLACE ... SET`, and single-table `UPDATE` assignments into binary string
   columns;
@@ -184,9 +190,9 @@ This feature must not implement:
 - BLOB-family defaults, expression defaults, or general binary default
   expressions beyond the literal `BINARY` / `VARBINARY` subset specified in
   `docs/specs/baseline-binary-string-defaults/specs.md`;
-- binary-to-integer, integer-to-binary, bit-literal, decimal/float, temporal,
-  function, incompatible subquery, user-variable, parameter, or arbitrary
-  expression assignment conversion;
+- binary-to-integer, integer-to-binary, decimal/float, temporal, function,
+  incompatible subquery, user-variable, parameter, or arbitrary expression
+  assignment conversion;
 - `_binary` introducers, national strings, adjacent literal concatenation, or
   nonliteral client parameters;
 - binary comparison predicates, `LIKE`, `BETWEEN`, `IN`, truth predicates,

@@ -167,11 +167,13 @@ static bool normalize_fractional_datetime_storage_text(
     const struct temporal_predicate_normalization_input *input,
     char *out_text
 ) {
+    enum { fractional_temporal_suffix_max_length = 7U };
     const char *text = input == NULL ? NULL : input->text;
 
     if (input == NULL || text == NULL || out_text == NULL ||
         input->text_length <= datetime_text_length + 1U ||
-        input->text_length > datetime_text_length + 7U || text[datetime_text_length] != '.') {
+        input->text_length > datetime_text_length + fractional_temporal_suffix_max_length ||
+        text[datetime_text_length] != '.') {
         return false;
     }
     memcpy(out_text, text, datetime_text_length);
@@ -423,6 +425,11 @@ static bool normalize_time_numeric_text(
     char *out_text,
     size_t *out_text_length
 ) {
+    enum {
+        packed_time_max_digit_count = 6U,
+        packed_time_hour_divisor = 10000U,
+        packed_time_minute_divisor = 100U,
+    };
     bool is_negative = false;
     size_t digit_offset = 0U;
     uint32_t packed = 0U;
@@ -438,7 +445,7 @@ static bool normalize_time_numeric_text(
         is_negative = true;
         digit_offset = 1U;
     }
-    if (digit_offset == text_length || text_length - digit_offset > 6U) {
+    if (digit_offset == text_length || text_length - digit_offset > packed_time_max_digit_count) {
         return false;
     }
     for (size_t index = digit_offset; index < text_length; ++index) {
@@ -447,12 +454,12 @@ static bool normalize_time_numeric_text(
         if (byte < '0' || byte > '9') {
             return false;
         }
-        packed = (packed * 10U) + (uint32_t)(byte - '0');
+        packed = (packed * (uint32_t)decimal_base) + (uint32_t)(byte - '0');
     }
 
-    hour = packed / 10000U;
-    minute = (packed / 100U) % 100U;
-    second = packed % 100U;
+    hour = packed / packed_time_hour_divisor;
+    minute = (packed / packed_time_minute_divisor) % packed_time_minute_divisor;
+    second = packed % packed_time_minute_divisor;
     written = snprintf(
         out_text,
         time_text_maximum_length + 1U,
@@ -476,11 +483,15 @@ static bool normalize_fractional_time_text(
     char *out_text,
     size_t *out_text_length
 ) {
+    enum {
+        fractional_temporal_max_digits = 6U,
+        fractional_temporal_suffix_max_length = 7U,
+    };
     size_t prefix_length = 0U;
 
     if (text == NULL || out_text == NULL || out_text_length == NULL ||
         text_length <= time_text_minimum_length + 1U ||
-        text_length > time_text_maximum_length + 7U) {
+        text_length > time_text_maximum_length + fractional_temporal_suffix_max_length) {
         return false;
     }
     for (size_t index = 0U; index < text_length; ++index) {
@@ -493,7 +504,7 @@ static bool normalize_fractional_time_text(
         !time_text_has_canonical_shape(text, prefix_length)) {
         return false;
     }
-    if (text_length - prefix_length - 1U > 6U) {
+    if (text_length - prefix_length - 1U > fractional_temporal_max_digits) {
         return false;
     }
     for (size_t index = prefix_length + 1U; index < text_length; ++index) {
@@ -1017,9 +1028,13 @@ static int convert_year_string_magnitude(const char *text, size_t text_length, u
         uint64_t digit = 0U;
 
         if (byte < '0' || byte > '9') {
-            if (index == year_text_length && byte == '-' &&
-                (magnitude == 0U ||
-                 (magnitude >= year_minimum_normal && magnitude <= year_maximum))) {
+            if (year_string_accepts_trailing_hyphen(
+                    (struct year_string_trailing_hyphen_request){
+                        .index = index,
+                        .byte = byte,
+                        .magnitude = magnitude,
+                    }
+                )) {
                 *out_year = (uint32_t)magnitude;
                 return MYLITE_OK;
             }
@@ -1035,23 +1050,47 @@ static int convert_year_string_magnitude(const char *text, size_t text_length, u
     if (overflow) {
         return MYLITE_ERROR;
     }
-    if (text_length == 1U || text_length == 2U) {
-        if (magnitude == 0U) {
+    return convert_year_string_magnitude_by_length(
+        (struct year_string_magnitude_conversion){
+            .magnitude = magnitude,
+            .text_length = text_length,
+        },
+        out_year
+    );
+}
+
+static bool year_string_accepts_trailing_hyphen(
+    struct year_string_trailing_hyphen_request request
+) {
+    if (request.index != year_text_length || request.byte != '-') {
+        return false;
+    }
+    return request.magnitude == 0U ||
+           (request.magnitude >= year_minimum_normal && request.magnitude <= year_maximum);
+}
+
+static int convert_year_string_magnitude_by_length(
+    struct year_string_magnitude_conversion conversion,
+    uint32_t *out_year
+) {
+    if (conversion.text_length == 1U || conversion.text_length == 2U) {
+        if (conversion.magnitude == 0U) {
             *out_year = (uint32_t)year_two_digit_high_base;
             return MYLITE_OK;
         }
-        if (convert_year_numeric_magnitude(magnitude, false, out_year)) {
+        if (convert_year_numeric_magnitude(conversion.magnitude, false, out_year)) {
             return MYLITE_OK;
         }
         return MYLITE_ERROR;
     }
-    if (text_length == year_text_length) {
-        if (magnitude == 0U) {
+    if (conversion.text_length == year_text_length) {
+        if (conversion.magnitude == 0U) {
             *out_year = 0U;
             return MYLITE_OK;
         }
-        if (magnitude >= year_minimum_normal && magnitude <= year_maximum) {
-            *out_year = (uint32_t)magnitude;
+        if (conversion.magnitude >= year_minimum_normal &&
+            conversion.magnitude <= year_maximum) {
+            *out_year = (uint32_t)conversion.magnitude;
             return MYLITE_OK;
         }
     }

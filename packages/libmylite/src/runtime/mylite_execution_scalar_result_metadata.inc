@@ -4,11 +4,6 @@ static int populate_scalar_binary_literal_result_column_descriptor(
     const struct mylite_sql_ast_node *literal,
     struct mylite_result_column_descriptor *descriptor
 );
-static int scalar_binary_literal_byte_count(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    size_t *out_byte_count
-);
 
 static int make_scalar_result_column_descriptor(
     struct mylite_db *database,

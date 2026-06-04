@@ -1095,7 +1095,10 @@ static int information_schema_join_compat_append_name(
         rc = mylite_dynamic_string_append(&string, suffix);
     }
     if (rc == MYLITE_OK) {
-        grown_items = realloc(names->items, (names->count + 1U) * sizeof(*names->items));
+        grown_items = (char **)realloc(
+            (void *)names->items,
+            (names->count + 1U) * sizeof(*names->items)
+        );
         if (grown_items == NULL) {
             rc = MYLITE_NOMEM;
         }
@@ -1158,7 +1161,7 @@ static void information_schema_join_compat_name_rows_deinit(
     for (size_t index = 0U; index < names->count; ++index) {
         free(names->items[index]);
     }
-    free(names->items);
+    free((void *)names->items);
     *names = (struct information_schema_join_compat_name_rows){0};
 }
 

@@ -349,7 +349,7 @@ static bool parse_scalar_expression_date_add_default_text(
     }
     start = text + sizeof(prefix) - 1U;
     errno = 0;
-    interval = strtoimax(start, &end, 10);
+    interval = strtoimax(start, &end, decimal_base);
     if (start == end || errno == ERANGE || interval < INT64_MIN || interval > INT64_MAX ||
         end == NULL || *end != ' ') {
         return false;

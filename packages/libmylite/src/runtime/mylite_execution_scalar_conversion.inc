@@ -846,8 +846,9 @@ static int apply_scalar_placeholder_decimal(
     const struct scalar_placeholder_cast_info *info,
     struct session_scalar_cell *inout_cell
 ) {
+    enum { scalar_placeholder_decimal_text_capacity = 128U };
     char format[sizeof("%.30Lf")];
-    char text[128];
+    char text[scalar_placeholder_decimal_text_capacity];
     char *end = NULL;
     long double value = 0.0L;
     size_t scale = decimal_default_scale;

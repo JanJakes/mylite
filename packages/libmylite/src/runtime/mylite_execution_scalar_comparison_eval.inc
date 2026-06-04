@@ -56,14 +56,6 @@ static bool scalar_comparison_numeric_result_is_true(
     const struct scalar_arithmetic_value *right
 );
 static double scalar_comparison_numeric_real(const struct scalar_arithmetic_value *value);
-static bool show_like_pattern_matches_with_escape(
-    const char *pattern,
-    size_t pattern_length,
-    const char *value,
-    size_t value_length,
-    bool case_sensitive,
-    bool backslash_escapes
-);
 
 static int scalar_comparison_value(
     struct mylite_db *database,

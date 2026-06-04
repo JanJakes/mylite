@@ -259,7 +259,7 @@ static int parse_dml_hex_literal_magnitude(
         *out_overflow = true;
     } else {
         for (size_t byte_index = first_nonzero_index; byte_index < byte_count; ++byte_index) {
-            magnitude = (magnitude << 8U) | (uint64_t)(unsigned char)bytes[byte_index];
+            magnitude = (magnitude << byte_bit_count) | (uint64_t)(unsigned char)bytes[byte_index];
         }
         *out_magnitude = magnitude;
     }

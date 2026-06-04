@@ -310,10 +310,6 @@ static int plan_row_scalar_searched_case_expression(
     return rc;
 }
 
-static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
-    const struct mylite_sql_ast_node *expression
-);
-
 static int plan_row_scalar_like_predicate_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

@@ -705,7 +705,8 @@ static int append_count_having_projection_alias(
     struct mylite_dynamic_string *string,
     size_t projection_index
 ) {
-    char alias[64];
+    enum { count_having_projection_alias_capacity = 64U };
+    char alias[count_having_projection_alias_capacity];
     int written = snprintf(
         alias,
         sizeof(alias),

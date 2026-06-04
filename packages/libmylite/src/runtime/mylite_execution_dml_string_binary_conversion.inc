@@ -381,7 +381,7 @@ static int decode_binary_bit_literal(
     }
 
     bit_count = bit_end - bit_start;
-    byte_count = (bit_count + 7U) / 8U;
+    byte_count = (bit_count + bit_byte_rounding_offset) / byte_bit_count;
     bytes = calloc(byte_count + 1U, 1U);
     if (bytes == NULL) {
         set_nomem_error(database);
@@ -389,9 +389,10 @@ static int decode_binary_bit_literal(
     }
     for (size_t bit_index = 0U; bit_index < bit_count; ++bit_index) {
         char bit = span->text[bit_start + bit_index];
-        size_t padded_bit_index = (byte_count * 8U) - bit_count + bit_index;
-        size_t byte_index = padded_bit_index / 8U;
-        unsigned int bit_shift = 7U - (unsigned int)(padded_bit_index % 8U);
+        size_t padded_bit_index = (byte_count * byte_bit_count) - bit_count + bit_index;
+        size_t byte_index = padded_bit_index / byte_bit_count;
+        unsigned int bit_shift =
+            bit_byte_rounding_offset - (unsigned int)(padded_bit_index % byte_bit_count);
 
         if (bit != '0' && bit != '1') {
             free(bytes);

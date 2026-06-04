@@ -1051,6 +1051,17 @@ enum temporal_storage_truncation {
 
 struct temporal_predicate_normalization_input;
 
+struct year_string_trailing_hyphen_request {
+    size_t index;
+    unsigned char byte;
+    uint64_t magnitude;
+};
+
+struct year_string_magnitude_conversion {
+    uint64_t magnitude;
+    size_t text_length;
+};
+
 enum planned_index_type_option {
     PLANNED_INDEX_TYPE_DEFAULT = 0,
     PLANNED_INDEX_TYPE_BTREE = 1,
@@ -17438,6 +17449,13 @@ static int convert_year_string_value(
     struct planned_value *out_value
 );
 static int convert_year_string_magnitude(const char *text, size_t text_length, uint32_t *out_year);
+static bool year_string_accepts_trailing_hyphen(
+    struct year_string_trailing_hyphen_request request
+);
+static int convert_year_string_magnitude_by_length(
+    struct year_string_magnitude_conversion conversion,
+    uint32_t *out_year
+);
 static int convert_year_direct_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

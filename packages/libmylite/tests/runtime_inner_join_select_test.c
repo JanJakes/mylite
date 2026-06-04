@@ -783,6 +783,33 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
+        "SELECT 1 FROM lefts JOIN rights ON lefts.k = rights.k ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in order clause is ambiguous",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id, rights.id FROM lefts JOIN rights ON lefts.k = rights.k HAVING id",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in having clause is ambiguous",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT 1 FROM lefts JOIN rights ON lefts.k = rights.k HAVING id",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'id' in 'having clause'",
+        }
+    );
+    failures += expect_error(
+        database,
         "SELECT id FROM lefts, rights WHERE lefts.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_column_ambiguous,

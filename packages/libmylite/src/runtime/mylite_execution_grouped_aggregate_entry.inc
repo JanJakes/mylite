@@ -69,6 +69,17 @@ static int plan_grouped_aggregate(
             &table_column_count
         );
     }
+    if (rc == MYLITE_OK && select_list_has_only_literal_projection_items(select_list)) {
+        rc = plan_grouped_aggregate_group_columns(
+            database,
+            select_list,
+            clauses.group_clause,
+            &source_context,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = validate_grouped_projection_references(
             database,
@@ -78,7 +89,7 @@ static int plan_grouped_aggregate(
             table_column_count
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && out_plan->group_count == 0U) {
         rc = plan_grouped_aggregate_group_columns(
             database,
             select_list,

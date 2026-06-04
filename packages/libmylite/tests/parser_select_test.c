@@ -1779,6 +1779,20 @@ static int test_select_group_by_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT t1.name FROM t1 JOIN t2 ON t2.id = t1.id HAVING name;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    having_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
+    failures += parser_test_expect_node(
+        parser_test_child_at(having_clause, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "bare having identifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT t.g AS k, SUM(t.n) AS s FROM app.numbers AS t GROUP BY t.g "
         "HAVING SUM(t.n) IS NOT NULL ORDER BY k DESC LIMIT 1 OFFSET 1;",
         MYLITE_SQL_PARSE_OK,

@@ -10597,6 +10597,55 @@ static int plan_joined_select(
     const struct joined_select_ast *joined_select,
     struct planned_select *out_plan
 );
+static int reject_joined_select_order_ambiguity_for_literal_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context
+);
+static int reject_ambiguous_joined_order_references(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context
+);
+static int reject_ambiguous_joined_order_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context
+);
+static int reject_unsupported_joined_select_having(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *having_clause
+);
+static int reject_joined_select_having_reference_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *having_node
+);
+static const struct mylite_sql_ast_node *joined_select_having_reference_node(
+    const struct mylite_sql_ast_node *having_node
+);
+static int count_select_list_output_name_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const char *name,
+    size_t *out_match_count
+);
+static int select_item_output_name_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_item,
+    const char *name,
+    bool *out_matches
+);
+static size_t joined_source_unqualified_column_match_count(
+    const struct select_source_context *source_context,
+    const char *column_name
+);
+static bool select_list_has_only_literal_projection_items(
+    const struct mylite_sql_ast_node *select_list
+);
+static bool select_item_is_literal_projection(const struct mylite_sql_ast_node *select_item);
 static int prepare_joined_select_plan(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *from_clause,

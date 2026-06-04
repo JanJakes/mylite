@@ -487,6 +487,15 @@ static int test_joined_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT 1 FROM posts p JOIN comments c ON p.id = c.post_id GROUP BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in group statement is ambiguous",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT p.id, c.id, COUNT(*) FROM posts p JOIN comments c ON p.id = c.post_id "
         "GROUP BY p.id, c.id HAVING id = 1",
         (struct expected_sql_error){

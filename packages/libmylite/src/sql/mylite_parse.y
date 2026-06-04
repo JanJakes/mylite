@@ -3778,6 +3778,9 @@ having_predicate_atom(A) ::= having_operand(C) GREATER_EQUAL(O) having_integer_v
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
+having_predicate_atom(A) ::= having_operand(C). {
+    A = C;
+}
 having_predicate_atom(A) ::= having_operand(C) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);

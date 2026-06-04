@@ -323,10 +323,6 @@ static int plan_joined_select(
         return MYLITE_ERROR;
     }
     rc = collect_select_optional_clauses(database, joined_select->statement, &clauses);
-    if (rc == MYLITE_OK && clauses.having_clause != NULL) {
-        set_unsupported_error(database, "joined SELECT does not yet support HAVING");
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK) {
         rc =
             prepare_joined_select_plan(database, joined_select->from_clause, out_plan, &temp_nodes);
@@ -347,6 +343,17 @@ static int plan_joined_select(
     }
     if (rc == MYLITE_OK) {
         rc = reject_unsupported_multi_source_join_edges(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_joined_select_order_ambiguity_for_literal_projection(
+            database,
+            select_list,
+            clauses.order_clause,
+            &source_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_unsupported_joined_select_having(database, select_list, clauses.having_clause);
     }
     if (rc == MYLITE_OK) {
         rc = plan_joined_select_conditions(
@@ -392,6 +399,307 @@ static int plan_joined_select(
     }
     joined_select_temp_nodes_deinit(&temp_nodes);
     return rc;
+}
+
+static int reject_joined_select_order_ambiguity_for_literal_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context
+) {
+    if (order_clause == NULL || !select_list_has_only_literal_projection_items(select_list)) {
+        return MYLITE_OK;
+    }
+
+    return reject_ambiguous_joined_order_references(database, order_clause, source_context);
+}
+
+static int reject_ambiguous_joined_order_references(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context
+) {
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only descriptor ORDER BY columns");
+        return MYLITE_ERROR;
+    }
+
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        item = child_at(order_items, 0U);
+        while (item != NULL) {
+            int rc = MYLITE_OK;
+
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+                set_unsupported_error(database, "SELECT supports only descriptor ORDER BY columns");
+                return MYLITE_ERROR;
+            }
+            rc = reject_ambiguous_joined_order_reference(
+                database,
+                child_at(item, 0U),
+                source_context
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            item = item->next_sibling;
+        }
+        return MYLITE_OK;
+    }
+
+    return reject_ambiguous_joined_order_reference(
+        database,
+        child_at(order_clause, 0U),
+        source_context
+    );
+}
+
+static int reject_ambiguous_joined_order_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_sql_ast_node *key = unwrap_parenthesized_expression(order_key);
+    size_t match_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (key == NULL || key->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_identifier_text(key, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    match_count = joined_source_unqualified_column_match_count(source_context, column_name);
+    if (match_count > 1U) {
+        set_ambiguous_column_reference_error(database, COLUMN_REFERENCE_ORDER, column_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_unsupported_joined_select_having(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *having_clause
+) {
+    int rc = MYLITE_OK;
+
+    if (having_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (having_clause->kind != MYLITE_SQL_AST_HAVING_CLAUSE) {
+        set_unsupported_error(database, "joined SELECT does not yet support HAVING");
+        return MYLITE_ERROR;
+    }
+
+    rc = reject_joined_select_having_reference_error(
+        database,
+        select_list,
+        child_at(having_clause, 0U)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    set_unsupported_error(database, "joined SELECT does not yet support HAVING");
+    return MYLITE_ERROR;
+}
+
+static int reject_joined_select_having_reference_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *having_node
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_sql_ast_node *reference = joined_select_having_reference_node(having_node);
+    size_t match_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (reference == NULL || reference->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_identifier_text(reference, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc =
+            count_select_list_output_name_matches(database, select_list, column_name, &match_count);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (match_count == 0U) {
+        set_unknown_having_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (match_count > 1U) {
+        set_ambiguous_column_reference_error(database, COLUMN_REFERENCE_HAVING, column_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *joined_select_having_reference_node(
+    const struct mylite_sql_ast_node *having_node
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_expression(having_node);
+
+    if (node == NULL) {
+        return NULL;
+    }
+    if (node->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return node;
+    }
+    if (node->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+        node->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        return unwrap_parenthesized_expression(child_at(node, 0U));
+    }
+
+    return NULL;
+}
+
+static int count_select_list_output_name_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const char *name,
+    size_t *out_match_count
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+
+    *out_match_count = 0U;
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST || name == NULL) {
+        return MYLITE_OK;
+    }
+
+    item = child_at(select_list, 0U);
+    while (item != NULL) {
+        bool matches = false;
+        int rc = select_item_output_name_matches(database, item, name, &matches);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (matches) {
+            ++(*out_match_count);
+        }
+        item = item->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int select_item_output_name_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_item,
+    const char *name,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *alias = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_matches = false;
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM || name == NULL) {
+        return MYLITE_OK;
+    }
+
+    alias = child_at(select_item, 1U);
+    if (alias != NULL) {
+        char *alias_text = NULL;
+
+        rc = copy_select_item_alias_text(database, alias, &alias_text);
+        if (rc == MYLITE_OK) {
+            *out_matches = text_equals_ascii_case_insensitive(alias_text, name);
+        }
+        free(alias_text);
+        return rc;
+    }
+
+    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                               expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_column_reference_parts(database, expression, parts, &part_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count > 0U) {
+        *out_matches = text_equals_ascii_case_insensitive(parts[part_count - 1U], name);
+    }
+
+    return MYLITE_OK;
+}
+
+static size_t joined_source_unqualified_column_match_count(
+    const struct select_source_context *source_context,
+    const char *column_name
+) {
+    size_t match_count = 0U;
+
+    if (source_context == NULL || column_name == NULL) {
+        return 0U;
+    }
+
+    for (size_t source_index = 0U; source_index < source_context->source_count; ++source_index) {
+        const struct planned_select_source *source = &source_context->sources[source_index];
+        size_t column_index = 0U;
+
+        if (find_column_index(source->columns, source->column_count, column_name, &column_index) ==
+            MYLITE_OK) {
+            ++match_count;
+        }
+    }
+
+    return match_count;
+}
+
+static bool select_list_has_only_literal_projection_items(
+    const struct mylite_sql_ast_node *select_list
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    bool saw_item = false;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return false;
+    }
+
+    item = child_at(select_list, 0U);
+    while (item != NULL) {
+        if (!select_item_is_literal_projection(item)) {
+            return false;
+        }
+        saw_item = true;
+        item = item->next_sibling;
+    }
+
+    return saw_item;
+}
+
+static bool select_item_is_literal_projection(const struct mylite_sql_ast_node *select_item) {
+    const struct mylite_sql_ast_node *expression = NULL;
+
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        return false;
+    }
+
+    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
+    return expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL;
 }
 
 static int prepare_joined_select_plan(

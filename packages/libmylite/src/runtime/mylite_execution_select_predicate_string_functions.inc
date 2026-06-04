@@ -56,7 +56,17 @@ static int plan_string_length_comparison_predicate(
         &node
     );
 
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK &&
+        predicate_node_is_string_length_expression(child_at(predicate_node, 1U))) {
+        rc = plan_predicate_row_scalar_value_expression(
+            database,
+            child_at(predicate_node, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &node
+        );
+    } else if (rc == MYLITE_OK) {
         rc =
             plan_string_length_predicate_value(database, child_at(predicate_node, 1U), &node.value);
     }
@@ -67,6 +77,8 @@ static int plan_string_length_comparison_predicate(
         planned_value_deinit(&node.value);
         planned_row_scalar_expression_deinit(node.row_scalar_expression);
         free(node.row_scalar_expression);
+        planned_row_scalar_expression_deinit(node.row_scalar_value_expression);
+        free(node.row_scalar_value_expression);
     }
     return rc;
 }
@@ -232,7 +244,16 @@ static int plan_substring_comparison_predicate(
         &node
     );
 
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && predicate_node_is_substring_expression(child_at(predicate_node, 1U))) {
+        rc = plan_predicate_row_scalar_value_expression(
+            database,
+            child_at(predicate_node, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &node
+        );
+    } else if (rc == MYLITE_OK) {
         rc = plan_substring_predicate_value(database, child_at(predicate_node, 1U), &node.value);
     }
     if (rc == MYLITE_OK) {
@@ -242,6 +263,8 @@ static int plan_substring_comparison_predicate(
         planned_value_deinit(&node.value);
         planned_row_scalar_expression_deinit(node.row_scalar_expression);
         free(node.row_scalar_expression);
+        planned_row_scalar_expression_deinit(node.row_scalar_value_expression);
+        free(node.row_scalar_value_expression);
     }
     return rc;
 }

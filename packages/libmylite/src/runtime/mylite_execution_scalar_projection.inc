@@ -639,75 +639,78 @@ static bool is_base64_projection_expression(const struct mylite_sql_ast_node *ex
 
     expression = unwrap_parenthesized_expression(expression);
 
-    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_TO_BASE64_FUNCTION &&
-                               expression->kind != MYLITE_SQL_AST_FROM_BASE64_FUNCTION)) {
-        return false;
-    }
-    if (mylite_sql_ast_node_child_count(expression) != 1U) {
-        return false;
-    }
-    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
-    if (argument == NULL) {
-        return false;
-    }
-    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
-        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
-
-        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
-    }
-    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
-        const struct mylite_sql_ast_node *literal =
-            unwrap_parenthesized_expression(child_at(argument, 0U));
-
-        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+    while (expression != NULL && (expression->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION ||
+                                  expression->kind == MYLITE_SQL_AST_FROM_BASE64_FUNCTION)) {
+        if (mylite_sql_ast_node_child_count(expression) != 1U) {
             return false;
         }
-        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
-                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
-    }
+        argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+        if (argument == NULL) {
+            return false;
+        }
+        if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+            enum mylite_sql_ast_literal_kind literal_kind =
+                mylite_sql_ast_node_literal_kind(argument);
 
-    switch (argument->kind) {
-    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
-    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
-        return is_base64_projection_expression(argument);
-    case MYLITE_SQL_AST_DATABASE_FUNCTION:
-    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
-    case MYLITE_SQL_AST_USER_FUNCTION:
-    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
-    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
-    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
-    case MYLITE_SQL_AST_VERSION_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
-    case MYLITE_SQL_AST_SYSDATE_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
-    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
-    case MYLITE_SQL_AST_UTC_DATE_VALUE:
-    case MYLITE_SQL_AST_UTC_TIME_VALUE:
-    case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
-    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
-    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
-    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
-    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
-    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
-    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
-    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
-    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
-        return true;
-    default:
-        return false;
+            return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                    literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                    literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                    literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                    literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                    literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+        }
+        if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+            const struct mylite_sql_ast_node *literal =
+                unwrap_parenthesized_expression(child_at(argument, 0U));
+
+            if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+                operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+                return false;
+            }
+            return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                    mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) !=
+                   0;
+        }
+
+        switch (argument->kind) {
+        case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+        case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+            expression = argument;
+            break;
+        case MYLITE_SQL_AST_DATABASE_FUNCTION:
+        case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        case MYLITE_SQL_AST_USER_FUNCTION:
+        case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+        case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+        case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+        case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+        case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+        case MYLITE_SQL_AST_VERSION_FUNCTION:
+        case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+        case MYLITE_SQL_AST_SYSDATE_FUNCTION:
+        case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+        case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+        case MYLITE_SQL_AST_UTC_DATE_VALUE:
+        case MYLITE_SQL_AST_UTC_TIME_VALUE:
+        case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
+        case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+        case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+        case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+        case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+        case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+        case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+        case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+        case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+            return true;
+        default:
+            return false;
+        }
     }
+    return false;
 }
 
 static bool is_weight_string_projection_expression(const struct mylite_sql_ast_node *expression) {

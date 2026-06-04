@@ -5464,6 +5464,7 @@ static int select_statement_targets_information_schema(
 static int select_source_targets_information_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source,
+    struct scalar_arithmetic_node_stack *statement_stack,
     bool *out_matches
 );
 static int table_source_targets_information_schema(
@@ -5474,6 +5475,7 @@ static int table_source_targets_information_schema(
 static int derived_source_targets_information_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source,
+    struct scalar_arithmetic_node_stack *statement_stack,
     bool *out_matches
 );
 static int execute_mysql_system_table_select_statement(

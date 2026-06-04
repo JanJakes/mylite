@@ -1710,52 +1710,83 @@ static int select_statement_targets_information_schema(
     const struct mylite_sql_ast_node *statement,
     bool *out_matches
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    struct scalar_arithmetic_node_stack statement_stack = {0};
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
         return MYLITE_MISUSE;
     }
     *out_matches = false;
-    if (from_clause != NULL) {
-        rc = select_source_targets_information_schema(database, from_clause, out_matches);
-        if (rc != MYLITE_OK || *out_matches) {
-            return rc;
+    if (!scalar_arithmetic_node_stack_push(&statement_stack, statement)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (rc == MYLITE_OK && statement_stack.count != 0U && !*out_matches) {
+        const struct mylite_sql_ast_node *current_statement =
+            statement_stack.items[--statement_stack.count];
+        const struct mylite_sql_ast_node *from_clause = child_at(current_statement, 1U);
+
+        if (from_clause != NULL) {
+            rc = select_source_targets_information_schema(
+                database,
+                from_clause,
+                &statement_stack,
+                out_matches
+            );
+        }
+        if (rc == MYLITE_OK && !*out_matches) {
+            rc = information_schema_join_compat_select_statement_is_supported(
+                database,
+                current_statement,
+                out_matches
+            );
         }
     }
-    return information_schema_join_compat_select_statement_is_supported(
-        database,
-        statement,
-        out_matches
-    );
+    scalar_arithmetic_node_stack_deinit(&statement_stack);
+    return rc;
 }
 
 static int select_source_targets_information_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source,
+    struct scalar_arithmetic_node_stack *statement_stack,
     bool *out_matches
 ) {
-    if (source == NULL || out_matches == NULL) {
+    struct scalar_arithmetic_node_stack source_stack = {0};
+    int rc = MYLITE_OK;
+
+    if (source == NULL || statement_stack == NULL || out_matches == NULL) {
         return MYLITE_MISUSE;
     }
 
     *out_matches = false;
-    if (source->kind == MYLITE_SQL_AST_FROM_TABLE) {
-        return table_source_targets_information_schema(database, source, out_matches);
+    if (!scalar_arithmetic_node_stack_push(&source_stack, source)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
-    if (source->kind == MYLITE_SQL_AST_FROM_JOIN) {
-        int rc = select_source_targets_information_schema(database, child_at(source, 0U), out_matches);
+    while (rc == MYLITE_OK && source_stack.count != 0U && !*out_matches) {
+        const struct mylite_sql_ast_node *current_source =
+            source_stack.items[--source_stack.count];
 
-        if (rc != MYLITE_OK || *out_matches) {
-            return rc;
+        if (current_source->kind == MYLITE_SQL_AST_FROM_TABLE) {
+            rc = table_source_targets_information_schema(database, current_source, out_matches);
+        } else if (current_source->kind == MYLITE_SQL_AST_FROM_JOIN) {
+            if (!scalar_arithmetic_node_stack_push(&source_stack, child_at(current_source, 1U)) ||
+                !scalar_arithmetic_node_stack_push(&source_stack, child_at(current_source, 0U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+        } else if (current_source->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+            rc = derived_source_targets_information_schema(
+                database,
+                current_source,
+                statement_stack,
+                out_matches
+            );
         }
-        return select_source_targets_information_schema(database, child_at(source, 1U), out_matches);
     }
-    if (source->kind == MYLITE_SQL_AST_FROM_DERIVED) {
-        return derived_source_targets_information_schema(database, source, out_matches);
-    }
-
-    return MYLITE_OK;
+    scalar_arithmetic_node_stack_deinit(&source_stack);
+    return rc;
 }
 
 static int table_source_targets_information_schema(
@@ -1796,11 +1827,13 @@ static int table_source_targets_information_schema(
 static int derived_source_targets_information_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source,
+    struct scalar_arithmetic_node_stack *statement_stack,
     bool *out_matches
 ) {
     const struct mylite_sql_ast_node *inner_statement = child_at(source, 0U);
 
-    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED || out_matches == NULL) {
+    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED ||
+        statement_stack == NULL || out_matches == NULL) {
         return MYLITE_MISUSE;
     }
     *out_matches = false;
@@ -1808,7 +1841,11 @@ static int derived_source_targets_information_schema(
         return MYLITE_OK;
     }
 
-    return select_statement_targets_information_schema(database, inner_statement, out_matches);
+    if (!scalar_arithmetic_node_stack_push(statement_stack, inner_statement)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
 }
 
 static int execute_mysql_system_table_select_statement(

@@ -257,6 +257,7 @@ static int plan_alter_table_auto_increment(
     struct planned_alter_table_auto_increment *out_plan
 ) {
     const struct mylite_sql_ast_node *option = child_at(statement, 1U);
+    bool found_temporary = false;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_auto_increment){0};
@@ -269,6 +270,20 @@ static int plan_alter_table_auto_increment(
         rc = parse_alter_table_auto_increment_option(database, option, &out_plan->requested_next);
     }
     if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_try_read_table_by_name(
+            &database->session.temporary_catalog,
+            out_plan->target.schema.name,
+            out_plan->target.table_name,
+            &out_plan->table,
+            &found_temporary
+        );
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+            return rc;
+        }
+        out_plan->is_temporary = found_temporary;
+    }
+    if (rc == MYLITE_OK && !found_temporary) {
         rc = mylite_catalog_read_table_by_name(
             database,
             out_plan->target.schema.schema_id,
@@ -284,10 +299,11 @@ static int plan_alter_table_auto_increment(
             rc = MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         set_unsupported_error(
             database,
-            "ALTER TABLE AUTO_INCREMENT supports only persistent base tables"
+            "ALTER TABLE AUTO_INCREMENT supports only base tables"
         );
         rc = MYLITE_ERROR;
     }
@@ -380,19 +396,45 @@ static int alter_table_auto_increment_from_plan(
 ) {
     int rc = MYLITE_OK;
 
-    if (!plan->has_auto_increment_column ||
-        plan->effective_next == plan->table.auto_increment_next) {
+    if (!plan->has_auto_increment_column) {
         return MYLITE_OK;
     }
 
-    rc = mylite_catalog_update_table_auto_increment_next(
-        database,
-        plan->table.table_id,
-        plan->effective_next
-    );
-    if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to update auto-increment counter");
-        return rc;
+    if (plan->effective_next != plan->table.auto_increment_next) {
+        if (plan->is_temporary) {
+            rc = mylite_temporary_catalog_update_table_auto_increment_next(
+                &database->session.temporary_catalog,
+                plan->table.table_id,
+                plan->effective_next
+            );
+        } else {
+            rc = mylite_catalog_update_table_auto_increment_next(
+                database,
+                plan->table.table_id,
+                plan->effective_next
+            );
+        }
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to update auto-increment counter");
+            return rc;
+        }
+    }
+
+    if (!plan->is_temporary && plan->table.auto_increment_status == 0 &&
+        plan->requested_next > 1) {
+        rc = mylite_catalog_update_table_auto_increment_status(
+            database,
+            plan->table.table_id,
+            plan->effective_next
+        );
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(
+                database,
+                rc,
+                "failed to update auto-increment status"
+            );
+            return rc;
+        }
     }
 
     return MYLITE_OK;

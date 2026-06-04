@@ -37,6 +37,7 @@ struct mylite_catalog_table_descriptor_input {
     const char *name;
     const char *physical_name;
     enum mylite_catalog_table_kind kind;
+    int64_t auto_increment_status;
     const char *default_charset;
     const char *default_collation;
     const char *comment;

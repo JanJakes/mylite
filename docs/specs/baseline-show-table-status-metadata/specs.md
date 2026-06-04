@@ -159,9 +159,10 @@ Persistent table descriptors gain:
 - `created_time_utc_epoch`: an `INTEGER NOT NULL` UTC epoch-second value.
 - `updated_time_utc_epoch`: an `INTEGER NOT NULL` UTC epoch-second value.
 
-New tables set both fields to the creation timestamp at descriptor insertion
-time. Existing catalogs upgraded by migration set both fields to `0`; `0`
-renders as SQL `NULL`.
+New tables set `created_time_utc_epoch` to the creation timestamp and
+`updated_time_utc_epoch` to `0` until row-changing DML or table maintenance
+touches the table. Existing catalogs upgraded by migration set both fields to
+`0`; `0` renders as SQL `NULL`.
 
 `created_time_utc_epoch` is stable across row DML and table rename. DDL that
 rebuilds or recreates a table may later choose MySQL-compatible creation-time

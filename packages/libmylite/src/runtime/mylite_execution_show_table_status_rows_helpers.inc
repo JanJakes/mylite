@@ -4,6 +4,7 @@ static int append_show_table_status(
 ) {
     struct show_table_status_context *context = user_data;
     struct table_status_values status = {0};
+    char auto_increment_predicate_text[integer_text_capacity];
     bool where_matches = true;
     int rc = MYLITE_OK;
 
@@ -57,7 +58,17 @@ static int append_show_table_status(
         table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? "VIEW" : table->comment,
     };
 
-    if (context->where_clause != NULL) {
+    if (context->where_clause != NULL && table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        rc = table_status_auto_increment_predicate_value(
+            context->database,
+            table,
+            &status,
+            auto_increment_predicate_text,
+            sizeof(auto_increment_predicate_text),
+            &values[show_table_status_auto_increment_column]
+        );
+    }
+    if (rc == MYLITE_OK && context->where_clause != NULL) {
         rc = show_table_status_where_clause_matches(
             context->database,
             context->where_clause,

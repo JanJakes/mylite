@@ -117,7 +117,9 @@ static int load_table_status_values(
     int64_t row_count = 0;
     int64_t average_row_length = 0;
     int64_t index_length = 0;
+    int64_t auto_increment_value = 0;
     bool has_auto_increment = false;
+    bool has_temporary_shadow = false;
     int rc = MYLITE_OK;
 
     if (out_values == NULL) {
@@ -134,6 +136,7 @@ static int load_table_status_values(
         set_runtime_error(database, "failed to read table status row count");
         return MYLITE_ERROR;
     }
+    out_values->row_count = row_count;
     if (row_count > 0) {
         average_row_length = show_table_status_data_length / row_count;
     }
@@ -164,12 +167,22 @@ static int load_table_status_values(
     }
     if (rc == MYLITE_OK) {
         out_values->index_length = out_values->index_length_text;
-        rc = table_status_has_auto_increment(database, table, &has_auto_increment);
     }
-    if (rc == MYLITE_OK && has_auto_increment) {
+    if (rc == MYLITE_OK && table->auto_increment_status > 0) {
+        auto_increment_value = table->auto_increment_status;
+    } else if (rc == MYLITE_OK && row_count > 0) {
+        rc = table_status_has_temporary_shadow(database, table, &has_temporary_shadow);
+    }
+    if (rc == MYLITE_OK && has_temporary_shadow) {
+        rc = table_status_has_auto_increment(database, table, &has_auto_increment);
+        if (rc == MYLITE_OK && has_auto_increment) {
+            auto_increment_value = table->auto_increment_next;
+        }
+    }
+    if (rc == MYLITE_OK && auto_increment_value > 0) {
         rc = format_show_table_status_integer(
             database,
-            table->auto_increment_next,
+            auto_increment_value,
             out_values->auto_increment_text,
             sizeof(out_values->auto_increment_text)
         );
@@ -391,6 +404,82 @@ static int append_table_status_create_option_i64(
         return MYLITE_ERROR;
     }
     return append_table_status_create_option(database, buffer, buffer_size, has_option, text);
+}
+
+static int table_status_auto_increment_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct table_status_values *status,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    bool has_auto_increment = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || table == NULL || status == NULL || buffer == NULL ||
+        out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = status->auto_increment;
+    if (*out_value != NULL || status->row_count <= 0) {
+        return MYLITE_OK;
+    }
+
+    rc = table_status_has_auto_increment(database, table, &has_auto_increment);
+    if (rc == MYLITE_OK && has_auto_increment) {
+        rc = format_show_table_status_integer(
+            database,
+            table->auto_increment_next,
+            buffer,
+            buffer_size
+        );
+        if (rc == MYLITE_OK) {
+            *out_value = buffer;
+        }
+    }
+    return rc;
+}
+
+static int table_status_has_temporary_shadow(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_has_temporary_shadow
+) {
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor temporary_table = {0};
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || table == NULL || out_has_temporary_shadow == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_has_temporary_shadow = false;
+
+    rc = mylite_catalog_read_schema_by_id(database, table->schema_id, &schema);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read table status schema");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        schema.name,
+        table->name,
+        &temporary_table,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read temporary table status shadow");
+        return MYLITE_ERROR;
+    }
+
+    *out_has_temporary_shadow = found;
+    return MYLITE_OK;
 }
 
 static int table_status_has_auto_increment(

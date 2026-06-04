@@ -16,22 +16,23 @@ enum catalog_table_select_column_index {
     catalog_table_select_kind_column = 3,
     catalog_table_select_physical_name_column = 4,
     catalog_table_select_auto_increment_next_column = 5,
-    catalog_table_select_default_charset_column = 6,
-    catalog_table_select_default_collation_column = 7,
-    catalog_table_select_comment_column = 8,
-    catalog_table_select_row_format_column = 9,
-    catalog_table_select_key_block_size_column = 10,
-    catalog_table_select_pack_keys_column = 11,
-    catalog_table_select_checksum_column = 12,
-    catalog_table_select_stats_persistent_column = 13,
-    catalog_table_select_stats_auto_recalc_column = 14,
-    catalog_table_select_stats_sample_pages_column = 15,
-    catalog_table_select_fulltext_doc_id_initialized_column = 16,
-    catalog_table_select_created_time_column = 17,
-    catalog_table_select_updated_time_column = 18,
-    catalog_table_select_descriptor_version_column = 19,
-    catalog_table_select_created_generation_column = 20,
-    catalog_table_select_updated_generation_column = 21,
+    catalog_table_select_auto_increment_status_column = 6,
+    catalog_table_select_default_charset_column = 7,
+    catalog_table_select_default_collation_column = 8,
+    catalog_table_select_comment_column = 9,
+    catalog_table_select_row_format_column = 10,
+    catalog_table_select_key_block_size_column = 11,
+    catalog_table_select_pack_keys_column = 12,
+    catalog_table_select_checksum_column = 13,
+    catalog_table_select_stats_persistent_column = 14,
+    catalog_table_select_stats_auto_recalc_column = 15,
+    catalog_table_select_stats_sample_pages_column = 16,
+    catalog_table_select_fulltext_doc_id_initialized_column = 17,
+    catalog_table_select_created_time_column = 18,
+    catalog_table_select_updated_time_column = 19,
+    catalog_table_select_descriptor_version_column = 20,
+    catalog_table_select_created_generation_column = 21,
+    catalog_table_select_updated_generation_column = 22,
 };
 
 enum catalog_column_select_column_index {
@@ -332,7 +333,8 @@ int mylite_catalog_for_each_table_in_schema(
     rc = mylite_catalog_prepare_statement(
         database->sqlite,
         "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-        "default_charset, default_collation, comment, row_format_option, key_block_size, "
+        "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
+        "key_block_size, "
         "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
         "fulltext_doc_id_initialized, "
         "created_time_utc_epoch, updated_time_utc_epoch, descriptor_version, "
@@ -1349,7 +1351,8 @@ static int try_read_table_by_name(
     int rc = mylite_catalog_prepare_statement(
         sqlite,
         "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-        "default_charset, default_collation, comment, row_format_option, key_block_size, "
+        "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
+        "key_block_size, "
         "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
         "fulltext_doc_id_initialized, "
         "created_time_utc_epoch, updated_time_utc_epoch, descriptor_version, "
@@ -1393,7 +1396,8 @@ int mylite_catalog_read_table_by_id_from_sqlite(
     int rc = mylite_catalog_prepare_statement(
         sqlite,
         "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-        "default_charset, default_collation, comment, row_format_option, key_block_size, "
+        "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
+        "key_block_size, "
         "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
         "fulltext_doc_id_initialized, "
         "created_time_utc_epoch, updated_time_utc_epoch, descriptor_version, "
@@ -1772,6 +1776,16 @@ static int materialize_table_identity(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(
+            statement,
+            catalog_table_select_auto_increment_status_column,
+            &out_table->auto_increment_status
+        );
+    }
+    if (rc == MYLITE_OK && out_table->auto_increment_status < 0) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_checked_column_text(
             statement,
             catalog_table_select_default_charset_column,
@@ -1926,6 +1940,7 @@ static int validate_materialized_table(const struct mylite_catalog_table_descrip
             .name = table->name,
             .physical_name = table->physical_name,
             .kind = table->kind,
+            .auto_increment_status = table->auto_increment_status,
             .default_charset = table->default_charset,
             .default_collation = table->default_collation,
             .comment = table->comment,

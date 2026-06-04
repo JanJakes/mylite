@@ -331,7 +331,8 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
         rc = validate_select_shape(
             sqlite,
             "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-            "default_charset, default_collation, comment, row_format_option, key_block_size, "
+            "auto_increment_status, default_charset, default_collation, comment, "
+            "row_format_option, key_block_size, "
             "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
             "fulltext_doc_id_initialized, "
             "created_time_utc_epoch, updated_time_utc_epoch, "
@@ -443,6 +444,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "kind INTEGER NOT NULL CHECK(kind IN (1, 3)),"
         "physical_name TEXT NOT NULL UNIQUE,"
         "auto_increment_next INTEGER NOT NULL CHECK(auto_increment_next > 0),"
+        "auto_increment_status INTEGER NOT NULL DEFAULT 0 CHECK(auto_increment_status >= 0),"
         "default_charset TEXT NOT NULL,"
         "default_collation TEXT NOT NULL,"
         "comment TEXT NOT NULL,"

@@ -253,7 +253,7 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
                     .column_index = status_update_time_column,
                     .context = "initial update time UTC status",
                 },
-            .expected = "2023-11-14 22:13:20",
+            .expected = NULL,
         }
     );
     failures += execute_statement_ok(database, "SET time_zone = '+02:00'");
@@ -277,6 +277,15 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
                    "'app' AND TABLE_NAME = 'empty_numbers'",
             .expected = "2023-11-15 00:13:20",
             .context = "information schema create time session time zone",
+        }
+    );
+    failures += expect_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT UPDATE_TIME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = "
+                   "'app' AND TABLE_NAME = 'empty_numbers'",
+            .expected = NULL,
+            .context = "information schema initial update time",
         }
     );
     failures += expect_single_value(
@@ -482,12 +491,18 @@ static int test_show_table_status_where_filters(void) {
     static const struct expected_status_row numbers_row[] = {
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
     };
-    static const struct expected_status_row auto_row[] = {
-        {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
-    };
     static const struct expected_status_row auto_and_numbers_rows[] = {
-        {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
+        {.name = "auto_numbers",
+         .rows = "2",
+         .average_row_length = "8192",
+         .auto_increment = "3"},
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
+    };
+    static const struct expected_status_row auto_numbers_row[] = {
+        {.name = "auto_numbers",
+         .rows = "2",
+         .average_row_length = "8192",
+         .auto_increment = "3"},
     };
     static const struct expected_status_row name_case_row[] = {
         {.name = "NameCase", .rows = "0", .average_row_length = "0"},
@@ -696,23 +711,23 @@ static int test_show_table_status_where_filters(void) {
         database,
         "SHOW TABLE STATUS WHERE Auto_increment IS NOT NULL AND Name IN "
         "('numbers','auto_numbers')",
-        auto_row,
-        sizeof(auto_row) / sizeof(auto_row[0]),
+        auto_numbers_row,
+        sizeof(auto_numbers_row) / sizeof(auto_numbers_row[0]),
         "where auto increment is not null"
     );
     failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS WHERE Auto_increment >= 3 AND Name IN ('numbers','auto_numbers')",
-        auto_row,
-        sizeof(auto_row) / sizeof(auto_row[0]),
+        auto_numbers_row,
+        sizeof(auto_numbers_row) / sizeof(auto_numbers_row[0]),
         "where auto increment numeric integer comparison"
     );
     failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS WHERE Auto_increment REGEXP '^3$' AND Name IN "
         "('numbers','auto_numbers')",
-        auto_row,
-        sizeof(auto_row) / sizeof(auto_row[0]),
+        auto_numbers_row,
+        sizeof(auto_numbers_row) / sizeof(auto_numbers_row[0]),
         "where auto increment regexp"
     );
     failures += expect_show_table_status_result(
@@ -733,16 +748,16 @@ static int test_show_table_status_where_filters(void) {
         database,
         "SHOW TABLE STATUS WHERE Auto_increment IN (NULL, '03') AND Name IN "
         "('numbers','auto_numbers')",
-        auto_row,
-        sizeof(auto_row) / sizeof(auto_row[0]),
+        auto_numbers_row,
+        sizeof(auto_numbers_row) / sizeof(auto_numbers_row[0]),
         "where auto increment numeric in leading zero"
     );
     failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS WHERE Auto_increment IN (NULL, 3) AND Name IN "
         "('numbers','auto_numbers')",
-        auto_row,
-        sizeof(auto_row) / sizeof(auto_row[0]),
+        auto_numbers_row,
+        sizeof(auto_numbers_row) / sizeof(auto_numbers_row[0]),
         "where auto increment numeric integer in"
     );
     failures += expect_show_table_status_result(
@@ -1272,10 +1287,12 @@ static int expect_status_row(
         mylite_result_value_text(result, row_index, status_create_time_column),
         context
     );
-    failures += expect_datetime_text(
-        mylite_result_value_text(result, row_index, status_update_time_column),
-        context
-    );
+    if (mylite_result_value_text(result, row_index, status_update_time_column) != NULL) {
+        failures += expect_datetime_text(
+            mylite_result_value_text(result, row_index, status_update_time_column),
+            context
+        );
+    }
     failures += expect_text_or_null(
         mylite_result_value_text(result, row_index, status_check_time_column),
         NULL,
@@ -1307,7 +1324,28 @@ static int expect_status_row(
 
 static int expect_status_cell(mylite_db *database, struct expected_status_cell expected) {
     char actual[row_count_text_capacity];
-    int failures = copy_status_cell(
+    mylite_result *result = NULL;
+    size_t row_index = 0U;
+    int failures = 0;
+
+    if (expected.expected == NULL) {
+        failures = execute_ok(database, expected.cell.sql, &result);
+        if (result == NULL) {
+            return failures + 1;
+        }
+        failures += find_result_row_by_name(result, expected.cell.table_name, &row_index);
+        if (failures == 0) {
+            failures += expect_text_or_null(
+                mylite_result_value_text(result, row_index, expected.cell.column_index),
+                NULL,
+                expected.cell.context
+            );
+        }
+        mylite_result_free(result);
+        return failures;
+    }
+
+    failures = copy_status_cell(
         database,
         (struct copied_status_cell){
             .cell = expected.cell,
@@ -1315,7 +1353,6 @@ static int expect_status_cell(mylite_db *database, struct expected_status_cell e
             .buffer_size = sizeof(actual),
         }
     );
-
     if (failures == 0) {
         failures += expect_text_or_null(actual, expected.expected, expected.cell.context);
     }

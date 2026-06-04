@@ -110,6 +110,7 @@ static int create_view_from_plan(
             physical_name,
             MYLITE_CATALOG_TABLE_KIND_VIEW,
             1,
+            0,
             plan->target.schema.default_charset,
             plan->target.schema.default_collation,
             "",

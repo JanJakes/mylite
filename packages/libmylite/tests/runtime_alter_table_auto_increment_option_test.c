@@ -635,7 +635,7 @@ static int test_alter_auto_increment_success_metadata_and_persistence(void) {
             .context = "reopened show create counter",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", "7", "reopened status");
+    failures += expect_show_table_status_auto_increment(database, "t", "10", "reopened status");
 
     mylite_close(database);
     remove_related_files(path);

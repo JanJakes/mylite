@@ -364,6 +364,7 @@ static int insert_create_table_catalog_rows(
         physical_name,
         MYLITE_CATALOG_TABLE_KIND_BASE,
         plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
+        plan->auto_increment_next > 1 ? plan->auto_increment_next : 0,
         plan->default_charset,
         plan->default_collation,
         plan->comment,
@@ -375,7 +376,7 @@ static int insert_create_table_catalog_rows(
         plan->stats_auto_recalc,
         plan->stats_sample_pages,
         created_time_utc_epoch,
-        created_time_utc_epoch,
+        0,
         out_table
     );
 
@@ -670,6 +671,7 @@ static int build_temporary_table_descriptors(
         .schema_id = plan->target.schema.schema_id,
         .kind = MYLITE_CATALOG_TABLE_KIND_TEMPORARY,
         .auto_increment_next = plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
+        .auto_increment_status = plan->auto_increment_next > 1 ? plan->auto_increment_next : 0,
         .key_block_size = plan->key_block_size,
         .pack_keys = plan->pack_keys,
         .checksum = plan->checksum,

@@ -37,19 +37,20 @@ enum catalog_table_insert_in_mutation_bind_index {
     catalog_table_insert_in_mutation_kind_bind = 4,
     catalog_table_insert_in_mutation_physical_name_bind = 5,
     catalog_table_insert_in_mutation_auto_increment_next_bind = 6,
-    catalog_table_insert_in_mutation_default_charset_bind = 7,
-    catalog_table_insert_in_mutation_default_collation_bind = 8,
-    catalog_table_insert_in_mutation_comment_bind = 9,
-    catalog_table_insert_in_mutation_row_format_bind = 10,
-    catalog_table_insert_in_mutation_key_block_size_bind = 11,
-    catalog_table_insert_in_mutation_pack_keys_bind = 12,
-    catalog_table_insert_in_mutation_checksum_bind = 13,
-    catalog_table_insert_in_mutation_stats_persistent_bind = 14,
-    catalog_table_insert_in_mutation_stats_auto_recalc_bind = 15,
-    catalog_table_insert_in_mutation_stats_sample_pages_bind = 16,
-    catalog_table_insert_in_mutation_created_time_bind = 17,
-    catalog_table_insert_in_mutation_updated_time_bind = 18,
-    catalog_table_insert_in_mutation_generation_bind = 19,
+    catalog_table_insert_in_mutation_auto_increment_status_bind = 7,
+    catalog_table_insert_in_mutation_default_charset_bind = 8,
+    catalog_table_insert_in_mutation_default_collation_bind = 9,
+    catalog_table_insert_in_mutation_comment_bind = 10,
+    catalog_table_insert_in_mutation_row_format_bind = 11,
+    catalog_table_insert_in_mutation_key_block_size_bind = 12,
+    catalog_table_insert_in_mutation_pack_keys_bind = 13,
+    catalog_table_insert_in_mutation_checksum_bind = 14,
+    catalog_table_insert_in_mutation_stats_persistent_bind = 15,
+    catalog_table_insert_in_mutation_stats_auto_recalc_bind = 16,
+    catalog_table_insert_in_mutation_stats_sample_pages_bind = 17,
+    catalog_table_insert_in_mutation_created_time_bind = 18,
+    catalog_table_insert_in_mutation_updated_time_bind = 19,
+    catalog_table_insert_in_mutation_generation_bind = 20,
 };
 
 enum catalog_view_insert_bind_index {
@@ -251,6 +252,7 @@ int mylite_catalog_insert_table_in_mutation(
     const char *physical_name,
     enum mylite_catalog_table_kind kind, // NOLINT(bugprone-easily-swappable-parameters)
     int64_t auto_increment_next,
+    int64_t auto_increment_status,
     const char *default_charset,
     const char *default_collation,
     const char *comment,
@@ -270,6 +272,7 @@ int mylite_catalog_insert_table_in_mutation(
         .name = name,
         .physical_name = physical_name,
         .kind = kind,
+        .auto_increment_status = auto_increment_status,
         .default_charset = default_charset,
         .default_collation = default_collation,
         .comment = comment,
@@ -302,7 +305,7 @@ int mylite_catalog_insert_table_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (auto_increment_next <= 0) {
+    if (auto_increment_next <= 0 || auto_increment_status < 0) {
         return MYLITE_ERROR;
     }
     rc = mylite_catalog_validate_table_descriptor_input(&descriptor);
@@ -318,14 +321,14 @@ int mylite_catalog_insert_table_in_mutation(
     rc = mylite_catalog_prepare_statement(
         database->sqlite,
         "INSERT INTO _mylite_catalog_tables "
-        "(table_id, schema_id, name, kind, physical_name, auto_increment_next, default_charset, "
-        "default_collation, comment, row_format_option, key_block_size, pack_keys, checksum, "
-        "stats_persistent, stats_auto_recalc, stats_sample_pages, fulltext_doc_id_initialized, "
-        "created_time_utc_epoch, "
+        "(table_id, schema_id, name, kind, physical_name, auto_increment_next, "
+        "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
+        "key_block_size, pack_keys, checksum, stats_persistent, stats_auto_recalc, "
+        "stats_sample_pages, fulltext_doc_id_initialized, created_time_utc_epoch, "
         "updated_time_utc_epoch, descriptor_version, "
         "created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, 0, "
-        "?17, ?18, 1, ?19, ?19)",
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, "
+        "?17, 0, ?18, ?19, 1, ?20, ?20)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -420,6 +423,13 @@ static int bind_catalog_table_insert_identity_values(
             statement,
             catalog_table_insert_in_mutation_auto_increment_next_bind,
             auto_increment_next
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_insert_in_mutation_auto_increment_status_bind,
+            values->auto_increment_status
         );
     }
     return rc;
@@ -1939,6 +1949,49 @@ int mylite_catalog_update_table_auto_increment_next(
     return rc;
 }
 
+int mylite_catalog_update_table_auto_increment_status(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t auto_increment_status
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = mylite_catalog_validate_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = mylite_catalog_validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (auto_increment_status < 0) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_tables SET auto_increment_status = ?1 WHERE table_id = ?2",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, auto_increment_status);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 2, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_require_changed_row(database->sqlite);
+    }
+    rc = mylite_catalog_finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        mylite_catalog_invalidate_descriptor_cache(database);
+    }
+    return rc;
+}
+
 int mylite_catalog_update_table_updated_time(
     struct mylite_db *database,
     int64_t table_id,
@@ -2413,6 +2466,9 @@ int mylite_catalog_validate_table_descriptor_input(
         input->key_block_size != 2 && input->key_block_size != 4 &&
         input->key_block_size != catalog_table_key_block_size_eight &&
         input->key_block_size != catalog_table_key_block_size_sixteen) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && input->auto_increment_status < 0) {
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK && (input->pack_keys < -1 || input->pack_keys > 1 || input->checksum < 0 ||

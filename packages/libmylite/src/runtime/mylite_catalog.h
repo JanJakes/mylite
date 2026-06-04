@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 32
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 32
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 33
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 33
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -116,6 +116,7 @@ struct mylite_catalog_table_descriptor {
     enum mylite_catalog_table_kind kind;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     int64_t auto_increment_next;
+    int64_t auto_increment_status;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
@@ -342,6 +343,7 @@ int mylite_catalog_insert_table_in_mutation(
     const char *physical_name,
     enum mylite_catalog_table_kind kind,
     int64_t auto_increment_next,
+    int64_t auto_increment_status,
     const char *default_charset,
     const char *default_collation,
     const char *comment,
@@ -629,6 +631,11 @@ int mylite_catalog_update_table_auto_increment_next(
     struct mylite_db *database,
     int64_t table_id,
     int64_t auto_increment_next
+);
+int mylite_catalog_update_table_auto_increment_status(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t auto_increment_status
 );
 int mylite_catalog_update_table_updated_time(
     struct mylite_db *database,

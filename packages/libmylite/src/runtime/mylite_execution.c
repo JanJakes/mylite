@@ -11430,9 +11430,7 @@ static int row_scalar_integer_width_pop_result(
     struct row_scalar_integer_width_stack *stack,
     struct row_scalar_integer_width_result *out_result
 );
-static void row_scalar_integer_width_stack_deinit(
-    struct row_scalar_integer_width_stack *stack
-);
+static void row_scalar_integer_width_stack_deinit(struct row_scalar_integer_width_stack *stack);
 static bool row_scalar_expression_is_date_target_conversion(
     const struct mylite_sql_ast_node *expression
 );
@@ -17798,9 +17796,7 @@ static int convert_year_string_value(
     struct planned_value *out_value
 );
 static int convert_year_string_magnitude(const char *text, size_t text_length, uint32_t *out_year);
-static bool year_string_accepts_trailing_hyphen(
-    struct year_string_trailing_hyphen_request request
-);
+static bool year_string_accepts_trailing_hyphen(struct year_string_trailing_hyphen_request request);
 static int convert_year_string_magnitude_by_length(
     struct year_string_magnitude_conversion conversion,
     uint32_t *out_year

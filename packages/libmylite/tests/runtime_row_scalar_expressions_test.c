@@ -17,6 +17,18 @@ enum {
     mysql_error_bigint_out_of_range = 1690,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
+    count_star_metadata_column = 2,
+    sum_id_metadata_column = 3,
+    cast_hex_binary_metadata_column = 4,
+    scalar_subquery_metadata_column = 5,
+    string_case_metadata_column = 6,
+    mixed_case_metadata_column = 7,
+    literal_binary_cast_column = 8,
+    count_star_display_length = 21,
+    sum_id_display_length = 33,
+    cast_hex_binary_display_length = 5,
+    string_case_display_length = 12,
+    mixed_case_display_length = 24,
 };
 
 struct expected_sql_error {
@@ -798,67 +810,76 @@ static int test_table_backed_wildcard_aggregates_and_constants(void) {
         }
 
         failures += expect_int(
-            (int)mylite_result_column_type(result, 2U),
-            (int)MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            mylite_result_column_type(result, count_star_metadata_column),
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
             "COUNT(*) metadata type"
         );
         failures += expect_uint64(
-            mylite_result_column_display_length(result, 2U),
-            21U,
+            mylite_result_column_display_length(result, count_star_metadata_column),
+            count_star_display_length,
             "COUNT(*) metadata display length"
         );
         failures += expect_uint32(
-            mylite_result_column_flags(result, 2U) & MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+            mylite_result_column_flags(result, count_star_metadata_column) &
+                MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
             "COUNT(*) metadata flags"
         );
-        failures +=
-            expect_int(mylite_result_column_nullable(result, 2U), 0, "COUNT(*) metadata nullable");
         failures += expect_int(
-            (int)mylite_result_column_type(result, 3U),
-            (int)MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            mylite_result_column_nullable(result, count_star_metadata_column),
+            0,
+            "COUNT(*) metadata nullable"
+        );
+        failures += expect_int(
+            mylite_result_column_type(result, sum_id_metadata_column),
+            MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
             "SUM(id) metadata type"
         );
         failures += expect_uint64(
-            mylite_result_column_display_length(result, 3U),
-            33U,
+            mylite_result_column_display_length(result, sum_id_metadata_column),
+            sum_id_display_length,
             "SUM(id) metadata display length"
         );
         failures += expect_uint32(
-            mylite_result_column_flags(result, 3U) & MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+            mylite_result_column_flags(result, sum_id_metadata_column) &
+                MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
             0U,
             "SUM(id) metadata flags"
         );
-        failures +=
-            expect_int(mylite_result_column_nullable(result, 3U), 1, "SUM(id) metadata nullable");
         failures += expect_int(
-            (int)mylite_result_column_type(result, 4U),
-            (int)MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            mylite_result_column_nullable(result, sum_id_metadata_column),
+            1,
+            "SUM(id) metadata nullable"
+        );
+        failures += expect_int(
+            mylite_result_column_type(result, cast_hex_binary_metadata_column),
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
             "CAST hex binary metadata type"
         );
         failures += expect_uint64(
-            mylite_result_column_display_length(result, 4U),
-            5U,
+            mylite_result_column_display_length(result, cast_hex_binary_metadata_column),
+            cast_hex_binary_display_length,
             "CAST hex binary metadata display length"
         );
         failures += expect_uint32(
-            mylite_result_column_flags(result, 4U) & MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            mylite_result_column_flags(result, cast_hex_binary_metadata_column) &
+                MYLITE_RESULT_COLUMN_FLAG_BINARY,
             MYLITE_RESULT_COLUMN_FLAG_BINARY,
             "CAST hex binary metadata flags"
         );
         failures += expect_uint64(
-            mylite_result_column_display_length(result, 5U),
+            mylite_result_column_display_length(result, scalar_subquery_metadata_column),
             2U,
             "scalar subquery metadata display length"
         );
         failures += expect_uint64(
-            mylite_result_column_display_length(result, 6U),
-            12U,
+            mylite_result_column_display_length(result, string_case_metadata_column),
+            string_case_display_length,
             "string CASE metadata display length"
         );
         failures += expect_uint64(
-            mylite_result_column_display_length(result, 7U),
-            24U,
+            mylite_result_column_display_length(result, mixed_case_metadata_column),
+            mixed_case_display_length,
             "mixed CASE metadata display length"
         );
     }
@@ -1002,7 +1023,8 @@ static int test_table_backed_literal_expression_metadata(void) {
             );
         }
         failures += expect_uint32(
-            mylite_result_column_flags(result, 8U) & MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            mylite_result_column_flags(result, literal_binary_cast_column) &
+                MYLITE_RESULT_COLUMN_FLAG_BINARY,
             MYLITE_RESULT_COLUMN_FLAG_BINARY,
             "literal expression binary CAST flags"
         );

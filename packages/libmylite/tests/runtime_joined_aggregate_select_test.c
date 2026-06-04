@@ -14,6 +14,7 @@
 
 enum {
     test_path_capacity = 1024,
+    role_count_column_count = 7,
     mysql_error_column_ambiguous = 1052,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
@@ -414,7 +415,7 @@ static int test_joined_aggregate_values_and_persistence(void) {
                    "FROM usermeta INNER JOIN users ON user_id = ID "
                    "WHERE meta_key = 'wp_capabilities'",
             .columns = role_count_columns,
-            .column_count = 7U,
+            .column_count = role_count_column_count,
             .values = role_count_values,
             .row_count = 1U,
             .context = "joined count nullif predicate role counts",

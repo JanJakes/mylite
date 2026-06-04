@@ -15,6 +15,7 @@
 enum {
     test_path_capacity = 1024,
     family_copy_column_count = 10,
+    temporal_family_copy_column_count = 5,
     mysql_error_bad_null = 1048,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
@@ -313,7 +314,7 @@ static int test_scalar_subquery_assignment_success_and_persistence(void) {
             .sql = "SELECT id, date_value, time_value, datetime_value, timestamp_value "
                    "FROM family_target WHERE id = 1",
             .values = after_text_temporal_copy,
-            .column_count = 5U,
+            .column_count = temporal_family_copy_column_count,
             .row_count = 1U,
             .context = "text scalar subquery temporal assignment",
         }

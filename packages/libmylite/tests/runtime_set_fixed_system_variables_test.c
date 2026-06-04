@@ -17,6 +17,7 @@ enum {
     test_path_capacity = 1024,
     fixed_variable_column_count = 19,
     diagnostics_column_count = 3,
+    bare_keyword_column_count = 6,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
@@ -169,7 +170,7 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
                    "@@resultset_metadata, @@session_track_gtids, "
                    "@@session_track_transaction_info, @@use_secondary_engine",
             .values = bare_keyword_values,
-            .column_count = 6U,
+            .column_count = bare_keyword_column_count,
             .row_count = 1U,
             .context = "bare keyword SET values read back",
         }

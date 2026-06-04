@@ -1,5 +1,5 @@
 #if defined(__linux__) && !defined(_XOPEN_SOURCE)
-#  define _XOPEN_SOURCE 700
+#  define _XOPEN_SOURCE 700 /* NOLINT(bugprone-reserved-identifier): POSIX feature macro. */
 #endif
 
 #include <mylite/mylite.h>

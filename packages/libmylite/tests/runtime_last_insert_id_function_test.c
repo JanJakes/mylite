@@ -22,6 +22,7 @@ enum {
     connection_id_text_capacity = 32,
     mixed_scalar_column_count = 9,
     ordered_expression_column_count = 9,
+    generated_insert_start_id = 11,
     mysql_error_parse = 1064,
     mysql_error_native_function_parameter_count = 1582,
 };
@@ -44,6 +45,12 @@ struct expected_last_insert_id {
     const char *context;
 };
 
+struct expected_non_query_result {
+    int64_t affected_rows;
+    uint64_t insert_id;
+    const char *context;
+};
+
 static int test_last_insert_id_values_and_statement_interactions(void);
 static int test_last_insert_id_expression_values(void);
 static int test_last_insert_id_memory_handle(void);
@@ -63,9 +70,7 @@ static int expect_non_query_result(
 );
 static int expect_non_query_result_with_insert_id(
     const mylite_result *result,
-    int64_t affected_rows,
-    uint64_t insert_id,
-    const char *context
+    struct expected_non_query_result expected
 );
 static int expect_last_insert_id_value(
     mylite_db *database,
@@ -537,7 +542,14 @@ static int test_last_insert_id_expression_values(void) {
     result = NULL;
 
     failures += execute_ok(database, "INSERT INTO ai (v) VALUES (20), (30)", &result);
-    failures += expect_non_query_result_with_insert_id(result, 2, 11U, "generated insert result");
+    failures += expect_non_query_result_with_insert_id(
+        result,
+        (struct expected_non_query_result){
+            .affected_rows = 2,
+            .insert_id = generated_insert_start_id,
+            .context = "generated insert result",
+        }
+    );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
@@ -977,22 +989,29 @@ static int expect_non_query_result(
     int64_t affected_rows,
     const char *context
 ) {
-    return expect_non_query_result_with_insert_id(result, affected_rows, 0U, context);
+    return expect_non_query_result_with_insert_id(
+        result,
+        (struct expected_non_query_result){
+            .affected_rows = affected_rows,
+            .insert_id = 0U,
+            .context = context,
+        }
+    );
 }
 
 static int expect_non_query_result_with_insert_id(
     const mylite_result *result,
-    int64_t affected_rows,
-    uint64_t insert_id,
-    const char *context
+    struct expected_non_query_result expected
 ) {
     int failures = 0;
 
-    failures += expect_size(mylite_result_column_count(result), 0U, context);
-    failures += expect_size(mylite_result_row_count(result), 0U, context);
-    failures += expect_int64(mylite_result_affected_rows(result), affected_rows, context);
-    failures += expect_uint64(mylite_result_insert_id(result), insert_id, context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    failures += expect_size(mylite_result_column_count(result), 0U, expected.context);
+    failures += expect_size(mylite_result_row_count(result), 0U, expected.context);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), expected.affected_rows, expected.context);
+    failures +=
+        expect_uint64(mylite_result_insert_id(result), expected.insert_id, expected.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
 
     return failures;
 }

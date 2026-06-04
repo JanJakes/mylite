@@ -19,6 +19,7 @@
 enum {
     test_path_capacity = 1024,
     statistics_probe_field_count = 5,
+    complex_index_metadata_column_count = 7,
     created_index_statistics_row_count = 8,
     created_index_physical_index_count = 9,
     mysql_error_no_database_selected = 1046,
@@ -617,7 +618,7 @@ static int test_create_index_diagnostics(void) {
                    "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'complex_idx' "
                    "AND INDEX_NAME = 'idx_complex' ORDER BY SEQ_IN_INDEX",
             .values = complex_index_rows,
-            .column_count = 7U,
+            .column_count = complex_index_metadata_column_count,
             .row_count = 3U,
             .context = "complex CREATE INDEX online options metadata",
         }

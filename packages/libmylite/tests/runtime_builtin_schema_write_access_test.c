@@ -26,6 +26,12 @@ struct built_in_schema_expectation {
     const char *message_part;
 };
 
+struct expected_sql_error {
+    int code;
+    const char *sqlstate;
+    const char *message_part;
+};
+
 struct expected_query {
     const char *sql;
     const char *const *values;
@@ -38,13 +44,7 @@ static int test_builtin_schema_write_access(void);
 static int seed_app_schema(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
-static int expect_error(
-    mylite_db *database,
-    const char *sql,
-    int code,
-    const char *sqlstate,
-    const char *message_part
-);
+static int expect_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_write_rejected(
     mylite_db *database,
     const struct built_in_schema_expectation *schema,
@@ -280,17 +280,21 @@ static int seed_app_schema(mylite_db *database) {
         database,
         "UPDATE information_schema.tables, information_schema.columns "
         "SET table_name = 'new_t' WHERE table_name = 't'",
-        mysql_error_column_ambiguous,
-        "23000",
-        "Column 'table_name' in where clause is ambiguous"
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'table_name' in where clause is ambiguous",
+        }
     );
     failures += expect_statement_ok(database, "USE information_schema", -1);
     failures += expect_error(
         database,
         "UPDATE tables, columns SET table_name = 'new_t' WHERE table_name = 't'",
-        mysql_error_column_ambiguous,
-        "23000",
-        "Column 'table_name' in where clause is ambiguous"
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'table_name' in where clause is ambiguous",
+        }
     );
     failures += expect_statement_ok(database, "USE app", -1);
 
@@ -364,13 +368,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     return failures;
 }
 
-static int expect_error(
-    mylite_db *database,
-    const char *sql,
-    int code,
-    const char *sqlstate,
-    const char *message_part
-) {
+static int expect_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
     mylite_result *result = NULL;
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
@@ -379,9 +377,9 @@ static int expect_error(
         fprintf(stderr, "%s: expected error, got %d\n", sql, rc);
         failures += 1;
     }
-    failures += expect_int(mylite_errcode(database), code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), message_part, sql);
+    failures += expect_int(mylite_errcode(database), expected.code, sql);
+    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
     failures += expect_size(mylite_result_column_count(result), 0U, sql);
     mylite_result_free(result);
     return failures;

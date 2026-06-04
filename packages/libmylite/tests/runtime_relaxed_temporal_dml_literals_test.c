@@ -17,6 +17,8 @@ enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16,
     show_columns_field_count = 6,
+    numeric_temporal_column_count = 5,
+    numeric_temporal_insert_warning_count = 9,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
     mysql_error_incorrect_date_value = 1292,
@@ -334,7 +336,10 @@ static int test_relaxed_temporal_dml_defaults_and_persistence(void) {
         "(10, TRUE, TRUE, TRUE, TRUE), "
         "(11, FALSE, FALSE, FALSE, FALSE), "
         "(12, 0, 123, 0, 0)",
-        (struct expected_dml_result){.affected_rows = 3, .warning_count = 9U}
+        (struct expected_dml_result){
+            .affected_rows = 3,
+            .warning_count = numeric_temporal_insert_warning_count,
+        }
     );
     failures += expect_dml_result(
         database,
@@ -347,7 +352,7 @@ static int test_relaxed_temporal_dml_defaults_and_persistence(void) {
         (struct expected_query){
             .sql = "SELECT id, d, tm, dt, ts FROM temporal_numbers ORDER BY id",
             .values = numeric_temporal_rows,
-            .column_count = 5U,
+            .column_count = numeric_temporal_column_count,
             .row_count = 3U,
             .context = "relaxed numeric temporal rows",
         }

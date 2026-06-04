@@ -15,6 +15,7 @@
 enum {
     test_path_capacity = 1024,
     mysql_error_parse = 1064,
+    self_ref_key_usage_column_count = 7,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_duplicate_column = 1060,
@@ -351,7 +352,7 @@ static int test_self_referencing_foreign_key_lifecycle(void) {
             "CONSTRAINT_NAME = 'parent_id_fk'",
             key_usage_values,
             1U,
-            7U,
+            self_ref_key_usage_column_count,
             "self-referencing foreign-key key-column metadata",
         }
     );

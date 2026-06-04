@@ -71,6 +71,11 @@ static int validate_catalog_text_default_value(
     const struct mylite_catalog_column_values *values,
     size_t text_length
 );
+static int validate_catalog_literal_text_default_value(
+    const struct mylite_catalog_column_values *values,
+    size_t text_length
+);
+static bool catalog_logical_type_accepts_null_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_integer_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_text_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_scalar_expression_default(const char *logical_type);
@@ -686,10 +691,7 @@ static int validate_catalog_text_default_value(
         return MYLITE_OK;
     }
     if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
-        if ((!catalog_logical_type_accepts_integer_expression_default(values->logical_type) &&
-             !catalog_logical_type_accepts_text_expression_default(values->logical_type) &&
-             !catalog_logical_type_is_text_family(values->logical_type) &&
-             !catalog_logical_type_is_binary_blob_family(values->logical_type)) ||
+        if (!catalog_logical_type_accepts_null_expression_default(values->logical_type) ||
             strcmp(values->default_text, "NULL") != 0) {
             return MYLITE_MISUSE;
         }
@@ -715,6 +717,13 @@ static int validate_catalog_text_default_value(
         }
         return MYLITE_OK;
     }
+    return validate_catalog_literal_text_default_value(values, text_length);
+}
+
+static int validate_catalog_literal_text_default_value(
+    const struct mylite_catalog_column_values *values,
+    size_t text_length
+) {
     if (!catalog_logical_type_accepts_text_default(values->logical_type)) {
         return MYLITE_MISUSE;
     }
@@ -724,6 +733,13 @@ static int validate_catalog_text_default_value(
     }
 
     return MYLITE_OK;
+}
+
+static bool catalog_logical_type_accepts_null_expression_default(const char *logical_type) {
+    return catalog_logical_type_accepts_integer_expression_default(logical_type) ||
+           catalog_logical_type_accepts_text_expression_default(logical_type) ||
+           catalog_logical_type_is_text_family(logical_type) ||
+           catalog_logical_type_is_binary_blob_family(logical_type);
 }
 
 static bool catalog_logical_type_accepts_integer_expression_default(const char *logical_type) {

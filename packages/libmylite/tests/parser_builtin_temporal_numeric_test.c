@@ -1,5 +1,10 @@
 #include "parser_test_support.h"
 
+enum {
+    expanded_cast_target_select_item_count = 11,
+    convert_decimal_select_item_index = 10,
+};
+
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_addtime_subtime_functions(void);
@@ -245,13 +250,16 @@ static int test_cast_binary_expression(void) {
     );
     select = parser_test_child_at(result.root, 0U);
     select_list = parser_test_child_at(select, 0U);
-    failures +=
-        parser_test_expect_child_count(select_list, 11U, "expanded cast target select item count");
-    for (size_t item = 0U; item < 11U; ++item) {
+    failures += parser_test_expect_child_count(
+        select_list,
+        expanded_cast_target_select_item_count,
+        "expanded cast target select item count"
+    );
+    for (size_t item = 0U; item < expanded_cast_target_select_item_count; ++item) {
         failures += parser_test_expect_node(
             parser_test_child_at(parser_test_child_at(select_list, item), 0U),
-            item == 10U ? MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION
-                        : MYLITE_SQL_AST_CAST_CHAR_EXPRESSION,
+            item == convert_decimal_select_item_index ? MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION
+                                                      : MYLITE_SQL_AST_CAST_CHAR_EXPRESSION,
             "expanded cast target compatibility expression"
         );
     }

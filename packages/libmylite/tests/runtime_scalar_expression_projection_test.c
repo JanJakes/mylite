@@ -30,11 +30,20 @@ enum {
     convert_using_charset_expanded_column_count = 6,
     convert_using_charset_collate_column_count = 3,
     convert_integer_boundary_column_count = 2,
+    cast_convert_length_column_count = 5,
     cast_convert_basic_char_column_count = 7,
     cast_convert_basic_integer_column_count = 7,
     cast_convert_basic_unsigned_column_count = 6,
     cast_convert_basic_boundary_column_count = 4,
     cast_convert_basic_label_column_count = 7,
+    cast_convert_expanded_target_column_count = 6,
+    binary_literal_column_count = 11,
+    binary_literal_prefixed_binary_column = 5,
+    binary_literal_single_bit_column = 6,
+    binary_literal_padded_bit_column = 7,
+    binary_literal_extra_padded_bit_column = 8,
+    binary_literal_byte_padded_bit_column = 9,
+    binary_literal_two_byte_padded_bit_column = 10,
     cast_convert_basic_status_column_count = 2,
     show_warning_column_count = 3,
     cast_convert_basic_unsigned_warning_count = 4,
@@ -600,7 +609,7 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
                    "CAST('ABC' AS CHAR(2)), CONVERT('ABC', BINARY(2)), "
                    "CONVERT('ABC', CHAR(2))",
             .columns = cast_convert_length_columns,
-            .column_count = 5U,
+            .column_count = cast_convert_length_column_count,
             .values = cast_convert_length_values,
             .row_count = 1U,
             .context = "cast convert length targets",
@@ -856,7 +865,7 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
                    "CAST('123.456' AS DECIMAL(10,1)), "
                    "CONVERT('123.456', DECIMAL), CAST('{\"name\":\"value\"}' AS JSON)",
             .columns = cast_convert_expanded_target_columns,
-            .column_count = 6U,
+            .column_count = cast_convert_expanded_target_column_count,
             .values = cast_convert_expanded_target_values,
             .row_count = 1U,
             .context = "cast convert expanded target placeholders",
@@ -1025,24 +1034,61 @@ static int test_scalar_binary_literal_projection(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 11U, "binary literal columns");
+        failures += expect_size(
+            mylite_result_column_count(result),
+            binary_literal_column_count,
+            "binary literal columns"
+        );
         failures += expect_size(mylite_result_row_count(result), 1U, "binary literal rows");
         failures += expect_result_bytes(result, 0U, 0U, az_bytes, sizeof(az_bytes), "0x literal");
         failures += expect_result_bytes(result, 0U, 1U, az_bytes, sizeof(az_bytes), "X literal");
         failures += expect_result_bytes(result, 0U, 2U, az_bytes, sizeof(az_bytes), "x literal");
         failures += expect_result_bytes(result, 0U, 3U, az_bytes, sizeof(az_bytes), "b literal");
         failures += expect_result_bytes(result, 0U, 4U, az_bytes, sizeof(az_bytes), "B literal");
-        failures += expect_result_bytes(result, 0U, 5U, az_bytes, sizeof(az_bytes), "0b literal");
-        failures += expect_result_bytes(result, 0U, 6U, one_byte, sizeof(one_byte), "0b1 literal");
-        failures += expect_result_bytes(result, 0U, 7U, one_byte, sizeof(one_byte), "0b01 literal");
-        failures +=
-            expect_result_bytes(result, 0U, 8U, one_byte, sizeof(one_byte), "0b001 literal");
-        failures +=
-            expect_result_bytes(result, 0U, 9U, one_byte, sizeof(one_byte), "0b00000001 literal");
         failures += expect_result_bytes(
             result,
             0U,
-            10U,
+            binary_literal_prefixed_binary_column,
+            az_bytes,
+            sizeof(az_bytes),
+            "0b literal"
+        );
+        failures += expect_result_bytes(
+            result,
+            0U,
+            binary_literal_single_bit_column,
+            one_byte,
+            sizeof(one_byte),
+            "0b1 literal"
+        );
+        failures += expect_result_bytes(
+            result,
+            0U,
+            binary_literal_padded_bit_column,
+            one_byte,
+            sizeof(one_byte),
+            "0b01 literal"
+        );
+        failures += expect_result_bytes(
+            result,
+            0U,
+            binary_literal_extra_padded_bit_column,
+            one_byte,
+            sizeof(one_byte),
+            "0b001 literal"
+        );
+        failures += expect_result_bytes(
+            result,
+            0U,
+            binary_literal_byte_padded_bit_column,
+            one_byte,
+            sizeof(one_byte),
+            "0b00000001 literal"
+        );
+        failures += expect_result_bytes(
+            result,
+            0U,
+            binary_literal_two_byte_padded_bit_column,
             padded_one_bytes,
             sizeof(padded_one_bytes),
             "0b000000001 literal"

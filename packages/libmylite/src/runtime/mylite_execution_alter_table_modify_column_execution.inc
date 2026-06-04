@@ -3,7 +3,7 @@ static int alter_table_modify_column_from_plan(
     struct planned_alter_table_modify_column *plan
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
-    int64_t validated_row_count = 0;
+    bool physical_schema_changed = false;
     int rc = MYLITE_OK;
 
     if (plan->is_noop) {
@@ -11,7 +11,49 @@ static int alter_table_modify_column_from_plan(
     }
 
     rc = mylite_catalog_begin_mutation(database, &mutation);
-    if (rc == MYLITE_OK && !plan->is_metadata_only) {
+    if (rc == MYLITE_OK) {
+        rc = alter_table_modify_column_in_mutation(
+            database,
+            &mutation,
+            plan,
+            &physical_schema_changed
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, plan->failure_message);
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    if (physical_schema_changed) {
+        ++database->session.sqlite_schema_generation;
+    }
+
+    return MYLITE_OK;
+}
+
+static int alter_table_modify_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_alter_table_modify_column *plan,
+    bool *out_physical_schema_changed
+) {
+    int64_t validated_row_count = 0;
+    int rc = MYLITE_OK;
+
+    if (out_physical_schema_changed == NULL) {
+        set_runtime_error(database, "invalid modify-column physical change output");
+        return MYLITE_ERROR;
+    }
+    *out_physical_schema_changed = false;
+    if (plan->is_noop) {
+        return MYLITE_OK;
+    }
+
+    if (!plan->is_metadata_only) {
         rc = validate_modify_column_existing_rows(database, plan, &validated_row_count);
         if (rc == MYLITE_OK && plan->reports_rebuild_row_count) {
             plan->affected_rows = validated_row_count;
@@ -20,7 +62,7 @@ static int alter_table_modify_column_from_plan(
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_replace_column_in_mutation(
             database,
-            &mutation,
+            mutation,
             plan->table.table_id,
             plan->original_column.column_id,
             plan->column.name,
@@ -50,7 +92,7 @@ static int alter_table_modify_column_from_plan(
             .metadata_replaced_column_id = plan->original_column.column_id,
         };
 
-        rc = mylite_catalog_reorder_columns_in_mutation(database, &mutation, &reorder);
+        rc = mylite_catalog_reorder_columns_in_mutation(database, mutation, &reorder);
     }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
         if (!modify_column_name_matches(&plan->original_column, &plan->column)) {
@@ -67,38 +109,34 @@ static int alter_table_modify_column_from_plan(
                 sizeof(rename_plan.new_column_name)
             );
             rc = execute_physical_alter_table_rename_column(database, &rename_plan);
+            if (rc == MYLITE_OK) {
+                *out_physical_schema_changed = true;
+            }
         }
     } else if (rc == MYLITE_OK) {
-        rc = execute_physical_alter_table_modify_column(database, plan, &mutation);
+        rc = execute_physical_alter_table_modify_column(database, plan, mutation);
+        if (rc == MYLITE_OK) {
+            *out_physical_schema_changed = true;
+        }
     }
     if (rc == MYLITE_OK) {
-        rc = apply_alter_table_modify_column_inline_keys(database, &mutation, plan);
+        rc = apply_alter_table_modify_column_inline_keys(database, mutation, plan);
+        if (rc == MYLITE_OK && (plan->adds_inline_primary_key || plan->adds_inline_unique_key)) {
+            *out_physical_schema_changed = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_update_table_identity_in_mutation(
             database,
-            &mutation,
+            mutation,
             plan->table.table_id,
             plan->table.schema_id,
             plan->table.name,
             NULL
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_commit_mutation(database, &mutation);
-    }
-    if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, plan->failure_message);
-        mylite_catalog_rollback_mutation(database, &mutation);
-        return rc;
-    }
 
-    if (plan->adds_inline_primary_key || plan->adds_inline_unique_key || !plan->is_metadata_only ||
-        !modify_column_name_matches(&plan->original_column, &plan->column)) {
-        ++database->session.sqlite_schema_generation;
-    }
-
-    return MYLITE_OK;
+    return rc;
 }
 
 static int collect_modify_column_rebuild_columns(

@@ -1143,7 +1143,7 @@ static int test_change_column_keyed_tables(void) {
     failures += expect_change_ok(
         database,
         "ALTER TABLE fulltext_change CHANGE body content VARCHAR(120)",
-        2
+        0
     );
     failures += expect_physical_index_count(
         database,
@@ -1214,6 +1214,10 @@ static int test_change_column_keyed_tables(void) {
 static int test_change_column_diagnostics_and_rollback(void) {
     static const char *const unchanged_nullable[] = {NULL, "1"};
     static const char *const unchanged_range[] = {"2147483648"};
+    static const char *const multi_change_columns[] = {
+        "c", "bigint", "YES", "d", "bigint", "NO",
+    };
+    static const char *const multi_change_values[] = {"1", "2", "3", "4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -1435,13 +1439,47 @@ static int test_change_column_diagnostics_and_rollback(void) {
             .message_part = "Unknown column 'n' in 'numbers'",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "CREATE TABLE multi_change (a INT, b INT NOT NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO multi_change VALUES (1, 2), (3, 4)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
         database,
-        "ALTER TABLE numbers CHANGE n changed BIGINT, CHANGE other other2 BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        "ALTER TABLE multi_change CHANGE a c BIGINT, CHANGE b d BIGINT NOT NULL",
+        &result
+    );
+    failures += expect_size(
+        mylite_result_column_count(result),
+        0U,
+        "multi change column count"
+    );
+    failures += expect_size(mylite_result_row_count(result), 0U, "multi change row count");
+    failures += expect_int64(mylite_result_affected_rows(result), 0, "multi change affected");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'multi_change' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = multi_change_columns,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "multi change metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c, d FROM multi_change ORDER BY c",
+            .values = multi_change_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "multi change values",
         }
     );
     failures += execute_error(

@@ -242,6 +242,22 @@ static int execute_alter_table_multi_action(
             mutation,
             out_physical_schema_changed
         );
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+        return execute_alter_table_multi_action_modify_column(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
+        return execute_alter_table_multi_action_change_column(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
     case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
         return execute_alter_table_multi_action_set_default(
             database,
@@ -421,6 +437,78 @@ static int execute_alter_table_multi_action_drop_primary_key(
     }
 
     planned_alter_table_drop_primary_key_deinit(&plan);
+    return rc;
+}
+
+static int execute_alter_table_multi_action_modify_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_alter_table_modify_column plan = {0};
+    int rc = MYLITE_OK;
+
+    rc = reject_alter_table_multi_action_temporary_target(database, table_node);
+    if (rc == MYLITE_OK) {
+        make_alter_table_action_statement_view(table_node, &view, action);
+        rc = plan_alter_table_modify_column(database, &view.statement, &plan);
+    }
+    if (rc == MYLITE_OK && plan.zero_temporal_default_warnings.count > 0U) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE does not yet support warning-producing MODIFY COLUMN"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_modify_column_in_mutation(
+            database,
+            mutation,
+            &plan,
+            out_physical_schema_changed
+        );
+    }
+
+    planned_alter_table_modify_column_deinit(&plan);
+    return rc;
+}
+
+static int execute_alter_table_multi_action_change_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_alter_table_modify_column plan = {0};
+    int rc = MYLITE_OK;
+
+    rc = reject_alter_table_multi_action_temporary_target(database, table_node);
+    if (rc == MYLITE_OK) {
+        make_alter_table_action_statement_view(table_node, &view, action);
+        rc = plan_alter_table_change_column(database, &view.statement, &plan);
+    }
+    if (rc == MYLITE_OK && plan.zero_temporal_default_warnings.count > 0U) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE does not yet support warning-producing CHANGE COLUMN"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_modify_column_in_mutation(
+            database,
+            mutation,
+            &plan,
+            out_physical_schema_changed
+        );
+    }
+
+    planned_alter_table_modify_column_deinit(&plan);
     return rc;
 }
 

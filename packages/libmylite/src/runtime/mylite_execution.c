@@ -4683,6 +4683,20 @@ static int execute_alter_table_multi_action_drop_primary_key(
     const struct mylite_catalog_mutation *mutation,
     bool *out_physical_schema_changed
 );
+static int execute_alter_table_multi_action_modify_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
+static int execute_alter_table_multi_action_change_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
 static int execute_alter_table_multi_action_set_default(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
@@ -9814,6 +9828,15 @@ static bool modify_column_metadata_only_replacement(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
+static bool modify_column_char_varchar_widening_metadata_only(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static bool parse_char_varchar_descriptor_length_literal(
+    const char *logical_type,
+    size_t prefix_length,
+    size_t *out_length
+);
 static bool modify_column_name_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -9824,6 +9847,12 @@ static void planned_alter_table_modify_column_deinit(
 static int alter_table_modify_column_from_plan(
     struct mylite_db *database,
     struct planned_alter_table_modify_column *plan
+);
+static int alter_table_modify_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_alter_table_modify_column *plan,
+    bool *out_physical_schema_changed
 );
 static int collect_modify_column_rebuild_columns(
     struct mylite_db *database,

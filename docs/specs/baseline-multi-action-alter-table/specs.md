@@ -12,7 +12,9 @@ ALTER TABLE table_name
     ADD INDEX|KEY [index_name] (key_part[, ...]),
     ADD UNIQUE [INDEX|KEY] [index_name] (key_part[, ...]),
     ADD CONSTRAINT [symbol] UNIQUE [INDEX|KEY] [index_name] (key_part[, ...]),
-    DROP INDEX|KEY index_name
+    DROP INDEX|KEY index_name,
+    MODIFY [COLUMN] column_definition,
+    CHANGE [COLUMN] old_column column_definition
 ```
 
 The goal is not full MySQL `ALTER TABLE`. The goal is an atomic migration
@@ -30,7 +32,9 @@ failure.
   `docs/specs/baseline-alter-table-add-column/specs.md`,
   `docs/specs/baseline-alter-table-add-index-lifecycle/specs.md`,
   `docs/specs/baseline-alter-table-add-unique-lifecycle/specs.md`, and
-  `docs/specs/baseline-alter-table-drop-index-lifecycle/specs.md`
+  `docs/specs/baseline-alter-table-drop-index-lifecycle/specs.md`,
+  `docs/specs/baseline-alter-table-modify-column/specs.md`, and
+  `docs/specs/baseline-alter-table-change-column/specs.md`
 - MySQL 8.4 Reference Manual, `ALTER TABLE`:
   <https://dev.mysql.com/doc/refman/8.4/en/alter-table.html>
 - MySQL 8.4 Reference Manual, atomic DDL:
@@ -63,6 +67,12 @@ Runtime probes for this phase establish:
   column back when the unique add fails.
 - Supported successful multi-action forms in the probes report
   `ROW_COUNT() == 0` and `@@warning_count == 0`.
+- `ALTER TABLE t MODIFY a BIGINT, MODIFY b BIGINT NOT NULL` succeeds for the
+  admitted single-action replacement subset, reports zero rows and warnings,
+  and updates both descriptors atomically.
+- `ALTER TABLE t CHANGE a c BIGINT, CHANGE b d BIGINT NOT NULL` succeeds for
+  the admitted single-action replacement subset, reports zero rows and
+  warnings, and applies both visible name/type/nullability changes atomically.
 - MySQL accepts broader multi-action lists, including primary keys, foreign
   keys, check constraints, default changes, table options, and trailing
   `ALGORITHM` / `LOCK` options. Those remain outside this phase unless listed
@@ -88,6 +98,13 @@ Supported:
   mutation and generated physical unique indexes where applicable;
 - the existing persistent-table `DROP INDEX` / `DROP KEY` subset, including
   auto-increment and foreign-key dependency checks;
+- the existing persistent-table `MODIFY [COLUMN]` subset, including admitted
+  descriptor replacements, positioning, row validation, metadata-only changes,
+  and physical rebuilds where the single-action path requires them;
+- the existing persistent-table `CHANGE [COLUMN]` subset, including admitted
+  descriptor replacements, visible renames, positioning, row validation,
+  metadata-only changes, and physical rebuilds where the single-action path
+  requires them;
 - later actions resolving against earlier successful actions in the same
   uncommitted catalog mutation;
 - rollback of every catalog and physical SQLite change if any admitted action
@@ -102,13 +119,13 @@ Deferred:
 - standalone option-only alters and trailing multi-action `ALGORITHM` / `LOCK`
   option lists;
 - warning-producing multi-action forms, including `USING HASH`, fulltext adds,
-  spatial adds, and zero-temporal add-column warning cases;
+  spatial adds, zero-temporal add-column warning cases, and warning-producing
+  modify/change defaults;
 - `ADD PRIMARY KEY`, `DROP PRIMARY KEY`, `ADD FOREIGN KEY`, `DROP FOREIGN KEY`,
   `ADD CHECK`, `DROP CHECK`, `ALTER CHECK`, `RENAME INDEX`, `ALTER INDEX`
   visibility changes, table comment/default charset/collation changes, table
   options, `AUTO_INCREMENT`, `FORCE`, `ORDER BY`, `CONVERT TO CHARACTER SET`,
-  `DROP COLUMN`, `RENAME COLUMN`, `MODIFY`, and `CHANGE` inside multi-action
-  lists;
+  `DROP COLUMN`, and `RENAME COLUMN` inside multi-action lists;
 - parenthesized `ADD (column_definition[, ...])` lists;
 - partition clauses, `DISABLE/ENABLE KEYS`, validation clauses, online DDL
   scheduling semantics, metadata locks, triggers, privilege semantics, and
@@ -213,6 +230,23 @@ alter_table_multi_first_action(A) ::= DROP(T) KEY identifier(I) COMMA. {
             state, T, NULL, I, mylite_sql_parser_empty_alter_table_options()));
 }
 
+alter_table_multi_first_action(A) ::=
+    MODIFY(T) column_keyword_opt column_definition(C) column_position_opt(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_modify_column_statement(
+            state, T, NULL, C, P));
+}
+
+alter_table_multi_first_action(A) ::=
+    CHANGE(T) column_keyword_opt identifier(O) column_definition(C)
+    column_position_opt(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_change_column_statement(
+            state, T, NULL, O, C, P));
+}
+
 alter_table_multi_action(A) ::=
     ADD(T) column_keyword_opt column_definition(C) column_position_opt(P). {
     A = mylite_sql_parser_make_alter_table_add_column_statement(
@@ -242,6 +276,19 @@ alter_table_multi_action(A) ::= DROP(T) INDEX identifier(I). {
 alter_table_multi_action(A) ::= DROP(T) KEY identifier(I). {
     A = mylite_sql_parser_make_alter_table_drop_index_statement(
         state, T, NULL, I, mylite_sql_parser_empty_alter_table_options());
+}
+
+alter_table_multi_action(A) ::=
+    MODIFY(T) column_keyword_opt column_definition(C) column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_modify_column_statement(
+        state, T, NULL, C, P);
+}
+
+alter_table_multi_action(A) ::=
+    CHANGE(T) column_keyword_opt identifier(O) column_definition(C)
+    column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_change_column_statement(
+        state, T, NULL, O, C, P);
 }
 ```
 
@@ -287,6 +334,10 @@ All generated SQLite SQL is built from descriptors and stable physical names:
   `CREATE UNIQUE INDEX` for non-fulltext/non-spatial descriptors;
 - drop-index emits a standard SQLite `DROP INDEX` for descriptors with a
   physical index.
+- modify/change either keep a descriptor-only replacement, emit a physical
+  rename for supported pure renames, or run the existing descriptor-driven
+  rebuild path and recreate physical indexes when the single-action planner
+  requires it.
 
 Identifiers are quoted by MyLite's SQLite identifier helpers. User literals
 are not interpolated into generated index DDL. Existing row backfill and
@@ -309,7 +360,8 @@ New multi-action-specific diagnostics:
   MyLite unsupported-feature diagnostic;
 - temporary-table targets are rejected for this phase even when the underlying
   single-action form supports them;
-- warning-producing add-index or add-column forms are rejected for this phase;
+- warning-producing add-index, add-column, modify-column, or change-column
+  forms are rejected for this phase;
 - multi-action trailing `ALGORITHM` / `LOCK` tails are syntax errors until the
   online-DDL option matrix is specified for action lists.
 

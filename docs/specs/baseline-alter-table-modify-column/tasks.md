@@ -116,10 +116,10 @@ SQLite physical table names, and the existing integer/`NULL` row model.
 
 ## Out Of Scope
 
-- Full `ALTER TABLE`, multiple modify actions, combined actions, algorithms,
-  locks, `CHANGE COLUMN`, renames beyond case-only spelling, defaults,
-  positioning, non-integer types, indexes, keys, constraints, generated
-  columns, invisible columns, auto-increment, temporary tables, views,
-  triggers, cascades, foreign keys, privileges, metadata locks, dependency
-  maintenance, implicit commit boundaries, arbitrary SQLite pass-through, and
-  SQLite fork patches.
+- Full `ALTER TABLE`, multiple modify actions and combined actions outside the
+  dedicated limited multi-action ALTER slice, algorithms, locks,
+  `CHANGE COLUMN`, renames beyond case-only spelling, non-admitted defaults,
+  non-admitted types, indexes, keys, constraints, generated columns, invisible
+  columns, auto-increment, temporary tables, views, triggers, cascades, foreign
+  keys, privileges, metadata locks, dependency maintenance, implicit commit
+  boundaries, arbitrary SQLite pass-through, and SQLite fork patches.

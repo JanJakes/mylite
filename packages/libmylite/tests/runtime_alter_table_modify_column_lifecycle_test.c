@@ -1024,7 +1024,7 @@ static int test_modify_column_keyed_tables(void) {
         "metadata fulltext creates no physical index before modify"
     );
     failures +=
-        expect_modify_ok(database, "ALTER TABLE fulltext_modify MODIFY body VARCHAR(120)", 2);
+        expect_modify_ok(database, "ALTER TABLE fulltext_modify MODIFY body VARCHAR(120)", 0);
     failures += expect_physical_index_count(
         database,
         4,
@@ -1088,6 +1088,10 @@ static int test_modify_column_keyed_tables(void) {
 static int test_modify_column_diagnostics_and_rollback(void) {
     static const char *const unchanged_nullable[] = {NULL, "1"};
     static const char *const unchanged_range[] = {"2147483648"};
+    static const char *const multi_modify_columns[] = {
+        "a", "bigint", "YES", "b", "bigint", "NO",
+    };
+    static const char *const multi_modify_values[] = {"1", "2", "3", "4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -1273,13 +1277,47 @@ static int test_modify_column_diagnostics_and_rollback(void) {
             .message_part = "Unknown column 'n' in 'numbers'",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "CREATE TABLE multi_modify (a INT, b INT NOT NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO multi_modify VALUES (1, 2), (3, 4)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT, MODIFY nn BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        "ALTER TABLE multi_modify MODIFY a BIGINT, MODIFY b BIGINT NOT NULL",
+        &result
+    );
+    failures += expect_size(
+        mylite_result_column_count(result),
+        0U,
+        "multi modify column count"
+    );
+    failures += expect_size(mylite_result_row_count(result), 0U, "multi modify row count");
+    failures += expect_int64(mylite_result_affected_rows(result), 0, "multi modify affected");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'multi_modify' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = multi_modify_columns,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "multi modify metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b FROM multi_modify ORDER BY a",
+            .values = multi_modify_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "multi modify values",
         }
     );
     failures += execute_error(

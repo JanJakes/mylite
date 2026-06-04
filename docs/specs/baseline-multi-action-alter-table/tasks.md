@@ -14,6 +14,10 @@
 - [x] Refactor existing `ADD COLUMN`, persistent `ADD INDEX`/`ADD UNIQUE`, and
   persistent `DROP INDEX` execution into lower-level helpers that can run
   inside an active mutation while preserving single-action behavior.
+- [x] Extend the shared multi-action path to the current admitted
+  persistent-table `MODIFY [COLUMN]` and `CHANGE [COLUMN]` subsets, including
+  parser coverage, descriptor replacement, row validation, and physical
+  rename/rebuild behavior through the existing single-action planners.
 - [x] Add C runtime coverage for successful action lists, descriptor visibility
   after each action, atomic rollback, reopen persistence, result shape,
   diagnostics, and unsupported multi-action forms.

@@ -12,11 +12,12 @@ integer/`NULL` row storage, descriptor `SELECT`, descriptor DML, and descriptor
 table introspection.
 
 The feature is intentionally not full MySQL `ALTER TABLE` support. It supports
-one column change action for persistent base tables and the currently supported
-integer-family descriptors. It does not implement defaults, positioning,
-multiple actions, non-integer types, indexes, constraints, temporary tables,
-views, metadata locks, algorithms, locks, privilege checks, dependency
-invalidation for unsupported object kinds, or implicit commit behavior.
+descriptor-driven column changes for persistent base tables and the currently
+admitted descriptor families. The dedicated multi-action ALTER slice may
+combine this same admitted no-warning change subset with other supported
+actions. This feature does not implement temporary tables, views, metadata
+locks, broad online-DDL behavior, privilege checks, dependency invalidation for
+unsupported object kinds, or full implicit-commit behavior.
 
 ## Sources
 
@@ -82,7 +83,7 @@ The implementation must add:
 - parser and AST support for a limited
   `ALTER TABLE table_name CHANGE [COLUMN] old_column column_definition`
   statement;
-- one action and one changed column only;
+- one changed column per `CHANGE` action;
 - persistent MyLite base-table descriptors only;
 - unqualified and schema-qualified target table resolution;
 - unqualified old and replacement column names only;
@@ -112,11 +113,11 @@ This feature must not implement:
 
 - general `ALTER TABLE`;
 - `ALTER ONLINE TABLE`, `WAIT`, `NOWAIT`, `ALGORITHM`, or `LOCK`;
-- multiple `CHANGE` clauses or combined alter actions;
-- `MODIFY COLUMN`, `RENAME COLUMN`, or table rename in the `CHANGE` path;
-- column positioning with `FIRST` or `AFTER`;
+- multiple `CHANGE` clauses or combined alter actions outside the dedicated
+  limited multi-action ALTER slice;
+- `MODIFY COLUMN`, `RENAME COLUMN`, or table rename in this `CHANGE` path;
 - table-qualified old or replacement column names;
-- `DEFAULT`, generated, invisible, auto-increment, primary key, unique,
+- non-admitted `DEFAULT`, generated, invisible, auto-increment, primary key, unique,
   foreign key, check, comment, collation, charset, storage, or option clauses;
 - non-integer column types;
 - indexes, keys, constraints, table options, or partitions;
@@ -126,10 +127,9 @@ This feature must not implement:
 - reconstructing descriptors from SQLite schema text;
 - SQLite fork patches.
 
-MySQL accepts several wider forms, including defaults, non-integer types,
-positioning, multiple actions, algorithms, and locks. MyLite rejects them in
-this phase because they require later descriptor metadata, string storage,
-dependency handling, algorithm/lock semantics, or multi-action planning.
+MySQL accepts several wider forms. MyLite only admits the replacement
+descriptors, positioning, and no-warning multi-action combinations that are
+covered by the current descriptor model and dedicated ALTER slices.
 
 ## Ownership Boundary
 
@@ -422,16 +422,18 @@ behaviors:
 - Existing `NULL` values rejected by target `NOT NULL` report `1265` /
   `01000`.
 - Narrowing and signed-to-unsigned range failures report `1264` / `22003`.
-- Defaults, positioning, non-integer types, multiple `CHANGE` actions,
-  algorithms, and locks are accepted by MySQL but intentionally outside this
-  MyLite slice.
+- MySQL accepts broader defaults, non-integer target types, positioning,
+  multiple `CHANGE` actions, algorithms, and locks. MyLite admits only the
+  verified descriptor subsets recorded in the compatibility matrix and the
+  dedicated multi-action ALTER slice.
 
 ## Compatibility Documentation
 
 After implementation, update:
 
 - `COMPATIBILITY.md`
-  - `CHANGE COLUMN`: limited single-action persistent base-table subset;
+  - `CHANGE COLUMN`: limited persistent base-table subset with dedicated
+    multi-action participation for current no-warning replacements;
   - integer type rows if needed to mention descriptor replacement through
     `CHANGE`;
   - assignment/conversion rows only if the implementation changes the shared
@@ -442,8 +444,9 @@ After implementation, update:
 - `docs/compatibility/type-system-literals-conversion.md`
   - only if the phase changes documented integer conversion behavior.
 
-Do not overclaim full `CHANGE COLUMN`, defaults, non-integer types, positioning,
-multiple actions, algorithms, locks, indexes, keys, constraints, dependencies,
+Do not overclaim full `CHANGE COLUMN`, defaults, non-integer types,
+positioning, multi-action forms outside the dedicated limited multi-action
+ALTER slice, algorithms, locks, indexes, keys, constraints, dependencies,
 temporary tables, views, privilege semantics, or implicit commit behavior.
 
 ## Test Plan
@@ -452,8 +455,9 @@ Coverage must include:
 
 - parser acceptance for `CHANGE` and `CHANGE COLUMN`;
 - parser rejection for table-qualified old/replacement column names, missing
-  replacement type, defaults, positioning, multiple actions, non-integer types,
-  algorithms, locks, and combined actions;
+  replacement type, non-admitted defaults, non-admitted types, algorithms,
+  locks, and combined actions outside the dedicated limited multi-action ALTER
+  slice;
 - successful pure rename, type replacement, nullability-only replacement, and
   rename-plus-type replacement across `INT`, `INTEGER`, `BIGINT`, and unsigned
   variants within the supported physical range;

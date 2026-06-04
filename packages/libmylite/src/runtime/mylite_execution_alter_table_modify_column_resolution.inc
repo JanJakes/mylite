@@ -577,10 +577,89 @@ static bool modify_column_metadata_only_replacement(
         return false;
     }
     if (!modify_column_integer_value_domain_matches(original_column, replacement_column)) {
-        return false;
+        return modify_column_char_varchar_widening_metadata_only(
+            original_column,
+            replacement_column
+        );
     }
 
     return true;
+}
+
+static bool modify_column_char_varchar_widening_metadata_only(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    size_t original_length = 0U;
+    size_t replacement_length = 0U;
+    size_t original_prefix_length = 0U;
+    size_t replacement_prefix_length = 0U;
+    bool original_is_varchar = column_descriptor_is_varchar(original_column);
+    bool replacement_is_varchar = planned_column_is_varchar(replacement_column);
+    bool original_is_char = column_descriptor_is_char(original_column);
+    bool replacement_is_char = planned_column_is_char(replacement_column);
+
+    if ((!original_is_varchar || !replacement_is_varchar) &&
+        (!original_is_char || !replacement_is_char)) {
+        return false;
+    }
+    if (strcmp(original_column->character_set_name, replacement_column->character_set_name) != 0 ||
+        strcmp(original_column->collation_name, replacement_column->collation_name) != 0) {
+        return false;
+    }
+
+    original_prefix_length = original_is_varchar
+                                 ? varchar_descriptor_prefix_length(original_column->logical_type)
+                                 : char_descriptor_prefix_length(original_column->logical_type);
+    replacement_prefix_length = replacement_is_varchar
+                                    ? varchar_descriptor_prefix_length(
+                                          replacement_column->logical_type)
+                                    : char_descriptor_prefix_length(replacement_column->logical_type);
+
+    if (!parse_char_varchar_descriptor_length_literal(
+            original_column->logical_type,
+            original_prefix_length,
+            &original_length
+        ) ||
+        !parse_char_varchar_descriptor_length_literal(
+            replacement_column->logical_type,
+            replacement_prefix_length,
+            &replacement_length
+        )) {
+        return false;
+    }
+
+    return replacement_length >= original_length;
+}
+
+static bool parse_char_varchar_descriptor_length_literal(
+    const char *logical_type,
+    size_t prefix_length,
+    size_t *out_length
+) {
+    uint64_t value = 0U;
+    size_t index = 0U;
+
+    if (logical_type == NULL || out_length == NULL || prefix_length == 0U) {
+        return false;
+    }
+    if (logical_type[prefix_length] == '\0') {
+        return false;
+    }
+    for (index = prefix_length; logical_type[index] != '\0'; ++index) {
+        unsigned char byte = (unsigned char)logical_type[index];
+
+        if (byte == ')') {
+            *out_length = (size_t)value;
+            return logical_type[index + 1U] == '\0';
+        }
+        if (byte < '0' || byte > '9' || value > (UINT64_MAX - (uint64_t)(byte - '0')) / 10U) {
+            return false;
+        }
+        value = (value * 10U) + (uint64_t)(byte - '0');
+    }
+
+    return false;
 }
 
 static bool modify_column_name_matches(

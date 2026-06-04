@@ -296,10 +296,17 @@ expect_upstream_accepts \
 "ALTER TABLE varchar_modify MODIFY a VARCHAR(10);" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "multiple modify actions accepted upstream outside mylite slice" \
+expect_output \
+    "multiple modify actions" \
+    "0	0
+a	bigint	YES
+b	bigint	NO" \
     "CREATE TABLE multi_modify (a INT, b INT); "\
-"ALTER TABLE multi_modify MODIFY a BIGINT, MODIFY b BIGINT NOT NULL;" \
+"ALTER TABLE multi_modify MODIFY a BIGINT, MODIFY b BIGINT NOT NULL; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'multi_modify' "\
+"ORDER BY ORDINAL_POSITION;" \
     "$DATABASE"
 
 cleanup

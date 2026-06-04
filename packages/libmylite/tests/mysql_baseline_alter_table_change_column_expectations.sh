@@ -360,10 +360,17 @@ expect_upstream_accepts \
 "ALTER TABLE varchar_change CHANGE a c VARCHAR(10);" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "multiple change actions accepted upstream outside mylite slice" \
+expect_output \
+    "multiple change actions" \
+    "0	0
+c	bigint	YES
+d	bigint	NO" \
     "CREATE TABLE multi_change (a INT, b INT); "\
-"ALTER TABLE multi_change CHANGE a c BIGINT, CHANGE b d BIGINT NOT NULL;" \
+"ALTER TABLE multi_change CHANGE a c BIGINT, CHANGE b d BIGINT NOT NULL; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'multi_change' "\
+"ORDER BY ORDINAL_POSITION;" \
     "$DATABASE"
 
 expect_upstream_accepts \

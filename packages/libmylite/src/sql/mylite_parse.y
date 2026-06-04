@@ -1728,6 +1728,18 @@ alter_table_multi_first_action(A) ::= DROP(A1) PRIMARY KEY(K) COMMA. {
             mylite_sql_parser_empty_alter_table_options()));
 }
 alter_table_multi_first_action(A) ::=
+    MODIFY(A1) column_keyword_opt column_definition(C) column_position_opt(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, NULL, C, P));
+}
+alter_table_multi_first_action(A) ::=
+    CHANGE(A1) column_keyword_opt identifier(O) column_definition(C) column_position_opt(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_change_column_statement(state, A1, NULL, O, C, P));
+}
+alter_table_multi_first_action(A) ::=
     ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
@@ -1821,6 +1833,14 @@ alter_table_multi_action(A) ::= DROP(A1) PRIMARY KEY(K). {
         NULL,
         K,
         mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::=
+    MODIFY(A1) column_keyword_opt column_definition(C) column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, NULL, C, P);
+}
+alter_table_multi_action(A) ::=
+    CHANGE(A1) column_keyword_opt identifier(O) column_definition(C) column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, NULL, O, C, P);
 }
 alter_table_multi_action(A) ::=
     ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N). {

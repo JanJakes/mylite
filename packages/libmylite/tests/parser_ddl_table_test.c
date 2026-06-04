@@ -3110,6 +3110,56 @@ static int test_alter_table_multi_action_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "ALTER TABLE columns MODIFY a BIGINT, MODIFY COLUMN b BIGINT NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    actions = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi modify statement"
+    );
+    failures += parser_test_expect_child_count(actions, 2U, "alter multi modify action count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT,
+        "alter multi first modify action"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT,
+        "alter multi second modify action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE columns CHANGE a c BIGINT, CHANGE COLUMN b d BIGINT NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    actions = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi change statement"
+    );
+    failures += parser_test_expect_child_count(actions, 2U, "alter multi change action count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT,
+        "alter multi first change action"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT,
+        "alter multi second change action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

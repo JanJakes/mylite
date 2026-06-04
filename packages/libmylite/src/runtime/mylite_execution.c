@@ -1839,6 +1839,12 @@ struct approximate_type_info {
     bool is_unsigned;
 };
 
+struct approximate_type_mapping_state {
+    enum approximate_type_class type_class;
+    uint64_t precision;
+    uint64_t scale;
+};
+
 struct decimal_literal_parts {
     size_t integer_end;
     size_t fraction_start;
@@ -3106,6 +3112,14 @@ struct information_schema_row_set {
     const struct mylite_execution_catalog_table_definition *definition;
     char ***rows;
     size_t row_count;
+};
+
+struct information_schema_columns_numeric_metadata_buffers {
+    char *numeric_precision_text;
+    size_t numeric_precision_text_size;
+    char *numeric_scale_text;
+    size_t numeric_scale_text_size;
+    const char **values;
 };
 
 struct information_schema_row_order_pair {
@@ -6806,6 +6820,21 @@ static int append_information_schema_columns_numeric_metadata(
     char *numeric_scale_text,
     size_t numeric_scale_text_size,
     const char **values
+);
+static int append_information_schema_columns_decimal_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct information_schema_columns_numeric_metadata_buffers *buffers
+);
+static int append_information_schema_columns_bit_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct information_schema_columns_numeric_metadata_buffers *buffers
+);
+static int append_information_schema_columns_approximate_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct information_schema_columns_numeric_metadata_buffers *buffers
 );
 static int append_information_schema_table_constraints_base_rows(
     struct mylite_db *database,
@@ -16155,6 +16184,37 @@ static int map_approximate_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
     const char *column_name,
+    struct planned_column *out_column
+);
+static enum approximate_type_class approximate_type_class_for_type_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node
+);
+static int apply_approximate_type_precision(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct approximate_type_mapping_state *state
+);
+static int apply_approximate_type_scaled_precision(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct approximate_type_mapping_state *state
+);
+static int apply_approximate_type_float_precision(
+    struct mylite_db *database,
+    const char *column_name,
+    struct approximate_type_mapping_state *state
+);
+static int append_approximate_unsigned_warning_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node
+);
+static int assign_approximate_type_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const struct approximate_type_mapping_state *state,
     struct planned_column *out_column
 );
 static int map_integer_display_width(

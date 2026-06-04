@@ -3,6 +3,16 @@ struct information_schema_join_compat_name_rows {
     size_t count;
 };
 
+struct information_schema_join_compat_statistics_request {
+    const struct information_schema_row_set *columns;
+    const struct information_schema_row_set *statistics;
+};
+
+struct information_schema_join_compat_statistics_order {
+    size_t left_index;
+    size_t right_index;
+};
+
 static int information_schema_join_compat_execute_columns_statistics_join(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -59,8 +69,7 @@ static int information_schema_join_compat_copy_literal_after(
 static int information_schema_join_compat_append_columns_statistics_join_rows(
     struct mylite_db *database,
     mylite_result *result,
-    const struct information_schema_row_set *columns,
-    const struct information_schema_row_set *statistics,
+    const struct information_schema_join_compat_statistics_request *request,
     const char *schema_name,
     const char *table_name
 );
@@ -79,8 +88,7 @@ static int information_schema_join_compat_sort_statistics_row_indexes(
 );
 static int information_schema_join_compat_compare_statistics_row_indexes(
     const struct information_schema_row_set *statistics,
-    size_t left_index,
-    size_t right_index
+    struct information_schema_join_compat_statistics_order order
 );
 static char **information_schema_join_compat_find_column_row(
     const struct information_schema_row_set *columns,
@@ -98,8 +106,7 @@ static bool information_schema_join_compat_row_matches_schema_table(
 static int information_schema_join_compat_append_columns_statistics_union_rows(
     struct mylite_db *database,
     mylite_result *result,
-    const struct information_schema_row_set *columns,
-    const struct information_schema_row_set *statistics,
+    const struct information_schema_join_compat_statistics_request *request,
     const char *schema_name,
     const char *table_name
 );
@@ -391,8 +398,10 @@ static int information_schema_join_compat_execute_columns_statistics_join(
         rc = information_schema_join_compat_append_columns_statistics_join_rows(
             database,
             result,
-            &columns,
-            &statistics,
+            &(const struct information_schema_join_compat_statistics_request){
+                .columns = &columns,
+                .statistics = &statistics,
+            },
             schema_name,
             table_name
         );
@@ -469,8 +478,10 @@ static int information_schema_join_compat_execute_columns_statistics_union(
         rc = information_schema_join_compat_append_columns_statistics_union_rows(
             database,
             result,
-            &columns,
-            &statistics,
+            &(const struct information_schema_join_compat_statistics_request){
+                .columns = &columns,
+                .statistics = &statistics,
+            },
             schema_name,
             table_name
         );
@@ -769,8 +780,7 @@ static int information_schema_join_compat_copy_literal_after(
 static int information_schema_join_compat_append_columns_statistics_join_rows(
     struct mylite_db *database,
     mylite_result *result,
-    const struct information_schema_row_set *columns,
-    const struct information_schema_row_set *statistics,
+    const struct information_schema_join_compat_statistics_request *request,
     const char *schema_name,
     const char *table_name
 ) {
@@ -778,7 +788,7 @@ static int information_schema_join_compat_append_columns_statistics_join_rows(
     size_t index_count = 0U;
     int rc = information_schema_join_compat_collect_matching_statistics_rows(
         database,
-        statistics,
+        request->statistics,
         schema_name,
         table_name,
         &indexes,
@@ -787,13 +797,13 @@ static int information_schema_join_compat_append_columns_statistics_join_rows(
 
     if (rc == MYLITE_OK) {
         rc = information_schema_join_compat_sort_statistics_row_indexes(
-            statistics,
+            request->statistics,
             indexes,
             index_count
         );
     }
     for (size_t output_index = 0U; rc == MYLITE_OK && output_index < index_count; ++output_index) {
-        char **statistics_row = statistics->rows[indexes[output_index]];
+        char **statistics_row = request->statistics->rows[indexes[output_index]];
         char **column_row = NULL;
         const char *values[] = {
             NULL,
@@ -802,7 +812,7 @@ static int information_schema_join_compat_append_columns_statistics_join_rows(
         };
 
         column_row = information_schema_join_compat_find_column_row(
-            columns,
+            request->columns,
             schema_name,
             table_name,
             statistics_row[information_schema_statistics_column_name_column]
@@ -881,8 +891,10 @@ static int information_schema_join_compat_sort_statistics_row_indexes(
         for (size_t right = left + 1U; right < index_count; ++right) {
             if (information_schema_join_compat_compare_statistics_row_indexes(
                     statistics,
-                    indexes[right],
-                    indexes[best]
+                    (struct information_schema_join_compat_statistics_order){
+                        .left_index = indexes[right],
+                        .right_index = indexes[best],
+                    }
                 ) < 0) {
                 best = right;
             }
@@ -899,11 +911,10 @@ static int information_schema_join_compat_sort_statistics_row_indexes(
 
 static int information_schema_join_compat_compare_statistics_row_indexes(
     const struct information_schema_row_set *statistics,
-    size_t left_index,
-    size_t right_index
+    struct information_schema_join_compat_statistics_order order
 ) {
-    char **left = statistics->rows[left_index];
-    char **right = statistics->rows[right_index];
+    char **left = statistics->rows[order.left_index];
+    char **right = statistics->rows[order.right_index];
     int comparison = compare_ascii_case_insensitive_text(
         left[information_schema_statistics_index_name_column],
         right[information_schema_statistics_index_name_column]
@@ -959,8 +970,7 @@ static bool information_schema_join_compat_row_matches_schema_table(
 static int information_schema_join_compat_append_columns_statistics_union_rows(
     struct mylite_db *database,
     mylite_result *result,
-    const struct information_schema_row_set *columns,
-    const struct information_schema_row_set *statistics,
+    const struct information_schema_join_compat_statistics_request *request,
     const char *schema_name,
     const char *table_name
 ) {
@@ -968,7 +978,7 @@ static int information_schema_join_compat_append_columns_statistics_union_rows(
     int rc = information_schema_join_compat_append_column_names(
         database,
         &names,
-        columns,
+        request->columns,
         schema_name,
         table_name
     );
@@ -977,7 +987,7 @@ static int information_schema_join_compat_append_columns_statistics_union_rows(
         rc = information_schema_join_compat_append_distinct_index_names(
             database,
             &names,
-            statistics,
+            request->statistics,
             schema_name,
             table_name
         );

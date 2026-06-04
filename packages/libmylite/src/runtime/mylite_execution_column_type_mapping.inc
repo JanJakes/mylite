@@ -1221,84 +1221,127 @@ static int map_approximate_type(
     const char *column_name,
     struct planned_column *out_column
 ) {
-    enum approximate_type_class type_class = APPROXIMATE_TYPE_FLOAT;
-    uint64_t precision = 0U;
-    uint64_t scale = 0U;
+    struct approximate_type_mapping_state state = {
+        .type_class = approximate_type_class_for_type_node(database, type_node),
+        .precision = 0U,
+        .scale = 0U,
+    };
     int rc = MYLITE_OK;
-    int written = 0;
 
+    if (mylite_sql_ast_node_approximate_type_has_precision(type_node) != 0) {
+        rc = apply_approximate_type_precision(database, type_node, column_name, &state);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    rc = append_approximate_unsigned_warning_if_needed(database, type_node);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return assign_approximate_type_descriptor(database, type_node, &state, out_column);
+}
+
+static enum approximate_type_class approximate_type_class_for_type_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node
+) {
     switch (mylite_sql_ast_node_approximate_type(type_node)) {
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT:
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4:
-        type_class = APPROXIMATE_TYPE_FLOAT;
-        break;
+        return APPROXIMATE_TYPE_FLOAT;
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8:
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE:
-        type_class = APPROXIMATE_TYPE_DOUBLE;
-        break;
+        return APPROXIMATE_TYPE_DOUBLE;
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL:
         if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT)) {
-            type_class = APPROXIMATE_TYPE_FLOAT;
-        } else {
-            type_class = APPROXIMATE_TYPE_DOUBLE;
+            return APPROXIMATE_TYPE_FLOAT;
         }
-        break;
+        return APPROXIMATE_TYPE_DOUBLE;
     }
+    return APPROXIMATE_TYPE_FLOAT;
+}
 
-    if (mylite_sql_ast_node_approximate_type_has_precision(type_node) != 0) {
-        struct mylite_sql_source_span precision_span =
-            mylite_sql_ast_node_approximate_type_precision_span(type_node);
+static int apply_approximate_type_precision(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct approximate_type_mapping_state *state
+) {
+    struct mylite_sql_source_span precision_span =
+        mylite_sql_ast_node_approximate_type_precision_span(type_node);
+    int rc = parse_unsigned_integer_literal(&precision_span, &state->precision);
 
-        rc = parse_unsigned_integer_literal(&precision_span, &precision);
-        if (rc != MYLITE_OK) {
-            set_incorrect_column_specifier_error(database, column_name);
-            return MYLITE_ERROR;
-        }
-        if (mylite_sql_ast_node_approximate_type_has_scale(type_node) != 0) {
-            struct mylite_sql_source_span scale_span =
-                mylite_sql_ast_node_approximate_type_scale_span(type_node);
-
-            rc = parse_unsigned_integer_literal(&scale_span, &scale);
-            if (rc != MYLITE_OK) {
-                set_incorrect_column_specifier_error(database, column_name);
-                return MYLITE_ERROR;
-            }
-            if (precision > approximate_max_display_width) {
-                set_display_width_out_of_range_error(database, column_name);
-                return MYLITE_ERROR;
-            }
-            if (scale > decimal_max_scale) {
-                set_decimal_scale_too_big_error(database, column_name, scale);
-                return MYLITE_ERROR;
-            }
-            if (scale > precision) {
-                set_decimal_scale_greater_than_precision_error(database, column_name);
-                return MYLITE_ERROR;
-            }
-            rc = append_approximate_display_width_warning(database);
-            if (rc == MYLITE_NOMEM) {
-                set_nomem_error(database);
-            }
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-        } else {
-            if (precision > float_max_precision) {
-                set_incorrect_column_specifier_error(database, column_name);
-                return MYLITE_ERROR;
-            }
-            type_class = precision <= float_double_precision_threshold ? APPROXIMATE_TYPE_FLOAT
-                                                                       : APPROXIMATE_TYPE_DOUBLE;
-        }
+    if (rc != MYLITE_OK) {
+        set_incorrect_column_specifier_error(database, column_name);
+        return MYLITE_ERROR;
     }
+    if (mylite_sql_ast_node_approximate_type_has_scale(type_node) != 0) {
+        return apply_approximate_type_scaled_precision(database, type_node, column_name, state);
+    }
+    return apply_approximate_type_float_precision(database, column_name, state);
+}
+
+static int apply_approximate_type_scaled_precision(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct approximate_type_mapping_state *state
+) {
+    struct mylite_sql_source_span scale_span =
+        mylite_sql_ast_node_approximate_type_scale_span(type_node);
+    int rc = parse_unsigned_integer_literal(&scale_span, &state->scale);
+
+    if (rc != MYLITE_OK) {
+        set_incorrect_column_specifier_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (state->precision > approximate_max_display_width) {
+        set_display_width_out_of_range_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (state->scale > decimal_max_scale) {
+        set_decimal_scale_too_big_error(database, column_name, state->scale);
+        return MYLITE_ERROR;
+    }
+    if (state->scale > state->precision) {
+        set_decimal_scale_greater_than_precision_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    rc = append_approximate_display_width_warning(database);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int apply_approximate_type_float_precision(
+    struct mylite_db *database,
+    const char *column_name,
+    struct approximate_type_mapping_state *state
+) {
+    if (state->precision > float_max_precision) {
+        set_incorrect_column_specifier_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    state->type_class =
+        state->precision <= float_double_precision_threshold ? APPROXIMATE_TYPE_FLOAT
+                                                             : APPROXIMATE_TYPE_DOUBLE;
+    return MYLITE_OK;
+}
+
+static int append_approximate_unsigned_warning_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node
+) {
     if (mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0) {
-        rc = mylite_diagnostics_append_warning(
+        int rc = mylite_diagnostics_append_warning(
             mylite_connection_diagnostics(database),
             mysql_warning_decimal_unsigned_deprecated,
             "HY000",
             "UNSIGNED for decimal and floating point data types is deprecated and support for it "
             "will be removed in a future release."
         );
+
         if (rc != MYLITE_OK) {
             if (rc == MYLITE_NOMEM) {
                 set_nomem_error(database);
@@ -1306,8 +1349,17 @@ static int map_approximate_type(
             return rc;
         }
     }
+    return MYLITE_OK;
+}
 
-    const char *base_type = type_class == APPROXIMATE_TYPE_FLOAT ? "FLOAT" : "DOUBLE";
+static int assign_approximate_type_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const struct approximate_type_mapping_state *state,
+    struct planned_column *out_column
+) {
+    const char *base_type = state->type_class == APPROXIMATE_TYPE_FLOAT ? "FLOAT" : "DOUBLE";
+    int written = 0;
 
     if (mylite_sql_ast_node_approximate_type_has_scale(type_node) != 0) {
         written = snprintf(
@@ -1315,8 +1367,8 @@ static int map_approximate_type(
             sizeof(out_column->logical_type_storage),
             "%s(%" PRIu64 ",%" PRIu64 ")%s",
             base_type,
-            precision,
-            scale,
+            state->precision,
+            state->scale,
             mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0 ? " UNSIGNED" : ""
         );
     } else {

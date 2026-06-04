@@ -784,86 +784,131 @@ static int append_information_schema_columns_numeric_metadata(
     size_t numeric_scale_text_size,
     const char **values
 ) {
-    if (column_descriptor_is_decimal(column)) {
-        struct decimal_type_info info = {0};
-        int rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+    const struct information_schema_columns_numeric_metadata_buffers buffers = {
+        .numeric_precision_text = numeric_precision_text,
+        .numeric_precision_text_size = numeric_precision_text_size,
+        .numeric_scale_text = numeric_scale_text,
+        .numeric_scale_text_size = numeric_scale_text_size,
+        .values = values,
+    };
 
-        if (rc == MYLITE_OK) {
-            rc = information_schema_format_i64(
-                database,
-                (int64_t)info.precision,
-                numeric_precision_text,
-                numeric_precision_text_size
-            );
-        }
+    if (column_descriptor_is_decimal(column)) {
+        return append_information_schema_columns_decimal_numeric_metadata(
+            database,
+            column,
+            &buffers
+        );
+    }
+    if (column_descriptor_is_bit(column)) {
+        return append_information_schema_columns_bit_numeric_metadata(database, column, &buffers);
+    }
+    if (column_descriptor_is_approximate(column)) {
+        return append_information_schema_columns_approximate_numeric_metadata(
+            database,
+            column,
+            &buffers
+        );
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_information_schema_columns_decimal_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct information_schema_columns_numeric_metadata_buffers *buffers
+) {
+    struct decimal_type_info info = {0};
+    int rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)info.precision,
+            buffers->numeric_precision_text,
+            buffers->numeric_precision_text_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)info.scale,
+            buffers->numeric_scale_text,
+            buffers->numeric_scale_text_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        buffers->values[information_schema_columns_numeric_precision_column] =
+            buffers->numeric_precision_text;
+        buffers->values[information_schema_columns_numeric_scale_column] =
+            buffers->numeric_scale_text;
+    }
+    return rc;
+}
+
+static int append_information_schema_columns_bit_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct information_schema_columns_numeric_metadata_buffers *buffers
+) {
+    uint64_t width = 0U;
+    int rc = bit_width_for_logical_type(column->logical_type, &width);
+
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)width,
+            buffers->numeric_precision_text,
+            buffers->numeric_precision_text_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        buffers->values[information_schema_columns_numeric_precision_column] =
+            buffers->numeric_precision_text;
+        buffers->values[information_schema_columns_numeric_scale_column] = NULL;
+    }
+    return rc;
+}
+
+static int append_information_schema_columns_approximate_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct information_schema_columns_numeric_metadata_buffers *buffers
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (info.has_scale) {
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)info.precision,
+            buffers->numeric_precision_text,
+            buffers->numeric_precision_text_size
+        );
         if (rc == MYLITE_OK) {
             rc = information_schema_format_i64(
                 database,
                 (int64_t)info.scale,
-                numeric_scale_text,
-                numeric_scale_text_size
+                buffers->numeric_scale_text,
+                buffers->numeric_scale_text_size
             );
         }
         if (rc == MYLITE_OK) {
-            values[information_schema_columns_numeric_precision_column] = numeric_precision_text;
-            values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
+            buffers->values[information_schema_columns_numeric_precision_column] =
+                buffers->numeric_precision_text;
+            buffers->values[information_schema_columns_numeric_scale_column] =
+                buffers->numeric_scale_text;
         }
-        return rc;
+    } else {
+        buffers->values[information_schema_columns_numeric_precision_column] =
+            info.type_class == APPROXIMATE_TYPE_FLOAT ? "12" : "22";
+        buffers->values[information_schema_columns_numeric_scale_column] = NULL;
     }
-    if (column_descriptor_is_bit(column)) {
-        uint64_t width = 0U;
-        int rc = bit_width_for_logical_type(column->logical_type, &width);
-
-        if (rc == MYLITE_OK) {
-            rc = information_schema_format_i64(
-                database,
-                (int64_t)width,
-                numeric_precision_text,
-                numeric_precision_text_size
-            );
-        }
-        if (rc == MYLITE_OK) {
-            values[information_schema_columns_numeric_precision_column] = numeric_precision_text;
-            values[information_schema_columns_numeric_scale_column] = NULL;
-        }
-        return rc;
-    }
-    if (column_descriptor_is_approximate(column)) {
-        struct approximate_type_info info = {
-            .type_class = APPROXIMATE_TYPE_DOUBLE,
-            .is_unsigned = false,
-        };
-        int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
-
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (info.has_scale) {
-            rc = information_schema_format_i64(
-                database,
-                (int64_t)info.precision,
-                numeric_precision_text,
-                numeric_precision_text_size
-            );
-            if (rc == MYLITE_OK) {
-                rc = information_schema_format_i64(
-                    database,
-                    (int64_t)info.scale,
-                    numeric_scale_text,
-                    numeric_scale_text_size
-                );
-            }
-            if (rc == MYLITE_OK) {
-                values[information_schema_columns_numeric_precision_column] =
-                    numeric_precision_text;
-                values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
-            }
-        } else {
-            values[information_schema_columns_numeric_precision_column] =
-                info.type_class == APPROXIMATE_TYPE_FLOAT ? "12" : "22";
-            values[information_schema_columns_numeric_scale_column] = NULL;
-        }
-    }
-
-    return MYLITE_OK;
+    return rc;
 }

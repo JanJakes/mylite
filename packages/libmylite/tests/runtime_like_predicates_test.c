@@ -92,6 +92,9 @@ int main(void) {
 static int test_like_predicate_queries(void) {
     static const char *const like_ab_ids[] = {"1", "2", "3", "4", "5", "6"};
     static const char *const like_ab_single_ids[] = {"1", "2"};
+    static const char *const like_binary_ab_ids[] = {"1", "3", "4", "5", "6"};
+    static const char *const like_binary_upper_ab_ids[] = {"2"};
+    static const char *const not_like_binary_ab_ids[] = {"2", "8"};
     static const char *const char_exact_ids[] = {"1", "2", "6"};
     static const char *const escaped_underscore_ids[] = {"4"};
     static const char *const escaped_percent_ids[] = {"5"};
@@ -125,6 +128,56 @@ static int test_like_predicate_queries(void) {
             .column_count = 1U,
             .row_count = 2U,
             .context = "varchar LIKE single-character wildcard",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE BINARY 'ab%' ORDER BY id",
+            .values = like_binary_ab_ids,
+            .column_count = 1U,
+            .row_count = 5U,
+            .context = "LIKE BINARY prefix is case-sensitive",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE BINARY 'AB%' ORDER BY id",
+            .values = like_binary_upper_ab_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "LIKE BINARY uppercase prefix stays distinct",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE BINARY 'ab\\_%' ORDER BY id",
+            .values = escaped_underscore_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "LIKE BINARY default backslash escapes underscore",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE BINARY NULL ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "LIKE BINARY NULL pattern matches no WHERE rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v NOT LIKE BINARY 'ab%' ORDER BY id",
+            .values = not_like_binary_ab_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "NOT LIKE BINARY excludes NULL and keeps case sensitivity",
         }
     );
     failures += expect_query_values(
@@ -405,6 +458,7 @@ static int test_like_predicate_dml_persistence(void) {
 static int test_like_sql_mode(void) {
     static const char *const default_escape_ids[] = {"4"};
     static const char *const no_backslash_escape_ids[] = {"9"};
+    static const char *const no_backslash_escape_binary_ids[] = {"9"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -435,6 +489,16 @@ static int test_like_sql_mode(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "NO_BACKSLASH_ESCAPES treats LIKE backslash as ordinary text",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE BINARY 'ab\\_%' ORDER BY id",
+            .values = no_backslash_escape_binary_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NO_BACKSLASH_ESCAPES treats LIKE BINARY backslash as ordinary text",
         }
     );
 

@@ -544,6 +544,7 @@ static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator
     case MYLITE_SQL_AST_OPERATOR_GREATER:
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
         return true;
@@ -564,7 +565,8 @@ static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator o
 }
 
 static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind) {
-    return operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE;
+    return (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY) != 0;
 }
 
 static bool comparison_operator_is_regexp(enum mylite_sql_ast_operator operator_kind) {

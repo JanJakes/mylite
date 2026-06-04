@@ -100,6 +100,7 @@ add_library(mylite STATIC
   src/runtime/mylite_json_contains.c
   src/runtime/mylite_json_dom.c
   src/runtime/mylite_json_functions.c
+  src/runtime/mylite_like.c
   src/runtime/mylite_json_mutation.c
   src/runtime/mylite_json_parse.c
   src/runtime/mylite_json_path.c

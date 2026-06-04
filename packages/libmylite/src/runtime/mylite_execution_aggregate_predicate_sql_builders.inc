@@ -1013,6 +1013,11 @@ static int append_select_predicate_column_term_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+        node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY) {
+        return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
+    }
+
     int rc =
         append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
 
@@ -1050,6 +1055,11 @@ static int append_select_predicate_column_term_sql_without_subqueries(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+        node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY) {
+        return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
+    }
+
     int rc =
         append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
 
@@ -1229,6 +1239,46 @@ static int append_select_predicate_subject_sql(
         node->column_source_index,
         qualify
     );
+}
+
+static int append_select_like_binary_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "_mylite_like_binary(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_subject_sql(
+            string,
+            node,
+            predicate->qualify_column_references
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK && node->row_scalar_value_expression != NULL) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_value_expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(
+            string,
+            node->like_uses_escape ? ", 1)" : ", 0)"
+        );
+    }
+
+    return rc;
 }
 
 static int append_date_midnight_value_sql_for_source(
@@ -1497,6 +1547,7 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:

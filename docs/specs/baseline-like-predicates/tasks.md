@@ -11,6 +11,8 @@
   predicate generation without MyLite row materialization.
 - [x] Extend runtime tests for success, diagnostics, DML effects, SQL mode,
   persistence, and preamble safety.
+- [x] Expand the slice for `LIKE BINARY` and `NULL` patterns with
+  MySQL-verified expectations and focused parser/runtime coverage.
 - [x] Update compatibility documentation with limited wording.
 - [x] Run the MySQL expectation script, focused CTests, and full check workflow.
 - [x] Commit, push to `origin/main`, and run a review subagent.

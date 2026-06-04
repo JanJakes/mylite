@@ -3,15 +3,19 @@
 ## Summary
 
 This phase adds a narrow descriptor-backed `LIKE` / `NOT LIKE` predicate slice
-for the existing single-table row envelopes. It targets common application
-string filtering while preserving MyLite's current architecture: descriptors
-resolve columns, MyLite decodes and validates pattern literals, and SQLite
-executes the physical row scan or index-assisted plan.
+for the existing single-table row envelopes, including the WordPress-observed
+`LIKE BINARY` case-sensitive form. It targets common application string
+filtering while preserving MyLite's current architecture: descriptors resolve
+columns, MyLite decodes and validates pattern literals, and SQLite executes the
+physical row scan or index-assisted plan with MyLite scalar helpers only where
+SQLite's built-in behavior diverges.
 
 The supported surface is intentionally limited to string descriptor columns on
-the left and ordinary ASCII string pattern literals on the right. It does not
-add general expression predicates, explicit `ESCAPE`, Unicode collation weight
-matching, binary strings, regex, or arbitrary SQLite pass-through.
+the left and ordinary ASCII string pattern literals or `NULL` on the right. It
+does not add general expression predicates, explicit `ESCAPE`, Unicode
+collation weight matching, binary string storage comparisons beyond the
+`LIKE BINARY` case-sensitive nonbinary-string predicate form, regex, or
+arbitrary SQLite pass-through.
 
 ## Sources And Evidence
 
@@ -68,6 +72,9 @@ MySQL 8.4.9 behavior used for this slice:
 - With `NO_BACKSLASH_ESCAPES`, the same `LIKE 'ab\_%'` pattern does not use
   backslash as a pattern escape in the verified MySQL 8.4.9 behavior.
 - `NOT LIKE` and `NOT (column LIKE pattern)` do not match `NULL` column values.
+- `LIKE BINARY 'pattern'` uses the same wildcard and backslash pattern rules as
+  `LIKE`, but ASCII case differences remain distinct. `LIKE BINARY NULL` yields
+  unknown and therefore matches no rows in a `WHERE` filter.
 - Successful supported statements report warning count `0`.
 
 ## Ownership Boundaries
@@ -101,6 +108,8 @@ The existing descriptor predicate contexts admit:
 string_like_predicate:
     string_column LIKE string_pattern_literal
   | string_column NOT LIKE string_pattern_literal
+  | string_column LIKE BINARY string_pattern_literal_or_null
+  | string_column NOT LIKE BINARY string_pattern_literal_or_null
 ```
 
 Supported contexts:
@@ -126,7 +135,8 @@ The predicate may be combined with existing `NOT`, `AND`/`&&`, `XOR`,
 
 `string_pattern_literal` is an ordinary single- or double-quoted MyLite string
 literal after current SQL-mode decoding. The admitted compatibility subset is
-ASCII text without embedded `NUL`.
+ASCII text without embedded `NUL`. `LIKE BINARY` also admits a `NULL` pattern,
+which produces the normal unknown predicate result.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -135,13 +145,30 @@ predicate_atom(A) ::= qualified_identifier(C) LIKE(O) string_pattern_literal(P).
     A = mylite_sql_parser_make_like_predicate(state, C, O, P);
 }
 
+predicate_atom(A) ::= qualified_identifier(C) LIKE(O) BINARY string_pattern_literal_or_null(P). {
+    A = mylite_sql_parser_make_like_binary_predicate(state, C, O, P);
+}
+
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) string_pattern_literal(P). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_like_predicate(state, C, O, P));
 }
 
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) BINARY string_pattern_literal_or_null(P). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_like_binary_predicate(state, C, O, P));
+}
+
 string_pattern_literal(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+
+string_pattern_literal_or_null(A) ::= string_pattern_literal(B). {
+    A = B;
+}
+
+string_pattern_literal_or_null(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 ```
 
@@ -157,7 +184,8 @@ Planning:
 3. Decode the right operand as an ordinary string literal using current MyLite
    string-literal and SQL-mode rules.
 4. Reject embedded `NUL` and non-ASCII pattern bytes for this slice.
-5. Bind the decoded pattern as a `TEXT` parameter.
+5. Bind the decoded pattern as a `TEXT` parameter, or bind SQL `NULL` for a
+   `NULL` pattern.
 
 Generated SQLite predicate SQL:
 
@@ -172,6 +200,17 @@ when `NO_BACKSLASH_ESCAPES` is disabled, and:
 ```
 
 when `NO_BACKSLASH_ESCAPES` is enabled for the session.
+
+For `LIKE BINARY`, generated SQLite predicate SQL uses a MyLite registered
+scalar helper:
+
+```sql
+_mylite_like_binary("column_name", ?N, escape_flag)
+```
+
+The helper evaluates MySQL-style `%` and `_` wildcard matching byte-wise and
+case-sensitively. `escape_flag` is `1` in default SQL mode and `0` when
+`NO_BACKSLASH_ESCAPES` is enabled.
 
 The column identifier is always generated from the descriptor and quoted as a
 SQLite identifier. The pattern is always bound as a prepared-statement
@@ -188,8 +227,12 @@ Supported comparison semantics:
 - With `NO_BACKSLASH_ESCAPES`, MyLite omits an explicit pattern escape clause,
   matching the verified behavior that the backslash is not a pattern escape for
   this slice.
+- `LIKE BINARY` keeps the same wildcard and SQL-mode escape rules, but compares
+  bytes case-sensitively instead of using SQLite's ASCII case-insensitive
+  `LIKE` behavior.
 - `NULL` column behavior is inherited from SQL three-valued logic and verified
-  against MySQL: `LIKE` does not match `NULL`; `NOT LIKE` does not match `NULL`.
+  against MySQL: `LIKE` does not match `NULL`; `LIKE BINARY NULL` does not match
+  any rows in `WHERE`; `NOT LIKE` and `NOT LIKE BINARY` do not match `NULL`.
 
 ## Unsupported
 
@@ -200,7 +243,8 @@ Deferred until later slices:
   subquery, row-constructor, or generated-column operands;
 - pattern values from columns, functions, parameters, or subqueries;
 - non-ASCII pattern or stored-value collation parity;
-- binary strings and binary collations;
+- binary string storage predicates and general binary collations beyond the
+  admitted `LIKE BINARY` case-sensitive nonbinary-string predicate form;
 - numeric-to-string and string-to-numeric comparison conversion;
 - `REGEXP`, `RLIKE`, `NOT REGEXP`, `NOT RLIKE`, and `STRCMP()`;
 - table-backed expression projection or ordering using `LIKE`;

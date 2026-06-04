@@ -2237,6 +2237,8 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "bitwise_or";
     case MYLITE_SQL_AST_OPERATOR_LIKE:
         return "like";
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+        return "like_binary";
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
         return "regexp";
     case MYLITE_SQL_AST_OPERATOR_RLIKE:

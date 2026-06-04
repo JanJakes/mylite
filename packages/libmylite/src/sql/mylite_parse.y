@@ -4155,14 +4155,27 @@ predicate_atom(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P).
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
 }
+predicate_atom(A) ::= qualified_identifier(C) LIKE(O) BINARY predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE_BINARY, P);
+}
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
         mylite_sql_parser_make_comparison_predicate(
             state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
 }
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) BINARY predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE_BINARY, P));
+}
 predicate_like_pattern(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+predicate_like_pattern(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 predicate_like_pattern(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(

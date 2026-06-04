@@ -90,6 +90,16 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id LIKE BINARY '1%';",
+            MYLITE_SQL_AST_OPERATOR_LIKE_BINARY,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id LIKE BINARY NULL;",
+            MYLITE_SQL_AST_OPERATOR_LIKE_BINARY,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id REGEXP '^1$';",
             MYLITE_SQL_AST_OPERATOR_REGEXP,
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
@@ -584,6 +594,40 @@ static int test_select_where_predicates(void) {
         ),
         MYLITE_SQL_AST_OPERATOR_LIKE,
         "not like child operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id NOT LIKE BINARY '1%';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not like binary predicate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "not like binary child"
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_OPERATOR_LIKE_BINARY,
+        "not like binary child operator"
     );
     mylite_sql_parse_result_deinit(&result);
 

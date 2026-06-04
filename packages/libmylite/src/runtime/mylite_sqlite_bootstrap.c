@@ -9,6 +9,7 @@
 #include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
+#include "mylite_like.h"
 #include "mylite_period_functions.h"
 #include "mylite_rand.h"
 #include "mylite_regexp.h"
@@ -267,6 +268,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_regexp_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_like_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_json_functions(sqlite);

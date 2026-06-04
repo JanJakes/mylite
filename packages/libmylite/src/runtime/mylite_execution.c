@@ -23589,6 +23589,12 @@ static int append_select_comparison_predicate_term_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_like_binary_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
 static int append_select_like_predicate_term_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,

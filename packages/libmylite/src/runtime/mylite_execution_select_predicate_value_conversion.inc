@@ -455,6 +455,11 @@ static int convert_predicate_string_pattern_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(

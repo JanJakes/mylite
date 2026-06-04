@@ -70,6 +70,36 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "binary like prefix is case-sensitive" \
+    "1,3,4,5,6" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE BINARY 'ab%';" \
+    "$DATABASE"
+
+expect_output \
+    "binary like uppercase prefix stays distinct" \
+    "2" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE BINARY 'AB%';" \
+    "$DATABASE"
+
+expect_output \
+    "binary like default backslash escapes underscore" \
+    "4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE BINARY 'ab\\_%';" \
+    "$DATABASE"
+
+expect_output \
+    "binary like null pattern matches no where rows" \
+    "0" \
+    "SELECT COUNT(*) FROM strings WHERE v LIKE BINARY NULL;" \
+    "$DATABASE"
+
+expect_output \
+    "not binary like excludes null rows" \
+    "2,8" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v NOT LIKE BINARY 'ab%';" \
+    "$DATABASE"
+
+expect_output \
     "varchar exact like keeps trailing spaces significant" \
     "1,2" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE 'abc';" \
@@ -142,6 +172,13 @@ expect_output \
     "9" \
     "SET sql_mode = 'NO_BACKSLASH_ESCAPES'; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE 'ab\\_%';" \
+    "$DATABASE"
+
+expect_output \
+    "no backslash escapes treats binary like pattern backslash as ordinary text" \
+    "9" \
+    "SET sql_mode = 'NO_BACKSLASH_ESCAPES'; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE BINARY 'ab\\_%';" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_like_predicates_expectations: ok"

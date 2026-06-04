@@ -920,6 +920,7 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:

@@ -1401,7 +1401,7 @@ static int convert_update_column_value(
         );
     }
     if (column_descriptor_is_json(column)) {
-        return convert_json_literal(database, value_node, column, out_value);
+        return convert_json_literal(database, value_node, column, NULL, out_value);
     }
     if (column_descriptor_is_enum(column)) {
         return convert_enum_literal(database, value_node, column, 1U, out_value);

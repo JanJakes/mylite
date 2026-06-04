@@ -16,6 +16,7 @@ static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
     size_t row_number,
     bool ignore_errors,
     bool allow_string_truncation_adjustment,
@@ -73,6 +74,7 @@ static int convert_insert_value(
         database,
         value_node,
         column,
+        diagnostic_column_name,
         row_number,
         ignore_errors,
         allow_string_truncation_adjustment,
@@ -496,6 +498,8 @@ static int convert_insert_value_for_plan(
     struct planned_value *out_value
 ) {
     struct select_source_context source_context = {0};
+    char diagnostic_column_name[(MYLITE_CATALOG_IDENTIFIER_CAPACITY * 2U) + 2U];
+    const char *json_diagnostic_column_name = NULL;
 
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL || plan == NULL || column == NULL || out_value == NULL) {
@@ -512,10 +516,26 @@ static int convert_insert_value_for_plan(
         return MYLITE_ERROR;
     }
     if (value_node->kind != MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        if (column_descriptor_is_json(column)) {
+            int written = snprintf(
+                diagnostic_column_name,
+                sizeof(diagnostic_column_name),
+                "%s.%s",
+                plan->table.name,
+                column->name
+            );
+
+            if (written < 0 || (size_t)written >= sizeof(diagnostic_column_name)) {
+                set_runtime_error(database, "failed to format JSON diagnostic column name");
+                return MYLITE_ERROR;
+            }
+            json_diagnostic_column_name = diagnostic_column_name;
+        }
         return convert_insert_value(
             database,
             value_node,
             column,
+            json_diagnostic_column_name,
             row_number,
             ignore_errors,
             allow_string_truncation_adjustment,
@@ -543,6 +563,7 @@ static int convert_insert_value_by_descriptor(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
     size_t row_number,
     bool ignore_errors,
     bool allow_string_truncation_adjustment,
@@ -582,7 +603,7 @@ static int convert_insert_value_by_descriptor(
     if (column_descriptor_is_json(column)) {
         (void)row_number;
         (void)ignore_errors;
-        return convert_json_literal(database, value_node, column, out_value);
+        return convert_json_literal(database, value_node, column, diagnostic_column_name, out_value);
     }
     if (column_descriptor_is_enum(column)) {
         (void)ignore_errors;

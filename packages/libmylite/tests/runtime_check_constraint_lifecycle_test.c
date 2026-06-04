@@ -25,6 +25,7 @@ enum {
     mysql_error_check_constraint_violated = 3819,
     mysql_error_check_constraint_unknown_column = 3820,
     mysql_error_duplicate_check_constraint = 3822,
+    mysql_error_invalid_json_text = 3140,
 };
 
 struct expected_sql_error {
@@ -258,6 +259,16 @@ static int test_check_constraint_create_metadata_and_dml(void) {
             2U,
             4U,
             "CHECK_CONSTRAINTS text and json rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO checked_text_json (name, data, score) VALUES ('bad', 'invalid JSON', 5)",
+        (struct expected_sql_error){
+            mysql_error_invalid_json_text,
+            "22032",
+            "Invalid JSON text: \"Invalid value.\" at position 0 in value for column "
+            "'checked_text_json.data'.",
         }
     );
 

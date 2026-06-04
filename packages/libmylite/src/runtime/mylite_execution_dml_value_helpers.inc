@@ -34,6 +34,7 @@ static int convert_json_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
     struct planned_value *out_value
 ) {
     char *text = NULL;
@@ -61,7 +62,13 @@ static int convert_json_literal(
         return rc;
     }
 
-    return normalize_json_value(database, text, text_length, column->name, out_value);
+    return normalize_json_value(
+        database,
+        text,
+        text_length,
+        diagnostic_column_name == NULL ? column->name : diagnostic_column_name,
+        out_value
+    );
 }
 
 static int normalize_json_value(

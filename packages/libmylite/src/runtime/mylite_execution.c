@@ -16367,6 +16367,7 @@ static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
     size_t row_number,
     bool ignore_errors,
     bool allow_string_truncation_adjustment,
@@ -16456,6 +16457,7 @@ static int convert_insert_value_by_descriptor(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
     size_t row_number,
     bool ignore_errors,
     bool allow_string_truncation_adjustment,
@@ -17154,6 +17156,7 @@ static int convert_json_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
     struct planned_value *out_value
 );
 static int normalize_json_value(

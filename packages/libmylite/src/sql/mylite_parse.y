@@ -63,6 +63,7 @@
 %type select_sql_no_cache_opt { int }
 %type select_sql_calc_found_rows_opt { int }
 %type select_locking_clause_opt { struct mylite_sql_select_locking_clause }
+%type select_lock_wait_opt { struct mylite_sql_token }
 %type union_modifier_opt { enum mylite_sql_ast_union_modifier }
 %type show_full_opt { int }
 %type join_operator { enum mylite_sql_ast_join_kind }
@@ -3613,24 +3614,26 @@ select_locking_clause_opt(A) ::= . {
         .span = {0},
     };
 }
-select_locking_clause_opt(A) ::= FOR(F) UPDATE(U). {
+select_locking_clause_opt(A) ::= FOR(F) UPDATE(U) select_lock_wait_opt(W). {
+    struct mylite_sql_token end_token = W.text != NULL ? W : U;
     A = (struct mylite_sql_select_locking_clause){
         .kind = MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
         .span = {
             .text = F.text,
-            .length = (U.offset + U.length) - F.offset,
+            .length = (end_token.offset + end_token.length) - F.offset,
             .offset = F.offset,
             .line = F.line,
             .column = F.column,
         },
     };
 }
-select_locking_clause_opt(A) ::= FOR(F) SHARE(S). {
+select_locking_clause_opt(A) ::= FOR(F) SHARE(S) select_lock_wait_opt(W). {
+    struct mylite_sql_token end_token = W.text != NULL ? W : S;
     A = (struct mylite_sql_select_locking_clause){
         .kind = MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE,
         .span = {
             .text = F.text,
-            .length = (S.offset + S.length) - F.offset,
+            .length = (end_token.offset + end_token.length) - F.offset,
             .offset = F.offset,
             .line = F.line,
             .column = F.column,
@@ -3648,6 +3651,16 @@ select_locking_clause_opt(A) ::= LOCK(L) IN SHARE MODE(M). {
             .column = L.column,
         },
     };
+}
+
+select_lock_wait_opt(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+select_lock_wait_opt(A) ::= NOWAIT(N). {
+    A = N;
+}
+select_lock_wait_opt(A) ::= SKIP LOCKED(L). {
+    A = L;
 }
 
 table_alias_opt(A) ::= . {

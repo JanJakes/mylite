@@ -31,7 +31,7 @@ struct expected_sql_error {
 static int test_locking_select_paths(void);
 static int test_locking_source_dml(void);
 static int test_create_table_select_locking_rejected(void);
-static int test_unsupported_locking_forms(void);
+static int test_locking_wait_options(void);
 static int test_locking_file_reopen(void);
 static int prepare_fixture(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -74,7 +74,7 @@ int main(void) {
     failures += test_locking_select_paths();
     failures += test_locking_source_dml();
     failures += test_create_table_select_locking_rejected();
-    failures += test_unsupported_locking_forms();
+    failures += test_locking_wait_options();
     failures += test_locking_file_reopen();
 
     return failures == 0 ? 0 : 1;
@@ -273,37 +273,43 @@ static int test_create_table_select_locking_rejected(void) {
     return failures;
 }
 
-static int test_unsupported_locking_forms(void) {
+static int test_locking_wait_options(void) {
+    static const char *const all_rows[] = {"1", "2", "3", "4"};
+    static const char *const one_row[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "unsupported") != 0) {
+    if (make_test_path(path, sizeof(path), "wait") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open unsupported locking");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open locking wait options");
     failures += prepare_fixture(database);
 
-    failures += execute_error(
-        database,
-        "SELECT id FROM t FOR UPDATE NOWAIT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t FOR SHARE SKIP LOCKED",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
+    failures += execute_ok(database, "SELECT id FROM t ORDER BY id FOR UPDATE NOWAIT", &result);
+    failures += expect_rows(result, all_rows, 4U, 0U, "for update nowait rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT id FROM t ORDER BY id FOR SHARE SKIP LOCKED", &result);
+    failures += expect_rows(result, all_rows, 4U, 0U, "for share skip locked rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT id FROM t WHERE id = 1 FOR UPDATE SKIP LOCKED", &result);
+    failures += expect_rows(result, one_row, 1U, 0U, "for update skip locked filtered row");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT id FROM t WHERE id = 1 FOR SHARE NOWAIT", &result);
+    failures += expect_rows(result, one_row, 1U, 0U, "for share nowait filtered row");
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_error(
         database,
         "SELECT id FROM t FOR UPDATE OF t",

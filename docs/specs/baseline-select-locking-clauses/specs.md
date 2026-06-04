@@ -10,7 +10,11 @@ The supported clauses are parsed, represented in the AST, and executed as
 embedded no-ops:
 
 - `FOR UPDATE`
+- `FOR UPDATE NOWAIT`
+- `FOR UPDATE SKIP LOCKED`
 - `FOR SHARE`
+- `FOR SHARE NOWAIT`
+- `FOR SHARE SKIP LOCKED`
 - `LOCK IN SHARE MODE`
 
 MyLite does not yet implement explicit transactions, row locks, gap locks,
@@ -74,9 +78,13 @@ select_statement ::=
         limit_clause_opt select_locking_clause_opt.
 
 select_locking_clause_opt ::= .
-select_locking_clause_opt ::= FOR UPDATE.
-select_locking_clause_opt ::= FOR SHARE.
+select_locking_clause_opt ::= FOR UPDATE select_lock_wait_opt.
+select_locking_clause_opt ::= FOR SHARE select_lock_wait_opt.
 select_locking_clause_opt ::= LOCK IN SHARE MODE.
+
+select_lock_wait_opt ::= .
+select_lock_wait_opt ::= NOWAIT.
+select_lock_wait_opt ::= SKIP LOCKED.
 ```
 
 The clause appears after the currently supported `ORDER BY` and `LIMIT` tails.
@@ -129,8 +137,6 @@ This slice does not admit:
 
 - `FOR UPDATE OF table_name`;
 - `FOR SHARE OF table_name`;
-- `NOWAIT`;
-- `SKIP LOCKED`;
 - multiple locking clauses in one query block;
 - locking clauses before `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, or `LIMIT`;
 - locking clauses in `CREATE TABLE ... SELECT`;
@@ -141,10 +147,11 @@ This slice does not admit:
   interactions.
 
 MySQL 8.4.9 accepts `NOWAIT`, `SKIP LOCKED`, and `OF table_name`; MyLite
-intentionally leaves them unsupported until it has explicit transaction and
-locking semantics. MySQL also returns error `3569` for multiple locking clauses
-that apply to the same table; MyLite may reject repeated locking clauses as a
-syntax error for this narrow slice.
+accepts `NOWAIT` and `SKIP LOCKED` as current embedded no-op wait modifiers,
+and intentionally leaves `OF table_name` unsupported until it has explicit
+transaction and locking semantics. MySQL also returns error `3569` for multiple
+locking clauses that apply to the same table; MyLite may reject repeated locking
+clauses as a syntax error for this narrow slice.
 
 ## Diagnostics
 
@@ -153,7 +160,7 @@ Expected diagnostics:
 | Condition | Diagnostic |
 | --- | --- |
 | Syntax errors or unsupported clause placement | Existing parser syntax error `1064`, SQLSTATE `42000` |
-| `NOWAIT`, `SKIP LOCKED`, `OF table_name` | Deterministic syntax or unsupported diagnostic |
+| `OF table_name` | Deterministic syntax or unsupported diagnostic |
 | Multiple locking clauses | Deterministic syntax or unsupported diagnostic; MySQL exact `3569` may be deferred |
 | `CREATE TABLE ... SELECT ... locking_clause` with one descriptor source table | Error `1746`, SQLSTATE `HY000`, message naming the source and target tables |
 | `CREATE TABLE ... SELECT ... locking_clause` with an existing target table | Existing target diagnostics or `IF NOT EXISTS` no-op note take precedence |
@@ -193,7 +200,8 @@ Add MySQL-runtime expectation coverage for:
 - `INSERT ... SELECT ... FOR UPDATE` and
   `REPLACE ... SELECT ... FOR SHARE`;
 - `CREATE TABLE ... SELECT ... FOR UPDATE` rejection;
-- MySQL-accepted but MyLite-deferred `NOWAIT`, `SKIP LOCKED`, and `OF table`;
+- MySQL-accepted no-op `NOWAIT` and `SKIP LOCKED`, plus MyLite-deferred
+  `OF table`;
 - multiple locking clauses and misplaced clauses.
 
 Add fast C tests under `packages/libmylite/tests/`, preferably a new
@@ -208,8 +216,8 @@ tests. Cover:
 - no result-set shape changes;
 - `CREATE TABLE ... SELECT ... FOR UPDATE` diagnostic and no target table
   creation side effect;
-- unsupported `NOWAIT`, `SKIP LOCKED`, `OF`, repeated clauses, and misplaced
-  clauses;
+- successful `NOWAIT` and `SKIP LOCKED` wait modifiers, and unsupported `OF`,
+  repeated clauses, and misplaced clauses;
 - existing parser/runtime lifecycle tests still pass.
 
 ## Compatibility Documentation

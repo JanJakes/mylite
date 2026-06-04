@@ -171,7 +171,7 @@ expect_value \
 2	1" \
     "$source_dml"
 
-accepted_deferred_options=$(
+accepted_locking_options=$(
     run_mysql \
         "USE ${DATABASE};
          SELECT id FROM t ORDER BY id FOR UPDATE NOWAIT;
@@ -179,7 +179,7 @@ accepted_deferred_options=$(
          SELECT id FROM t ORDER BY id FOR UPDATE OF t;"
 )
 expect_value \
-    "mysql accepted locking options deferred by MyLite" \
+    "mysql accepted locking option forms" \
     "1
 2
 3
@@ -189,7 +189,7 @@ expect_value \
 1
 2
 3" \
-    "$accepted_deferred_options"
+    "$accepted_locking_options"
 
 expect_error \
     "ctas locking clause rejected" \

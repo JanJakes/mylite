@@ -4038,6 +4038,11 @@ predicate_atom(A) ::= temporal_extract_predicate_expression(C) IS(I) NOT NULL(N)
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
+predicate_atom(A) ::= cast_convert_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
 predicate_atom(A) ::= find_in_set_expression(C) EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
@@ -4518,6 +4523,9 @@ select_order_item(A) ::= select_order_key(K) order_direction_opt(D). {
 select_order_key(A) ::= qualified_identifier(K). {
     A = K;
 }
+select_order_key(A) ::= cast_convert_expression(K). {
+    A = K;
+}
 select_order_key(A) ::= select_field_order_expression(K). {
     A = K;
 }
@@ -4709,16 +4717,20 @@ expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
 expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
 }
-expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY cast_length_opt RPAREN(R). {
+expression(A) ::= cast_convert_expression(B). {
+    A = B;
+}
+
+cast_convert_expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY cast_length_opt RPAREN(R). {
     A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
 }
-expression(A) ::= CAST(T) LPAREN expression(V) AS cast_basic_target(K) RPAREN(R). {
+cast_convert_expression(A) ::= CAST(T) LPAREN expression(V) AS cast_basic_target(K) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(state, T, K, V, R);
 }
-expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY cast_length_opt RPAREN(R). {
+cast_convert_expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY cast_length_opt RPAREN(R). {
     A = mylite_sql_parser_make_convert_binary_type_expression(state, T, V, R);
 }
-expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA cast_basic_target(K) RPAREN(R). {
+cast_convert_expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA cast_basic_target(K) RPAREN(R). {
     switch (K) {
     case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
         A = mylite_sql_parser_make_one_argument_function(
@@ -4737,10 +4749,10 @@ expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA cast_basic_target(K) RPA
         break;
     }
 }
-expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAREN(R). {
+cast_convert_expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_binary_expression(state, T, V, R);
 }
-expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
+cast_convert_expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_charset_expression(state, T, V, C, R);
 }
 expression(A) ::= expression(V) COLLATE(C) option_name(N). {

@@ -2041,6 +2041,7 @@ enum planned_select_order_item_kind {
     PLANNED_SELECT_ORDER_ITEM_COLUMN = 0,
     PLANNED_SELECT_ORDER_ITEM_FIELD = 1,
     PLANNED_SELECT_ORDER_ITEM_RAND = 2,
+    PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR = 3,
 };
 
 struct select_predicate_plan_options {
@@ -18974,6 +18975,14 @@ static int plan_select_order_field_expression(
 static int plan_select_order_rand_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,
+    struct planned_select_order_item *out_item
+);
+static int plan_select_order_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_select_order_item *out_item
 );
 static int validate_select_order_field_expression(

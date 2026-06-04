@@ -105,6 +105,8 @@ static int test_cast_binary_expression(void) {
     const struct mylite_sql_ast_node *third_expression = NULL;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *expression_list = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -492,6 +494,26 @@ static int test_cast_binary_expression(void) {
         "CREATE TABLE t (binary INT);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "SELECT CONVERT(val, BINARY) AS v1, CONVERT(val USING utf8mb4) AS v2 "
+        "FROM t WHERE CONVERT(num, SIGNED) < 0 ORDER BY CONVERT(val USING utf8mb4);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    where_clause = parser_test_first_child_kind(select, MYLITE_SQL_AST_WHERE_CLAUSE);
+    order_clause = parser_test_first_child_kind(select, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(where_clause, 0U), 0U),
+        MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION,
+        "convert predicate left expression"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(order_clause, 0U),
+        MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION,
+        "convert order expression"
     );
     mylite_sql_parse_result_deinit(&result);
 

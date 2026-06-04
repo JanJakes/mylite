@@ -210,6 +210,26 @@ static int plan_select_order_ast_item(
         }
         return rc;
     }
+    if (row_scalar_conversion_kind_from_expression(item_nodes.order_key) !=
+        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+        if (select_source_context_is_joined(source_context)) {
+            set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
+            return MYLITE_ERROR;
+        }
+        rc = plan_select_order_row_scalar_expression(
+            database,
+            item_nodes.order_key,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_item
+        );
+        if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
+                                   MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+            out_item->direction = PLANNED_SELECT_ORDER_DESC;
+        }
+        return rc;
+    }
 
     rc = resolve_order_alias(
         database,
@@ -406,6 +426,44 @@ static int plan_select_order_rand_expression(
     }
 
     out_item->kind = PLANNED_SELECT_ORDER_ITEM_RAND;
+    out_item->expression = expression;
+    return MYLITE_OK;
+}
+
+static int plan_select_order_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order_item *out_item
+) {
+    struct planned_row_scalar_expression *expression = NULL;
+    int rc = MYLITE_OK;
+
+    expression = (struct planned_row_scalar_expression *)calloc(1U, sizeof(*expression));
+    if (expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        order_key,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(expression);
+        free(expression);
+        return rc;
+    }
+
+    out_item->kind = PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR;
     out_item->expression = expression;
     return MYLITE_OK;
 }

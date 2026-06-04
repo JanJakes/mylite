@@ -693,6 +693,18 @@ static int plan_row_scalar_function_comparison_predicate(
             out_node_index
         );
     }
+    if (row_scalar_conversion_kind_from_expression(left_node) !=
+        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+        return plan_row_scalar_expression_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
     if (row_scalar_expression_is_rand_function(left_node)) {
         return plan_row_scalar_expression_comparison_predicate(
             database,

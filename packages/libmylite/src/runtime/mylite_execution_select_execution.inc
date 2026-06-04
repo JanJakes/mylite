@@ -636,9 +636,16 @@ static int populate_row_scalar_source_result_column_descriptor(
         return MYLITE_OK;
     }
 
-    rc = make_scalar_result_column_descriptor(database, expression, descriptor->label, descriptor);
-    if (rc != MYLITE_OK || row_scalar_descriptor_has_known_type(descriptor)) {
-        return rc;
+    if (!ast_subtree_has_column_reference(expression)) {
+        rc = make_scalar_result_column_descriptor(
+            database,
+            expression,
+            descriptor->label,
+            descriptor
+        );
+        if (rc != MYLITE_OK || row_scalar_descriptor_has_known_type(descriptor)) {
+            return rc;
+        }
     }
 
     return populate_row_scalar_special_source_result_column_descriptor(

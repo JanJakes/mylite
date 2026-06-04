@@ -141,7 +141,8 @@ static int bind_select_order_parameters(
         const struct planned_select_order_item *item = &order->items[item_index];
 
         if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
-            item->kind == PLANNED_SELECT_ORDER_ITEM_RAND) {
+            item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
+            item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
             rc =
                 bind_row_scalar_expression_parameters(statement, item->expression, parameter_index);
         }

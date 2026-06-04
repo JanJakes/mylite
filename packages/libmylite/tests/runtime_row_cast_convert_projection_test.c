@@ -243,6 +243,18 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
     };
     static const char *const nested_columns[] = {"nested"};
     static const char *const nested_values[] = {"ABC", "3.9", NULL};
+    static const char *const predicate_order_columns[] = {"v1", "v2"};
+    static const char *const predicate_order_values[] = {"alpha", "alpha", "hello", "hello"};
+
+    static const enum mylite_result_column_type predicate_order_types[] = {
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+    };
+
+    static const uint32_t predicate_order_collations[] = {
+        mysql_collation_binary_id,
+        mysql_collation_utf8mb4_0900_ai_ci_id,
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -256,6 +268,13 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
     if (failures != 0) {
         return failures;
     }
+    failures +=
+        execute_ok(database, "CREATE TABLE wp_convert(val VARCHAR(255), num VARCHAR(255))", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO wp_convert VALUES ('hello', '-42'), ('zero', '0'), ('alpha', '-5')",
+        NULL
+    );
     mylite_file_preamble_init(expected_preamble);
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
@@ -346,6 +365,21 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
             .collation_ids = char_collations,
             .row_count = 3U,
             .context = "nested row conversion",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT(val, BINARY) AS v1, CONVERT(val USING utf8mb4) AS v2 "
+                   "FROM wp_convert WHERE CONVERT(num, SIGNED) < 0 "
+                   "ORDER BY CONVERT(val USING utf8mb4)",
+            .columns = predicate_order_columns,
+            .column_count = sizeof(predicate_order_columns) / sizeof(predicate_order_columns[0]),
+            .values = predicate_order_values,
+            .types = predicate_order_types,
+            .collation_ids = predicate_order_collations,
+            .row_count = 2U,
+            .context = "row conversion predicate and order",
         }
     );
 

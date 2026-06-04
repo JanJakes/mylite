@@ -532,14 +532,7 @@ static void finish_unsigned_integer_cast_result(
 }
 
 static void finish_int64_result(sqlite3_context *context, int64_t value) {
-    char buffer[sizeof("-9223372036854775808")];
-    int written = snprintf(buffer, sizeof(buffer), "%" PRId64, value);
-
-    if (written < 0 || (size_t)written >= sizeof(buffer)) {
-        sqlite3_result_error(context, "failed to format MyLite signed CAST/CONVERT result", -1);
-        return;
-    }
-    sqlite3_result_text(context, buffer, written, SQLITE_TRANSIENT);
+    sqlite3_result_int64(context, value);
 }
 
 static void finish_uint64_result(sqlite3_context *context, uint64_t value) {

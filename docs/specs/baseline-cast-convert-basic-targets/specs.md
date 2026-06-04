@@ -267,8 +267,8 @@ Unsupported or rejected behavior:
 | `CAST(value AS INT)` / `CAST(value AS INTEGER)` | MySQL-style syntax error |
 | `CONVERT(value, INT)` / `CONVERT(value, INTEGER)` | MySQL-style syntax error |
 | spatial targets | deterministic unsupported syntax for this phase |
-| table-backed `SELECT CAST(column AS SIGNED) FROM t` | deterministic unsupported table-backed expression diagnostic |
-| predicate, DML-assignment, default-expression, or generated-column casts | deterministic unsupported expression diagnostic |
+| unsupported row operand families for table-backed projections, predicates, and `ORDER BY` keys | deterministic unsupported expression diagnostic |
+| DML-assignment, default-expression, or generated-column casts | deterministic unsupported expression diagnostic |
 | embedded `NUL` in scalar text operand | deterministic unsupported runtime error |
 | allocation failure | `MYLITE_NOMEM` with the existing out-of-memory diagnostic |
 

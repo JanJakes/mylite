@@ -1874,7 +1874,8 @@ static int append_select_order_item_sql(
         return rc;
     }
     if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
-        item->kind == PLANNED_SELECT_ORDER_ITEM_RAND) {
+        item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
+        item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
         if (next_parameter == NULL || item->expression == NULL) {
             return MYLITE_ERROR;
         }

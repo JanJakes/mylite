@@ -219,13 +219,18 @@ enum {
     show_create_view_result_column_count = 4,
     show_create_database_result_column_count = 2,
     show_table_status_name_column = 0,
+    show_table_status_engine_column = 1,
     show_table_status_version_column = 2,
+    show_table_status_row_format_column = 3,
     show_table_status_rows_column = 4,
     show_table_status_average_row_length_column = 5,
     show_table_status_data_length_column = 6,
     show_table_status_max_data_length_column = 7,
     show_table_status_data_free_column = 9,
+    show_table_status_collation_column = 14,
     show_table_status_checksum_column = 15,
+    show_table_status_create_options_column = 16,
+    show_table_status_comment_column = 17,
     show_table_status_result_column_count = 18,
     show_table_status_index_length_column = 8,
     show_table_status_auto_increment_column = 10,
@@ -2830,6 +2835,11 @@ struct update_optional_clauses {
     const struct mylite_sql_ast_node *limit_clause;
 };
 
+struct information_schema_joined_update_clauses {
+    const struct mylite_sql_ast_node *from_clause;
+    const struct mylite_sql_ast_node *where_clause;
+};
+
 struct update_unique_key_conflict_bind_request {
     const struct planned_update *executable_plan;
     const struct planned_update *plan;
@@ -2873,6 +2883,11 @@ struct show_catalog_where_row {
     const char *const *columns;
     const char *const *values;
     size_t column_count;
+};
+
+struct show_catalog_where_comparison {
+    enum mylite_sql_ast_operator operator_kind;
+    int comparison;
 };
 
 struct show_variables_where_eval_frame {
@@ -3979,6 +3994,17 @@ static int apply_set_system_variable_cell_value(
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_log_bin_trust_function_creators_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value
+);
+static int apply_set_fixed_boolean_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    bool expected_value
 );
 static int apply_set_sql_mode_cell_value(
     struct mylite_db *database,
@@ -13307,6 +13333,18 @@ static int compare_show_catalog_where_literal(
     const struct mylite_sql_ast_node *right,
     enum show_variables_where_truth *out_truth
 );
+static enum show_variables_where_truth show_catalog_null_literal_truth(
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left
+);
+static enum show_variables_where_truth show_catalog_null_left_truth(
+    enum mylite_sql_ast_operator operator_kind
+);
+static int show_catalog_where_truth_from_comparison(
+    struct mylite_db *database,
+    struct show_catalog_where_comparison comparison,
+    enum show_variables_where_truth *out_truth
+);
 static int decode_show_catalog_where_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
@@ -14251,8 +14289,7 @@ static int plan_joined_update(
 );
 static int reject_information_schema_joined_update_ambiguous_where(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *from_clause,
-    const struct mylite_sql_ast_node *where_clause
+    const struct information_schema_joined_update_clauses *clauses
 );
 static int count_information_schema_joined_update_sources(
     struct mylite_db *database,
@@ -14264,9 +14301,11 @@ static int information_schema_joined_update_source_matches(
     const struct mylite_sql_ast_node *source_node,
     bool *out_matches
 );
-static bool ast_subtree_has_unqualified_identifier(
+static int ast_subtree_has_unqualified_identifier(
+    struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
-    const char *identifier
+    const char *identifier,
+    bool *out_has_identifier
 );
 static bool source_span_equals_ascii_case_insensitive(
     const struct mylite_sql_source_span *span,
@@ -22537,6 +22576,23 @@ static int append_show_builtin_table(
 static int append_show_table_status(
     const struct mylite_catalog_table_descriptor *table,
     void *user_data
+);
+static int load_show_table_status_values(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *status
+);
+static void fill_show_table_status_row_values(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct table_status_values *status,
+    const char **values
+);
+static int show_table_status_row_matches(
+    struct show_table_status_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct table_status_values *status,
+    const char *values[show_table_status_result_column_count],
+    bool *out_matches
 );
 static int append_show_builtin_schema_table_status(
     const struct mylite_execution_catalog_builtin_schema_table_directory *directory,

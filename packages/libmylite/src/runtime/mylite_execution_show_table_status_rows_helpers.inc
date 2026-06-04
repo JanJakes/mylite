@@ -4,7 +4,7 @@ static int append_show_table_status(
 ) {
     struct show_table_status_context *context = user_data;
     struct table_status_values status = {0};
-    char auto_increment_predicate_text[integer_text_capacity];
+    const char *values[show_table_status_result_column_count] = {0};
     bool where_matches = true;
     int rc = MYLITE_OK;
 
@@ -19,63 +19,12 @@ static int append_show_table_status(
         return MYLITE_OK;
     }
 
-    if (table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
-        rc = load_table_status_values(context->database, table, &status);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-    } else {
-        rc = format_table_status_timestamp(
-            context->database,
-            table->created_time_utc_epoch,
-            status.create_time_text,
-            sizeof(status.create_time_text),
-            &status.create_time
-        );
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
+    rc = load_show_table_status_values(context->database, table, &status);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-
-    const char *values[show_table_status_result_column_count] = {
-        table->name,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "InnoDB",
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "10",
-        status.row_format,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : status.row_count_text,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : status.average_row_length_text,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "16384",
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "0",
-        status.index_length,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : "0",
-        status.auto_increment,
-        status.create_time,
-        status.update_time,
-        NULL,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? NULL : table->default_collation,
-        NULL,
-        status.create_options,
-        table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? "VIEW" : table->comment,
-    };
-
-    if (context->where_clause != NULL && table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
-        rc = table_status_auto_increment_predicate_value(
-            context->database,
-            table,
-            &status,
-            auto_increment_predicate_text,
-            sizeof(auto_increment_predicate_text),
-            &values[show_table_status_auto_increment_column]
-        );
-    }
-    if (rc == MYLITE_OK && context->where_clause != NULL) {
-        rc = show_table_status_where_clause_matches(
-            context->database,
-            context->where_clause,
-            values,
-            &where_matches
-        );
-    }
+    fill_show_table_status_row_values(table, &status, values);
+    rc = show_table_status_row_matches(context, table, &status, values, &where_matches);
     if (rc == MYLITE_OK && !where_matches) {
         return MYLITE_OK;
     }
@@ -84,6 +33,87 @@ static int append_show_table_status(
     }
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(context->database);
+    }
+    return rc;
+}
+
+static int load_show_table_status_values(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *status
+) {
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return load_table_status_values(database, table, status);
+    }
+    return format_table_status_timestamp(
+        database,
+        table->created_time_utc_epoch,
+        status->create_time_text,
+        sizeof(status->create_time_text),
+        &status->create_time
+    );
+}
+
+static void fill_show_table_status_row_values(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct table_status_values *status,
+    const char **values
+) {
+    values[show_table_status_name_column] = table->name;
+    values[show_table_status_row_format_column] = status->row_format;
+    values[show_table_status_index_length_column] = status->index_length;
+    values[show_table_status_auto_increment_column] = status->auto_increment;
+    values[show_table_status_create_time_column] = status->create_time;
+    values[show_table_status_update_time_column] = status->update_time;
+    values[show_table_status_create_options_column] = status->create_options;
+
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
+        values[show_table_status_comment_column] = "VIEW";
+        return;
+    }
+
+    values[show_table_status_engine_column] = "InnoDB";
+    values[show_table_status_version_column] = "10";
+    values[show_table_status_rows_column] = status->row_count_text;
+    values[show_table_status_average_row_length_column] = status->average_row_length_text;
+    values[show_table_status_data_length_column] = "16384";
+    values[show_table_status_max_data_length_column] = "0";
+    values[show_table_status_data_free_column] = "0";
+    values[show_table_status_collation_column] = table->default_collation;
+    values[show_table_status_comment_column] = table->comment;
+}
+
+static int show_table_status_row_matches(
+    struct show_table_status_context *context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct table_status_values *status,
+    const char *values[show_table_status_result_column_count],
+    bool *out_matches
+) {
+    char auto_increment_predicate_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    *out_matches = true;
+    if (context->where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (table->kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        rc = table_status_auto_increment_predicate_value(
+            context->database,
+            table,
+            status,
+            auto_increment_predicate_text,
+            sizeof(auto_increment_predicate_text),
+            &values[show_table_status_auto_increment_column]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = show_table_status_where_clause_matches(
+            context->database,
+            context->where_clause,
+            values,
+            out_matches
+        );
     }
     return rc;
 }

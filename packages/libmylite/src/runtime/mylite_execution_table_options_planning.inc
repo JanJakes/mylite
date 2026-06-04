@@ -947,6 +947,12 @@ static int normalize_mysql_comment_text(
     char **in_out_text,
     size_t *in_out_length
 ) {
+    enum {
+        utf8_four_byte_lead_min = 0xf0U,
+        utf8_four_byte_lead_max = 0xf4U,
+        utf8_four_byte_width = 4U,
+        utf8_four_byte_trailing_width = 3U,
+    };
     struct mylite_dynamic_string normalized;
     char *text = NULL;
     size_t text_length = 0U;
@@ -964,9 +970,10 @@ static int normalize_mysql_comment_text(
 
         if (byte == '\0') {
             rc = mylite_dynamic_string_append(&normalized, "\\0");
-        } else if (byte >= 0xf0U && byte <= 0xf4U && index + 4U <= text_length) {
+        } else if (byte >= utf8_four_byte_lead_min && byte <= utf8_four_byte_lead_max &&
+                   index + utf8_four_byte_width <= text_length) {
             rc = mylite_dynamic_string_append_char(&normalized, '?');
-            index += 3U;
+            index += utf8_four_byte_trailing_width;
         } else {
             rc = mylite_dynamic_string_append_char(&normalized, text[index]);
         }

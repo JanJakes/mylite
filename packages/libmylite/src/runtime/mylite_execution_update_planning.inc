@@ -343,8 +343,10 @@ static int plan_joined_update(
     }
     rc = reject_information_schema_joined_update_ambiguous_where(
         database,
-        from_clause,
-        where_clause
+        &(struct information_schema_joined_update_clauses){
+            .from_clause = from_clause,
+            .where_clause = where_clause,
+        }
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -413,25 +415,38 @@ static int plan_joined_update(
 
 static int reject_information_schema_joined_update_ambiguous_where(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *from_clause,
-    const struct mylite_sql_ast_node *where_clause
+    const struct information_schema_joined_update_clauses *clauses
 ) {
     size_t information_schema_source_count = 0U;
+    bool has_unqualified_table_name = false;
     int rc = MYLITE_OK;
 
-    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+    if (clauses == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (clauses->where_clause == NULL ||
+        clauses->where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
         return MYLITE_OK;
     }
 
     rc = count_information_schema_joined_update_sources(
         database,
-        from_clause,
+        clauses->from_clause,
         &information_schema_source_count
     );
     if (rc != MYLITE_OK || information_schema_source_count < 2U) {
         return rc;
     }
-    if (ast_subtree_has_unqualified_identifier(child_at(where_clause, 0U), "table_name")) {
+    rc = ast_subtree_has_unqualified_identifier(
+        database,
+        child_at(clauses->where_clause, 0U),
+        "table_name",
+        &has_unqualified_table_name
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (has_unqualified_table_name) {
         set_ambiguous_column_reference_error(database, COLUMN_REFERENCE_WHERE, "table_name");
         return MYLITE_ERROR;
     }
@@ -444,32 +459,40 @@ static int count_information_schema_joined_update_sources(
     const struct mylite_sql_ast_node *source_node,
     size_t *in_out_count
 ) {
+    struct scalar_arithmetic_node_stack stack = {0};
     bool matches = false;
     int rc = MYLITE_OK;
 
     if (source_node == NULL || in_out_count == NULL) {
         return MYLITE_OK;
     }
-    if (source_node->kind == MYLITE_SQL_AST_FROM_JOIN) {
-        rc = count_information_schema_joined_update_sources(
-            database,
-            child_at(source_node, 0U),
-            in_out_count
-        );
-        if (rc == MYLITE_OK) {
-            rc = count_information_schema_joined_update_sources(
-                database,
-                child_at(source_node, 1U),
-                in_out_count
-            );
-        }
-        return rc;
+    if (!scalar_arithmetic_node_stack_push(&stack, source_node)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
 
-    rc = information_schema_joined_update_source_matches(database, source_node, &matches);
-    if (rc == MYLITE_OK && matches) {
-        ++(*in_out_count);
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_FROM_JOIN) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, 1U)) ||
+                !scalar_arithmetic_node_stack_push(&stack, child_at(current, 0U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+            continue;
+        }
+
+        rc = information_schema_joined_update_source_matches(database, current, &matches);
+        if (rc == MYLITE_OK && matches) {
+            ++(*in_out_count);
+        }
     }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
     return rc;
 }
 
@@ -510,28 +533,47 @@ static int information_schema_joined_update_source_matches(
     return MYLITE_OK;
 }
 
-static bool ast_subtree_has_unqualified_identifier(
+static int ast_subtree_has_unqualified_identifier(
+    struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
-    const char *identifier
+    const char *identifier,
+    bool *out_has_identifier
 ) {
-    const struct mylite_sql_ast_node *child = NULL;
+    struct scalar_arithmetic_node_stack stack = {0};
 
+    if (out_has_identifier == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_has_identifier = false;
     if (node == NULL || identifier == NULL) {
-        return false;
+        return MYLITE_OK;
     }
-    if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
-        source_span_equals_ascii_case_insensitive(&node->span, identifier)) {
-        return true;
+    if (!scalar_arithmetic_node_stack_push(&stack, node)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
 
-    child = child_at(node, 0U);
-    while (child != NULL) {
-        if (ast_subtree_has_unqualified_identifier(child, identifier)) {
-            return true;
+    while (stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        const struct mylite_sql_ast_node *child = child_at(current, 0U);
+
+        if (current->kind == MYLITE_SQL_AST_IDENTIFIER &&
+            source_span_equals_ascii_case_insensitive(&current->span, identifier)) {
+            *out_has_identifier = true;
+            break;
         }
-        child = child->next_sibling;
+        while (child != NULL) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child)) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            child = child->next_sibling;
+        }
     }
-    return false;
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return MYLITE_OK;
 }
 
 static bool source_span_equals_ascii_case_insensitive(

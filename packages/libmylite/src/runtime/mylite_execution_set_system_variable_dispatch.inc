@@ -69,34 +69,15 @@ static int apply_set_system_variable_cell_value(
         return MYLITE_ERROR;
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {
-        rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (boolean_value) {
-            set_unsupported_error(
-                database,
-                "SET supports only fixed no-op system variable assignments"
-            );
-            return MYLITE_ERROR;
-        }
-        return append_system_variable_read_warning(database, target->kind);
+        return apply_set_log_bin_trust_function_creators_cell_value(database, target, value);
     }
     if (mylite_execution_system_variable_fixed_boolean_value(target->kind, &boolean_value)) {
-        bool actual = false;
-
-        rc = parse_set_boolean_cell_value(database, target->name, value, &actual);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (actual != boolean_value) {
-            set_unsupported_error(
-                database,
-                "SET supports only fixed no-op system variable assignments"
-            );
-            return MYLITE_ERROR;
-        }
-        return MYLITE_OK;
+        return apply_set_fixed_boolean_system_variable_cell_value(
+            database,
+            target,
+            value,
+            boolean_value
+        );
     }
 
     set_unsupported_error(
@@ -104,6 +85,43 @@ static int apply_set_system_variable_cell_value(
         "SET system variable assignments from user variables are not supported for this variable"
     );
     return MYLITE_ERROR;
+}
+
+static int apply_set_log_bin_trust_function_creators_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value
+) {
+    bool boolean_value = false;
+    int rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (boolean_value) {
+        set_unsupported_error(database, "SET supports only fixed no-op system variable assignments");
+        return MYLITE_ERROR;
+    }
+    return append_system_variable_read_warning(database, target->kind);
+}
+
+static int apply_set_fixed_boolean_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    bool expected_value
+) {
+    bool actual = false;
+    int rc = parse_set_boolean_cell_value(database, target->name, value, &actual);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (actual != expected_value) {
+        set_unsupported_error(database, "SET supports only fixed no-op system variable assignments");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int apply_set_sql_mode_cell_value(

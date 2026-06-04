@@ -551,7 +551,6 @@ static int compare_show_catalog_where_literal(
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
     char *right_text = NULL;
-    int comparison = 0;
     int rc = MYLITE_OK;
 
     if (right == NULL || out_truth == NULL) {
@@ -568,17 +567,11 @@ static int compare_show_catalog_where_literal(
 
     literal_kind = mylite_sql_ast_node_literal_kind(right);
     if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
-        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-            *out_truth = left == NULL ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        } else {
-            *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
-        }
+        *out_truth = show_catalog_null_literal_truth(operator_kind, left);
         return MYLITE_OK;
     }
     if (left == NULL) {
-        *out_truth = operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL
-                         ? SHOW_VARIABLES_WHERE_FALSE
-                         : SHOW_VARIABLES_WHERE_UNKNOWN;
+        *out_truth = show_catalog_null_left_truth(operator_kind);
         return MYLITE_OK;
     }
     if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
@@ -595,35 +588,67 @@ static int compare_show_catalog_where_literal(
         return rc;
     }
 
-    comparison = compare_ascii_case_insensitive_text(left, right_text);
-    switch (operator_kind) {
-    case MYLITE_SQL_AST_OPERATOR_EQUAL:
-    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
-        *out_truth = comparison == 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        break;
-    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
-        *out_truth = comparison != 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        break;
-    case MYLITE_SQL_AST_OPERATOR_LESS:
-        *out_truth = comparison < 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        break;
-    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
-        *out_truth = comparison <= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        break;
-    case MYLITE_SQL_AST_OPERATOR_GREATER:
-        *out_truth = comparison > 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        break;
-    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
-        *out_truth = comparison >= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
-        break;
-    default:
-        set_unsupported_error(database, "SHOW catalog WHERE comparison operator is not supported");
-        rc = MYLITE_ERROR;
-        break;
-    }
+    rc = show_catalog_where_truth_from_comparison(
+        database,
+        (struct show_catalog_where_comparison){
+            .operator_kind = operator_kind,
+            .comparison = compare_ascii_case_insensitive_text(left, right_text),
+        },
+        out_truth
+    );
 
     free(right_text);
     return rc;
+}
+
+static enum show_variables_where_truth show_catalog_null_literal_truth(
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left
+) {
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        return SHOW_VARIABLES_WHERE_UNKNOWN;
+    }
+    return left == NULL ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+}
+
+static enum show_variables_where_truth show_catalog_null_left_truth(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    return operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL
+               ? SHOW_VARIABLES_WHERE_FALSE
+               : SHOW_VARIABLES_WHERE_UNKNOWN;
+}
+
+static int show_catalog_where_truth_from_comparison(
+    struct mylite_db *database,
+    struct show_catalog_where_comparison comparison,
+    enum show_variables_where_truth *out_truth
+) {
+    switch (comparison.operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        *out_truth = comparison.comparison == 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        break;
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        *out_truth = comparison.comparison != 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        break;
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        *out_truth = comparison.comparison < 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        break;
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        *out_truth = comparison.comparison <= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        break;
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        *out_truth = comparison.comparison > 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        break;
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        *out_truth = comparison.comparison >= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        break;
+    default:
+        set_unsupported_error(database, "SHOW catalog WHERE comparison operator is not supported");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int decode_show_catalog_where_string_literal(

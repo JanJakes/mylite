@@ -8,6 +8,43 @@ static int plan_row_scalar_non_concat_expression(
     bool allow_scalar_subquery,
     struct planned_row_scalar_expression *out_expression
 ) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+
+    if (is_row_scalar_control_flow_expression(unwrapped)) {
+        return plan_row_scalar_control_flow_expression(
+            database,
+            unwrapped,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    return plan_row_scalar_non_control_flow_expression(
+        database,
+        unwrapped,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        allow_scalar_subquery,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_non_control_flow_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_scalar_subquery,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const char *top_level_only_message = NULL;
+
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         set_parse_error(database, NULL);
@@ -68,34 +105,10 @@ static int plan_row_scalar_non_concat_expression(
         expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return plan_row_scalar_session_value(database, expression, out_expression);
     }
-    if (expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
-        expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR ||
-        expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION ||
-        expression->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR) {
-        set_unsupported_error(
-            database,
-            "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level "
-            "projection expressions"
-        );
+    top_level_only_message = row_scalar_top_level_only_expression_message(expression);
+    if (top_level_only_message != NULL) {
+        set_unsupported_error(database, top_level_only_message);
         return MYLITE_ERROR;
-    }
-    if (expression->kind == MYLITE_SQL_AST_INTERVAL_FUNCTION) {
-        set_unsupported_error(
-            database,
-            "row-scalar SELECT INTERVAL() is supported only as a top-level projection expression"
-        );
-        return MYLITE_ERROR;
-    }
-    if (is_row_scalar_control_flow_expression(expression)) {
-        return plan_row_scalar_control_flow_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
     }
     if (!ast_subtree_has_column_reference(expression) &&
         is_scalar_projection_expression(expression)) {
@@ -144,6 +157,29 @@ static int plan_row_scalar_non_concat_expression(
         "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
+}
+
+static const char *row_scalar_top_level_only_expression_message(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return NULL;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
+        return "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level "
+               "projection expressions";
+    case MYLITE_SQL_AST_INTERVAL_FUNCTION:
+        return "row-scalar SELECT INTERVAL() is supported only as a top-level projection "
+               "expression";
+    default:
+        break;
+    }
+    return NULL;
 }
 
 static int plan_row_scalar_conversion_expression(

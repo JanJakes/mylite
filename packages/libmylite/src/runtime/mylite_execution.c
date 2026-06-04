@@ -21727,7 +21727,25 @@ static int plan_row_scalar_searched_case_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_nested_searched_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_leaf_like_predicate_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -21912,6 +21930,16 @@ static int plan_row_scalar_non_concat_expression(
     bool allow_scalar_subquery,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_non_control_flow_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_scalar_subquery,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_conversion_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -21920,6 +21948,9 @@ static int plan_row_scalar_conversion_expression(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
+);
+static const char *row_scalar_top_level_only_expression_message(
+    const struct mylite_sql_ast_node *expression
 );
 static int append_row_scalar_conversion_step(
     struct mylite_db *database,

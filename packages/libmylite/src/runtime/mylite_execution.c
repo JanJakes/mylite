@@ -6384,10 +6384,12 @@ static int table_status_auto_increment_predicate_value(
     size_t buffer_size,
     const char **out_value
 );
-static int table_status_has_temporary_shadow(
+static int table_status_auto_increment_display_value(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
-    bool *out_has_temporary_shadow
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
 );
 static int table_status_has_auto_increment(
     struct mylite_db *database,

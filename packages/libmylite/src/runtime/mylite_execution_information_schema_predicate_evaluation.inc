@@ -316,9 +316,7 @@ static int information_schema_predicate_row_value(
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor table = {0};
-    int64_t row_count = 0;
     bool found = false;
-    bool has_auto_increment = false;
     int rc = MYLITE_OK;
 
     if (database == NULL || query == NULL || row == NULL || buffer == NULL || out_value == NULL) {
@@ -368,32 +366,7 @@ static int information_schema_predicate_row_value(
         return MYLITE_OK;
     }
 
-    rc = read_show_table_status_row_count(database, &table, &row_count);
-    if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
-        return rc;
-    }
-    if (rc != MYLITE_OK) {
-        set_runtime_error(database, "failed to read INFORMATION_SCHEMA predicate table rows");
-        return MYLITE_ERROR;
-    }
-    if (row_count <= 0) {
-        return MYLITE_OK;
-    }
-
-    rc = table_status_has_auto_increment(database, &table, &has_auto_increment);
-    if (rc == MYLITE_OK && has_auto_increment) {
-        rc = information_schema_format_i64(
-            database,
-            table.auto_increment_next,
-            buffer,
-            buffer_size
-        );
-        if (rc == MYLITE_OK) {
-            *out_value = buffer;
-        }
-    }
-    return rc;
+    return table_status_auto_increment_display_value(database, &table, buffer, buffer_size, out_value);
 }
 
 static int information_schema_compound_predicate_matches(

@@ -1299,14 +1299,9 @@ static int test_primary_key_diagnostics(void) {
             .message_part = "near '.'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE constraint_pk (id INT, CONSTRAINT c PRIMARY KEY (id))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        "CREATE TABLE constraint_pk (id INT, CONSTRAINT c PRIMARY KEY (id))"
     );
 
     failures += expect_statement_ok(database, "CREATE TABLE keyed (id INT PRIMARY KEY, v INT)");
@@ -1315,9 +1310,9 @@ static int test_primary_key_diagnostics(void) {
         database,
         "ALTER TABLE keyed ADD COLUMN extra INT PRIMARY KEY",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_multiple_primary_key,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE ADD COLUMN does not support PRIMARY KEY",
+            .message_part = "Multiple primary key defined",
         }
     );
     failures += expect_dml_ok(database, "ALTER TABLE keyed DROP COLUMN id", 1);

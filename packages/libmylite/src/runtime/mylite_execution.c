@@ -15349,6 +15349,10 @@ static int validate_auto_increment_column(
     size_t column_index,
     bool allow_secondary_key
 );
+static bool planned_primary_key_starts_with_column_index(
+    const struct planned_create_table *plan,
+    size_t column_index
+);
 static bool planned_secondary_index_starts_with_column(
     const struct planned_create_table *plan,
     size_t column_index

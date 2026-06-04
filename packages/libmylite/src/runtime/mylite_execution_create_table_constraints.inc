@@ -2417,8 +2417,7 @@ static int validate_auto_increment_column(
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (plan->has_primary_key && plan->primary_key_part_count == 1U &&
-        column_index == plan->primary_key_parts[0].column_index && column->is_primary_key) {
+    if (planned_primary_key_starts_with_column_index(plan, column_index)) {
         return MYLITE_OK;
     }
     if (allow_secondary_key && planned_secondary_index_starts_with_column(plan, column_index)) {
@@ -2427,6 +2426,14 @@ static int validate_auto_increment_column(
 
     set_wrong_auto_key_error(database);
     return MYLITE_ERROR;
+}
+
+static bool planned_primary_key_starts_with_column_index(
+    const struct planned_create_table *plan,
+    size_t column_index
+) {
+    return (plan->has_primary_key && plan->primary_key_part_count > 0U &&
+            plan->primary_key_parts[0].column_index == column_index) != 0;
 }
 
 static bool planned_secondary_index_starts_with_column(

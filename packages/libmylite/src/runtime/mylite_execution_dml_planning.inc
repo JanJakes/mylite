@@ -290,8 +290,7 @@ static bool insert_auto_increment_column_is_indexed(const struct planned_insert 
     }
 
     for (size_t index = 0U; index < plan->index_count; ++index) {
-        if (plan->indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY ||
-            plan->indexes[index].part_count == 0U) {
+        if (plan->indexes[index].part_count == 0U) {
             continue;
         }
         if (plan->indexes[index].parts[0].column_index == plan->auto_increment_column_index) {

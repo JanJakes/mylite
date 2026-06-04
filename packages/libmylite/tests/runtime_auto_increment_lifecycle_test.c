@@ -608,6 +608,16 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
 
 static int test_auto_increment_type_families_and_diagnostics(void) {
     static const char *const one[] = {"1"};
+    static const char *const composite_rows[] = {"1", "A", "2", "B", "3", "C"};
+    static const char *const composite_show_create[] = {
+        "composite_pk",
+        "CREATE TABLE `composite_pk` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `name` varchar(32) NOT NULL,\n"
+        "  PRIMARY KEY (`id`,`name`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci",
+    };
     static const char *const negative_rows[] = {"-5", "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -735,6 +745,37 @@ static int test_auto_increment_type_families_and_diagnostics(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "BIGINT UNSIGNED auto increment value",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_pk (id INT AUTO_INCREMENT, name VARCHAR(32), "
+        "PRIMARY KEY(id, name))"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO composite_pk (name) VALUES ('A'), ('B'), ('C')",
+        (struct expected_statement){.affected_rows = 3, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, name FROM composite_pk ORDER BY id",
+            .values = composite_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "composite primary key auto increment rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE composite_pk",
+            .values = composite_show_create,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite primary key auto increment SHOW CREATE",
         }
     );
 

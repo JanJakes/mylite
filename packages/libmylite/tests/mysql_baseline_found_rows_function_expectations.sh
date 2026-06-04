@@ -210,6 +210,19 @@ joined_calc=$(run_mysql \
        ORDER BY rights.id, lefts.id LIMIT 2;
      SHOW WARNINGS;
      SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS lefts.id
+       FROM lefts LEFT JOIN rights ON lefts.k = rights.k
+       GROUP BY lefts.id ORDER BY lefts.id LIMIT 1;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS lefts.id
+       FROM lefts LEFT JOIN rights ON (lefts.k = rights.k)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM rights r2 WHERE r2.k = rights.k LIMIT 1
+       )
+       GROUP BY lefts.id ORDER BY lefts.id LIMIT 1;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
      SELECT lefts.id, rights.id
        FROM lefts JOIN rights ON lefts.k = rights.k
        ORDER BY rights.id LIMIT 1, 1;
@@ -268,13 +281,34 @@ expect_contains \
     "SQL_CALC_FOUND_ROWS is deprecated"
 expect_value "right joined sql calc found rows" "3	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '16p')"
 expect_value \
+    "grouped joined sql calc visible row" \
+    "1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '17p')"
+expect_contains \
+    "grouped joined sql calc warning" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '18p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value "grouped joined sql calc found rows" "3	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '19p')"
+expect_value \
+    "grouped joined not exists sql calc visible row" \
+    "2" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '20p')"
+expect_contains \
+    "grouped joined not exists sql calc warning" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '21p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value \
+    "grouped joined not exists sql calc found rows" \
+    "2	1	-1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '22p')"
+expect_value \
     "ordinary joined offset visible row" \
     "1	8" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '17p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '23p')"
 expect_value \
     "ordinary joined offset found rows" \
     "2	1	-1" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '18p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '24p')"
 
 non_select=$(run_mysql \
     "USE ${DATABASE};

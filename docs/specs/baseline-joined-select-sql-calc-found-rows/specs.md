@@ -23,11 +23,13 @@ FROM left_table [alias], right_table [alias]
 [WHERE ...] [ORDER BY ...] [LIMIT ...]
 ```
 
-The row result remains the normal limited joined result. The connection-local
-found-row state is updated to the count after source joining and `WHERE`, but
-before `LIMIT` / `OFFSET`. The implementation stays descriptor-driven and does
-not add new join kinds, expression support, grouped/distinct found-row behavior,
-or arbitrary SQLite pass-through.
+The row result remains the normal limited joined result. For non-grouped
+joined results, the connection-local found-row state is updated to the count
+after source joining and `WHERE`, but before `LIMIT` / `OFFSET`. For the later
+grouped joined envelope, the state is updated to the group count before
+`LIMIT` / `OFFSET`. The implementation stays descriptor-driven and does not
+add new join kinds, expression support, distinct found-row behavior, or
+arbitrary SQLite pass-through.
 
 ## Compatibility Authority
 

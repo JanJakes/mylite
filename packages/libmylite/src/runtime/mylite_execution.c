@@ -2050,6 +2050,7 @@ struct select_predicate_plan_options {
     bool allow_column_reference_rhs;
     bool allow_same_scope_column_reference_rhs;
     bool allow_date_format_numeric_predicate;
+    size_t exists_inner_source_index;
     const struct select_source_context *outer_source_context;
     const struct mylite_catalog_column_descriptor *outer_columns;
     size_t outer_column_count;
@@ -2152,6 +2153,7 @@ struct planned_select_source {
 
 struct planned_exists_subquery {
     bool has_table_source;
+    size_t inner_source_index;
     struct planned_select_source source;
     struct planned_select_predicate predicate;
     struct planned_select_limit limit;
@@ -2705,6 +2707,7 @@ struct planned_grouped_aggregate {
     struct planned_select_order order;
     bool order_uses_aggregate;
     size_t order_aggregate_index;
+    bool calc_found_rows;
     struct planned_select_limit limit;
 };
 
@@ -11634,6 +11637,16 @@ static int read_grouped_aggregate_from_source(
     const struct planned_grouped_aggregate *plan,
     mylite_result *result
 );
+static int set_grouped_aggregate_found_row_count(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+);
+static int read_grouped_aggregate_found_row_count(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    int64_t *out_count
+);
 static int step_count_statement(sqlite3_stmt *statement, int64_t *out_count);
 static int step_column_aggregate_statement(
     struct mylite_db *database,
@@ -18693,6 +18706,7 @@ static int plan_exists_subquery(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    size_t outer_source_count,
     struct planned_exists_subquery *out_subquery
 );
 static int plan_exists_table_source(
@@ -18737,11 +18751,13 @@ static int resolve_exists_column_reference(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    const struct select_predicate_plan_options *options,
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
 );
 static int resolve_exists_column_reference_in_source(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
     char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count,
     const char *column_name,
@@ -18749,10 +18765,12 @@ static int resolve_exists_column_reference_in_source(
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
     struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index,
     bool *out_resolved
 );
 static bool exists_correlated_column_comparison_is_supported(
-    const struct planned_select_predicate_node *node
+    const struct planned_select_predicate_node *node,
+    size_t inner_source_index
 );
 static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator operator_kind);
@@ -24031,6 +24049,17 @@ static int build_grouped_aggregate_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
 );
+static int build_grouped_aggregate_found_rows_sql(
+    const struct planned_grouped_aggregate *plan,
+    char **out_sql
+);
+static int append_grouped_aggregate_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter,
+    bool include_order,
+    bool include_limit
+);
 static int append_grouped_aggregate_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan
@@ -25414,6 +25443,15 @@ static int bind_column_aggregate_parameters(
 static int bind_grouped_aggregate_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
+);
+static int bind_grouped_aggregate_count_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan
+);
+static int bind_grouped_aggregate_parameters_with_limit(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    bool include_limit
 );
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);

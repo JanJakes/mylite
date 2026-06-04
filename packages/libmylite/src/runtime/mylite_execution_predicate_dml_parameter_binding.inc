@@ -310,6 +310,21 @@ static int bind_grouped_aggregate_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
 ) {
+    return bind_grouped_aggregate_parameters_with_limit(statement, plan, true);
+}
+
+static int bind_grouped_aggregate_count_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan
+) {
+    return bind_grouped_aggregate_parameters_with_limit(statement, plan, false);
+}
+
+static int bind_grouped_aggregate_parameters_with_limit(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    bool include_limit
+) {
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
@@ -333,13 +348,13 @@ static int bind_grouped_aggregate_parameters(
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
+    if (rc == MYLITE_OK && include_limit && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK && plan->limit.has_offset) {
+    if (rc == MYLITE_OK && include_limit && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
     }
 

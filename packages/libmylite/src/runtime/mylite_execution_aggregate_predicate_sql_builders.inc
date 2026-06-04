@@ -243,44 +243,39 @@ static int build_grouped_aggregate_sql(
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = mylite_dynamic_string_append(&string, "SELECT ");
+    rc = append_grouped_aggregate_query_sql(&string, plan, &next_parameter, true, true);
     if (rc == MYLITE_OK) {
-        rc = append_grouped_aggregate_select_list_sql(&string, plan, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " FROM ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_grouped_aggregate_from_sql(&string, plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " GROUP BY ");
-    }
-    for (size_t group_index = 0U; rc == MYLITE_OK && group_index < plan->group_count;
-         ++group_index) {
-        if (group_index > 0U) {
-            rc = mylite_dynamic_string_append(&string, ", ");
-        }
-        if (rc == MYLITE_OK) {
-            rc = append_descriptor_value_sql_for_source(
-                &string,
-                &plan->groups[group_index].column,
-                plan->groups[group_index].column_source_index,
-                plan->source_count > 0U
-            );
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
         }
     }
+
+    mylite_dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_grouped_aggregate_found_rows_sql(
+    const struct planned_grouped_aggregate *plan,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+
+    rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM (");
     if (rc == MYLITE_OK) {
-        rc = append_grouped_having_sql(&string, plan, &next_parameter);
+        rc = append_grouped_aggregate_query_sql(&string, plan, &next_parameter, false, false);
     }
     if (rc == MYLITE_OK) {
-        rc = append_grouped_order_sql(&string, plan);
+        rc = mylite_dynamic_string_append(&string, ") AS ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+        rc = mylite_dynamic_string_append_quoted_identifier(&string, "_mylite_grouped_count");
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -290,6 +285,57 @@ static int build_grouped_aggregate_sql(
     }
 
     mylite_dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_grouped_aggregate_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter,
+    bool include_order,
+    bool include_limit
+) {
+    int rc = mylite_dynamic_string_append(string, "SELECT ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_aggregate_select_list_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_aggregate_from_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " GROUP BY ");
+    }
+    for (size_t group_index = 0U; rc == MYLITE_OK && group_index < plan->group_count;
+         ++group_index) {
+        if (group_index > 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &plan->groups[group_index].column,
+                plan->groups[group_index].column_source_index,
+                plan->source_count > 0U
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_having_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK && include_order) {
+        rc = append_grouped_order_sql(string, plan);
+    }
+    if (rc == MYLITE_OK && include_limit) {
+        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+    }
 
     return rc;
 }
@@ -1191,7 +1237,7 @@ static int append_exists_subquery_from_sql(
         rc = mylite_dynamic_string_append(string, " AS ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 1U);
+        rc = append_select_source_alias(string, subquery->inner_source_index);
     }
 
     return rc;

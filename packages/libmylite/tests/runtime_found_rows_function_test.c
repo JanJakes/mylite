@@ -404,6 +404,8 @@ static int test_sql_calc_found_rows_joined_selects(void) {
     static const char *const cartesian_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const left_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const right_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
+    static const char *const grouped_left_limit_rows[] = {"1"};
+    static const char *const grouped_not_exists_rows[] = {"2"};
     static const char *const ordinary_offset_rows[][2] = {{"1", "8"}};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -559,6 +561,61 @@ static int test_sql_calc_found_rows_joined_selects(void) {
             .warning_count = "1",
             .row_count = "-1",
             .context = "right joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id "
+        "FROM lefts LEFT JOIN rights ON (lefts.k = rights.k) "
+        "GROUP BY lefts.id ORDER BY lefts.id LIMIT 1",
+        &result
+    );
+    failures += expect_single_column_rows(
+        result,
+        grouped_left_limit_rows,
+        1U,
+        1U,
+        "grouped joined sql calc rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "3",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "grouped joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id "
+        "FROM lefts LEFT JOIN rights ON (lefts.k = rights.k) "
+        "WHERE NOT EXISTS ("
+        "SELECT 1 FROM rights r2 WHERE r2.k = rights.k LIMIT 1"
+        ") "
+        "GROUP BY lefts.id ORDER BY lefts.id LIMIT 1",
+        &result
+    );
+    failures += expect_single_column_rows(
+        result,
+        grouped_not_exists_rows,
+        1U,
+        1U,
+        "grouped joined not exists sql calc rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "2",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "grouped joined not exists sql calc found rows",
         }
     );
 

@@ -37,12 +37,60 @@ static int execute_grouped_aggregate_from_plan(
     if (rc == MYLITE_OK) {
         rc = read_grouped_aggregate_from_source(database, plan, result);
     }
+    if (rc == MYLITE_OK && plan->calc_found_rows) {
+        rc = set_grouped_aggregate_found_row_count(database, plan, result);
+    }
+    if (rc == MYLITE_OK && plan->calc_found_rows) {
+        rc = append_sql_calc_found_rows_deprecation_warning(database);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return grouped_aggregate_execution_error(database, rc);
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int set_grouped_aggregate_found_row_count(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+) {
+    int64_t count = 0;
+    int rc = read_grouped_aggregate_found_row_count(database, plan, &count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (count < 0) {
+        set_runtime_error(database, "invalid SQL_CALC_FOUND_ROWS group count");
+        return MYLITE_ERROR;
+    }
+    mylite_result_set_found_row_count(result, (uint64_t)count);
+    return MYLITE_OK;
+}
+
+static int read_grouped_aggregate_found_row_count(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    int64_t *out_count
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int rc = build_grouped_aggregate_found_rows_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_grouped_aggregate_count_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_count_statement(statement, out_count);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    return rc;
 }
 
 static int append_grouped_aggregate_result_columns(

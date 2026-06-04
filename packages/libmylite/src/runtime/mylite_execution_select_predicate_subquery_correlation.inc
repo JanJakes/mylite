@@ -70,15 +70,19 @@ static int plan_exists_predicate(
         .right_index = SIZE_MAX,
     };
     struct planned_exists_subquery *subquery = NULL;
+    size_t outer_source_count = 1U;
     int rc = MYLITE_OK;
 
     if (options == NULL || !options->allow_exists) {
         set_unsupported_error(database, "EXISTS subqueries are supported only in SELECT WHERE");
         return MYLITE_ERROR;
     }
-    if (source_context == NULL || select_source_context_is_joined(source_context)) {
-        set_unsupported_error(database, "EXISTS subqueries support only one outer table source");
+    if (source_context == NULL) {
+        set_unsupported_error(database, "EXISTS subqueries support only an outer table source");
         return MYLITE_ERROR;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        outer_source_count = source_context->source_count;
     }
 
     subquery = calloc(1U, sizeof(*subquery));
@@ -93,6 +97,7 @@ static int plan_exists_predicate(
         source_context,
         table_columns,
         table_column_count,
+        outer_source_count,
         subquery
     );
     if (rc != MYLITE_OK) {
@@ -119,6 +124,7 @@ static int plan_exists_subquery(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    size_t outer_source_count,
     struct planned_exists_subquery *out_subquery
 ) {
     const struct mylite_sql_ast_node *select_list = NULL;
@@ -128,7 +134,10 @@ static int plan_exists_subquery(
     const struct mylite_sql_ast_node *optional_clause = NULL;
     int rc = MYLITE_OK;
 
-    *out_subquery = (struct planned_exists_subquery){.has_table_source = false};
+    *out_subquery = (struct planned_exists_subquery){
+        .has_table_source = false,
+        .inner_source_index = outer_source_count,
+    };
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         set_unsupported_error(database, "EXISTS supports only SELECT subqueries");
         return MYLITE_ERROR;
@@ -286,6 +295,7 @@ static int plan_exists_inner_predicate(
     };
     const struct select_predicate_plan_options options = {
         .allow_column_reference_rhs = true,
+        .exists_inner_source_index = subquery->inner_source_index,
         .outer_source_context = outer_source_context,
         .outer_columns = outer_columns,
         .outer_column_count = outer_column_count,
@@ -319,7 +329,10 @@ static int plan_exists_inner_predicate(
     }
 
     if (rc == MYLITE_OK && subquery->predicate.qualify_column_references) {
-        offset_exists_inner_predicate_source_indexes(&subquery->predicate, 1U);
+        offset_exists_inner_predicate_source_indexes(
+            &subquery->predicate,
+            subquery->inner_source_index
+        );
     }
     return rc;
 }
@@ -382,6 +395,7 @@ static int plan_column_comparison_predicate(
         options->outer_source_context,
         options->outer_columns,
         options->outer_column_count,
+        options,
         &node.column,
         &node.column_source_index
     );
@@ -395,6 +409,7 @@ static int plan_column_comparison_predicate(
             options->outer_source_context,
             options->outer_columns,
             options->outer_column_count,
+            options,
             &node.value_column,
             &node.value_column_source_index
         );
@@ -402,7 +417,10 @@ static int plan_column_comparison_predicate(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!exists_correlated_column_comparison_is_supported(&node)) {
+    if (!exists_correlated_column_comparison_is_supported(
+            &node,
+            options->exists_inner_source_index
+        )) {
         set_unsupported_error(
             database,
             "EXISTS correlated predicates support one inner and one outer integer column"
@@ -423,6 +441,7 @@ static int resolve_exists_column_reference(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    const struct select_predicate_plan_options *options,
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
 ) {
@@ -452,6 +471,7 @@ static int resolve_exists_column_reference(
 
     rc = resolve_exists_column_reference_in_source(
         database,
+        column_node,
         parts,
         part_count,
         column_name,
@@ -459,15 +479,17 @@ static int resolve_exists_column_reference(
         inner_columns,
         inner_column_count,
         out_column,
+        out_source_index,
         &resolved
     );
     if (rc != MYLITE_OK || resolved) {
-        *out_source_index = 1U;
+        *out_source_index = options->exists_inner_source_index;
         return rc;
     }
 
     rc = resolve_exists_column_reference_in_source(
         database,
+        column_node,
         parts,
         part_count,
         column_name,
@@ -475,10 +497,10 @@ static int resolve_exists_column_reference(
         outer_columns,
         outer_column_count,
         out_column,
+        out_source_index,
         &resolved
     );
     if (rc != MYLITE_OK || resolved) {
-        *out_source_index = 0U;
         return rc;
     }
 
@@ -488,6 +510,7 @@ static int resolve_exists_column_reference(
 
 static int resolve_exists_column_reference_in_source(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
     char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count,
     const char *column_name,
@@ -495,12 +518,28 @@ static int resolve_exists_column_reference_in_source(
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
     struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index,
     bool *out_resolved
 ) {
     size_t column_index = 0U;
     int rc = MYLITE_OK;
 
     *out_resolved = false;
+    if (select_source_context_is_joined(source_context)) {
+        rc = resolve_joined_descriptor_column_reference(
+            database,
+            column_node,
+            source_context,
+            COLUMN_REFERENCE_WHERE,
+            "EXISTS correlated predicates require descriptor columns",
+            out_column,
+            out_source_index
+        );
+        if (rc == MYLITE_OK) {
+            *out_resolved = true;
+        }
+        return rc;
+    }
     if (!column_reference_qualifier_matches_source(parts, part_count, source_context)) {
         return MYLITE_OK;
     }
@@ -515,17 +554,19 @@ static int resolve_exists_column_reference_in_source(
     }
 
     *out_column = columns[column_index];
+    *out_source_index = 0U;
     *out_resolved = true;
     return MYLITE_OK;
 }
 
 static bool exists_correlated_column_comparison_is_supported(
-    const struct planned_select_predicate_node *node
+    const struct planned_select_predicate_node *node,
+    size_t inner_source_index
 ) {
-    bool left_is_outer = node->column_source_index == 0U;
-    bool right_is_outer = node->value_column_source_index == 0U;
+    bool left_is_inner = node->column_source_index == inner_source_index;
+    bool right_is_inner = node->value_column_source_index == inner_source_index;
 
-    if (left_is_outer == right_is_outer) {
+    if (left_is_inner == right_is_inner) {
         return false;
     }
     if (!join_condition_column_is_integer_family(&node->column)) {

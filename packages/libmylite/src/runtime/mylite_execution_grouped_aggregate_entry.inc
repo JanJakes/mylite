@@ -20,6 +20,11 @@ static int plan_grouped_aggregate(
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     struct grouped_aggregate_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct select_predicate_plan_options predicate_options = {
+        .allow_exists = true,
+        .allow_in_subquery = true,
+        .allow_date_format_numeric_predicate = true,
+    };
     struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
     size_t group_key_count = 0U;
@@ -27,6 +32,7 @@ static int plan_grouped_aggregate(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_grouped_aggregate){0};
+    out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
     if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
         set_unsupported_error(database, "GROUP BY does not support SELECT DISTINCT");
         return MYLITE_ERROR;
@@ -123,12 +129,13 @@ static int plan_grouped_aggregate(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_predicate(
+        rc = plan_select_predicate_with_options(
             database,
             clauses.where_clause,
             &source_context,
             table_columns,
             table_column_count,
+            &predicate_options,
             &out_plan->predicate
         );
     }

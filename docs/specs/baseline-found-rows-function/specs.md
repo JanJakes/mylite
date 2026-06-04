@@ -18,8 +18,8 @@ This is not a general optimizer feature. The implementation remains
 descriptor-driven and MyLite-owned. Its initial scope did not add `UNION`,
 joins, subqueries, full SELECT modifiers, full distinct/grouped found-row
 behavior, protocol metadata, statement-based replication behavior, or arbitrary
-SQLite pass-through. The joined-select subset is extended separately by
-`docs/specs/baseline-joined-select-sql-calc-found-rows/specs.md`.
+SQLite pass-through. Later slices extend this baseline to the current joined
+and grouped descriptor-backed `SELECT` envelopes.
 
 ## Compatibility Authority
 
@@ -51,6 +51,8 @@ The MySQL 8.4.9 probes establish these expectations for the admitted subset:
 - `@@warning_count` in the same statement as `FOUND_ROWS()` reports the
   resulting statement warning count, including the `FOUND_ROWS()` deprecation
   warning;
+- grouped `SQL_CALC_FOUND_ROWS` returns the number of groups after `WHERE` and
+  `HAVING`, before `LIMIT` / `OFFSET`;
 - non-`SELECT` statements do not update found-row state;
 - `ROW_COUNT()` after result-set statements remains `-1`.
 
@@ -104,16 +106,15 @@ table_select_body:
       where_clause_opt order_clause_opt limit_clause_opt
 ```
 
-The first implementation supports `SQL_CALC_FOUND_ROWS` only for the existing
+The first implementation supported `SQL_CALC_FOUND_ROWS` only for the existing
 non-distinct descriptor-backed base-table `SELECT` column-list and wildcard
 paths with optional source alias, baseline `WHERE`, one-column `ORDER BY`, and
-existing `LIMIT` / `OFFSET` forms. It does not admit or execute
-`SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`, `DISTINCT`,
-`DISTINCTROW`, grouped aggregates, aggregate-only selects, `CREATE TABLE ...
-SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, `UNION`, `TABLE`,
-subqueries, CTEs, lock clauses, or other select modifiers in this phase. The
-later joined-select slice admits the current two-source joined `SELECT`
-envelope without changing this single-table design.
+existing `LIMIT` / `OFFSET` forms. Later slices admit the current joined and
+grouped descriptor-backed `SELECT` envelopes. MyLite still does not admit or
+execute `SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`,
+`DISTINCT`, `DISTINCTROW`, aggregate-only non-grouped selects, `CREATE TABLE
+... SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, `UNION`, `TABLE`,
+subqueries, CTEs, unsupported locking clauses, or other select modifiers.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -192,10 +193,12 @@ rows the statement would have returned after descriptor selection, source
 resolution, `WHERE`, `DISTINCT` handling if later admitted, grouping if later
 admitted, and ordering, but before `LIMIT` / `OFFSET`.
 
-For this phase, only non-distinct non-grouped descriptor-backed table selects
-are admitted. Therefore the pre-limit found count is the number of rows that
-match the selected table source and optional `WHERE` predicate. `ORDER BY`
-does not change the found count.
+For non-grouped descriptor-backed table selects, the pre-limit found count is
+the number of rows that match the selected source and optional `WHERE`
+predicate. For admitted grouped descriptor-backed selects, the count is the
+number of groups after source resolution, `WHERE`, `GROUP BY`, and supported
+`HAVING`, but before `ORDER BY`, `LIMIT`, or `OFFSET`. `ORDER BY` does not
+change the found count.
 
 The regular result set still applies `LIMIT` and `OFFSET`. Successful
 `SQL_CALC_FOUND_ROWS` statements append MySQL warning `1287`:

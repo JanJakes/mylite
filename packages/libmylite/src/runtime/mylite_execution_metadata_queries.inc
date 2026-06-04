@@ -1656,8 +1656,8 @@ static int reject_select_modifier_usage_if_needed(
         return MYLITE_ERROR;
     }
     if (mylite_sql_ast_node_select_calc_found_rows(statement) &&
-        (select_statement_has_group_by_clause(statement) ||
-         select_statement_has_count_aggregate(statement) ||
+        !select_statement_has_group_by_clause(statement) &&
+        (select_statement_has_count_aggregate(statement) ||
          select_statement_has_column_aggregate(statement))) {
         set_unsupported_error(
             database,

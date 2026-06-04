@@ -1248,6 +1248,7 @@ static int plan_joined_select_condition(
         }
         return MYLITE_OK;
     }
+    condition_node = unwrap_parenthesized_expression(condition_node);
     if ((condition_node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
          condition_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) ||
         mylite_sql_ast_node_operator(condition_node) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
@@ -1727,6 +1728,7 @@ static int plan_row_scalar_select_exists_filter(
         child_at(predicate, 0U),
         NULL,
         NULL,
+        0U,
         0U,
         &out_plan->tableless_filter.subquery
     );

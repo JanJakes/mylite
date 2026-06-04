@@ -310,6 +310,10 @@ static int plan_row_scalar_searched_case_expression(
     return rc;
 }
 
+static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
+    const struct mylite_sql_ast_node *expression
+);
+
 static int plan_row_scalar_like_predicate_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -319,12 +323,12 @@ static int plan_row_scalar_like_predicate_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
-        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_LIKE ||
-        mylite_sql_ast_node_child_count(expression) != 2U) {
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_LIKE) {
         set_unsupported_error(database, "row-scalar CASE WHEN supports only LIKE predicates");
         return MYLITE_ERROR;
     }
@@ -392,8 +396,8 @@ static int plan_row_scalar_integer_comparison_predicate_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
-        mylite_sql_ast_node_child_count(expression) != 2U) {
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NONE) {
         set_unsupported_error(
             database,
             "row-scalar CASE WHEN supports only integer comparison predicates"
@@ -401,7 +405,6 @@ static int plan_row_scalar_integer_comparison_predicate_expression(
         return MYLITE_ERROR;
     }
 
-    operator_kind = mylite_sql_ast_node_operator(expression);
     if (!row_scalar_control_flow_comparison_operator_is_supported(operator_kind)) {
         set_unsupported_error(
             database,
@@ -443,6 +446,20 @@ static int plan_row_scalar_integer_comparison_predicate_expression(
         );
     }
     return rc;
+}
+
+static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 2U) {
+        return MYLITE_SQL_AST_OPERATOR_NONE;
+    }
+    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+        expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return mylite_sql_ast_node_operator(expression);
+    }
+    return MYLITE_SQL_AST_OPERATOR_NONE;
 }
 
 static bool row_scalar_control_flow_comparison_operator_is_supported(
@@ -1193,6 +1210,7 @@ static int plan_row_scalar_control_flow_condition_argument(
     struct planned_row_scalar_expression *out_expression
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -1233,8 +1251,8 @@ static int plan_row_scalar_control_flow_condition_argument(
             out_expression
         );
     }
-    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
-        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE) {
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         return plan_row_scalar_like_predicate_expression(
             database,
             expression,
@@ -1245,7 +1263,7 @@ static int plan_row_scalar_control_flow_condition_argument(
             out_expression
         );
     }
-    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NONE) {
         return plan_row_scalar_integer_comparison_predicate_expression(
             database,
             expression,
@@ -1378,6 +1396,7 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
     struct planned_row_scalar_expression *out_expression
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -1414,8 +1433,8 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
-    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
-        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE) {
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         return plan_row_scalar_like_predicate_expression(
             database,
             expression,
@@ -1426,7 +1445,7 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
             out_expression
         );
     }
-    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NONE) {
         return plan_row_scalar_integer_comparison_predicate_expression(
             database,
             expression,

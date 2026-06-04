@@ -30,7 +30,7 @@
 %left AND.
 %right NOT.
 %right ON.
-%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS.
+%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE.
 %left BITWISE_OR.
 %left BITWISE_AND.
 %left LEFT_SHIFT RIGHT_SHIFT.
@@ -7752,6 +7752,10 @@ expression(A) ::= expression(B) GREATER(T) expression(C). {
 expression(A) ::= expression(B) GREATER_EQUAL(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, C);
+}
+expression(A) ::= expression(B) LIKE(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LIKE, C);
 }
 expression(A) ::= expression(B) BITWISE_OR(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(

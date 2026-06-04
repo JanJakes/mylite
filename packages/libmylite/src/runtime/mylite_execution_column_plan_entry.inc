@@ -95,6 +95,7 @@ static int apply_column_comment_attributes(
                 database,
                 child_at(child, 0U),
                 &decoded,
+                &decoded_length,
                 (struct table_option_name_policy){
                     .identifier_kind = "column comment",
                     .nul_message = "column comments do not support NUL bytes",
@@ -104,7 +105,17 @@ static int apply_column_comment_attributes(
             if (rc != MYLITE_OK) {
                 return rc;
             }
-            decoded_length = strlen(decoded);
+            if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) !=
+                MYLITE_OK) {
+                free(decoded);
+                set_unsupported_error(database, "column comments support only valid UTF-8 text");
+                return MYLITE_ERROR;
+            }
+            rc = normalize_mysql_comment_text(database, &decoded, &decoded_length);
+            if (rc != MYLITE_OK) {
+                free(decoded);
+                return rc;
+            }
             if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) !=
                 MYLITE_OK) {
                 free(decoded);

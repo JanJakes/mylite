@@ -612,6 +612,18 @@ static int apply_single_index_option(
     if (option->kind == MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION) {
         return apply_index_visibility_option(option, options);
     }
+    if (option->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        char option_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        int rc = copy_identifier_text(option, option_name, sizeof(option_name), database);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(option_name, "ALGORITHM") ||
+            text_equals_ascii_case_insensitive(option_name, "LOCK")) {
+            return MYLITE_OK;
+        }
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
@@ -701,6 +713,7 @@ static int decode_index_comment_literal(
         database,
         literal,
         &decoded,
+        &decoded_length,
         (struct table_option_name_policy){
             .identifier_kind = "index comment",
             .nul_message = "index comments do not support NUL bytes",
@@ -710,7 +723,16 @@ static int decode_index_comment_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    decoded_length = strlen(decoded);
+    if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) != MYLITE_OK) {
+        free(decoded);
+        set_unsupported_error(database, "index comments support only valid UTF-8 text");
+        return MYLITE_ERROR;
+    }
+    rc = normalize_mysql_comment_text(database, &decoded, &decoded_length);
+    if (rc != MYLITE_OK) {
+        free(decoded);
+        return rc;
+    }
     if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) != MYLITE_OK) {
         free(decoded);
         set_unsupported_error(database, "index comments support only valid UTF-8 text");
@@ -1062,13 +1084,21 @@ static int append_loaded_add_index_part(
         rc = reserve_planned_alter_table_add_index_parts(database, plan, plan->part_count + 1U);
     }
     if (rc == MYLITE_OK) {
+        struct mylite_catalog_index_column_descriptor index_column = {0};
+
+        rc = make_loaded_add_index_column_descriptor(
+            database,
+            plan,
+            part,
+            &columns[column_index],
+            prefix_length,
+            &index_column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         plan->parts[plan->part_count] = (struct loaded_index_part){
-            .index_column = make_loaded_add_index_column_descriptor(
-                plan,
-                part,
-                &columns[column_index],
-                prefix_length
-            ),
+            .index_column = index_column,
             .column = columns[column_index],
             .column_index = column_index,
         };
@@ -1183,12 +1213,15 @@ static int validate_loaded_add_index_part_attributes(
     return validate_alter_table_add_index_column(database, column);
 }
 
-static struct mylite_catalog_index_column_descriptor make_loaded_add_index_column_descriptor(
+static int make_loaded_add_index_column_descriptor(
+    struct mylite_db *database,
     const struct planned_alter_table_add_index *plan,
     const struct mylite_sql_ast_node *part,
     const struct mylite_catalog_column_descriptor *column,
-    int64_t prefix_length
+    int64_t prefix_length,
+    struct mylite_catalog_index_column_descriptor *out_descriptor
 ) {
+    bool prefix_covers_full_column = false;
     struct mylite_catalog_index_column_descriptor descriptor = {
         .column_id = column->column_id,
         .ordinal_position = (int64_t)plan->part_count + 1,
@@ -1197,7 +1230,20 @@ static struct mylite_catalog_index_column_descriptor make_loaded_add_index_colum
     };
 
     if (secondary_index_part_prefix_node(part) != NULL) {
-        descriptor.has_prefix_length = true;
+        int rc = loaded_add_index_prefix_covers_full_column(
+            database,
+            column,
+            prefix_length,
+            &prefix_covers_full_column
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        descriptor.has_prefix_length = !prefix_covers_full_column;
+        if (prefix_covers_full_column) {
+            descriptor.prefix_length = 0;
+        }
     }
     if (planned_add_index_is_fulltext(plan) || planned_add_index_is_spatial(plan)) {
         descriptor.has_prefix_length = false;
@@ -1205,7 +1251,36 @@ static struct mylite_catalog_index_column_descriptor make_loaded_add_index_colum
         descriptor.sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
     }
 
-    return descriptor;
+    *out_descriptor = descriptor;
+    return MYLITE_OK;
+}
+
+static int loaded_add_index_prefix_covers_full_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    int64_t prefix_length,
+    bool *out_covers_full_column
+) {
+    size_t column_length = 0U;
+    int rc = MYLITE_OK;
+
+    *out_covers_full_column = false;
+    if (prefix_length < 0) {
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_char(column)) {
+        rc = char_length_for_column(database, column, &column_length);
+    } else if (column_descriptor_is_varchar(column)) {
+        rc = varchar_length_for_column(database, column, &column_length);
+    } else {
+        return MYLITE_OK;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    *out_covers_full_column = (uint64_t)prefix_length >= (uint64_t)column_length;
+    return MYLITE_OK;
 }
 
 static int reserve_planned_alter_table_add_index_parts(

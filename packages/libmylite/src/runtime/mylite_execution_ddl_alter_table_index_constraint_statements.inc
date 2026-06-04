@@ -197,12 +197,40 @@ static int execute_alter_table_drop_index_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    struct planned_alter_table_drop_primary_key primary_plan = {0};
     struct planned_drop_index plan = {0};
+    char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     mylite_result *result = NULL;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
+        return rc;
+    }
+
+    rc = copy_identifier_text(child_at(statement, 1U), index_name, sizeof(index_name), database);
+    if (rc == MYLITE_OK && text_equals_ascii_case_insensitive(index_name, "PRIMARY")) {
+        rc = plan_alter_table_drop_primary_key_for_table_node(
+            database,
+            child_at(statement, 0U),
+            true,
+            &primary_plan
+        );
+        if (rc == MYLITE_OK) {
+            rc = alter_table_drop_primary_key_from_plan(database, &primary_plan);
+        }
+        if (rc != MYLITE_OK) {
+            planned_alter_table_drop_primary_key_deinit(&primary_plan);
+            mylite_result_free(result);
+            return rc;
+        }
+
+        mylite_result_set_affected_rows(result, primary_plan.affected_rows);
+        planned_alter_table_drop_primary_key_deinit(&primary_plan);
+        return finish_successful_result(database, result, out_result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
         return rc;
     }
 
@@ -357,12 +385,40 @@ static int execute_drop_index_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    struct planned_alter_table_drop_primary_key primary_plan = {0};
     struct planned_drop_index plan = {0};
+    char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     mylite_result *result = NULL;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
+        return rc;
+    }
+
+    rc = copy_identifier_text(child_at(statement, 0U), index_name, sizeof(index_name), database);
+    if (rc == MYLITE_OK && text_equals_ascii_case_insensitive(index_name, "PRIMARY")) {
+        rc = plan_alter_table_drop_primary_key_for_table_node(
+            database,
+            child_at(statement, 1U),
+            true,
+            &primary_plan
+        );
+        if (rc == MYLITE_OK) {
+            rc = alter_table_drop_primary_key_from_plan(database, &primary_plan);
+        }
+        if (rc != MYLITE_OK) {
+            planned_alter_table_drop_primary_key_deinit(&primary_plan);
+            mylite_result_free(result);
+            return rc;
+        }
+
+        mylite_result_set_affected_rows(result, primary_plan.affected_rows);
+        planned_alter_table_drop_primary_key_deinit(&primary_plan);
+        return finish_successful_result(database, result, out_result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
         return rc;
     }
 

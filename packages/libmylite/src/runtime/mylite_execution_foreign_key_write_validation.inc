@@ -104,11 +104,11 @@ static int validate_foreign_key_references(
         sqlite_rc = sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             if (parent_write) {
-                set_row_is_referenced_error(database);
+                rc = set_row_is_referenced_foreign_key_error(database, foreign_key);
             } else {
                 set_no_referenced_row_error(database);
+                rc = MYLITE_ERROR;
             }
-            rc = MYLITE_ERROR;
         } else if (sqlite_rc != SQLITE_DONE) {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
@@ -124,6 +124,161 @@ static int validate_foreign_key_references(
     ) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int set_row_is_referenced_foreign_key_error(
+    struct mylite_db *database,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_dynamic_string message;
+    char *message_text = NULL;
+    int rc = mylite_catalog_read_schema_by_id(
+        database,
+        foreign_key->child_table.schema_id,
+        &schema
+    );
+
+    if (rc != MYLITE_OK) {
+        set_row_is_referenced_error(database);
+        return MYLITE_ERROR;
+    }
+
+    mylite_dynamic_string_init(&message);
+    rc = append_row_is_referenced_foreign_key_detail(&message, &schema, foreign_key);
+    if (rc == MYLITE_OK) {
+        message_text = mylite_dynamic_string_take(&message);
+        if (message_text == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    mylite_dynamic_string_deinit(&message);
+
+    if (rc != MYLITE_OK) {
+        free(message_text);
+        return rc;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_row_is_referenced,
+        "23000",
+        message_text
+    );
+    free(message_text);
+    return MYLITE_ERROR;
+}
+
+static int append_row_is_referenced_foreign_key_detail(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    int rc = mylite_dynamic_string_append(
+        string,
+        "Cannot delete or update a parent row: a foreign key constraint fails ("
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, schema->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_mysql_quoted_identifier(
+            string,
+            foreign_key->child_table.name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", CONSTRAINT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_mysql_quoted_identifier(
+            string,
+            foreign_key->foreign_key.name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " FOREIGN KEY (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_is_referenced_foreign_key_columns(string, foreign_key, true);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ") REFERENCES ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_mysql_quoted_identifier(
+            string,
+            foreign_key->parent_table.name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_is_referenced_foreign_key_columns(string, foreign_key, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_is_referenced_foreign_key_rules(string, foreign_key);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_row_is_referenced_foreign_key_columns(
+    struct mylite_dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool child_columns
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
+         ++part_index) {
+        const char *column_name = foreign_key->parts[part_index].parent_column.name;
+
+        if (child_columns) {
+            column_name = foreign_key->parts[part_index].child_column.name;
+        }
+        if (part_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, column_name);
+        }
+    }
+
+    return rc;
+}
+
+static int append_row_is_referenced_foreign_key_rules(
+    struct mylite_dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    int rc = MYLITE_OK;
+
+    if (strcmp(foreign_key->foreign_key.delete_rule, "NO ACTION") != 0) {
+        rc = mylite_dynamic_string_append(string, " ON DELETE ");
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, foreign_key->foreign_key.delete_rule);
+        }
+    }
+    if (rc == MYLITE_OK && strcmp(foreign_key->foreign_key.update_rule, "NO ACTION") != 0) {
+        rc = mylite_dynamic_string_append(string, " ON UPDATE ");
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, foreign_key->foreign_key.update_rule);
+        }
     }
 
     return rc;

@@ -1198,7 +1198,7 @@ static int append_show_create_table_column_suffix(
     if (rc == MYLITE_OK && column->comment[0] != '\0') {
         rc = mylite_dynamic_string_append(string, " COMMENT ");
         if (rc == MYLITE_OK) {
-            rc = append_mysql_quoted_text(string, column->comment);
+            rc = append_mysql_quoted_comment_text(string, column->comment);
         }
     }
     if (rc == MYLITE_OK && !column->is_visible) {
@@ -1243,6 +1243,7 @@ static int append_show_create_table_indexes(
             rc = append_show_create_table_index(
                 database,
                 string,
+                plan,
                 &plan->indexes[index],
                 is_last_definition
             );
@@ -1257,22 +1258,56 @@ static int append_show_create_table_foreign_keys(
     struct mylite_dynamic_string *string,
     const struct planned_show_create_table *plan
 ) {
+    bool *emitted = NULL;
+    size_t appended = 0U;
     int rc = MYLITE_OK;
 
-    (void)database;
-    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+    if (plan->foreign_key_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (plan->foreign_key_count > SIZE_MAX / sizeof(*emitted)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    emitted = calloc(plan->foreign_key_count, sizeof(*emitted));
+    if (emitted == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK) {
+        size_t best_index = SIZE_MAX;
         bool is_last_constraint = false;
 
-        if (index + 1U == plan->foreign_key_count && plan->check_constraint_count == 0U) {
+        for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+            if (emitted[index]) {
+                continue;
+            }
+            if (best_index == SIZE_MAX ||
+                compare_ascii_case_insensitive_text(
+                    plan->foreign_keys[index].foreign_key.name,
+                    plan->foreign_keys[best_index].foreign_key.name
+                ) < 0) {
+                best_index = index;
+            }
+        }
+        if (best_index == SIZE_MAX) {
+            break;
+        }
+
+        emitted[best_index] = true;
+        ++appended;
+        if (appended == plan->foreign_key_count && plan->check_constraint_count == 0U) {
             is_last_constraint = true;
         }
         rc = append_show_create_table_foreign_key(
             string,
-            &plan->foreign_keys[index],
+            &plan->foreign_keys[best_index],
             is_last_constraint
         );
     }
 
+    free(emitted);
     return rc;
 }
 
@@ -1412,7 +1447,7 @@ static int append_show_create_table_comment_option(
 
     rc = mylite_dynamic_string_append(string, " COMMENT=");
     if (rc == MYLITE_OK) {
-        rc = append_mysql_quoted_text(string, plan->table.comment);
+        rc = append_mysql_quoted_comment_text(string, plan->table.comment);
     }
 
     return rc;
@@ -1500,6 +1535,7 @@ static int append_show_create_table_integer_option(
 static int append_show_create_table_index(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    const struct planned_show_create_table *plan,
     const struct loaded_index_info *index,
     bool is_last_index
 ) {
@@ -1510,7 +1546,7 @@ static int append_show_create_table_index(
         return MYLITE_ERROR;
     }
 
-    rc = append_show_create_table_index_header(database, string, index);
+    rc = append_show_create_table_index_header(database, string, plan, index);
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         rc = append_show_create_table_index_part(
             string,
@@ -1537,8 +1573,10 @@ static int append_show_create_table_index(
 static int append_show_create_table_index_header(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    const struct planned_show_create_table *plan,
     const struct loaded_index_info *index
 ) {
+    const char *display_name = show_create_table_index_display_name(plan, index);
     int rc = MYLITE_OK;
 
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
@@ -1560,13 +1598,88 @@ static int append_show_create_table_index_header(
     }
 
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, index->index.name);
+        rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, display_name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " (");
     }
 
     return rc;
+}
+
+static const char *show_create_table_index_display_name(
+    const struct planned_show_create_table *plan,
+    const struct loaded_index_info *index
+) {
+    const char *display_name = index->index.name;
+    const struct loaded_foreign_key_info *first_foreign_key = NULL;
+    size_t matching_foreign_key_count = 0U;
+
+    if (plan == NULL || index == NULL ||
+        index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY || index->index.is_unique) {
+        return display_name;
+    }
+    for (size_t foreign_key_index = 0U; foreign_key_index < plan->foreign_key_count;
+         ++foreign_key_index) {
+        const struct loaded_foreign_key_info *foreign_key = &plan->foreign_keys[foreign_key_index];
+
+        if (foreign_key->foreign_key.child_index_id != index->index.index_id) {
+            continue;
+        }
+        if (first_foreign_key == NULL) {
+            first_foreign_key = foreign_key;
+        }
+        ++matching_foreign_key_count;
+        if (!show_create_foreign_key_name_is_generated(plan, foreign_key)) {
+            display_name = foreign_key->foreign_key.name;
+        }
+    }
+    if (matching_foreign_key_count < 2U || first_foreign_key == NULL ||
+        first_foreign_key->part_count == 0U ||
+        !text_equals_ascii_case_insensitive(
+            index->index.name,
+            first_foreign_key->parts[0].child_column.name
+        )) {
+        return index->index.name;
+    }
+
+    return display_name;
+}
+
+static bool show_create_foreign_key_name_is_generated(
+    const struct planned_show_create_table *plan,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    char generated_prefix[MYLITE_CATALOG_IDENTIFIER_CAPACITY + sizeof("_ibfk_")];
+    const char *suffix = NULL;
+    int written = 0;
+
+    if (plan == NULL || foreign_key == NULL) {
+        return false;
+    }
+
+    written = snprintf(generated_prefix, sizeof(generated_prefix), "%s_ibfk_", plan->table.name);
+    if (written < 0 || (size_t)written >= sizeof(generated_prefix)) {
+        return false;
+    }
+    if (!text_has_ascii_case_insensitive_prefix(
+            foreign_key->foreign_key.name,
+            generated_prefix
+        )) {
+        return false;
+    }
+
+    suffix = foreign_key->foreign_key.name + (size_t)written;
+    if (*suffix == '\0') {
+        return false;
+    }
+    while (*suffix != '\0') {
+        if (!isdigit((unsigned char)*suffix)) {
+            return false;
+        }
+        ++suffix;
+    }
+    return true;
 }
 
 static int append_show_create_table_index_options(
@@ -1581,7 +1694,7 @@ static int append_show_create_table_index_options(
     if (rc == MYLITE_OK && index->index.comment[0] != '\0') {
         rc = mylite_dynamic_string_append(string, " COMMENT ");
         if (rc == MYLITE_OK) {
-            rc = append_mysql_quoted_text(string, index->index.comment);
+            rc = append_mysql_quoted_comment_text(string, index->index.comment);
         }
     }
     if (rc == MYLITE_OK && index->index.kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY &&
@@ -1766,7 +1879,7 @@ static int index_display_group(const struct loaded_index_info *index) {
         return index_display_group_fulltext;
     }
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
-        return index_display_group_fulltext;
+        return index_display_group_spatial;
     }
 
     return index_display_group_unknown;

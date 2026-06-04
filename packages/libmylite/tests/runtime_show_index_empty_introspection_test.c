@@ -452,6 +452,15 @@ static int test_show_index_where_filters(void) {
     failures += expect_show_index_result(
         database,
         (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Non_unique = 0",
+            .context = "numeric metadata integer literal filter",
+            .values = primary_unique_rows,
+            .row_count = 2U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
             .sql = "SHOW INDEX FROM indexed WHERE Sub_part REGEXP '^3$'",
             .context = "where numeric metadata regexp",
             .values = key_prefix_row,
@@ -482,7 +491,7 @@ static int test_show_index_where_filters(void) {
     failures += expect_show_index_result(
         database,
         (struct expected_show_index_result){
-            .sql = "SHOW INDEX FROM indexed WHERE Sub_part IN (NULL, '3')",
+            .sql = "SHOW INDEX FROM indexed WHERE Sub_part IN (NULL, 3)",
             .context = "reopened prefix filter",
             .values = key_prefix_row,
             .row_count = 1U,

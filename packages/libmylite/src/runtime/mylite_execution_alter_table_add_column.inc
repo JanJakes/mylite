@@ -4,6 +4,7 @@ static int plan_alter_table_add_column(
     struct planned_alter_table_add_column *out_plan
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct primary_key_info existing_primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     size_t duplicate_index = 0U;
     int rc = MYLITE_OK;
@@ -30,13 +31,6 @@ static int plan_alter_table_add_column(
         rc = reject_unsupported_alter_add_column_planned_column(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
-        rc = reject_inline_primary_key_column_definition(
-            database,
-            child_at(statement, 1U),
-            "ALTER TABLE ADD COLUMN does not support PRIMARY KEY"
-        );
-    }
-    if (rc == MYLITE_OK) {
         rc = reject_auto_increment_column_definition(
             database,
             child_at(statement, 1U),
@@ -48,6 +42,14 @@ static int plan_alter_table_add_column(
         set_unsupported_error(
             database,
             "ALTER TABLE ADD COLUMN supports only persistent base tables or temporary tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY &&
+        (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key)) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD COLUMN on temporary tables does not yet support inline keys"
         );
         rc = MYLITE_ERROR;
     }
@@ -81,6 +83,19 @@ static int plan_alter_table_add_column(
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     }
+    if (rc == MYLITE_OK && out_plan->adds_inline_primary_key) {
+        rc = mylite_execution_load_primary_key_info(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &existing_primary_key
+        );
+        if (rc == MYLITE_OK && existing_primary_key.has_primary_key) {
+            set_multiple_primary_key_error(database);
+            rc = MYLITE_ERROR;
+        }
+    }
     if (rc == MYLITE_OK &&
         find_column_index(columns, column_count, out_plan->column.name, &duplicate_index) ==
             MYLITE_OK) {
@@ -108,6 +123,7 @@ static int plan_alter_table_add_column(
     }
 
     free(columns);
+    mylite_execution_primary_key_info_deinit(&existing_primary_key);
 
     return rc;
 }
@@ -580,6 +596,9 @@ static int alter_table_add_column_in_mutation(
         rc = execute_physical_alter_table_add_column(database, plan);
     }
     if (rc == MYLITE_OK) {
+        rc = apply_alter_table_add_column_inline_keys(database, mutation, plan, &inserted_column);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_update_table_identity_in_mutation(
             database,
             mutation,
@@ -587,6 +606,357 @@ static int alter_table_add_column_in_mutation(
             plan->table.schema_id,
             plan->table.name,
             NULL
+        );
+    }
+
+    return rc;
+}
+
+static int apply_alter_table_add_column_inline_keys(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_column *plan,
+    const struct mylite_catalog_column_descriptor *inserted_column
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    const struct mylite_catalog_column_descriptor *key_column = NULL;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || inserted_column == NULL) {
+        set_runtime_error(database, "invalid add-column inline key plan");
+        return MYLITE_ERROR;
+    }
+    if (!plan->adds_inline_primary_key && !plan->adds_inline_unique_key) {
+        return MYLITE_OK;
+    }
+
+    rc = make_inline_key_column_descriptors(
+        database,
+        plan->columns,
+        plan->column_count,
+        plan->target_column_index,
+        inserted_column,
+        false,
+        &columns,
+        &column_count
+    );
+    if (rc == MYLITE_OK) {
+        key_column = &columns[plan->target_column_index];
+    }
+    if (rc == MYLITE_OK && plan->adds_inline_primary_key) {
+        rc = apply_inline_primary_key_in_mutation(
+            database,
+            mutation,
+            &plan->target,
+            &plan->table,
+            columns,
+            column_count,
+            plan->target_column_index,
+            key_column
+        );
+    }
+    if (rc == MYLITE_OK && plan->adds_inline_unique_key) {
+        rc = apply_inline_unique_key_in_mutation(
+            database,
+            mutation,
+            &plan->target,
+            &plan->table,
+            columns,
+            column_count,
+            plan->target_column_index,
+            key_column
+        );
+    }
+
+    free(columns);
+    return rc;
+}
+
+static int apply_inline_primary_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct planned_alter_table_add_primary_key plan = {0};
+    int rc = MYLITE_OK;
+
+    if (target == NULL || table == NULL || column == NULL || column_index >= column_count) {
+        set_runtime_error(database, "invalid inline primary-key plan");
+        return MYLITE_ERROR;
+    }
+
+    plan.target = *target;
+    plan.table = *table;
+    rc = choose_sqlite_rowid_alias(
+        database,
+        columns,
+        column_count,
+        "ALTER TABLE ADD PRIMARY KEY requires an unshadowed SQLite rowid alias",
+        &plan.rowid_alias
+    );
+    if (rc == MYLITE_OK) {
+        rc = reserve_alter_table_primary_key_parts(database, &plan, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        plan.parts[0] = (struct loaded_index_part){
+            .index_column =
+                {
+                    .column_id = column->column_id,
+                    .ordinal_position = 1,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
+                },
+            .column = *column,
+            .column_index = column_index,
+        };
+        plan.part_count = 1U;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_primary_key_key_length(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_add_primary_key_existing_rows(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_add_primary_key_in_mutation(database, mutation, &plan);
+    }
+
+    planned_alter_table_add_primary_key_deinit(&plan);
+    return rc;
+}
+
+static int apply_inline_unique_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct planned_alter_table_add_index plan = {0};
+    bool physical_schema_changed = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || table == NULL || column == NULL || column_index >= column_count) {
+        set_runtime_error(database, "invalid inline unique-key plan");
+        return MYLITE_ERROR;
+    }
+
+    plan.target = *target;
+    plan.table = *table;
+    plan.kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+    plan.is_unique = true;
+    plan.is_visible = true;
+    snprintf(plan.index_name, sizeof(plan.index_name), "%s", column->name);
+    rc = choose_sqlite_rowid_alias(
+        database,
+        columns,
+        column_count,
+        "ALTER TABLE ADD UNIQUE requires an unshadowed SQLite rowid alias",
+        &plan.rowid_alias
+    );
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_alter_table_add_index_parts(database, &plan, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        plan.parts[0] = (struct loaded_index_part){
+            .index_column =
+                {
+                    .column_id = column->column_id,
+                    .ordinal_position = 1,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
+                },
+            .column = *column,
+            .column_index = column_index,
+        };
+        plan.part_count = 1U;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_loaded_index_part_list(database, plan.parts, plan.part_count, true);
+    }
+    if (rc == MYLITE_OK) {
+        rc = add_persistent_secondary_index_in_mutation(
+            database,
+            mutation,
+            &plan,
+            &physical_schema_changed
+        );
+    }
+
+    planned_alter_table_add_index_deinit(&plan);
+    return rc;
+}
+
+static int make_inline_key_column_descriptors(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_columns,
+    size_t source_column_count,
+    size_t target_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    bool replaces_column,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    if (replaces_column) {
+        return replace_inline_key_descriptor(
+            database,
+            source_columns,
+            source_column_count,
+            target_column_index,
+            target_column,
+            out_columns,
+            out_column_count
+        );
+    }
+
+    return add_inline_key_descriptor(
+        database,
+        source_columns,
+        source_column_count,
+        target_column_index,
+        target_column,
+        out_columns,
+        out_column_count
+    );
+}
+
+static int add_inline_key_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_columns,
+    size_t source_column_count,
+    size_t target_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    size_t source_index = 0U;
+
+    if (out_columns == NULL || out_column_count == NULL || target_column == NULL ||
+        source_column_count == SIZE_MAX) {
+        return MYLITE_MISUSE;
+    }
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    column_count = source_column_count + 1U;
+    if (target_column_index >= column_count || column_count > SIZE_MAX / sizeof(*columns)) {
+        set_runtime_error(database, "invalid inline add-column key descriptor");
+        return MYLITE_ERROR;
+    }
+
+    columns = calloc(column_count, sizeof(*columns));
+    if (columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < column_count; ++index) {
+        if (index == target_column_index) {
+            columns[index] = *target_column;
+            continue;
+        }
+        if (source_index >= source_column_count) {
+            free(columns);
+            set_runtime_error(database, "failed to build inline add-column key descriptor");
+            return MYLITE_ERROR;
+        }
+        columns[index] = source_columns[source_index];
+        ++source_index;
+    }
+
+    *out_columns = columns;
+    *out_column_count = column_count;
+    return MYLITE_OK;
+}
+
+static int replace_inline_key_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_columns,
+    size_t source_column_count,
+    size_t target_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+
+    if (out_columns == NULL || out_column_count == NULL || source_columns == NULL ||
+        target_column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    if (target_column_index >= source_column_count ||
+        source_column_count > SIZE_MAX / sizeof(*columns)) {
+        set_runtime_error(database, "invalid inline modify-column key descriptor");
+        return MYLITE_ERROR;
+    }
+
+    columns = calloc(source_column_count, sizeof(*columns));
+    if (columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(columns, source_columns, source_column_count * sizeof(*columns));
+    columns[target_column_index] = *target_column;
+
+    *out_columns = columns;
+    *out_column_count = source_column_count;
+    return MYLITE_OK;
+}
+
+static int apply_alter_table_modify_column_inline_keys(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_modify_column *plan
+) {
+    const struct mylite_catalog_column_descriptor *key_column = NULL;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid modify-column inline key plan");
+        return MYLITE_ERROR;
+    }
+    if (!plan->adds_inline_primary_key && !plan->adds_inline_unique_key) {
+        return MYLITE_OK;
+    }
+    column_index = plan->target_column_index;
+    if (plan->columns == NULL || column_index >= plan->column_count) {
+        set_runtime_error(database, "invalid modify-column inline key descriptor");
+        return MYLITE_ERROR;
+    }
+
+    key_column = &plan->columns[column_index];
+    if (rc == MYLITE_OK && plan->adds_inline_primary_key) {
+        rc = apply_inline_primary_key_in_mutation(
+            database,
+            mutation,
+            &plan->target,
+            &plan->table,
+            plan->columns,
+            plan->column_count,
+            column_index,
+            key_column
+        );
+    }
+    if (rc == MYLITE_OK && plan->adds_inline_unique_key) {
+        rc = apply_inline_unique_key_in_mutation(
+            database,
+            mutation,
+            &plan->target,
+            &plan->table,
+            plan->columns,
+            plan->column_count,
+            column_index,
+            key_column
         );
     }
 

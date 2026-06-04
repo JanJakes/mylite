@@ -476,6 +476,41 @@ static int append_mysql_quoted_text(struct mylite_dynamic_string *string, const 
     return rc;
 }
 
+static int append_mysql_quoted_comment_text(struct mylite_dynamic_string *string, const char *text) {
+    int rc = mylite_dynamic_string_append_char(string, '\'');
+
+    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
+        if (text[index] == '\\' && text[index + 1U] == '0') {
+            rc = mylite_dynamic_string_append(string, "\\0");
+            ++index;
+            continue;
+        }
+
+        switch (text[index]) {
+        case '\'':
+            rc = mylite_dynamic_string_append(string, "''");
+            break;
+        case '\\':
+            rc = mylite_dynamic_string_append(string, "\\\\");
+            break;
+        case '\n':
+            rc = mylite_dynamic_string_append(string, "\\n");
+            break;
+        case '\r':
+            rc = mylite_dynamic_string_append(string, "\\r");
+            break;
+        default:
+            rc = mylite_dynamic_string_append_char(string, text[index]);
+            break;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '\'');
+    }
+
+    return rc;
+}
+
 static int build_alter_table_drop_column_sql(
     const struct planned_alter_table_drop_column *plan,
     char **out_sql

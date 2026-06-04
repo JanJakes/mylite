@@ -243,6 +243,12 @@ static int test_change_column_success_persistence_and_dml(void) {
         "8",
         "9",
     };
+    static const char *const string_to_integer_show_create[] = {
+        "wp_shape",
+        "CREATE TABLE `wp_shape` (\n"
+        "  `option_name` smallint NOT NULL DEFAULT '14'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
     static const char *const change_after_add_rename_columns[] = {
         "id",      "int",
         "NO",      "",
@@ -315,6 +321,28 @@ static int test_change_column_success_persistence_and_dml(void) {
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE wp_shape (option_name VARCHAR(255) DEFAULT '')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE wp_shape CHANGE COLUMN option_name option_name SMALLINT NOT NULL DEFAULT 14",
+        0
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE wp_shape",
+            .values = string_to_integer_show_create,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "string to integer change SHOW CREATE",
+        }
+    );
     failures += execute_ok(
         database,
         "CREATE TABLE numbers ("

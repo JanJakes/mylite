@@ -72,6 +72,9 @@ static int alter_table_modify_column_from_plan(
         rc = execute_physical_alter_table_modify_column(database, plan, &mutation);
     }
     if (rc == MYLITE_OK) {
+        rc = apply_alter_table_modify_column_inline_keys(database, &mutation, plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_update_table_identity_in_mutation(
             database,
             &mutation,
@@ -90,7 +93,7 @@ static int alter_table_modify_column_from_plan(
         return rc;
     }
 
-    if (!plan->is_metadata_only ||
+    if (plan->adds_inline_primary_key || plan->adds_inline_unique_key || !plan->is_metadata_only ||
         !modify_column_name_matches(&plan->original_column, &plan->column)) {
         ++database->session.sqlite_schema_generation;
     }
@@ -320,6 +323,15 @@ static int validate_existing_text_for_column(
             }
         );
     }
+    if (strcmp(column->physical_type, "INTEGER") == 0) {
+        return validate_existing_text_integer_for_column(
+            database,
+            (const char *)text,
+            (size_t)byte_count,
+            column,
+            row_number
+        );
+    }
     if (column_descriptor_is_datetime(column)) {
         if (predicate_datetime_text_admitted(database, (const char *)text, (size_t)byte_count)) {
             return MYLITE_OK;
@@ -337,6 +349,51 @@ static int validate_existing_text_for_column(
 
     set_physical_sqlite_row_error(database);
     return MYLITE_ERROR;
+}
+
+static int validate_existing_text_integer_for_column(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    bool is_negative = false;
+    bool exceeds_range = false;
+    uint64_t magnitude = 0U;
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        mylite_execution_parse_dml_integer_string_text(text, text_length, &magnitude, &is_negative);
+    int rc = MYLITE_OK;
+
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
+        set_incorrect_integer_value_error(database, text, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OVERFLOW) {
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    rc = dml_integer_value_exceeds_column_range(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &exceeds_range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (exceeds_range) {
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
+        set_data_truncated_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_existing_binary_bytes_for_column(

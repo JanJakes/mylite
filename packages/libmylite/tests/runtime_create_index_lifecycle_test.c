@@ -500,6 +500,11 @@ static int test_create_unique_index_validation_and_dml(void) {
 }
 
 static int test_create_index_diagnostics(void) {
+    static const char *const complex_index_rows[] = {
+        "idx_complex", "0", "1", "score",      "A", NULL, "Test comment",
+        "idx_complex", "0", "2", "name",       "D", "16", "Test comment",
+        "idx_complex", "0", "3", "created_at", "D", NULL, "Test comment",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -593,6 +598,29 @@ static int test_create_index_diagnostics(void) {
     failures += expect_create_index_ok(
         database,
         "CREATE UNIQUE INDEX u_prefix ON prefix_diag (a(2), b(2))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE complex_idx (id INT PRIMARY KEY, name TEXT, score INT, created_at DATETIME)"
+    );
+    failures += expect_create_index_ok(
+        database,
+        "CREATE UNIQUE INDEX idx_complex ON complex_idx "
+        "(score ASC, name(16) DESC, created_at DESC) USING BTREE "
+        "COMMENT 'Test comment' ALGORITHM INPLACE LOCK SHARED"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, "
+                   "SUB_PART, INDEX_COMMENT FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'complex_idx' "
+                   "AND INDEX_NAME = 'idx_complex' ORDER BY SEQ_IN_INDEX",
+            .values = complex_index_rows,
+            .column_count = 7U,
+            .row_count = 3U,
+            .context = "complex CREATE INDEX online options metadata",
+        }
     );
     failures += expect_statement_ok(database, "CREATE TABLE zero_chars (c CHAR(0), v VARCHAR(0))");
     failures += execute_error(

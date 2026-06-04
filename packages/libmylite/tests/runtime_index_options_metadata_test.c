@@ -602,6 +602,15 @@ static int test_index_options_diagnostics(void) {
             .message_part = "index comments do not support NUL bytes",
         }
     );
+    failures +=
+        execute_statement_ok(database, "CREATE INDEX four_byte_comment ON t (a) COMMENT '\360\237\231\202'");
+    failures += expect_single_cell(
+        database,
+        "SHOW INDEX FROM t WHERE Key_name = 'four_byte_comment'",
+        show_index_index_comment_column,
+        "?",
+        "four-byte index comment replaced"
+    );
 
     create_long = make_long_index_comment_sql("CREATE INDEX too_long ON t (a) COMMENT '", "'");
     alter_long = make_long_index_comment_sql("ALTER TABLE t ADD INDEX too_long (a) COMMENT '", "'");

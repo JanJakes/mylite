@@ -20,13 +20,27 @@ static int plan_alter_table_drop_primary_key_with_options(
     bool validate_auto_increment,
     struct planned_alter_table_drop_primary_key *out_plan
 ) {
+    return plan_alter_table_drop_primary_key_for_table_node(
+        database,
+        child_at(statement, 0U),
+        validate_auto_increment,
+        out_plan
+    );
+}
+
+static int plan_alter_table_drop_primary_key_for_table_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_name_node,
+    bool validate_auto_increment,
+    struct planned_alter_table_drop_primary_key *out_plan
+) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_drop_primary_key){0};
-    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, table_name_node, &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;

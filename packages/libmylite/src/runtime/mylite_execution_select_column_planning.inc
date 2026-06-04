@@ -1322,6 +1322,7 @@ static int copy_select_item_alias_text(
             database,
             alias,
             out_text,
+            NULL,
             (struct table_option_name_policy){
                 .identifier_kind = "alias",
                 .nul_message = "select-item aliases do not support NUL bytes",

@@ -174,6 +174,15 @@ static int resolve_alter_table_column_replacement_plan(
             &out_plan->index_count
         );
     }
+    if (rc == MYLITE_OK && out_plan->adds_inline_primary_key) {
+        for (size_t index = 0U; index < out_plan->index_count; ++index) {
+            if (out_plan->indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+                set_multiple_primary_key_error(database);
+                rc = MYLITE_ERROR;
+                break;
+            }
+        }
+    }
     if (rc == MYLITE_OK) {
         rc = apply_alter_table_modify_primary_key_nullability(database, out_plan);
     }
@@ -182,6 +191,32 @@ static int resolve_alter_table_column_replacement_plan(
     }
     if (rc == MYLITE_OK) {
         rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
+    }
+    if (rc == MYLITE_OK && out_plan->is_noop &&
+        (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key)) {
+        out_plan->is_noop = false;
+        out_plan->is_metadata_only = true;
+    }
+    if (rc == MYLITE_OK && (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key) &&
+        out_plan->columns == NULL) {
+        struct mylite_catalog_column_descriptor target_column = {0};
+        size_t planned_column_count = 0U;
+
+        make_modify_target_descriptor(out_plan, &target_column);
+        rc = make_inline_key_column_descriptors(
+            database,
+            columns,
+            column_count,
+            out_plan->column_index,
+            &target_column,
+            true,
+            &out_plan->columns,
+            &planned_column_count
+        );
+        if (rc == MYLITE_OK) {
+            out_plan->column_count = planned_column_count;
+            out_plan->target_column_index = out_plan->column_index;
+        }
     }
 
     free(columns);
@@ -384,10 +419,15 @@ static int complete_alter_table_modify_column_plan(
     );
     bool supports_temporal_replacement =
         modify_column_temporal_replacement_supported(&out_plan->original_column, &out_plan->column);
+    bool supports_string_to_integer_replacement = modify_column_string_to_integer_replacement_supported(
+        &out_plan->original_column,
+        &out_plan->column
+    );
     int rc = MYLITE_OK;
 
     if (!supports_char_varchar_replacement && !supports_text_family_replacement &&
         !supports_binary_string_replacement && !supports_temporal_replacement &&
+        !supports_string_to_integer_replacement &&
         (column_descriptor_is_string_family(&out_plan->original_column) ||
          column_descriptor_is_binary_string_family(&out_plan->original_column) ||
          column_descriptor_is_json(&out_plan->original_column) ||

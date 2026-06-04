@@ -387,6 +387,19 @@ static int test_column_comment_diagnostics(void) {
     free(multibyte_sql);
     free(multibyte_comment);
 
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE four_byte_comment (a INT COMMENT '\360\237\231\202')"
+    );
+    failures += expect_cell(
+        database,
+        "SHOW FULL COLUMNS FROM four_byte_comment",
+        0U,
+        show_full_columns_comment_column,
+        "?",
+        "four-byte column comment replaced"
+    );
+
     sql = malloc(prefix_length + comment_length + suffix_length + 1U);
     if (sql == NULL) {
         fprintf(stderr, "failed to allocate overlength column comment SQL\n");

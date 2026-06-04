@@ -26,6 +26,7 @@ static int apply_set_sql_mode_value(
         database,
         value_node,
         &decoded,
+        NULL,
         (struct table_option_name_policy){
             .identifier_kind = "sql_mode",
             .nul_message = "SET sql_mode does not support NUL bytes",
@@ -176,6 +177,7 @@ static int copy_set_time_zone_value_text(
             database,
             value_node,
             out_value,
+            NULL,
             (struct table_option_name_policy){
                 .identifier_kind = "time_zone",
                 .nul_message = "SET time_zone does not support NUL bytes",

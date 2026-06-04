@@ -361,8 +361,21 @@ static int test_create_table_primary_key_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE unsupported_named_pk (id INT, CONSTRAINT pk PRIMARY KEY (id));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    items = parser_test_child_at(statement, 1U);
+    primary_key = parser_test_child_at(items, 1U);
+    failures += parser_test_expect_node(
+        primary_key,
+        MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION,
+        "named primary constraint"
+    );
+    failures += parser_test_expect_span_text(
+        primary_key,
+        "PRIMARY KEY (id)",
+        "named primary constraint span"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -715,6 +728,20 @@ static int test_create_table_primary_key_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "CREATE UNIQUE INDEX k_complex ON create_idx (v ASC, id DESC) "
+        "USING BTREE COMMENT 'Test comment' ALGORITHM INPLACE LOCK SHARED;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT,
+        "create index online options"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -727,6 +754,7 @@ static int test_create_table_foreign_key_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *items = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
     const struct mylite_sql_ast_node *foreign_key = NULL;
     const struct mylite_sql_ast_node *actions = NULL;
     const struct mylite_sql_ast_node *child_parts = NULL;
@@ -851,6 +879,26 @@ static int test_create_table_foreign_key_statements(void) {
     failures += parser_test_expect_child_count(child_parts, 2U, "composite fk child parser parts");
     failures +=
         parser_test_expect_child_count(parent_parts, 2U, "composite fk parent parser parts");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE child (parent_id INT REFERENCES parent (id) ON DELETE CASCADE, other INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    items = parser_test_child_at(statement, 1U);
+    column = parser_test_child_at(items, 0U);
+    failures += parser_test_expect_child_count(
+        column,
+        2U,
+        "ignored inline reference column child count"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(column, 0U),
+        "parent_id",
+        "ignored inline reference column name"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -1195,8 +1243,14 @@ static int test_drop_index_statements(void) {
 
     failures += parser_test_parse_sql(
         "DROP INDEX PRIMARY ON drop_idx;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "PRIMARY",
+        "unquoted drop primary name"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -1352,8 +1406,20 @@ static int test_alter_table_add_primary_key_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE add_pk ADD CONSTRAINT pk PRIMARY KEY (id);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT,
+        "alter add named primary key statement"
+    );
+    primary_key = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_span_text(
+        primary_key,
+        "PRIMARY KEY (id)",
+        "alter add named primary key span"
     );
     mylite_sql_parse_result_deinit(&result);
 

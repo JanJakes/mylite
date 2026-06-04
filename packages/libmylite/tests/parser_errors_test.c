@@ -308,13 +308,6 @@ static int test_syntax_errors(void) {
     failures += parser_test_parse_sql("SHOW COLLATIONS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SHOW CHARACTER SET WHERE Charset = 'utf8mb4';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
     failures +=
         parser_test_parse_sql("SHOW CHARACTER SET LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -335,13 +328,6 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "SHOW CHARACTER SET LIKE _utf8mb4'utf8mb4';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "SHOW COLLATION WHERE Collation = 'utf8mb4_0900_ai_ci';",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -297,7 +297,7 @@ static int evaluate_show_index_where_in_predicate(
             saw_null = true;
             continue;
         }
-        rc = decode_show_index_where_string_literal(database, value_node, &right);
+        rc = decode_show_index_where_comparable_literal(database, value_node, column_index, &right);
         if (rc == MYLITE_OK) {
             bool equal = false;
 
@@ -458,7 +458,7 @@ static int compare_show_index_where_literal(
         return MYLITE_OK;
     }
 
-    rc = decode_show_index_where_string_literal(database, right, &right_text);
+    rc = decode_show_index_where_comparable_literal(database, right, column_index, &right_text);
     if (rc != MYLITE_OK) {
         free(right_text);
         return rc;
@@ -621,6 +621,21 @@ static int decode_show_index_where_string_literal(
         out_text,
         &text_length
     );
+}
+
+static int decode_show_index_where_comparable_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    size_t column_index,
+    char **out_text
+) {
+    if (literal_node != NULL && literal_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal_node) == MYLITE_SQL_AST_LITERAL_INTEGER &&
+        show_index_where_column_is_numeric(column_index)) {
+        return copy_source_span_text(database, &literal_node->span, out_text);
+    }
+
+    return decode_show_index_where_string_literal(database, literal_node, out_text);
 }
 
 static int evaluate_show_metadata_where_regexp_predicate(

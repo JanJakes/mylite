@@ -685,6 +685,19 @@ static int test_comment_diagnostics(void) {
     free(multibyte_sql);
     free(multibyte_comment);
 
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE four_byte_comment (id INT) COMMENT='\360\237\231\202'"
+    );
+    failures += expect_single_cell(
+        database,
+        "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'four_byte_comment'",
+        0U,
+        "?",
+        "four-byte table comment replaced"
+    );
+
     sql = malloc(prefix_length + comment_length + suffix_length + 1U);
     if (sql == NULL) {
         fprintf(stderr, "failed to allocate overlength comment SQL\n");

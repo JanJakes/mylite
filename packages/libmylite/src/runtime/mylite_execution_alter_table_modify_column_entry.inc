@@ -25,19 +25,20 @@ static int plan_alter_table_modify_column(
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
     }
+    if (rc == MYLITE_OK) {
+        const struct mylite_sql_ast_node *column_definition = child_at(statement, 1U);
+
+        out_plan->adds_inline_primary_key =
+            child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL;
+        out_plan->adds_inline_unique_key =
+            child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_UNIQUE_KEY) != NULL;
+    }
     if (rc == MYLITE_OK && out_plan->column.is_generated) {
         set_unsupported_error(
             database,
             "ALTER TABLE MODIFY COLUMN does not support generated columns"
         );
         rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = reject_inline_primary_key_column_definition(
-            database,
-            child_at(statement, 1U),
-            "ALTER TABLE MODIFY COLUMN does not support PRIMARY KEY"
-        );
     }
     if (rc == MYLITE_OK) {
         rc = reject_auto_increment_column_definition(
@@ -104,19 +105,20 @@ static int plan_alter_table_change_column(
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 2U), &out_plan->column);
     }
+    if (rc == MYLITE_OK) {
+        const struct mylite_sql_ast_node *column_definition = child_at(statement, 2U);
+
+        out_plan->adds_inline_primary_key =
+            child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL;
+        out_plan->adds_inline_unique_key =
+            child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_UNIQUE_KEY) != NULL;
+    }
     if (rc == MYLITE_OK && out_plan->column.is_generated) {
         set_unsupported_error(
             database,
             "ALTER TABLE CHANGE COLUMN does not support generated columns"
         );
         rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = reject_inline_primary_key_column_definition(
-            database,
-            child_at(statement, 2U),
-            "ALTER TABLE CHANGE COLUMN does not support PRIMARY KEY"
-        );
     }
     if (rc == MYLITE_OK) {
         rc = reject_auto_increment_column_definition(

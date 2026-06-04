@@ -1,16 +1,3 @@
-static int reject_inline_primary_key_column_definition(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *column_definition,
-    const char *message
-) {
-    if (child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL) {
-        set_unsupported_error(database, message);
-        return MYLITE_ERROR;
-    }
-
-    return MYLITE_OK;
-}
-
 static int reject_auto_increment_column_definition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_definition,

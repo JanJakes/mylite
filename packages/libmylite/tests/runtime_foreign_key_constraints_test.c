@@ -56,6 +56,8 @@ struct expected_dml_status {
 };
 
 static int test_create_table_foreign_key_lifecycle(void);
+static int test_inline_foreign_key_references_are_ignored(void);
+static int test_foreign_key_metadata_name_order(void);
 static int test_composite_foreign_key_lifecycle(void);
 static int test_alter_table_add_foreign_key_lifecycle(void);
 static int test_foreign_key_symbol_action_metadata(void);
@@ -108,6 +110,8 @@ int main(void) {
     int failures = 0;
 
     failures += test_create_table_foreign_key_lifecycle();
+    failures += test_inline_foreign_key_references_are_ignored();
+    failures += test_foreign_key_metadata_name_order();
     failures += test_composite_foreign_key_lifecycle();
     failures += test_alter_table_add_foreign_key_lifecycle();
     failures += test_foreign_key_symbol_action_metadata();
@@ -210,12 +214,12 @@ static int test_create_table_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DELETE FROM parent WHERE id = 1",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += execute_error(
         database,
         "UPDATE parent SET id = 9 WHERE id = 1",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_dml_ok(database, "DELETE FROM child WHERE id = 10", 1);
     failures += expect_dml_ok(database, "DELETE FROM parent WHERE id = 1", 1);
@@ -271,7 +275,7 @@ static int test_create_table_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DROP TABLE parent",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_statement_ok(database, "CREATE TABLE select_source (id INT, parent_id INT)");
     failures += expect_statement_ok(
@@ -289,6 +293,142 @@ static int test_create_table_foreign_key_lifecycle(void) {
         "REPLACE INTO select_child SELECT id, parent_id FROM select_source",
         0
     );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_inline_foreign_key_references_are_ignored(void) {
+    static const char *const zero_rows[] = {"0"};
+    mylite_db *database = NULL;
+    mylite_result *show_create_result = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(database, "CREATE TABLE inline_parent (id INT, name VARCHAR(255))");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE inline_child (id INT, parent_id INT REFERENCES inline_parent (id), "
+        "parent_name VARCHAR(255) REFERENCES inline_parent (name) ON DELETE CASCADE)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'inline_child' AND "
+            "CONSTRAINT_TYPE = 'FOREIGN KEY'",
+            zero_rows,
+            1U,
+            1U,
+            "inline REFERENCES does not create table constraints",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'inline_child'",
+            zero_rows,
+            1U,
+            1U,
+            "inline REFERENCES does not create key-column rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'inline_child'",
+            zero_rows,
+            1U,
+            1U,
+            "inline REFERENCES does not create referential rows",
+        }
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE inline_child", &show_create_result);
+    if (failures == 0) {
+        const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
+
+        failures += expect_not_contains(
+            create_sql,
+            "FOREIGN KEY",
+            "inline REFERENCES SHOW CREATE omits foreign key"
+        );
+        failures += expect_not_contains(
+            create_sql,
+            "REFERENCES",
+            "inline REFERENCES SHOW CREATE omits reference clause"
+        );
+    }
+    mylite_result_free(show_create_result);
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_metadata_name_order(void) {
+    static const char *const constraint_names[] = {"fk_named", "ordered_child_ibfk_1"};
+    static const char *const referential_names[] = {"ordered_child_ibfk_1", "fk_named"};
+    mylite_db *database = NULL;
+    mylite_result *show_create_result = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(database, "CREATE TABLE ordered_parent (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ordered_child (id INT, FOREIGN KEY (id) REFERENCES ordered_parent (id), "
+        "CONSTRAINT fk_named FOREIGN KEY (id) REFERENCES ordered_parent (id))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'ordered_child' AND "
+            "CONSTRAINT_TYPE = 'FOREIGN KEY'",
+            constraint_names,
+            2U,
+            1U,
+            "foreign-key table constraint name order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'ordered_child'",
+            constraint_names,
+            2U,
+            1U,
+            "foreign-key key-column name order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'ordered_child'",
+            referential_names,
+            2U,
+            1U,
+            "foreign-key referential creation order",
+        }
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE ordered_child", &show_create_result);
+    if (failures == 0) {
+        const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
+        const char *explicit_name = strstr(create_sql, "CONSTRAINT `fk_named`");
+        const char *generated_name = strstr(create_sql, "CONSTRAINT `ordered_child_ibfk_1`");
+
+        failures += expect_contains(
+            create_sql,
+            "KEY `fk_named` (`id`)",
+            "SHOW CREATE foreign-key child index display name"
+        );
+        if (explicit_name == NULL || generated_name == NULL || generated_name < explicit_name) {
+            fprintf(stderr, "SHOW CREATE foreign-key name order mismatch: %s\n", create_sql);
+            ++failures;
+        }
+    }
+    mylite_result_free(show_create_result);
 
     mylite_close(database);
     return failures;
@@ -493,12 +633,12 @@ static int test_composite_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DELETE FROM parent_pk WHERE a = 1 AND b = 2",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += execute_error(
         database,
         "UPDATE parent_pk SET a = 9 WHERE a = 1 AND b = 2",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
 
     failures += expect_statement_ok(
@@ -1093,12 +1233,12 @@ static int test_foreign_key_cascade_actions(void) {
     failures += execute_error(
         database,
         "DELETE FROM prestrict WHERE id = 1",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += execute_error(
         database,
         "UPDATE prestrict SET id = 2 WHERE id = 1",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
 
     mylite_close(database);
@@ -1318,7 +1458,7 @@ static int test_foreign_key_set_null_actions(void) {
     failures += execute_error(
         database,
         "DELETE FROM prollback_delete WHERE id = 1",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_query_values(
         database,
@@ -1358,7 +1498,7 @@ static int test_foreign_key_set_null_actions(void) {
     failures += execute_error(
         database,
         "UPDATE prollback_update SET id = 2 WHERE id = 1",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_query_values(
         database,

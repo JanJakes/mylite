@@ -1505,6 +1505,24 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SHOW CHARACTER SET WHERE Charset = 'utf8mb4';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT,
+        "show character set where"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "charset where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SHOW COLLATION;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
     failures += parser_test_expect_node(
@@ -1535,6 +1553,24 @@ static int test_table_lifecycle_statements(void) {
         parser_test_child_at(statement, 0U),
         "'utf8mb4\\_0900\\_ai\\_ci'",
         "collation like pattern"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW COLLATION WHERE Collation = 'utf8mb4_0900_ai_ci';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT,
+        "show collation where"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "collation where clause"
     );
     mylite_sql_parse_result_deinit(&result);
 

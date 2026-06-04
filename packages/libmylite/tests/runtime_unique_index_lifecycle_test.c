@@ -162,6 +162,10 @@ static int test_unique_index_metadata_dml_and_persistence(void) {
         "  KEY `k_v` (`v`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const full_prefix_show_index_rows[] = {
+        "full_prefix", "0", "name", "1",   "name", "A",  "0", NULL,
+        NULL,          "",  "BTREE", "",    "",     "YES", NULL,
+    };
     static const char *const inline_show_columns_rows[] = {
         "v",
         "int",
@@ -316,6 +320,20 @@ static int test_unique_index_metadata_dml_and_persistence(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "inline unique SHOW CREATE TABLE",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE full_prefix (name VARCHAR(20) NOT NULL DEFAULT '')");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE full_prefix ADD UNIQUE INDEX name (name(20))");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM full_prefix",
+            .values = full_prefix_show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 1U,
+            .context = "full-length varchar prefix SHOW INDEX",
         }
     );
     failures += expect_statement_ok(

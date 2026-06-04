@@ -365,6 +365,7 @@ static int test_drop_index_created_altered_like_schema_and_rename(void) {
 static int test_drop_index_auto_increment_and_diagnostics(void) {
     static const char *const auto_column_rows[] =
         {"id", "int", "NO", "PRI", NULL, "auto_increment", "v", "int", "YES", "", NULL, ""};
+    static const char *const zero_count_rows[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -464,22 +465,22 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE primary_t (id INT PRIMARY KEY)");
-    failures += execute_error(
+    failures += expect_drop_index_ok(database, "DROP INDEX `PRIMARY` ON primary_t");
+    failures += expect_statement_ok(database, "CREATE TABLE primary_unquoted (id INT PRIMARY KEY)");
+    failures += expect_drop_index_ok(database, "DROP INDEX PRIMARY ON primary_unquoted");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE primary_alter (id INT PRIMARY KEY, v INT UNIQUE)");
+    failures += expect_drop_index_ok(database, "ALTER TABLE primary_alter DROP INDEX `PRIMARY`");
+    failures += expect_query_values(
         database,
-        "DROP INDEX `PRIMARY` ON primary_t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DROP INDEX does not drop primary keys",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DROP INDEX PRIMARY ON primary_t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'primary_alter' "
+                   "AND CONSTRAINT_NAME = 'PRIMARY'",
+            .values = zero_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "ALTER DROP INDEX PRIMARY removes primary constraint metadata",
         }
     );
     failures += execute_error(

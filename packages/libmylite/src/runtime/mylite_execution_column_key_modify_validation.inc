@@ -173,6 +173,15 @@ static bool modify_column_temporal_replacement_supported(
     return (original_is_temporal && replacement_is_temporal) != 0;
 }
 
+static bool modify_column_string_to_integer_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    return (column_descriptor_is_string_family(original_column) &&
+            replacement_column != NULL && replacement_column->physical_type != NULL &&
+            strcmp(replacement_column->physical_type, "INTEGER") == 0) != 0;
+}
+
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node) {
     return mylite_sql_ast_node_nullability(nullability_node) != MYLITE_SQL_AST_NULLABILITY_NOT_NULL;
 }

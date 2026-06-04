@@ -942,6 +942,57 @@ static int validate_create_table_storage_statistics_combination(
     return MYLITE_OK;
 }
 
+static int normalize_mysql_comment_text(
+    struct mylite_db *database,
+    char **in_out_text,
+    size_t *in_out_length
+) {
+    struct mylite_dynamic_string normalized;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (in_out_text == NULL || in_out_length == NULL || *in_out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    text = *in_out_text;
+    text_length = *in_out_length;
+    mylite_dynamic_string_init(&normalized);
+    for (size_t index = 0U; rc == MYLITE_OK && index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte == '\0') {
+            rc = mylite_dynamic_string_append(&normalized, "\\0");
+        } else if (byte >= 0xf0U && byte <= 0xf4U && index + 4U <= text_length) {
+            rc = mylite_dynamic_string_append_char(&normalized, '?');
+            index += 3U;
+        } else {
+            rc = mylite_dynamic_string_append_char(&normalized, text[index]);
+        }
+    }
+    if (rc == MYLITE_OK && normalized.text == NULL) {
+        rc = mylite_dynamic_string_append(&normalized, "");
+    }
+    if (rc == MYLITE_OK) {
+        size_t normalized_length = normalized.length;
+        char *normalized_text = mylite_dynamic_string_take(&normalized);
+
+        if (normalized_text == NULL) {
+            rc = MYLITE_NOMEM;
+        } else {
+            free(*in_out_text);
+            *in_out_text = normalized_text;
+            *in_out_length = normalized_length;
+        }
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    mylite_dynamic_string_deinit(&normalized);
+    return rc;
+}
+
 static int decode_table_comment_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *comment_option,
@@ -964,6 +1015,7 @@ static int decode_table_comment_option(
         database,
         child_at(comment_option, 0U),
         &decoded,
+        &decoded_length,
         (struct table_option_name_policy){
             .identifier_kind = "table comment",
             .nul_message = "table comments do not support NUL bytes",
@@ -973,7 +1025,16 @@ static int decode_table_comment_option(
         return rc;
     }
 
-    decoded_length = strlen(decoded);
+    if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) != MYLITE_OK) {
+        free(decoded);
+        set_unsupported_error(database, "table comments support only valid UTF-8 text");
+        return MYLITE_ERROR;
+    }
+    rc = normalize_mysql_comment_text(database, &decoded, &decoded_length);
+    if (rc != MYLITE_OK) {
+        free(decoded);
+        return rc;
+    }
     if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) != MYLITE_OK) {
         free(decoded);
         set_unsupported_error(database, "table comments support only valid UTF-8 text");
@@ -1157,6 +1218,7 @@ static int validate_create_table_comment_option(
         database,
         child_at(comment_option, 0U),
         &decoded,
+        NULL,
         (struct table_option_name_policy){
             .identifier_kind = "table comment",
             .nul_message = "table comments do not support NUL bytes",
@@ -1577,7 +1639,7 @@ static int copy_table_option_name_text(
         return MYLITE_ERROR;
     }
 
-    rc = decode_table_option_string_literal(database, option_name_node, &decoded, policy);
+    rc = decode_table_option_string_literal(database, option_name_node, &decoded, NULL, policy);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1598,6 +1660,7 @@ static int decode_table_option_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *option_name_node,
     char **out_name,
+    size_t *out_name_length,
     struct table_option_name_policy policy
 ) {
     struct mylite_dynamic_string string;
@@ -1612,6 +1675,9 @@ static int decode_table_option_string_literal(
         return MYLITE_ERROR;
     }
     *out_name = NULL;
+    if (out_name_length != NULL) {
+        *out_name_length = 0U;
+    }
     if (option_name_node == NULL || option_name_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(option_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_parse_error(database, NULL);
@@ -1648,9 +1714,13 @@ static int decode_table_option_string_literal(
         rc = mylite_dynamic_string_append(&string, "");
     }
     if (rc == MYLITE_OK) {
+        size_t decoded_length = string.length;
+
         *out_name = mylite_dynamic_string_take(&string);
         if (*out_name == NULL) {
             rc = MYLITE_NOMEM;
+        } else if (out_name_length != NULL) {
+            *out_name_length = decoded_length;
         }
     }
     if (rc == MYLITE_NOMEM) {

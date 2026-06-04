@@ -55,6 +55,7 @@ struct expected_query {
 };
 
 static int test_spatial_metadata_surface(void);
+static int test_spatial_mixed_index_display_order(void);
 static int test_spatial_added_and_implicit_index_forms(void);
 static int test_spatial_index_type_options(void);
 static int test_spatial_create_table_like_metadata(void);
@@ -99,6 +100,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_spatial_metadata_surface();
+    failures += test_spatial_mixed_index_display_order();
     failures += test_spatial_added_and_implicit_index_forms();
     failures += test_spatial_index_type_options();
     failures += test_spatial_create_table_like_metadata();
@@ -249,6 +251,99 @@ static int test_spatial_metadata_surface(void) {
         }
     );
     failures += expect_physical_index_count(database, 0, "spatial catalog-only index");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_spatial_mixed_index_display_order(void) {
+    static const char *const show_index_rows[] = {
+        "mixed_index_order",
+        "1",
+        "geom_col_spatial",
+        "1",
+        "geom_col",
+        "A",
+        "0",
+        "32",
+        NULL,
+        "",
+        "SPATIAL",
+        "",
+        "",
+        "YES",
+        NULL,
+        "mixed_index_order",
+        "1",
+        "term_taxonomy_id",
+        "1",
+        "term_taxonomy_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const information_schema_statistics_rows[] = {
+        "geom_col_spatial",
+        "SPATIAL",
+        "term_taxonomy_id",
+        "BTREE",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE TABLE mixed_index_order ("
+        "object_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0, "
+        "term_taxonomy_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0, "
+        "term_name VARCHAR(11) NOT NULL DEFAULT 0, "
+        "geom_col GEOMETRY NOT NULL, "
+        "FULLTEXT KEY term_name_fulltext1 (term_name), "
+        "FULLTEXT INDEX term_name_fulltext2 (term_name), "
+        "SPATIAL KEY geom_col_spatial (geom_col), "
+        "PRIMARY KEY (object_id, term_taxonomy_id), "
+        "KEY term_taxonomy_id (term_taxonomy_id), "
+        "KEY compound_key (object_id, term_taxonomy_id))",
+        3U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM mixed_index_order WHERE Key_name IN "
+                   "('geom_col_spatial', 'term_taxonomy_id')",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 2U,
+            .context = "spatial SHOW INDEX display order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, INDEX_TYPE FROM information_schema.statistics "
+                   "WHERE table_schema = DATABASE() AND table_name = 'mixed_index_order' "
+                   "AND INDEX_NAME IN ('geom_col_spatial', 'term_taxonomy_id')",
+            .values = information_schema_statistics_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "spatial INFORMATION_SCHEMA.STATISTICS display order",
+        }
+    );
 
     mylite_close(database);
     return failures;

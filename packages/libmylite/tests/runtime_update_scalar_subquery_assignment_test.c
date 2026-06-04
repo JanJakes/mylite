@@ -129,6 +129,13 @@ static int test_scalar_subquery_assignment_success_and_persistence(void) {
         "2025-02-03 04:05:06",
         "2025-02-03 04:05:06",
     };
+    static const char *const after_text_temporal_copy[] = {
+        "1",
+        "2026-03-04",
+        "05:06:07",
+        "2026-03-04 05:06:07",
+        "2026-03-04 05:06:07",
+    };
     static const char *const after_row_null_copy[] = {"1", NULL};
     static const char *const persisted_values[] = {
         "1",
@@ -274,6 +281,41 @@ static int test_scalar_subquery_assignment_success_and_persistence(void) {
             .column_count = family_copy_column_count,
             .row_count = 1U,
             .context = "compatible descriptor family scalar copy",
+        }
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE family_target SET date_value = (SELECT date_text FROM temporal_text_source "
+        "WHERE id = 1) WHERE id = 1",
+        1
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE family_target SET time_value = (SELECT time_text FROM temporal_text_source "
+        "WHERE id = 1) WHERE id = 1",
+        1
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE family_target SET datetime_value = (SELECT datetime_text FROM "
+        "temporal_text_source WHERE id = 1) WHERE id = 1",
+        1
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE family_target SET timestamp_value = (SELECT timestamp_text FROM "
+        "temporal_text_source WHERE id = 1) WHERE id = 1",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, date_value, time_value, datetime_value, timestamp_value "
+                   "FROM family_target WHERE id = 1",
+            .values = after_text_temporal_copy,
+            .column_count = 5U,
+            .row_count = 1U,
+            .context = "text scalar subquery temporal assignment",
         }
     );
     failures += expect_update_ok(
@@ -646,6 +688,18 @@ static int seed_tables(mylite_db *database) {
     result = NULL;
     failures += execute_ok(
         database,
+        "CREATE TABLE temporal_text_source ("
+        "id INT NOT NULL, "
+        "date_text VARCHAR(40), "
+        "time_text VARCHAR(40), "
+        "datetime_text VARCHAR(40), "
+        "timestamp_text VARCHAR(40))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
         "INSERT INTO target VALUES "
         "(1, 'User 0000018', 'old-18', 10, 7), "
         "(2, 'User 0000019', 'old-19', 20, 7), "
@@ -689,6 +743,15 @@ static int seed_tables(mylite_db *database) {
     result = NULL;
     failures +=
         execute_ok(database, "INSERT INTO binary_source VALUES (10, X'51', X'515253')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO temporal_text_source VALUES ("
+        "1, '2026-03-04', '05:06:07', '2026-03-04 05:06:07', "
+        "'2026-03-04 05:06:07')",
+        &result
+    );
     mylite_result_free(result);
 
     return failures;

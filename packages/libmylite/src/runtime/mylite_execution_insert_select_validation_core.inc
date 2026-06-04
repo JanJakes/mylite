@@ -326,16 +326,20 @@ static bool insert_select_source_target_types_are_compatible(
                 strcmp(source_column->logical_type, target_column->logical_type) == 0) != 0;
     }
     if (column_descriptor_is_date(target_column)) {
-        return column_descriptor_is_date(source_column);
+        return (column_descriptor_is_date(source_column) ||
+                column_descriptor_is_string_family(source_column)) != 0;
     }
     if (column_descriptor_is_time(target_column)) {
-        return column_descriptor_is_time(source_column);
+        return (column_descriptor_is_time(source_column) ||
+                column_descriptor_is_string_family(source_column)) != 0;
     }
     if (column_descriptor_is_datetime(target_column)) {
-        return column_descriptor_is_datetime(source_column);
+        return (column_descriptor_is_datetime(source_column) ||
+                column_descriptor_is_string_family(source_column)) != 0;
     }
     if (column_descriptor_is_timestamp(target_column)) {
-        return column_descriptor_is_timestamp(source_column);
+        return (column_descriptor_is_timestamp(source_column) ||
+                column_descriptor_is_string_family(source_column)) != 0;
     }
 
     return (source_column->physical_type[0] != '\0' &&

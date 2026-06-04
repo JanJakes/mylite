@@ -3228,6 +3228,38 @@ struct information_schema_projection_slot_request {
     const struct mylite_sql_ast_node *alias;
 };
 
+struct information_schema_result_projection_buffers {
+    const char **values;
+    char *computed_values;
+};
+
+enum information_schema_numeric_eval_action {
+    INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER = 1,
+    INFORMATION_SCHEMA_NUMERIC_EVAL_APPLY_DIVIDE = 2,
+};
+
+struct information_schema_numeric_eval_frame {
+    enum information_schema_numeric_eval_action action;
+    const struct mylite_sql_ast_node *expression;
+};
+
+struct information_schema_numeric_eval_frame_stack {
+    struct information_schema_numeric_eval_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct information_schema_numeric_eval_value {
+    double value;
+    bool is_null;
+};
+
+struct information_schema_numeric_eval_value_stack {
+    struct information_schema_numeric_eval_value *items;
+    size_t count;
+    size_t capacity;
+};
+
 struct information_schema_catalog_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
@@ -7170,6 +7202,21 @@ static int information_schema_append_result_rows(
     mylite_result *result,
     size_t *out_read_row_count
 );
+static int information_schema_result_projection_buffers_init(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    struct information_schema_result_projection_buffers *buffers
+);
+static void information_schema_result_projection_buffers_deinit(
+    struct information_schema_result_projection_buffers *buffers
+);
+static int information_schema_append_projected_result_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    const struct information_schema_result_projection_buffers *buffers,
+    mylite_result *result
+);
 static int information_schema_append_count_result(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -7204,6 +7251,34 @@ static int information_schema_numeric_projection_expression_value(
     double *out_value,
     bool *out_is_null
 );
+static int information_schema_numeric_projection_enter_frame(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    const struct mylite_sql_ast_node *expression,
+    struct information_schema_numeric_eval_frame_stack *frames,
+    struct information_schema_numeric_eval_value_stack *values
+);
+static int information_schema_numeric_projection_apply_divide_frame(
+    struct mylite_db *database,
+    struct information_schema_numeric_eval_value_stack *values
+);
+static int information_schema_numeric_eval_frame_stack_push(
+    struct mylite_db *database,
+    struct information_schema_numeric_eval_frame_stack *stack,
+    struct information_schema_numeric_eval_frame frame
+);
+static void information_schema_numeric_eval_frame_stack_deinit(
+    struct information_schema_numeric_eval_frame_stack *stack
+);
+static int information_schema_numeric_eval_value_stack_push(
+    struct mylite_db *database,
+    struct information_schema_numeric_eval_value_stack *stack,
+    struct information_schema_numeric_eval_value value
+);
+static void information_schema_numeric_eval_value_stack_deinit(
+    struct information_schema_numeric_eval_value_stack *stack
+);
 static int information_schema_numeric_text_value(
     struct mylite_db *database,
     const char *text,
@@ -7234,6 +7309,17 @@ static int information_schema_predicate_includes_connection_control_failed_login
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     bool *out_includes_table
+);
+static int information_schema_predicate_marks_connection_control_failed_login_attempts(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate,
+    bool *out_includes_table
+);
+static int information_schema_predicate_stack_push_binary_children(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *predicate
 );
 static bool information_schema_row_is_connection_control_failed_login_attempts(char **row);
 static int information_schema_sort_row_indexes(

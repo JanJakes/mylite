@@ -48,8 +48,7 @@ static int information_schema_append_result_rows(
     size_t *indexes = NULL;
     size_t index_count = 0U;
     size_t visible_count = 0U;
-    const char **values = NULL;
-    char *computed_values = NULL;
+    struct information_schema_result_projection_buffers buffers = {0};
     int rc = information_schema_matching_row_indexes(
         database,
         statement,
@@ -82,25 +81,7 @@ static int information_schema_append_result_rows(
         );
     }
     if (rc == MYLITE_OK && query->projection_count != 0U) {
-        values = (const char **)calloc(query->projection_count, sizeof(*values));
-        if (values == NULL) {
-            free(indexes);
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        if (query->projection_count > SIZE_MAX / integer_text_capacity) {
-            free(indexes);
-            free((void *)values);
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        computed_values = calloc(query->projection_count, integer_text_capacity);
-        if (computed_values == NULL) {
-            free(indexes);
-            free((void *)values);
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
+        rc = information_schema_result_projection_buffers_init(database, query, &buffers);
     }
     for (size_t output_index = 0U; rc == MYLITE_OK && output_index < index_count; ++output_index) {
         size_t row_index = indexes[output_index];
@@ -108,35 +89,86 @@ static int information_schema_append_result_rows(
         if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
             break;
         }
-        for (size_t column_index = 0U; column_index < query->projection_count; ++column_index) {
-            rc = information_schema_projection_value(
-                database,
-                query,
-                (const char *const *)rows->rows[row_index],
-                column_index,
-                computed_values + (column_index * integer_text_capacity),
-                integer_text_capacity,
-                &values[column_index]
-            );
-            if (rc != MYLITE_OK) {
-                break;
-            }
-        }
-        if (rc != MYLITE_OK) {
-            break;
-        }
-        rc = mylite_result_append_text_row(result, values);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+        rc = information_schema_append_projected_result_row(
+            database,
+            query,
+            (const char *const *)rows->rows[row_index],
+            &buffers,
+            result
+        );
         ++visible_count;
     }
-    free(computed_values);
-    free((void *)values);
+    information_schema_result_projection_buffers_deinit(&buffers);
     if (rc == MYLITE_OK && out_read_row_count != NULL) {
         *out_read_row_count = visible_count;
     }
     free(indexes);
+    return rc;
+}
+
+static int information_schema_result_projection_buffers_init(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    struct information_schema_result_projection_buffers *buffers
+) {
+    if (query->projection_count == 0U) {
+        return MYLITE_OK;
+    }
+    buffers->values = (const char **)calloc(query->projection_count, sizeof(*buffers->values));
+    if (buffers->values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (query->projection_count > SIZE_MAX / integer_text_capacity) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    buffers->computed_values = calloc(query->projection_count, integer_text_capacity);
+    if (buffers->computed_values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static void information_schema_result_projection_buffers_deinit(
+    struct information_schema_result_projection_buffers *buffers
+) {
+    if (buffers == NULL) {
+        return;
+    }
+    free(buffers->computed_values);
+    free((void *)buffers->values);
+    *buffers = (struct information_schema_result_projection_buffers){0};
+}
+
+static int information_schema_append_projected_result_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    const struct information_schema_result_projection_buffers *buffers,
+    mylite_result *result
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < query->projection_count;
+         ++column_index) {
+        rc = information_schema_projection_value(
+            database,
+            query,
+            row,
+            column_index,
+            buffers->computed_values + (column_index * integer_text_capacity),
+            integer_text_capacity,
+            &buffers->values[column_index]
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, buffers->values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
     return rc;
 }
 
@@ -185,6 +217,7 @@ static int information_schema_unsigned_projection_expression_value(
     unsigned long long rounded = 0ULL;
     int written = 0;
     int rc = MYLITE_OK;
+    static const double nearest_integer_rounding_offset = 0.5;
 
     *out_value = NULL;
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION) {
@@ -210,7 +243,7 @@ static int information_schema_unsigned_projection_expression_value(
         return MYLITE_ERROR;
     }
 
-    rounded = (unsigned long long)floor(value + 0.5);
+    rounded = (unsigned long long)floor(value + nearest_integer_rounding_offset);
     written = snprintf(buffer, buffer_size, "%llu", rounded);
     if (written < 0 || (size_t)written >= buffer_size) {
         set_nomem_error(database);
@@ -228,21 +261,82 @@ static int information_schema_numeric_projection_expression_value(
     double *out_value,
     bool *out_is_null
 ) {
-    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+    struct information_schema_numeric_eval_frame_stack frames = {0};
+    struct information_schema_numeric_eval_value_stack values = {0};
+    int rc = MYLITE_OK;
 
     *out_value = 0.0;
     *out_is_null = false;
+    rc = information_schema_numeric_eval_frame_stack_push(
+        database,
+        &frames,
+        (struct information_schema_numeric_eval_frame){
+            .action = INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER,
+            .expression = expression,
+        }
+    );
+    while (rc == MYLITE_OK && frames.count != 0U) {
+        struct information_schema_numeric_eval_frame frame = frames.items[--frames.count];
+
+        if (frame.action == INFORMATION_SCHEMA_NUMERIC_EVAL_APPLY_DIVIDE) {
+            rc = information_schema_numeric_projection_apply_divide_frame(database, &values);
+        } else {
+            rc = information_schema_numeric_projection_enter_frame(
+                database,
+                query,
+                row,
+                frame.expression,
+                &frames,
+                &values
+            );
+        }
+    }
+    if (rc == MYLITE_OK && values.count != 1U) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_value = values.items[0].value;
+        *out_is_null = values.items[0].is_null;
+    }
+    information_schema_numeric_eval_value_stack_deinit(&values);
+    information_schema_numeric_eval_frame_stack_deinit(&frames);
+    return rc;
+}
+
+static int information_schema_numeric_projection_enter_frame(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    const struct mylite_sql_ast_node *expression,
+    struct information_schema_numeric_eval_frame_stack *frames,
+    struct information_schema_numeric_eval_value_stack *values
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+
     if (unwrapped == NULL) {
         set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
         return MYLITE_ERROR;
     }
     if (unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(unwrapped) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        return information_schema_numeric_literal_value(database, unwrapped, out_value);
+        double value = 0.0;
+        int rc = information_schema_numeric_literal_value(database, unwrapped, &value);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return information_schema_numeric_eval_value_stack_push(
+            database,
+            values,
+            (struct information_schema_numeric_eval_value){.value = value, .is_null = false}
+        );
     }
     if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
         unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         size_t column_index = 0U;
+        double value = 0.0;
+        bool is_null = false;
         int rc = information_schema_resolve_column_reference(
             database,
             query,
@@ -254,58 +348,163 @@ static int information_schema_numeric_projection_expression_value(
         if (rc != MYLITE_OK) {
             return rc;
         }
-        return information_schema_numeric_text_value(
+        rc = information_schema_numeric_text_value(database, row[column_index], &value, &is_null);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return information_schema_numeric_eval_value_stack_push(
             database,
-            row[column_index],
-            out_value,
-            out_is_null
+            values,
+            (struct information_schema_numeric_eval_value){.value = value, .is_null = is_null}
         );
     }
     if (unwrapped->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
         mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
-        double left = 0.0;
-        double right = 0.0;
-        bool left_null = false;
-        bool right_null = false;
-        int rc = information_schema_numeric_projection_expression_value(
+        int rc = information_schema_numeric_eval_frame_stack_push(
             database,
-            query,
-            row,
-            child_at(unwrapped, 0U),
-            &left,
-            &left_null
+            frames,
+            (struct information_schema_numeric_eval_frame){
+                .action = INFORMATION_SCHEMA_NUMERIC_EVAL_APPLY_DIVIDE,
+                .expression = NULL,
+            }
         );
 
         if (rc == MYLITE_OK) {
-            rc = information_schema_numeric_projection_expression_value(
+            rc = information_schema_numeric_eval_frame_stack_push(
                 database,
-                query,
-                row,
-                child_at(unwrapped, 1U),
-                &right,
-                &right_null
+                frames,
+                (struct information_schema_numeric_eval_frame){
+                    .action = INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER,
+                    .expression = child_at(unwrapped, 1U),
+                }
             );
         }
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (left_null || right_null) {
-            *out_is_null = true;
-            return MYLITE_OK;
-        }
-        if (right == 0.0) {
-            set_unsupported_error(
+        if (rc == MYLITE_OK) {
+            rc = information_schema_numeric_eval_frame_stack_push(
                 database,
-                "INFORMATION_SCHEMA SELECT numeric projection does not support division by zero"
+                frames,
+                (struct information_schema_numeric_eval_frame){
+                    .action = INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER,
+                    .expression = child_at(unwrapped, 0U),
+                }
             );
-            return MYLITE_ERROR;
         }
-        *out_value = left / right;
-        return MYLITE_OK;
+        return rc;
     }
 
     set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
     return MYLITE_ERROR;
+}
+
+static int information_schema_numeric_projection_apply_divide_frame(
+    struct mylite_db *database,
+    struct information_schema_numeric_eval_value_stack *values
+) {
+    struct information_schema_numeric_eval_value left = {0};
+    struct information_schema_numeric_eval_value right = {0};
+
+    if (values->count < 2U) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
+        return MYLITE_ERROR;
+    }
+    right = values->items[--values->count];
+    left = values->items[--values->count];
+    if (left.is_null || right.is_null) {
+        return information_schema_numeric_eval_value_stack_push(
+            database,
+            values,
+            (struct information_schema_numeric_eval_value){.value = 0.0, .is_null = true}
+        );
+    }
+    if (right.value == 0.0) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA SELECT numeric projection does not support division by zero"
+        );
+        return MYLITE_ERROR;
+    }
+    return information_schema_numeric_eval_value_stack_push(
+        database,
+        values,
+        (struct information_schema_numeric_eval_value){
+            .value = left.value / right.value,
+            .is_null = false,
+        }
+    );
+}
+
+static int information_schema_numeric_eval_frame_stack_push(
+    struct mylite_db *database,
+    struct information_schema_numeric_eval_frame_stack *stack,
+    struct information_schema_numeric_eval_frame frame
+) {
+    struct information_schema_numeric_eval_frame *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = realloc(stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+    stack->items[stack->count] = frame;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static void information_schema_numeric_eval_frame_stack_deinit(
+    struct information_schema_numeric_eval_frame_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct information_schema_numeric_eval_frame_stack){0};
+}
+
+static int information_schema_numeric_eval_value_stack_push(
+    struct mylite_db *database,
+    struct information_schema_numeric_eval_value_stack *stack,
+    struct information_schema_numeric_eval_value value
+) {
+    struct information_schema_numeric_eval_value *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = realloc(stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+    stack->items[stack->count] = value;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static void information_schema_numeric_eval_value_stack_deinit(
+    struct information_schema_numeric_eval_value_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct information_schema_numeric_eval_value_stack){0};
 }
 
 static int information_schema_numeric_text_value(
@@ -518,61 +717,89 @@ static int information_schema_predicate_includes_connection_control_failed_login
     const struct mylite_sql_ast_node *predicate_node,
     bool *out_includes_table
 ) {
-    const struct mylite_sql_ast_node *predicate = unwrap_parenthesized_predicate(predicate_node);
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
 
     if (out_includes_table == NULL) {
         return MYLITE_MISUSE;
     }
     *out_includes_table = false;
-    if (predicate == NULL) {
-        return MYLITE_OK;
+    if (!scalar_arithmetic_node_stack_push(&stack, predicate_node)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
-    if (predicate->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
-        size_t column_index = 0U;
-        struct information_schema_predicate_value right = {0};
-        int rc = MYLITE_OK;
+    while (rc == MYLITE_OK && stack.count != 0U && !*out_includes_table) {
+        const struct mylite_sql_ast_node *predicate =
+            unwrap_parenthesized_predicate(stack.items[--stack.count]);
 
-        if (operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-            return MYLITE_OK;
+        if (predicate == NULL) {
+            continue;
         }
-        rc = information_schema_resolve_column_reference(
-            database,
-            query,
-            child_at(predicate, 0U),
-            COLUMN_REFERENCE_WHERE,
-            &column_index
-        );
-        if (rc == MYLITE_OK && column_index == information_schema_tables_table_name_column) {
-            rc = information_schema_predicate_value_text(database, child_at(predicate, 1U), &right);
-            if (rc == MYLITE_OK && !right.is_null && right.text != NULL &&
-                strcmp(right.text, "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS") == 0) {
-                *out_includes_table = true;
-            }
-        }
-        free(right.text);
-        return rc;
-    }
-    if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
-        int rc = information_schema_predicate_includes_connection_control_failed_login_attempts(
-            database,
-            query,
-            child_at(predicate, 0U),
-            out_includes_table
-        );
-
-        if (rc == MYLITE_OK && !*out_includes_table) {
-            rc = information_schema_predicate_includes_connection_control_failed_login_attempts(
+        if (predicate->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+            rc = information_schema_predicate_marks_connection_control_failed_login_attempts(
                 database,
                 query,
-                child_at(predicate, 1U),
+                predicate,
                 out_includes_table
             );
+        } else if (
+            predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+            predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+            predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE
+        ) {
+            rc = information_schema_predicate_stack_push_binary_children(
+                database,
+                &stack,
+                predicate
+            );
         }
-        return rc;
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int information_schema_predicate_marks_connection_control_failed_login_attempts(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate,
+    bool *out_includes_table
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
+    size_t column_index = 0U;
+    struct information_schema_predicate_value right = {0};
+    int rc = MYLITE_OK;
+
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        return MYLITE_OK;
+    }
+    rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+    if (rc == MYLITE_OK && column_index == information_schema_tables_table_name_column) {
+        rc = information_schema_predicate_value_text(database, child_at(predicate, 1U), &right);
+        if (rc == MYLITE_OK && !right.is_null && right.text != NULL &&
+            strcmp(right.text, "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS") == 0) {
+            *out_includes_table = true;
+        }
+    }
+    free(right.text);
+    return rc;
+}
+
+static int information_schema_predicate_stack_push_binary_children(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *predicate
+) {
+    if (!scalar_arithmetic_node_stack_push(stack, child_at(predicate, 1U)) ||
+        !scalar_arithmetic_node_stack_push(stack, child_at(predicate, 0U))) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
     return MYLITE_OK;
 }
@@ -666,52 +893,53 @@ static int information_schema_predicate_has_auto_increment_is_null(
     const struct mylite_sql_ast_node *predicate_node,
     bool *out_has_predicate
 ) {
-    const struct mylite_sql_ast_node *predicate = unwrap_parenthesized_predicate(predicate_node);
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
 
     if (out_has_predicate == NULL) {
         return MYLITE_MISUSE;
     }
     *out_has_predicate = false;
-    if (predicate == NULL) {
-        return MYLITE_OK;
+    if (!scalar_arithmetic_node_stack_push(&stack, predicate_node)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
-    if (predicate->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE &&
-        mylite_sql_ast_node_operator(predicate) == MYLITE_SQL_AST_OPERATOR_IS_NULL) {
-        size_t column_index = 0U;
-        int rc = information_schema_resolve_column_reference(
-            database,
-            query,
-            child_at(predicate, 0U),
-            COLUMN_REFERENCE_WHERE,
-            &column_index
-        );
+    while (rc == MYLITE_OK && stack.count != 0U && !*out_has_predicate) {
+        const struct mylite_sql_ast_node *predicate =
+            unwrap_parenthesized_predicate(stack.items[--stack.count]);
 
-        if (rc == MYLITE_OK) {
-            *out_has_predicate = column_index == information_schema_tables_auto_increment_column;
+        if (predicate == NULL) {
+            continue;
         }
-        return rc;
-    }
-    if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
-        int rc = information_schema_predicate_has_auto_increment_is_null(
-            database,
-            query,
-            child_at(predicate, 0U),
-            out_has_predicate
-        );
+        if (predicate->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE &&
+            mylite_sql_ast_node_operator(predicate) == MYLITE_SQL_AST_OPERATOR_IS_NULL) {
+            size_t column_index = 0U;
 
-        if (rc == MYLITE_OK && !*out_has_predicate) {
-            rc = information_schema_predicate_has_auto_increment_is_null(
+            rc = information_schema_resolve_column_reference(
                 database,
                 query,
-                child_at(predicate, 1U),
-                out_has_predicate
+                child_at(predicate, 0U),
+                COLUMN_REFERENCE_WHERE,
+                &column_index
+            );
+            if (rc == MYLITE_OK) {
+                *out_has_predicate =
+                    column_index == information_schema_tables_auto_increment_column;
+            }
+        } else if (
+            predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+            predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+            predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE
+        ) {
+            rc = information_schema_predicate_stack_push_binary_children(
+                database,
+                &stack,
+                predicate
             );
         }
-        return rc;
     }
-    return MYLITE_OK;
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
 }
 
 static void information_schema_sort_auto_increment_null_row_indexes(
@@ -759,8 +987,10 @@ static int information_schema_compare_auto_increment_null_rows(
 }
 
 static int information_schema_auto_increment_null_schema_priority(const char *schema_name) {
+    enum { information_schema_unknown_schema_priority = 5 };
+
     if (schema_name == NULL) {
-        return 5;
+        return information_schema_unknown_schema_priority;
     }
     if (strcmp(schema_name, "information_schema") == 0) {
         return 0;
@@ -774,7 +1004,7 @@ static int information_schema_auto_increment_null_schema_priority(const char *sc
     if (strcmp(schema_name, "sys") == 0) {
         return 3;
     }
-    return 4;
+    return information_schema_unknown_schema_priority - 1;
 }
 
 static int information_schema_compare_rows(

@@ -9865,12 +9865,14 @@ approximate_type(A) ::= FLOAT_TYPE(T) approximate_precision_opt(P)
         (struct mylite_sql_approximate_type_tokens){
             .type_token = T,
             .precision_token = P.precision_token,
+            .scale_token = P.scale_token,
             .end_token = U.attribute_token.text == NULL
                 ? (P.end_token.text == NULL ? T : P.end_token)
                 : U.attribute_token,
             .attribute_token = U.attribute_token,
             .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
             .has_precision = P.has_precision,
+            .has_scale = P.has_scale,
             .is_unsigned = U.is_unsigned,
         });
 }
@@ -9907,6 +9909,22 @@ approximate_type(A) ::= DOUBLE(T) approximate_unsigned_opt(U). {
             .is_unsigned = U.is_unsigned,
         });
 }
+approximate_type(A) ::= DOUBLE(T) LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R)
+    approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .precision_token = P,
+            .scale_token = S,
+            .end_token = U.attribute_token.text == NULL ? R : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+            .has_precision = 1,
+            .has_scale = 1,
+            .is_unsigned = U.is_unsigned,
+        });
+}
 approximate_type(A) ::= DOUBLE(D) PRECISION(P) approximate_unsigned_opt(U). {
     A = mylite_sql_parser_make_approximate_type(
         state,
@@ -9938,6 +9956,15 @@ approximate_precision_opt(A) ::= LPAREN INTEGER(P) RPAREN(R). {
         .precision_token = P,
         .end_token = R,
         .has_precision = 1,
+    };
+}
+approximate_precision_opt(A) ::= LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R). {
+    A = (struct mylite_sql_approximate_type_tokens){
+        .precision_token = P,
+        .scale_token = S,
+        .end_token = R,
+        .has_precision = 1,
+        .has_scale = 1,
     };
 }
 

@@ -281,9 +281,13 @@ static const char *information_schema_numeric_precision_for_descriptor(
             .is_unsigned = false,
         };
 
-        if (approximate_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK &&
-            info.type_class == APPROXIMATE_TYPE_FLOAT) {
-            return "12";
+        if (approximate_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK) {
+            if (info.has_scale) {
+                return NULL;
+            }
+            if (info.type_class == APPROXIMATE_TYPE_FLOAT) {
+                return "12";
+            }
         }
         return "22";
     }

@@ -1223,6 +1223,7 @@ static int map_approximate_type(
 ) {
     enum approximate_type_class type_class = APPROXIMATE_TYPE_FLOAT;
     uint64_t precision = 0U;
+    uint64_t scale = 0U;
     int rc = MYLITE_OK;
     int written = 0;
 
@@ -1249,12 +1250,46 @@ static int map_approximate_type(
             mylite_sql_ast_node_approximate_type_precision_span(type_node);
 
         rc = parse_unsigned_integer_literal(&precision_span, &precision);
-        if (rc != MYLITE_OK || precision > float_max_precision) {
+        if (rc != MYLITE_OK) {
             set_incorrect_column_specifier_error(database, column_name);
             return MYLITE_ERROR;
         }
-        type_class = precision <= float_double_precision_threshold ? APPROXIMATE_TYPE_FLOAT
-                                                                   : APPROXIMATE_TYPE_DOUBLE;
+        if (mylite_sql_ast_node_approximate_type_has_scale(type_node) != 0) {
+            struct mylite_sql_source_span scale_span =
+                mylite_sql_ast_node_approximate_type_scale_span(type_node);
+
+            rc = parse_unsigned_integer_literal(&scale_span, &scale);
+            if (rc != MYLITE_OK) {
+                set_incorrect_column_specifier_error(database, column_name);
+                return MYLITE_ERROR;
+            }
+            if (precision > approximate_max_display_width) {
+                set_display_width_out_of_range_error(database, column_name);
+                return MYLITE_ERROR;
+            }
+            if (scale > decimal_max_scale) {
+                set_decimal_scale_too_big_error(database, column_name, scale);
+                return MYLITE_ERROR;
+            }
+            if (scale > precision) {
+                set_decimal_scale_greater_than_precision_error(database, column_name);
+                return MYLITE_ERROR;
+            }
+            rc = append_approximate_display_width_warning(database);
+            if (rc == MYLITE_NOMEM) {
+                set_nomem_error(database);
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        } else {
+            if (precision > float_max_precision) {
+                set_incorrect_column_specifier_error(database, column_name);
+                return MYLITE_ERROR;
+            }
+            type_class = precision <= float_double_precision_threshold ? APPROXIMATE_TYPE_FLOAT
+                                                                       : APPROXIMATE_TYPE_DOUBLE;
+        }
     }
     if (mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0) {
         rc = mylite_diagnostics_append_warning(
@@ -1274,13 +1309,25 @@ static int map_approximate_type(
 
     const char *base_type = type_class == APPROXIMATE_TYPE_FLOAT ? "FLOAT" : "DOUBLE";
 
-    written = snprintf(
-        out_column->logical_type_storage,
-        sizeof(out_column->logical_type_storage),
-        "%s%s",
-        base_type,
-        mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0 ? " UNSIGNED" : ""
-    );
+    if (mylite_sql_ast_node_approximate_type_has_scale(type_node) != 0) {
+        written = snprintf(
+            out_column->logical_type_storage,
+            sizeof(out_column->logical_type_storage),
+            "%s(%" PRIu64 ",%" PRIu64 ")%s",
+            base_type,
+            precision,
+            scale,
+            mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0 ? " UNSIGNED" : ""
+        );
+    } else {
+        written = snprintf(
+            out_column->logical_type_storage,
+            sizeof(out_column->logical_type_storage),
+            "%s%s",
+            base_type,
+            mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0 ? " UNSIGNED" : ""
+        );
+    }
     if (written < 0 || (size_t)written >= sizeof(out_column->logical_type_storage)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1375,6 +1422,16 @@ static int append_integer_display_width_warning(struct mylite_db *database) {
         mysql_warning_integer_display_width_deprecated,
         "HY000",
         "Integer display width is deprecated and will be removed in a future release."
+    );
+}
+
+static int append_approximate_display_width_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_approximate_display_width_deprecated,
+        "HY000",
+        "Specifying number of digits for floating point data types is deprecated and will be "
+        "removed in a future release."
     );
 }
 

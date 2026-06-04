@@ -784,9 +784,31 @@ static int append_information_schema_columns_numeric_metadata(
         if (rc != MYLITE_OK) {
             return rc;
         }
-        values[information_schema_columns_numeric_precision_column] =
-            info.type_class == APPROXIMATE_TYPE_FLOAT ? "12" : "22";
-        values[information_schema_columns_numeric_scale_column] = NULL;
+        if (info.has_scale) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)info.precision,
+                numeric_precision_text,
+                numeric_precision_text_size
+            );
+            if (rc == MYLITE_OK) {
+                rc = information_schema_format_i64(
+                    database,
+                    (int64_t)info.scale,
+                    numeric_scale_text,
+                    numeric_scale_text_size
+                );
+            }
+            if (rc == MYLITE_OK) {
+                values[information_schema_columns_numeric_precision_column] =
+                    numeric_precision_text;
+                values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
+            }
+        } else {
+            values[information_schema_columns_numeric_precision_column] =
+                info.type_class == APPROXIMATE_TYPE_FLOAT ? "12" : "22";
+            values[information_schema_columns_numeric_scale_column] = NULL;
+        }
     }
 
     return MYLITE_OK;

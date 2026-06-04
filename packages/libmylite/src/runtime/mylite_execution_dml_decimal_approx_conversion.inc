@@ -803,6 +803,16 @@ static int format_approximate_value_text(
     if (info == NULL) {
         return MYLITE_MISUSE;
     }
+    if (info->has_scale) {
+        return format_scaled_approximate_value_text(
+            database,
+            value,
+            info,
+            context_name,
+            buffer,
+            buffer_size
+        );
+    }
     if (info->type_class == APPROXIMATE_TYPE_FLOAT) {
         return format_float_value_text(database, value, context_name, buffer, buffer_size);
     }
@@ -814,6 +824,35 @@ static int format_approximate_value_text(
         buffer,
         buffer_size
     );
+}
+
+static int format_scaled_approximate_value_text(
+    struct mylite_db *database,
+    double value,
+    const struct approximate_type_info *info,
+    const char *context_name,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = 0;
+
+    if (info == NULL || context_name == NULL || buffer == NULL || buffer_size == 0U ||
+        info->scale > decimal_max_scale) {
+        return MYLITE_MISUSE;
+    }
+    written = mylite_execution_format_c_locale_text(
+        buffer,
+        buffer_size,
+        "%.*f",
+        (int)info->scale,
+        value == 0.0 ? 0.0 : value
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        mylite_execution_set_double_format_error(database, context_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int format_float_value_text(

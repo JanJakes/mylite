@@ -936,8 +936,10 @@ struct mylite_sql_ast_decimal_type_payload {
 struct mylite_sql_ast_approximate_type_payload {
     enum mylite_sql_ast_approximate_type kind;
     int has_precision;
+    int has_scale;
     int is_unsigned;
     struct mylite_sql_source_span precision_span;
+    struct mylite_sql_source_span scale_span;
 };
 
 struct mylite_sql_ast_nullability_payload {
@@ -1187,8 +1189,12 @@ enum mylite_sql_ast_approximate_type mylite_sql_ast_node_approximate_type(
     const struct mylite_sql_ast_node *node
 );
 int mylite_sql_ast_node_approximate_type_has_precision(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_approximate_type_has_scale(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_approximate_type_is_unsigned(const struct mylite_sql_ast_node *node);
 struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_precision_span(
+    const struct mylite_sql_ast_node *node
+);
+struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_scale_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(

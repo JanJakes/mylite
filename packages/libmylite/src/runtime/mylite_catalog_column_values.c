@@ -80,6 +80,8 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type);
 static bool catalog_logical_type_accepts_binary_default(const char *logical_type);
 static bool catalog_logical_type_is_binary_blob_family(const char *logical_type);
 static bool catalog_default_text_is_hex(const char *text, size_t text_length);
+static bool catalog_logical_type_is_approximate_display_type(const char *logical_type);
+static bool catalog_logical_type_consume_unsigned_digits(const char *text, size_t *index);
 static bool catalog_logical_type_is_bit(const char *logical_type);
 static bool catalog_logical_type_is_text_family(const char *logical_type);
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type);
@@ -768,6 +770,9 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
     if (catalog_logical_type_is_bit(logical_type)) {
         return true;
     }
+    if (catalog_logical_type_is_approximate_display_type(logical_type)) {
+        return true;
+    }
     if (catalog_logical_type_equals(logical_type, "DATE") ||
         catalog_logical_type_equals(logical_type, "TIME") ||
         catalog_logical_type_equals(logical_type, "DATETIME") ||
@@ -809,6 +814,53 @@ static bool catalog_default_text_is_hex(const char *text, size_t text_length) {
         }
         return false;
     }
+    return true;
+}
+
+static bool catalog_logical_type_is_approximate_display_type(const char *logical_type) {
+    size_t index = 0U;
+
+    if (logical_type == NULL) {
+        return false;
+    }
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "FLOAT(") != 0) {
+        index = sizeof("FLOAT(") - 1U;
+    } else if (text_has_ascii_case_insensitive_prefix(logical_type, "DOUBLE(") != 0) {
+        index = sizeof("DOUBLE(") - 1U;
+    } else {
+        return false;
+    }
+
+    if (!catalog_logical_type_consume_unsigned_digits(logical_type, &index)) {
+        return false;
+    }
+    if (logical_type[index] != ',') {
+        return false;
+    }
+    ++index;
+    if (!catalog_logical_type_consume_unsigned_digits(logical_type, &index)) {
+        return false;
+    }
+    if (logical_type[index] != ')') {
+        return false;
+    }
+    ++index;
+    if (logical_type[index] == '\0') {
+        return true;
+    }
+    return strcmp(logical_type + index, " UNSIGNED") == 0;
+}
+
+static bool catalog_logical_type_consume_unsigned_digits(const char *text, size_t *index) {
+    size_t cursor = index == NULL ? 0U : *index;
+
+    if (text == NULL || index == NULL || text[cursor] < '0' || text[cursor] > '9') {
+        return false;
+    }
+    while (text[cursor] >= '0' && text[cursor] <= '9') {
+        ++cursor;
+    }
+    *index = cursor;
     return true;
 }
 

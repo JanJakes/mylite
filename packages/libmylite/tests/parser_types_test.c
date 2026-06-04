@@ -1669,6 +1669,8 @@ static int test_approximate_type_statements(void) {
         approximate_double_precision_column = 6,
         approximate_real_column = 7,
         approximate_unsigned_float_column = 8,
+        approximate_scaled_float_column = 9,
+        approximate_scaled_double_column = 10,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -1678,7 +1680,8 @@ static int test_approximate_type_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE approximate_types (a FLOAT, b FLOAT(24), c FLOAT(25), "
-        "d FLOAT4, e FLOAT8, f DOUBLE, g DOUBLE PRECISION, h REAL, i FLOAT UNSIGNED);",
+        "d FLOAT4, e FLOAT8, f DOUBLE, g DOUBLE PRECISION, h REAL, i FLOAT UNSIGNED, "
+        "j FLOAT(10,2), k DOUBLE(10,2));",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -1693,6 +1696,7 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(columns, 0U), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
         NULL,
+        NULL,
         0,
         "bare float column type"
     );
@@ -1700,6 +1704,7 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(columns, 1U), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
         "24",
+        NULL,
         0,
         "precision float column type"
     );
@@ -1707,12 +1712,14 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(columns, 2U), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
         "25",
+        NULL,
         0,
         "double precision float column type"
     );
     failures += parser_test_expect_approximate_type(
         parser_test_child_at(parser_test_child_at(columns, 3U), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4,
+        NULL,
         NULL,
         0,
         "float4 column type"
@@ -1721,12 +1728,14 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(columns, 4U), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8,
         NULL,
+        NULL,
         0,
         "float8 column type"
     );
     failures += parser_test_expect_approximate_type(
         parser_test_child_at(parser_test_child_at(columns, approximate_double_column), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+        NULL,
         NULL,
         0,
         "double column type"
@@ -1743,6 +1752,7 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(columns, approximate_real_column), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL,
         NULL,
+        NULL,
         0,
         "real column type"
     );
@@ -1750,8 +1760,25 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(columns, approximate_unsigned_float_column), 1U),
         MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
         NULL,
+        NULL,
         1,
         "unsigned float column type"
+    );
+    failures += parser_test_expect_approximate_type(
+        parser_test_child_at(parser_test_child_at(columns, approximate_scaled_float_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+        "10",
+        "2",
+        0,
+        "scaled float column type"
+    );
+    failures += parser_test_expect_approximate_type(
+        parser_test_child_at(parser_test_child_at(columns, approximate_scaled_double_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+        "10",
+        "2",
+        0,
+        "scaled double column type"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -1835,7 +1862,7 @@ static int test_approximate_type_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
-        "CREATE TABLE bad_approximate_scale (c DOUBLE(7,4));",
+        "CREATE TABLE bad_approximate_scale (c REAL(7,4));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

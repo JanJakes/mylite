@@ -12,7 +12,8 @@ the MySQL-facing descriptors, DDL diagnostics, DML conversion, default
 materialization, nullability, visible text formatting, and metadata. It does
 not add table-backed floating-point predicates, ordering, indexes, aggregates,
 casts, math, protocol-grade metadata, non-strict clipping, `ZEROFILL`, or
-deprecated `FLOAT(M,D)` / `DOUBLE(M,D)` display-scale behavior.
+scaled storage semantics for deprecated display-scale declarations beyond
+descriptor metadata and fixed-scale visible text formatting.
 
 ## Sources
 
@@ -73,7 +74,9 @@ slice:
 - Deprecated `FLOAT(M,D)`, `DOUBLE(M,D)`, `REAL(M,D)`, and
   `DOUBLE PRECISION(M,D)` are accepted by MySQL with warning `1681`, retain
   `M,D` metadata, round visible values to `D` fractional digits, and constrain
-  the stored range implied by `M,D`. MyLite defers those forms.
+  the stored range implied by `M,D`. MyLite admits the `FLOAT(M,D)` and
+  `DOUBLE(M,D)` descriptor metadata shape for this slice but keeps row storage
+  on the existing unscaled approximate path.
 - `SHOW COLUMNS` renders default `FLOAT` as `float` and default `DOUBLE` as
   `double`. `SHOW CREATE TABLE` quotes non-`NULL` approximate defaults, for
   example `DEFAULT '1.5'`.
@@ -102,6 +105,8 @@ The implementation must add:
 - parser and AST support for approximate column types:
   - `FLOAT`;
   - `FLOAT(p)` where `p` is a nonnegative integer literal in `0..53`;
+  - deprecated `FLOAT(m,d)` and `DOUBLE(m,d)` display metadata, where `m` is
+    `0..255`, `d` is `0..30`, and `m >= d`;
   - `FLOAT4`;
   - `FLOAT8`;
   - `DOUBLE`;
@@ -110,7 +115,9 @@ The implementation must add:
   - optional single trailing `UNSIGNED`;
 - descriptor-owned logical type text:
   - `FLOAT` / `FLOAT UNSIGNED`;
+  - `FLOAT(m,d)` / `FLOAT(m,d) UNSIGNED`;
   - `DOUBLE` / `DOUBLE UNSIGNED`;
+  - `DOUBLE(m,d)` / `DOUBLE(m,d) UNSIGNED`;
 - physical SQLite type text `REAL`;
 - durable catalog support using the existing text-default storage shape for
   canonical approximate defaults, without a catalog schema migration;
@@ -155,8 +162,9 @@ The implementation must add:
 
 This feature must not implement:
 
-- `FLOAT(M,D)`, `DOUBLE(M,D)`, `REAL(M,D)`, or
-  `DOUBLE PRECISION(M,D)`;
+- `REAL(M,D)` or `DOUBLE PRECISION(M,D)`;
+- scaled storage rounding and `M,D` range clipping for admitted
+  `FLOAT(M,D)` and `DOUBLE(M,D)` descriptors;
 - `ZEROFILL`, repeated attributes, `SIGNED`, or mode-dependent `REAL_AS_FLOAT`
   parsing;
 - string-to-float conversion, hex/bit inputs, parameters, user variables,
@@ -213,9 +221,11 @@ column_type:
 
 approximate_type:
     FLOAT [ ( precision ) ] [ UNSIGNED ]
+  | FLOAT ( display_width , scale ) [ UNSIGNED ]
   | FLOAT4 [ UNSIGNED ]
   | FLOAT8 [ UNSIGNED ]
   | DOUBLE [ PRECISION ] [ UNSIGNED ]
+  | DOUBLE ( display_width , scale ) [ UNSIGNED ]
   | REAL [ UNSIGNED ]
 ```
 
@@ -236,13 +246,14 @@ approximate_type_name(A) ::= REAL(T).
 
 float_precision_opt(A) ::= .
 float_precision_opt(A) ::= LPAREN INTEGER(P) RPAREN(R).
+float_precision_opt(A) ::= LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R).
 
 approximate_unsigned_opt(A) ::= .
 approximate_unsigned_opt(A) ::= UNSIGNED(U).
 ```
 
-`DOUBLE PRECISION(p)` and all `M,D` forms are intentionally omitted until a
-feature owns their deprecated metadata and scaled value behavior.
+`DOUBLE PRECISION(p)`, `REAL(M,D)`, and scaled storage rounding beyond the
+existing approximate storage behavior remain outside this slice.
 
 ## Descriptor Mapping
 
@@ -262,6 +273,13 @@ error because `-` is not an admitted precision literal.
 
 `UNSIGNED` emits warning `1681 / HY000` with the same deprecation text already
 used for decimal/floating-point unsigned attributes.
+
+`FLOAT(M,D)` and `DOUBLE(M,D)` keep their declared class, preserve `M,D` in the
+logical descriptor text, report `NUMERIC_PRECISION = M` and
+`NUMERIC_SCALE = D`, and emit warning `1681 / HY000` for deprecated floating
+display digits. Visible result and default text for scaled descriptors uses
+`D` fractional digits. This slice does not add scaled storage rounding or
+`M,D` range clipping for inserted/updated values.
 
 ## DML Conversion
 
@@ -301,15 +319,19 @@ that to warning `1048` and store `0`.
 
 `SELECT` returns approximate values as text through the existing public result
 API. MyLite formats finite values using a compact form that round-trips through
-the stored binary value. The baseline accepts MySQL-compatible observed text
-for the covered values and does not claim byte-for-byte parity for every
-platform-dependent floating-point formatting edge case.
+the stored binary value, except `FLOAT(M,D)` and `DOUBLE(M,D)` descriptors use
+fixed-scale text with `D` fractional digits. The baseline accepts
+MySQL-compatible observed text for the covered values and does not claim
+byte-for-byte parity for every platform-dependent floating-point formatting
+edge case.
 
 ## Metadata
 
 `SHOW COLUMNS` / `DESCRIBE` / `EXPLAIN table`:
 
-- `Type`: `float`, `float unsigned`, `double`, or `double unsigned`;
+- `Type`: `float`, `float(m,d)`, `float unsigned`,
+  `float(m,d) unsigned`, `double`, `double(m,d)`, `double unsigned`, or
+  `double(m,d) unsigned`;
 - `Null`, `Key`, `Default`, and `Extra` use existing descriptor rules.
 
 `SHOW CREATE TABLE` renders lowercase type text and quotes non-`NULL`
@@ -323,9 +345,12 @@ approximate defaults, for example:
 `INFORMATION_SCHEMA.COLUMNS`:
 
 - `DATA_TYPE`: `float` or `double`;
-- `COLUMN_TYPE`: lowercase type text including `unsigned` if present;
-- `NUMERIC_PRECISION`: `12` for `FLOAT`, `22` for `DOUBLE`;
-- `NUMERIC_SCALE`: `NULL`;
+- `COLUMN_TYPE`: lowercase type text including display scale and `unsigned` if
+  present;
+- `NUMERIC_PRECISION`: `12` for unscaled `FLOAT`, `22` for unscaled `DOUBLE`,
+  or the declared display width for scaled descriptors;
+- `NUMERIC_SCALE`: `NULL` for unscaled descriptors or the declared scale for
+  scaled descriptors;
 - character and datetime precision fields remain `NULL`;
 - `COLUMN_DEFAULT` is the visible canonical default text or `NULL`.
 
@@ -338,8 +363,14 @@ The supported subset must produce deterministic diagnostics for:
   through existing descriptor resolution;
 - duplicate columns and unsupported object kinds through existing DDL paths;
 - `FLOAT(p)` precision out of range: `1063 / 42000`;
+- `FLOAT(M,D)` / `DOUBLE(M,D)` display width out of range:
+  `1439 / 42000`;
+- `FLOAT(M,D)` / `DOUBLE(M,D)` scale out of range: `1425 / 42000`;
+- `FLOAT(M,D)` / `DOUBLE(M,D)` scale greater than precision:
+  `1427 / 42000`;
+- floating display-digit deprecation warning: `1681 / HY000`;
 - `UNSIGNED` deprecation warning: `1681 / HY000`;
-- unsupported `SIGNED`, `ZEROFILL`, `M,D` forms, approximate indexes,
+- unsupported `SIGNED`, `ZEROFILL`, approximate indexes,
   approximate primary keys, approximate auto-increment, and approximate
   table-backed comparison/order/group/aggregate use;
 - unsupported assignment/default literals or expression values;
@@ -377,8 +408,8 @@ Add a fast C runtime test, preferably
 - parser acceptance of supported approximate type grammar and rejection of
   deferred forms;
 - `CREATE TABLE` with `FLOAT`, `FLOAT(0)`, `FLOAT(24)`, `FLOAT(25)`,
-  `FLOAT(53)`, `FLOAT4`, `FLOAT8`, `DOUBLE`, `DOUBLE PRECISION`, `REAL`, and
-  `UNSIGNED` forms;
+  `FLOAT(53)`, `FLOAT(10,2)`, `FLOAT4`, `FLOAT8`, `DOUBLE`,
+  `DOUBLE(10,2)`, `DOUBLE PRECISION`, `REAL`, and `UNSIGNED` forms;
 - `SHOW COLUMNS`, `SHOW CREATE TABLE`, and `INFORMATION_SCHEMA.COLUMNS`
   metadata;
 - nullable and not-null descriptors, `DEFAULT NULL`, and non-`NULL` defaults;
@@ -391,8 +422,9 @@ Add a fast C runtime test, preferably
 - reopen persistence, table rename/drop behavior, `.mylite` preamble
   preservation, independent file-backed handles, and zero-initialized cleanup
   for new objects;
-- deterministic unsupported diagnostics for `FLOAT(M,D)`, `DOUBLE(M,D)`,
-  `SIGNED`, `ZEROFILL`, approximate indexes/primary keys, auto-increment,
+- deterministic diagnostics for invalid `FLOAT(M,D)` / `DOUBLE(M,D)` bounds
+  and unsupported diagnostics for `SIGNED`, `ZEROFILL`, approximate
+  indexes/primary keys, auto-increment,
   table-backed comparisons/order/grouping/aggregates if not admitted, string
   assignment/default conversion, hex/bit literals, parameters, functions, and
   arbitrary expressions.

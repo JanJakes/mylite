@@ -91,16 +91,18 @@ run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 
 expect_output \
     "float double unsigned declaration warnings" \
-    "Warning	1681	UNSIGNED for decimal and floating point data types is deprecated and support for it will be removed in a future release.
+    "Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+Warning	1681	UNSIGNED for decimal and floating point data types is deprecated and support for it will be removed in a future release.
 Warning	1681	UNSIGNED for decimal and floating point data types is deprecated and support for it will be removed in a future release." \
     "CREATE TABLE approx_types ("\
 "id INT NOT NULL, f FLOAT, f0 FLOAT(0), f24 FLOAT(24), f25 FLOAT(25), f53 FLOAT(53), "\
 "d DOUBLE, dp DOUBLE PRECISION, r REAL, f4 FLOAT4, f8 FLOAT8, "\
-"fu FLOAT UNSIGNED, du DOUBLE UNSIGNED, nn FLOAT NOT NULL DEFAULT 1.25, "\
-"dn DOUBLE NOT NULL DEFAULT -2.25); SHOW WARNINGS;" \
+"fmd FLOAT(10,2), dmd DOUBLE(10,2), fu FLOAT UNSIGNED, du DOUBLE UNSIGNED, "\
+"nn FLOAT NOT NULL DEFAULT 1.25, dn DOUBLE NOT NULL DEFAULT -2.25); SHOW WARNINGS;" \
     "$DATABASE"
 
-show_columns_expected=$(cat <<\EXPECTED
+show_columns_expected=$(cat <<\EXPECTED | sed 's/|$//'
 id	int	NO		NULL	
 f	float	YES		NULL	
 f0	float	YES		NULL	
@@ -112,6 +114,8 @@ dp	double	YES		NULL
 r	double	YES		NULL	
 f4	float	YES		NULL	
 f8	double	YES		NULL	
+fmd	float(10,2)	YES		NULL	|
+dmd	double(10,2)	YES		NULL	|
 fu	float unsigned	YES		NULL	
 du	double unsigned	YES		NULL	
 nn	float	NO		1.25	
@@ -137,6 +141,8 @@ approx_types	CREATE TABLE `approx_types` (
   `r` double DEFAULT NULL,
   `f4` float DEFAULT NULL,
   `f8` double DEFAULT NULL,
+  `fmd` float(10,2) DEFAULT NULL,
+  `dmd` double(10,2) DEFAULT NULL,
   `fu` float unsigned DEFAULT NULL,
   `du` double unsigned DEFAULT NULL,
   `nn` float NOT NULL DEFAULT '1.25',
@@ -161,6 +167,8 @@ dp	double	double	22	NULL	YES	NULL	NULL	NULL	NULL
 r	double	double	22	NULL	YES	NULL	NULL	NULL	NULL
 f4	float	float	12	NULL	YES	NULL	NULL	NULL	NULL
 f8	double	double	22	NULL	YES	NULL	NULL	NULL	NULL
+fmd	float	float(10,2)	10	2	YES	NULL	NULL	NULL	NULL
+dmd	double	double(10,2)	10	2	YES	NULL	NULL	NULL	NULL
 fu	float	float unsigned	12	NULL	YES	NULL	NULL	NULL	NULL
 du	double	double unsigned	22	NULL	YES	NULL	NULL	NULL	NULL
 nn	float	float	12	NULL	NO	1.25	NULL	NULL	NULL
@@ -289,9 +297,56 @@ expect_error \
     "CREATE TABLE bad_precision (x FLOAT(54));" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "mysql accepts deferred scaled float" \
-    "CREATE TABLE deferred_scaled_float (x FLOAT(7,4));" \
+expect_output \
+    "scaled float declaration warning and metadata" \
+    "Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+x	float(7,4)	7	4" \
+    "CREATE TABLE scaled_float (x FLOAT(7,4)); SHOW WARNINGS; "\
+"SELECT COLUMN_NAME, COLUMN_TYPE, NUMERIC_PRECISION, NUMERIC_SCALE "\
+"FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '${DATABASE}' "\
+"AND TABLE_NAME = 'scaled_float';" \
+    "$DATABASE"
+
+scaled_defaults_expected=$(cat <<\EXPECTED | sed 's/|$//'
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+1	0.00	-2.50
+id	int	YES		NULL	|
+f	float(10,2)	NO		0.00	|
+d	double(10,2)	NO		-2.50	|
+EXPECTED
+)
+expect_output \
+    "scaled approximate defaults use fixed scale" \
+    "$scaled_defaults_expected" \
+    "CREATE TABLE scaled_defaults ("\
+"id INT, f FLOAT(10,2) NOT NULL DEFAULT 0, d DOUBLE(10,2) NOT NULL DEFAULT -2.5); "\
+"SHOW WARNINGS; INSERT INTO scaled_defaults (id) VALUES (1); "\
+"SELECT id, f, d FROM scaled_defaults; SHOW COLUMNS FROM scaled_defaults;" \
+    "$DATABASE"
+
+expect_error \
+    "scaled float display width too large" \
+    1439 \
+    "42000" \
+    "Display width out of range for column 'x' (max = 255)" \
+    "CREATE TABLE bad_float_display_width (x FLOAT(256,1));" \
+    "$DATABASE"
+
+expect_error \
+    "scaled float scale too large" \
+    1425 \
+    "42000" \
+    "Too big scale 31 specified for column 'x'. Maximum is 30." \
+    "CREATE TABLE bad_float_scale (x FLOAT(10,31));" \
+    "$DATABASE"
+
+expect_error \
+    "scaled float scale greater than precision" \
+    1427 \
+    "42000" \
+    "For float(M,D), double(M,D) or decimal(M,D), M must be >= D (column 'x')." \
+    "CREATE TABLE bad_float_m_d (x FLOAT(1,2));" \
     "$DATABASE"
 
 expect_upstream_accepts \

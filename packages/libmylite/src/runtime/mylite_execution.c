@@ -553,8 +553,10 @@ enum {
     crc32_bits_per_byte = 8,
     double_format_error_capacity = 80,
     float_text_max_significant_digits = 6,
-    approximate_numeric_text_capacity = 48,
     float_max_precision = 53,
+    approximate_max_display_width = 255,
+    /* Sign, decimal point, and NUL for fixed-scale DBL_MAX text. */
+    approximate_numeric_text_capacity = DBL_MAX_10_EXP + decimal_max_scale + 4,
     float_double_precision_threshold = 24,
     char_default_length = 1,
     char_max_length = 255,
@@ -1803,6 +1805,9 @@ enum approximate_type_class {
 
 struct approximate_type_info {
     enum approximate_type_class type_class;
+    uint64_t precision;
+    uint64_t scale;
+    bool has_scale;
     bool is_unsigned;
 };
 
@@ -15729,6 +15734,7 @@ static int map_integer_display_width(
     uint64_t *out_display_width
 );
 static int append_integer_display_width_warning(struct mylite_db *database);
+static int append_approximate_display_width_warning(struct mylite_db *database);
 static int append_year_display_width_warning(struct mylite_db *database);
 static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type);
 static bool logical_type_is_varchar(const char *logical_type);
@@ -15810,6 +15816,12 @@ static int decimal_type_info_for_logical_type(
 );
 static int approximate_type_info_for_logical_type(
     const char *logical_type,
+    struct approximate_type_info *out_info
+);
+static int approximate_display_type_info_for_logical_type(
+    const char *logical_type,
+    const char *prefix,
+    enum approximate_type_class type_class,
     struct approximate_type_info *out_info
 );
 static int enum_type_info_for_logical_type(
@@ -17161,6 +17173,14 @@ static int copy_approximate_default_value(
     struct planned_value *out_value
 );
 static int format_approximate_value_text(
+    struct mylite_db *database,
+    double value,
+    const struct approximate_type_info *info,
+    const char *context_name,
+    char *buffer,
+    size_t buffer_size
+);
+static int format_scaled_approximate_value_text(
     struct mylite_db *database,
     double value,
     const struct approximate_type_info *info,

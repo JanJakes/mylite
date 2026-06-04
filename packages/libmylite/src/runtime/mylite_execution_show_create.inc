@@ -2154,6 +2154,23 @@ static int format_approximate_descriptor_type_text(
     const char *base_type = info->type_class == APPROXIMATE_TYPE_FLOAT ? "float" : "double";
     int written = 0;
 
+    if (info->has_scale) {
+        written = snprintf(
+            buffer,
+            buffer_size,
+            "%s(%" PRIu64 ",%" PRIu64 ")%s",
+            base_type,
+            info->precision,
+            info->scale,
+            info->is_unsigned ? " unsigned" : ""
+        );
+        if (written < 0 || (size_t)written >= buffer_size) {
+            set_runtime_error(database, "failed to format column type");
+            return MYLITE_ERROR;
+        }
+        *out_type_text = buffer;
+        return MYLITE_OK;
+    }
     if (!info->is_unsigned) {
         *out_type_text = base_type;
         return MYLITE_OK;

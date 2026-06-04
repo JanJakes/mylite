@@ -7795,8 +7795,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_approximate_type(
         (struct mylite_sql_ast_approximate_type_payload){
             .kind = tokens.approximate_type,
             .has_precision = tokens.has_precision,
+            .has_scale = tokens.has_scale,
             .is_unsigned = tokens.is_unsigned,
             .precision_span = span_from_token(&tokens.precision_token),
+            .scale_span = span_from_token(&tokens.scale_token),
         }
     );
     return type;

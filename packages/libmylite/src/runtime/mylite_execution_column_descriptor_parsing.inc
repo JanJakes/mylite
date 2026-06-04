@@ -492,8 +492,28 @@ static int approximate_type_info_for_logical_type(
     const char *logical_type,
     struct approximate_type_info *out_info
 ) {
+    int rc = MYLITE_OK;
+
     if (logical_type == NULL || out_info == NULL) {
         return MYLITE_ERROR;
+    }
+    rc = approximate_display_type_info_for_logical_type(
+        logical_type,
+        "FLOAT(",
+        APPROXIMATE_TYPE_FLOAT,
+        out_info
+    );
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    rc = approximate_display_type_info_for_logical_type(
+        logical_type,
+        "DOUBLE(",
+        APPROXIMATE_TYPE_DOUBLE,
+        out_info
+    );
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
     }
     if (strcmp(logical_type, "FLOAT") == 0) {
         *out_info = (struct approximate_type_info){
@@ -521,6 +541,62 @@ static int approximate_type_info_for_logical_type(
             .type_class = APPROXIMATE_TYPE_DOUBLE,
             .is_unsigned = true,
         };
+        return MYLITE_OK;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int approximate_display_type_info_for_logical_type(
+    const char *logical_type,
+    const char *prefix,
+    enum approximate_type_class type_class,
+    struct approximate_type_info *out_info
+) {
+    static const char unsigned_suffix[] = " UNSIGNED";
+    struct mylite_sql_source_span span = {0};
+    const char *comma = NULL;
+    const char *close = NULL;
+    size_t prefix_length = prefix == NULL ? 0U : strlen(prefix);
+    int rc = MYLITE_OK;
+
+    if (logical_type == NULL || prefix == NULL || out_info == NULL || prefix_length == 0U ||
+        strncmp(logical_type, prefix, prefix_length) != 0) {
+        return MYLITE_ERROR;
+    }
+
+    comma = strchr(logical_type + prefix_length, ',');
+    close = comma == NULL ? NULL : strchr(comma + 1, ')');
+    if (comma == NULL || close == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    *out_info = (struct approximate_type_info){
+        .type_class = type_class,
+        .has_scale = true,
+    };
+    span = (struct mylite_sql_source_span){
+        .text = logical_type + prefix_length,
+        .length = (size_t)(comma - (logical_type + prefix_length)),
+    };
+    rc = parse_unsigned_integer_literal(&span, &out_info->precision);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    span = (struct mylite_sql_source_span){
+        .text = comma + 1,
+        .length = (size_t)(close - (comma + 1)),
+    };
+    rc = parse_unsigned_integer_literal(&span, &out_info->scale);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (strcmp(close + 1, "") == 0) {
+        out_info->is_unsigned = false;
+        return MYLITE_OK;
+    }
+    if (strcmp(close + 1, unsigned_suffix) == 0) {
+        out_info->is_unsigned = true;
         return MYLITE_OK;
     }
 

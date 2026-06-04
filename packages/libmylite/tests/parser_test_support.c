@@ -684,10 +684,12 @@ int parser_test_expect_approximate_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_approximate_type expected,
     const char *expected_precision,
+    const char *expected_scale,
     int expected_unsigned,
     const char *context
 ) {
     struct mylite_sql_source_span precision_span = {0};
+    struct mylite_sql_source_span scale_span = {0};
     enum mylite_sql_ast_approximate_type actual = MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT;
     int actual_unsigned = 0;
 
@@ -731,6 +733,31 @@ int parser_test_expect_approximate_type(
             expected_precision,
             (int)precision_span.length,
             precision_span.text == NULL ? "" : precision_span.text
+        );
+        return 1;
+    }
+
+    if (expected_scale == NULL) {
+        if (mylite_sql_ast_node_approximate_type_has_scale(node) != 0) {
+            fprintf(stderr, "%s: expected no approximate scale\n", context);
+            return 1;
+        }
+        return 0;
+    }
+    if (mylite_sql_ast_node_approximate_type_has_scale(node) == 0) {
+        fprintf(stderr, "%s: expected approximate scale %s\n", context, expected_scale);
+        return 1;
+    }
+    scale_span = mylite_sql_ast_node_approximate_type_scale_span(node);
+    if (scale_span.text == NULL || scale_span.length != strlen(expected_scale) ||
+        strncmp(scale_span.text, expected_scale, scale_span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected approximate scale %s, got %.*s\n",
+            context,
+            expected_scale,
+            (int)scale_span.length,
+            scale_span.text == NULL ? "" : scale_span.text
         );
         return 1;
     }

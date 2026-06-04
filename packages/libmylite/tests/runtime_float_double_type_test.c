@@ -19,16 +19,19 @@ enum {
     test_path_capacity = 1024,
     locale_name_capacity = 128,
     show_columns_field_count = 6,
-    approx_type_column_count = 15,
+    approx_type_column_count = 17,
     approx_values_column_count = 7,
     approx_values_after_underflow_row_count = 5,
     approx_information_schema_column_count = 10,
-    approx_information_schema_row_count = 14,
+    approx_information_schema_row_count = 16,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
     mysql_error_incorrect_column_specifier = 1063,
+    mysql_error_decimal_scale_too_big = 1425,
+    mysql_error_decimal_must_be_greater_or_equal_to_d = 1427,
+    mysql_error_display_width_out_of_range = 1439,
 };
 
 static const int64_t affected_rows_not_checked = INT64_MIN;
@@ -136,6 +139,12 @@ static int test_float_double_success_persistence_and_introspection(void) {
         "f8",    "double",
         "YES",   "",
         NULL,    "",
+        "fmd",   "float(10,2)",
+        "YES",   "",
+        NULL,    "",
+        "dmd",   "double(10,2)",
+        "YES",   "",
+        NULL,    "",
         "fu",    "float unsigned",
         "YES",   "",
         NULL,    "",
@@ -163,6 +172,8 @@ static int test_float_double_success_persistence_and_introspection(void) {
         "  `r` double DEFAULT NULL,\n"
         "  `f4` float DEFAULT NULL,\n"
         "  `f8` double DEFAULT NULL,\n"
+        "  `fmd` float(10,2) DEFAULT NULL,\n"
+        "  `dmd` double(10,2) DEFAULT NULL,\n"
         "  `fu` float unsigned DEFAULT NULL,\n"
         "  `du` double unsigned DEFAULT NULL,\n"
         "  `nn` float NOT NULL DEFAULT '1.25',\n"
@@ -180,11 +191,25 @@ static int test_float_double_success_persistence_and_introspection(void) {
         "r",   "double", "double",          "22", NULL, "YES", NULL,    NULL, NULL, NULL,
         "f4",  "float",  "float",           "12", NULL, "YES", NULL,    NULL, NULL, NULL,
         "f8",  "double", "double",          "22", NULL, "YES", NULL,    NULL, NULL, NULL,
+        "fmd", "float",  "float(10,2)",     "10", "2",  "YES", NULL,    NULL, NULL, NULL,
+        "dmd", "double", "double(10,2)",    "10", "2",  "YES", NULL,    NULL, NULL, NULL,
         "fu",  "float",  "float unsigned",  "12", NULL, "YES", NULL,    NULL, NULL, NULL,
         "du",  "double", "double unsigned", "22", NULL, "YES", NULL,    NULL, NULL, NULL,
         "nn",  "float",  "float",           "12", NULL, "NO",  "1.25",  NULL, NULL, NULL,
         "dn",  "double", "double",          "22", NULL, "NO",  "-2.25", NULL, NULL, NULL,
     };
+    static const char *const scaled_default_show_columns_rows[] = {
+        "id",   "int",
+        "YES",  "",
+        NULL,   "",
+        "f",    "float(10,2)",
+        "NO",   "",
+        "0.00", "",
+        "d",    "double(10,2)",
+        "NO",   "",
+        "-2.50", "",
+    };
+    static const char *const scaled_default_row[] = {"1", "0.00", "-2.50"};
     static const char *const initial_rows[] = {
         "1",          "42",
         "42",         "42",
@@ -266,11 +291,11 @@ static int test_float_double_success_persistence_and_introspection(void) {
         database,
         "CREATE TABLE approx_types (id INT NOT NULL, f FLOAT, f0 FLOAT(0), f24 FLOAT(24), "
         "f25 FLOAT(25), f53 FLOAT(53), d DOUBLE, dp DOUBLE PRECISION, r REAL, f4 FLOAT4, "
-        "f8 FLOAT8, fu FLOAT UNSIGNED, du DOUBLE UNSIGNED, nn FLOAT NOT NULL DEFAULT 1.25, "
-        "dn DOUBLE NOT NULL DEFAULT -2.25)",
+        "f8 FLOAT8, fmd FLOAT(10,2), dmd DOUBLE(10,2), fu FLOAT UNSIGNED, "
+        "du DOUBLE UNSIGNED, nn FLOAT NOT NULL DEFAULT 1.25, dn DOUBLE NOT NULL DEFAULT -2.25)",
         (struct expected_statement_result){
             .affected_rows = affected_rows_not_checked,
-            .warning_count = 2U,
+            .warning_count = 4U,
         }
     );
     failures += expect_query_values(
@@ -305,6 +330,40 @@ static int test_float_double_success_persistence_and_introspection(void) {
             .column_count = approx_information_schema_column_count,
             .row_count = approx_information_schema_row_count,
             .context = "approximate INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE approx_scaled_defaults (id INT, f FLOAT(10,2) NOT NULL DEFAULT 0, "
+        "d DOUBLE(10,2) NOT NULL DEFAULT -2.5)",
+        (struct expected_statement_result){
+            .affected_rows = affected_rows_not_checked,
+            .warning_count = 2U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM approx_scaled_defaults",
+            .values = scaled_default_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "scaled approximate default SHOW COLUMNS",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO approx_scaled_defaults (id) VALUES (1)",
+        (struct expected_statement_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, f, d FROM approx_scaled_defaults",
+            .values = scaled_default_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "scaled approximate defaults",
         }
     );
     failures += expect_statement_result(
@@ -662,6 +721,34 @@ static int test_float_double_diagnostics(void) {
             .code = mysql_error_incorrect_column_specifier,
             .sqlstate = "42000",
             .message_part = "Incorrect column specifier for column 'x'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_display_width (x FLOAT(256,1))",
+        (struct expected_sql_error){
+            .code = mysql_error_display_width_out_of_range,
+            .sqlstate = "42000",
+            .message_part = "Display width out of range for column 'x' (max = 255)",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_float_scale (x FLOAT(10,31))",
+        (struct expected_sql_error){
+            .code = mysql_error_decimal_scale_too_big,
+            .sqlstate = "42000",
+            .message_part = "Too big scale 31 specified for column 'x'. Maximum is 30.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_float_m_d (x FLOAT(1,2))",
+        (struct expected_sql_error){
+            .code = mysql_error_decimal_must_be_greater_or_equal_to_d,
+            .sqlstate = "42000",
+            .message_part =
+                "For float(M,D), double(M,D) or decimal(M,D), M must be >= D (column 'x').",
         }
     );
     failures += execute_error(

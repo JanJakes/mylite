@@ -734,6 +734,14 @@ int mylite_sql_ast_node_approximate_type_has_precision(const struct mylite_sql_a
     return node->payload.approximate_type.has_precision;
 }
 
+int mylite_sql_ast_node_approximate_type_has_scale(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return 0;
+    }
+
+    return node->payload.approximate_type.has_scale;
+}
+
 int mylite_sql_ast_node_approximate_type_is_unsigned(const struct mylite_sql_ast_node *node) {
     if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
         return 0;
@@ -750,6 +758,16 @@ struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_precision_spa
     }
 
     return node->payload.approximate_type.precision_span;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_scale_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.approximate_type.scale_span;
 }
 
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(

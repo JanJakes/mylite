@@ -14,7 +14,7 @@ enum {
     bool_alias_column_count = 3,
     integer_default_column_count = 5,
     decimal_column_count = 6,
-    approximate_column_count = 9,
+    approximate_column_count = 11,
     year_column_count = 3,
     date_column_count = 3,
     datetime_column_count = 3,
@@ -168,6 +168,7 @@ int parser_test_expect_approximate_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_approximate_type expected,
     const char *expected_precision,
+    const char *expected_scale,
     int expected_unsigned,
     const char *context
 );

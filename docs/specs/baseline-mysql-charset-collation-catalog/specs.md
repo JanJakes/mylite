@@ -87,7 +87,6 @@ This feature must not implement:
 - DDL admission for all cataloged character sets or collations;
 - storage, conversion, comparison, ordering, grouping, collation coercibility,
   or index semantics for all cataloged rows;
-- `SHOW CHARACTER SET ... WHERE` or `SHOW COLLATION ... WHERE`;
 - `mysql.character_sets`, `mysql.collations`, or data-dictionary base tables;
 - mutable server defaults, privilege filtering, account-specific visibility,
   or plugin-dependent catalog variation;
@@ -99,8 +98,9 @@ This feature must not implement:
 
 - Public API: unchanged. Results use the existing `mylite_execute()` and
   `mylite_result` conventions.
-- Parser/AST: unchanged. The current grammar already admits the supported
-  `SHOW` and information-schema `SELECT` shapes.
+- Parser/AST: admits `SHOW` charset/collation statements with optional
+  string-literal `LIKE` filters or `WHERE` predicates over emitted output
+  columns, plus the supported information-schema `SELECT` shapes.
 - Runtime metadata: owns the static MySQL 8.4.9 catalog arrays and row
   generation for the supported metadata surfaces.
 - Semantic charset/collation validators: continue to use the existing narrow
@@ -117,13 +117,18 @@ Existing grammar remains in force:
 statement ::= show_character_set_statement.
 statement ::= show_collation_statement.
 
-show_character_set_statement ::= SHOW CHARACTER SET show_like_clause_opt.
-show_character_set_statement ::= SHOW CHARSET show_like_clause_opt.
-show_collation_statement ::= SHOW COLLATION show_like_clause_opt.
+show_character_set_statement ::= SHOW CHARACTER SET show_catalog_filter_opt.
+show_character_set_statement ::= SHOW CHARSET show_catalog_filter_opt.
+show_collation_statement ::= SHOW COLLATION show_catalog_filter_opt.
 
-show_like_clause_opt ::= .
-show_like_clause_opt ::= LIKE STRING.
+show_catalog_filter_opt ::= .
+show_catalog_filter_opt ::= LIKE STRING.
+show_catalog_filter_opt ::= WHERE predicate.
 ```
+
+`WHERE` predicates are limited to emitted output columns with string and `NULL`
+literals, `LIKE`, `IN`, `IS NULL`, `IS NOT NULL`, and boolean `NOT`/`AND`/`OR`.
+String comparisons are ASCII case-insensitive.
 
 Existing information-schema `SELECT` support remains in force for the three
 tables:

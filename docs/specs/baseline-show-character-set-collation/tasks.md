@@ -80,8 +80,9 @@ compatibility wording.
 
 ## Out Of Scope
 
-Full character-set catalogs, full collation catalogs, `SHOW ... WHERE`,
-`INFORMATION_SCHEMA`, `mysql.collations`, connection charset state,
+Full character-set catalogs, full collation catalogs, unsupported
+`SHOW ... WHERE` predicate forms, `INFORMATION_SCHEMA`, `mysql.collations`,
+connection charset state,
 `SET NAMES`, `SET CHARACTER SET`, system variables, string types, collation
 coercibility, string comparison behavior, privileges, arbitrary SQLite
 metadata reads, arbitrary SQLite SQL pass-through, and SQLite fork patches.

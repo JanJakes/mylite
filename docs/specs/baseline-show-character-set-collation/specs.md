@@ -15,7 +15,7 @@ collation rows, using MySQL 8.4.9 result column names and row values. It does
 not add alternate charsets, alternate collations, connection charset state,
 string comparison semantics, collation coercibility, `SET NAMES`,
 `SET CHARACTER SET`, `INFORMATION_SCHEMA`, system schema dictionary tables, or
-`SHOW ... WHERE` filters.
+loaded MySQL charset/collation catalogs.
 
 ## Sources
 
@@ -150,7 +150,6 @@ This feature must not implement:
 - full MySQL charset or collation catalogs;
 - any charset other than `utf8mb4`;
 - any collation other than `utf8mb4_0900_ai_ci`;
-- `SHOW ... WHERE` filters;
 - `INFORMATION_SCHEMA.CHARACTER_SETS`,
   `INFORMATION_SCHEMA.COLLATIONS`,
   `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, or
@@ -171,10 +170,11 @@ This feature must not implement:
   completion. Successful statements are result-set statements and therefore
   store `-1` as the connection-local previous row count.
 - Lexer/parser/AST own syntax admission and source spans. They admit only the
-  supported statement forms and optional string-literal `LIKE` clauses.
+  supported statement forms plus optional string-literal `LIKE` clauses or
+  `WHERE` predicates over the emitted result columns.
 - Runtime owns decoding the optional `LIKE` literal through the existing
-  `SHOW LIKE` filter, applying ASCII case-insensitive matching, and building
-  the static result rows.
+  `SHOW LIKE` filter, evaluating supported `WHERE` predicates, applying ASCII
+  case-insensitive matching, and building the static result rows.
 - The catalog module remains authoritative for schema/table/column
   descriptors. This feature does not add charset/collation descriptor rows and
   does not mutate catalog rows, descriptor versions, descriptor caches,
@@ -191,12 +191,20 @@ Supported subset:
 ```sql
 SHOW {CHARACTER SET | CHARSET} [LIKE 'pattern']
 SHOW COLLATION [LIKE 'pattern']
+SHOW {CHARACTER SET | CHARSET} WHERE output_column_predicate
+SHOW COLLATION WHERE output_column_predicate
 ```
 
-The pattern must be one regular string literal token accepted by the existing
-`SHOW LIKE` filter decoder. National string literals, charset introducers,
-numeric literals, `NULL`, concatenated strings, expressions, functions,
-parameters, and `WHERE` filters are not admitted.
+The `LIKE` pattern must be one regular string literal token accepted by the
+existing `SHOW LIKE` filter decoder. National string literals, charset
+introducers, numeric literals, `NULL`, concatenated strings, expressions,
+functions, and parameters are not admitted for `LIKE`.
+
+`WHERE` predicates are evaluated against the output column names. MyLite
+supports string and `NULL` literal comparisons, `LIKE`, `IN`, `IS NULL`,
+`IS NOT NULL`, `NOT`, `AND`, and `OR`. String comparisons are ASCII
+case-insensitive. Unsupported predicate forms fail with a deterministic
+compatibility error rather than being passed through to SQLite.
 
 MyLite Lemon-syntax grammar snippets:
 
@@ -205,21 +213,22 @@ statement ::= show_character_set_statement.
 statement ::= show_collation_statement.
 
 show_character_set_statement ::=
-    SHOW CHARACTER SET show_like_clause_opt.
+    SHOW CHARACTER SET show_catalog_filter_opt.
 
 show_character_set_statement ::=
-    SHOW CHARSET show_like_clause_opt.
+    SHOW CHARSET show_catalog_filter_opt.
 
 show_collation_statement ::=
-    SHOW COLLATION show_like_clause_opt.
+    SHOW COLLATION show_catalog_filter_opt.
 
-show_like_clause_opt ::= .
-show_like_clause_opt ::= LIKE STRING.
+show_catalog_filter_opt ::= .
+show_catalog_filter_opt ::= LIKE STRING.
+show_catalog_filter_opt ::= WHERE predicate.
 ```
 
-The AST stores the optional `LIKE` literal as the first child of the dedicated
-statement node when present. Runtime treats absence of a child as an unfiltered
-static catalog request.
+The AST stores the optional `LIKE` literal or `WHERE` clause as the first child
+of the dedicated statement node when present. Runtime treats absence of a child
+as an unfiltered static catalog request.
 
 ## Static Rows
 

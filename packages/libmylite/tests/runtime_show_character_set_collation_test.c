@@ -239,6 +239,24 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
     );
     failures += expect_result(
         database,
+        "SHOW CHARACTER SET WHERE Charset = 'UTF8MB4'",
+        character_set_columns,
+        character_set_column_count,
+        character_set_row,
+        1U,
+        "show character set where charset"
+    );
+    failures += expect_result(
+        database,
+        "SHOW CHARACTER SET WHERE `Default collation` = 'utf8mb4_0900_ai_ci'",
+        character_set_columns,
+        character_set_column_count,
+        character_set_row,
+        1U,
+        "show character set where default collation"
+    );
+    failures += expect_result(
+        database,
         "SHOW CHARACTER SET LIKE 'ASCII'",
         character_set_columns,
         character_set_column_count,
@@ -326,6 +344,24 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         collation_0900_row,
         1U,
         "show collation uppercase like"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION WHERE Collation = 'UTF8MB4_0900_AI_CI'",
+        collation_columns,
+        collation_column_count,
+        collation_0900_row,
+        1U,
+        "show collation where collation"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION WHERE Charset = 'utf8mb4' AND `Default` = 'Yes'",
+        collation_columns,
+        collation_column_count,
+        collation_0900_row,
+        1U,
+        "show collation where charset and default"
     );
     failures += expect_result(
         database,
@@ -557,11 +593,11 @@ static int test_show_character_set_and_collation_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SHOW CHARACTER SET WHERE Charset = 'utf8mb4'",
+        "SHOW CHARACTER SET WHERE Charset = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "SHOW catalog WHERE supports only string literal predicates",
         }
     );
     failures += execute_error(
@@ -611,11 +647,11 @@ static int test_show_character_set_and_collation_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SHOW COLLATION WHERE Collation = 'utf8mb4_0900_ai_ci'",
+        "SHOW COLLATION WHERE Collation = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "SHOW catalog WHERE supports only string literal predicates",
         }
     );
     failures += execute_error(

@@ -2,13 +2,18 @@ static int append_information_schema_schemata_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
+    static const char *const schema_order[] = {
+        "mysql",
+        "information_schema",
+        "performance_schema",
+        "sys",
+    };
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U;
-         rc == MYLITE_OK && index < mylite_execution_catalog_builtin_schema_count();
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(schema_order) / sizeof(schema_order[0]);
          ++index) {
         const struct mylite_execution_catalog_builtin_schema *schema =
-            mylite_execution_catalog_builtin_schema_at(index);
+            mylite_execution_catalog_builtin_schema_by_name(schema_order[index]);
         const char *values[information_schema_schemata_column_count] = {
             "def",
             schema->name,
@@ -45,13 +50,18 @@ static int append_information_schema_schemata_extensions_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
+    static const char *const schema_order[] = {
+        "mysql",
+        "information_schema",
+        "performance_schema",
+        "sys",
+    };
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U;
-         rc == MYLITE_OK && index < mylite_execution_catalog_builtin_schema_count();
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(schema_order) / sizeof(schema_order[0]);
          ++index) {
         const struct mylite_execution_catalog_builtin_schema *schema =
-            mylite_execution_catalog_builtin_schema_at(index);
+            mylite_execution_catalog_builtin_schema_by_name(schema_order[index]);
         const char *values[information_schema_schemata_extensions_column_count] = {
             "def",
             schema->name,

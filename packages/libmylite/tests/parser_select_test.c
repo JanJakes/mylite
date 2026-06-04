@@ -9,6 +9,7 @@ static int test_select_noop_modifier_clause(void);
 static int test_select_locking_clause(void);
 static int test_select_all_clause(void);
 static int test_select_union_clause(void);
+static int test_select_with_information_schema_union_clause(void);
 static int test_table_statement(void);
 static int test_values_statement(void);
 static int test_select_table_alias_clause(void);
@@ -27,6 +28,7 @@ int main(void) {
     failures += test_select_locking_clause();
     failures += test_select_all_clause();
     failures += test_select_union_clause();
+    failures += test_select_with_information_schema_union_clause();
     failures += test_table_statement();
     failures += test_values_statement();
     failures += test_select_table_alias_clause();
@@ -2901,6 +2903,36 @@ static int test_select_union_clause(void) {
         MYLITE_SQL_AST_ORDER_BY_CLAUSE,
         "intersect branch order parsed for runtime rejection"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_with_information_schema_union_clause(void) {
+    static const char sql[] =
+        "WITH cols AS ("
+        "SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users'), "
+        "indexes AS ("
+        "SELECT DISTINCT INDEX_NAME AS index_name FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users') "
+        "SELECT CONCAT(column_name, ' (column)') AS name FROM cols "
+        "UNION ALL "
+        "SELECT CONCAT(index_name, ' (index)') AS name FROM indexes "
+        "ORDER BY name";
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(sql, MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "information schema WITH union bridge statement"
+    );
+    failures += parser_test_expect_child_count(statement, 0U, "WITH bridge select child count");
+    failures += parser_test_expect_span_text(statement, sql, "WITH bridge statement span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

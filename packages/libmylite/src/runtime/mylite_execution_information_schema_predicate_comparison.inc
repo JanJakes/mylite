@@ -14,6 +14,7 @@ static int information_schema_comparison_matches(
     };
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
     const char *left_text = NULL;
+    char left_buffer[integer_text_capacity];
     int rc = information_schema_comparison_predicate_value(
         database,
         query,
@@ -28,7 +29,19 @@ static int information_schema_comparison_matches(
         return rc;
     }
 
-    left_text = row[column_index];
+    rc = information_schema_predicate_row_value(
+        database,
+        query,
+        row,
+        column_index,
+        left_buffer,
+        sizeof(left_buffer),
+        &left_text
+    );
+    if (rc != MYLITE_OK) {
+        free(right.text);
+        return rc;
+    }
     rc = information_schema_comparison_truth(
         database,
         query,
@@ -294,6 +307,7 @@ static int information_schema_between_matches(
     struct information_schema_predicate_value upper = {0};
     size_t column_index = 0U;
     const char *left_text = NULL;
+    char left_buffer[integer_text_capacity];
     int rc = information_schema_resolve_column_reference(
         database,
         query,
@@ -323,7 +337,20 @@ static int information_schema_between_matches(
         return rc;
     }
 
-    left_text = row[column_index];
+    rc = information_schema_predicate_row_value(
+        database,
+        query,
+        row,
+        column_index,
+        left_buffer,
+        sizeof(left_buffer),
+        &left_text
+    );
+    if (rc != MYLITE_OK) {
+        free(lower.text);
+        free(upper.text);
+        return rc;
+    }
     if (left_text == NULL || lower.is_null || upper.is_null) {
         *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
     } else {
@@ -408,6 +435,7 @@ static int information_schema_in_matches(
     const struct mylite_sql_ast_node *value = NULL;
     size_t column_index = 0U;
     const char *left_text = NULL;
+    char left_buffer[integer_text_capacity];
     bool saw_null = false;
     int rc = information_schema_resolve_column_reference(
         database,
@@ -430,7 +458,18 @@ static int information_schema_in_matches(
         return MYLITE_ERROR;
     }
 
-    left_text = row[column_index];
+    rc = information_schema_predicate_row_value(
+        database,
+        query,
+        row,
+        column_index,
+        left_buffer,
+        sizeof(left_buffer),
+        &left_text
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (left_text == NULL) {
         *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         return MYLITE_OK;

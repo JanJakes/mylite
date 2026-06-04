@@ -140,6 +140,16 @@ static int test_check_constraint_create_metadata_and_dml(void) {
         "3819",
         "Check constraint 'checked_chk_1' is violated.",
     };
+    static const char *const text_json_check_rows[] = {
+        "checked_text_json_chk_1",
+        "(`name` <> _utf8mb4\\'\\')",
+        "checked_text_json_chk_2",
+        "json_valid(`data`)",
+        "checked_text_json_chk_3",
+        "((`score` > 0) and (`score` < 100))",
+        "length_limit",
+        "(length(`data`) < 20)",
+    };
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = open_seeded_memory(&database);
@@ -205,6 +215,49 @@ static int test_check_constraint_create_metadata_and_dml(void) {
             3U,
             4U,
             "TABLE_CONSTRAINTS CHECK rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE checked_text_json ("
+        "name VARCHAR(255) CHECK (name != ''), "
+        "data JSON CHECK (json_valid(data)), "
+        "score DOUBLE CHECK (score > 0 AND score < 100), "
+        "CONSTRAINT length_limit CHECK (length(data) < 20))"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE checked_text_json", &result);
+    if (failures == 0) {
+        const char *show_create = mylite_result_value_text(result, 0U, 1U);
+
+        failures += expect_contains(
+            show_create,
+            "CHECK ((`name` <> _utf8mb4''))",
+            "SHOW CREATE CHECK string literal"
+        );
+        failures += expect_contains(
+            show_create,
+            "CHECK (json_valid(`data`))",
+            "SHOW CREATE CHECK json_valid"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, CHECK_CLAUSE "
+            "FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' "
+            "AND (CONSTRAINT_NAME = 'checked_text_json_chk_1' "
+            "OR CONSTRAINT_NAME = 'checked_text_json_chk_2' "
+            "OR CONSTRAINT_NAME = 'checked_text_json_chk_3' "
+            "OR CONSTRAINT_NAME = 'length_limit') "
+            "ORDER BY CONSTRAINT_NAME",
+            text_json_check_rows,
+            2U,
+            4U,
+            "CHECK_CONSTRAINTS text and json rows",
         }
     );
 

@@ -76,6 +76,18 @@ static int test_information_schema_constraints_queries(void) {
         "def", "app", "u_n",     "app", "constrained",   "UNIQUE",      "YES",
         "def", "app", "u_v",     "app", "constrained",   "UNIQUE",      "YES",
     };
+    static const char *const named_primary_values[] = {
+        "def", "app", "c_unique", "app", "named_primary", "UNIQUE",      "YES",
+        "def", "app", "PRIMARY",  "app", "named_primary", "PRIMARY KEY", "YES",
+    };
+    static const char *const alter_inline_values[] = {
+        "def", "app", "c",       "app", "alter_inline", "UNIQUE",      "YES",
+        "def", "app", "PRIMARY", "app", "alter_inline", "PRIMARY KEY", "YES",
+    };
+    static const char *const alter_modify_values[] = {
+        "def", "app", "b",       "app", "alter_modify", "UNIQUE",      "YES",
+        "def", "app", "PRIMARY", "app", "alter_modify", "PRIMARY KEY", "YES",
+    };
     static const char *const key_column_usage_columns[] = {
         "CONSTRAINT_CATALOG",
         "CONSTRAINT_SCHEMA",
@@ -430,6 +442,71 @@ static int test_information_schema_constraints_queries(void) {
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open constraints db");
     failures += seed_database(database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE named_primary (id INT, a INT, b INT, "
+        "CONSTRAINT c_primary PRIMARY KEY (a, b), CONSTRAINT c_unique UNIQUE (b))",
+        -1
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE alter_inline (a INT)", -1);
+    failures += expect_statement_ok(database, "ALTER TABLE alter_inline ADD COLUMN b INT PRIMARY KEY", -1);
+    failures += expect_statement_ok(database, "ALTER TABLE alter_inline ADD COLUMN c INT UNIQUE", -1);
+    failures += expect_statement_ok(database, "CREATE TABLE alter_modify (a INT, b INT)", -1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_modify CHANGE COLUMN a a INT PRIMARY KEY",
+        -1
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_modify MODIFY COLUMN b INT UNIQUE",
+        -1
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, "
+                   "TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_TYPE, ENFORCED "
+                   "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'named_primary'",
+            .column_names = table_constraint_columns,
+            .column_count = sizeof(table_constraint_columns) / sizeof(table_constraint_columns[0]),
+            .values = named_primary_values,
+            .row_count = sizeof(named_primary_values) / sizeof(named_primary_values[0]) /
+                         (sizeof(table_constraint_columns) / sizeof(table_constraint_columns[0])),
+            .context = "named primary constraint rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, "
+                   "TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_TYPE, ENFORCED "
+                   "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'alter_inline'",
+            .column_names = table_constraint_columns,
+            .column_count = sizeof(table_constraint_columns) / sizeof(table_constraint_columns[0]),
+            .values = alter_inline_values,
+            .row_count = sizeof(alter_inline_values) / sizeof(alter_inline_values[0]) /
+                         (sizeof(table_constraint_columns) / sizeof(table_constraint_columns[0])),
+            .context = "alter add inline key rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, "
+                   "TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_TYPE, ENFORCED "
+                   "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'alter_modify'",
+            .column_names = table_constraint_columns,
+            .column_count = sizeof(table_constraint_columns) / sizeof(table_constraint_columns[0]),
+            .values = alter_modify_values,
+            .row_count = sizeof(alter_modify_values) / sizeof(alter_modify_values[0]) /
+                         (sizeof(table_constraint_columns) / sizeof(table_constraint_columns[0])),
+            .context = "alter modify inline key rows",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){

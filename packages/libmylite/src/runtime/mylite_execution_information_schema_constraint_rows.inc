@@ -42,25 +42,24 @@ static int append_information_schema_table_constraints_base_rows(
             &check_constraint_count
         );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
-        if (!indexes[index].index.is_unique) {
-            continue;
-        }
-        rc = append_information_schema_table_constraints_index_row(
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_table_constraints_index_rows(
             database,
             rows,
             schema,
             table,
-            &indexes[index]
+            indexes,
+            index_count
         );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
-        rc = append_information_schema_table_constraints_foreign_key_row(
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_table_constraints_foreign_key_rows(
             database,
             rows,
             schema,
             table,
-            &foreign_keys[index]
+            foreign_keys,
+            foreign_key_count
         );
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < check_constraint_count; ++index) {
@@ -77,6 +76,63 @@ static int append_information_schema_table_constraints_base_rows(
     mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
+    return rc;
+}
+
+static int append_information_schema_table_constraints_index_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *indexes,
+    size_t index_count
+) {
+    bool *emitted = NULL;
+    int rc = MYLITE_OK;
+
+    if (index_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (index_count > SIZE_MAX / sizeof(*emitted)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    emitted = calloc(index_count, sizeof(*emitted));
+    if (emitted == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK) {
+        size_t best_index = SIZE_MAX;
+
+        for (size_t index = 0U; index < index_count; ++index) {
+            if (emitted[index] || !indexes[index].index.is_unique) {
+                continue;
+            }
+            if (best_index == SIZE_MAX ||
+                compare_ascii_case_insensitive_text(
+                    indexes[index].index.name,
+                    indexes[best_index].index.name
+                ) < 0) {
+                best_index = index;
+            }
+        }
+        if (best_index == SIZE_MAX) {
+            break;
+        }
+
+        emitted[best_index] = true;
+        rc = append_information_schema_table_constraints_index_row(
+            database,
+            rows,
+            schema,
+            table,
+            &indexes[best_index]
+        );
+    }
+
+    free(emitted);
     return rc;
 }
 
@@ -100,6 +156,63 @@ static int append_information_schema_table_constraints_index_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_table_constraints_foreign_key_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
+) {
+    bool *emitted = NULL;
+    int rc = MYLITE_OK;
+
+    if (foreign_key_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (foreign_key_count > SIZE_MAX / sizeof(*emitted)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    emitted = calloc(foreign_key_count, sizeof(*emitted));
+    if (emitted == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK) {
+        size_t best_index = SIZE_MAX;
+
+        for (size_t index = 0U; index < foreign_key_count; ++index) {
+            if (emitted[index]) {
+                continue;
+            }
+            if (best_index == SIZE_MAX ||
+                compare_ascii_case_insensitive_text(
+                    foreign_keys[index].foreign_key.name,
+                    foreign_keys[best_index].foreign_key.name
+                ) < 0) {
+                best_index = index;
+            }
+        }
+        if (best_index == SIZE_MAX) {
+            break;
+        }
+
+        emitted[best_index] = true;
+        rc = append_information_schema_table_constraints_foreign_key_row(
+            database,
+            rows,
+            schema,
+            table,
+            &foreign_keys[best_index]
+        );
+    }
+
+    free(emitted);
+    return rc;
 }
 
 static int append_information_schema_table_constraints_foreign_key_row(
@@ -259,13 +372,14 @@ static int append_information_schema_table_constraints_extensions_base_rows(
             &indexes[index]
         );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
-        rc = append_information_schema_table_constraints_extensions_foreign_key_row(
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_table_constraints_extensions_foreign_key_rows(
             database,
             rows,
             schema,
             table,
-            &foreign_keys[index]
+            foreign_keys,
+            foreign_key_count
         );
     }
 
@@ -292,6 +406,63 @@ static int append_information_schema_table_constraints_extensions_index_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_table_constraints_extensions_foreign_key_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
+) {
+    bool *emitted = NULL;
+    int rc = MYLITE_OK;
+
+    if (foreign_key_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (foreign_key_count > SIZE_MAX / sizeof(*emitted)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    emitted = calloc(foreign_key_count, sizeof(*emitted));
+    if (emitted == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK) {
+        size_t best_index = SIZE_MAX;
+
+        for (size_t index = 0U; index < foreign_key_count; ++index) {
+            if (emitted[index]) {
+                continue;
+            }
+            if (best_index == SIZE_MAX ||
+                compare_ascii_case_insensitive_text(
+                    foreign_keys[index].foreign_key.name,
+                    foreign_keys[best_index].foreign_key.name
+                ) < 0) {
+                best_index = index;
+            }
+        }
+        if (best_index == SIZE_MAX) {
+            break;
+        }
+
+        emitted[best_index] = true;
+        rc = append_information_schema_table_constraints_extensions_foreign_key_row(
+            database,
+            rows,
+            schema,
+            table,
+            &foreign_keys[best_index]
+        );
+    }
+
+    free(emitted);
+    return rc;
 }
 
 static int append_information_schema_table_constraints_extensions_foreign_key_row(
@@ -406,12 +577,64 @@ static int append_information_schema_check_constraints_check_row(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct loaded_check_constraint_info *check_constraint
 ) {
-    const char *values[information_schema_check_constraints_column_count] = {
-        "def",
-        schema->name,
-        check_constraint->check_constraint.name,
+    char *check_clause = NULL;
+    const char *values[information_schema_check_constraints_column_count];
+    int rc = escape_information_schema_check_clause(
+        database,
         check_constraint->check_constraint.check_clause,
-    };
+        &check_clause
+    );
 
-    return append_information_schema_row(database, rows, values);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    values[0] = "def";
+    values[1] = schema->name;
+    values[2] = check_constraint->check_constraint.name;
+    values[3] = check_clause;
+
+    rc = append_information_schema_row(database, rows, values);
+    free(check_clause);
+    return rc;
+}
+
+static int escape_information_schema_check_clause(
+    struct mylite_db *database,
+    const char *check_clause,
+    char **out_check_clause
+) {
+    struct mylite_dynamic_string string;
+    int rc = MYLITE_OK;
+
+    if (out_check_clause == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_check_clause = NULL;
+    if (check_clause == NULL) {
+        return MYLITE_OK;
+    }
+
+    mylite_dynamic_string_init(&string);
+    for (size_t index = 0U; rc == MYLITE_OK && check_clause[index] != '\0'; ++index) {
+        if (check_clause[index] == '\'') {
+            rc = mylite_dynamic_string_append(&string, "\\'");
+        } else {
+            rc = mylite_dynamic_string_append_char(&string, check_clause[index]);
+        }
+    }
+    if (rc == MYLITE_OK && string.text == NULL) {
+        rc = mylite_dynamic_string_append(&string, "");
+    }
+    if (rc == MYLITE_OK) {
+        *out_check_clause = mylite_dynamic_string_take(&string);
+        if (*out_check_clause == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    mylite_dynamic_string_deinit(&string);
+    return rc;
 }

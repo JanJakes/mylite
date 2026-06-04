@@ -44,13 +44,14 @@ static int append_information_schema_key_column_usage_base_rows(
             &indexes[index]
         );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
-        rc = append_information_schema_key_column_usage_foreign_key_row(
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_key_column_usage_foreign_key_rows(
             database,
             rows,
             schema,
             table,
-            &foreign_keys[index]
+            foreign_keys,
+            foreign_key_count
         );
     }
 
@@ -98,6 +99,63 @@ static int append_information_schema_key_column_usage_index_row(
         }
     }
 
+    return rc;
+}
+
+static int append_information_schema_key_column_usage_foreign_key_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
+) {
+    bool *emitted = NULL;
+    int rc = MYLITE_OK;
+
+    if (foreign_key_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (foreign_key_count > SIZE_MAX / sizeof(*emitted)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    emitted = calloc(foreign_key_count, sizeof(*emitted));
+    if (emitted == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK) {
+        size_t best_index = SIZE_MAX;
+
+        for (size_t index = 0U; index < foreign_key_count; ++index) {
+            if (emitted[index]) {
+                continue;
+            }
+            if (best_index == SIZE_MAX ||
+                compare_ascii_case_insensitive_text(
+                    foreign_keys[index].foreign_key.name,
+                    foreign_keys[best_index].foreign_key.name
+                ) < 0) {
+                best_index = index;
+            }
+        }
+        if (best_index == SIZE_MAX) {
+            break;
+        }
+
+        emitted[best_index] = true;
+        rc = append_information_schema_key_column_usage_foreign_key_row(
+            database,
+            rows,
+            schema,
+            table,
+            &foreign_keys[best_index]
+        );
+    }
+
+    free(emitted);
     return rc;
 }
 

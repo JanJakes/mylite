@@ -480,6 +480,7 @@ enum {
     information_schema_columns_ordinal_position_column = 4,
     information_schema_columns_default_column = 5,
     information_schema_columns_is_nullable_column = 6,
+    information_schema_columns_data_type_column = 7,
     information_schema_columns_character_maximum_length_column = 8,
     information_schema_columns_character_octet_length_column = 9,
     information_schema_columns_numeric_precision_column = 10,
@@ -492,6 +493,11 @@ enum {
     information_schema_columns_extra_column = 17,
     information_schema_columns_column_comment_column = 19,
     information_schema_columns_generation_expression_column = 20,
+    information_schema_statistics_table_schema_column = 1,
+    information_schema_statistics_table_name_column = 2,
+    information_schema_statistics_index_name_column = 5,
+    information_schema_statistics_seq_in_index_column = 6,
+    information_schema_statistics_column_name_column = 7,
     show_processlist_info_truncation_length = 100,
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
@@ -5296,6 +5302,11 @@ static int execute_information_schema_join_compat_select_if_needed(
     mylite_result **out_result,
     bool *out_handled
 );
+static int information_schema_join_compat_select_statement_is_supported(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+);
 static int select_statement_targets_information_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -6921,6 +6932,11 @@ static int append_information_schema_check_constraints_check_row(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct loaded_check_constraint_info *check_constraint
+);
+static int escape_information_schema_check_clause(
+    struct mylite_db *database,
+    const char *check_clause,
+    char **out_check_clause
 );
 static int append_information_schema_key_column_usage_base_rows(
     struct mylite_db *database,
@@ -14609,6 +14625,29 @@ static int render_check_expression_literal(
     const struct mylite_sql_ast_node *node,
     bool require_boolean,
     bool *out_is_boolean
+);
+static int render_check_expression_function(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    bool *out_is_boolean
+);
+static int render_check_expression_identifier_argument_function(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *argument,
+    const char *check_clause_function,
+    const char *sqlite_function,
+    bool is_boolean,
+    bool *out_is_boolean
+);
+static int append_check_expression_mysql_string_literal(
+    struct mylite_dynamic_string *string,
+    const char *text,
+    size_t text_length
+);
+static int append_check_expression_sqlite_string_literal(
+    struct mylite_dynamic_string *string,
+    const char *text,
+    size_t text_length
 );
 static int render_check_expression_unary(
     struct check_expression_render_context *context,

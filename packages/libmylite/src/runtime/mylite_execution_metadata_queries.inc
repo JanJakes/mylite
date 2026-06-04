@@ -1677,8 +1677,20 @@ static int execute_information_schema_select_statement(
     mylite_result **out_result
 ) {
     struct information_schema_query query = {0};
-    int rc = resolve_information_schema_query(database, statement, &query);
+    bool handled = false;
+    int rc = execute_information_schema_join_compat_select_if_needed(
+        database,
+        context,
+        statement,
+        apply_sql_select_limit,
+        out_result,
+        &handled
+    );
 
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    rc = resolve_information_schema_query(database, statement, &query);
     if (rc == MYLITE_OK) {
         rc = execute_information_schema_query(
             database,
@@ -1699,20 +1711,69 @@ static int select_statement_targets_information_schema(
     bool *out_matches
 ) {
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t part_count = 0U;
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
         return MYLITE_MISUSE;
     }
     *out_matches = false;
-    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
-        return MYLITE_OK;
+    if (from_clause != NULL) {
+        rc = select_source_targets_information_schema(database, from_clause, out_matches);
+        if (rc != MYLITE_OK || *out_matches) {
+            return rc;
+        }
+    }
+    return information_schema_join_compat_select_statement_is_supported(
+        database,
+        statement,
+        out_matches
+    );
+}
+
+static int select_source_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    bool *out_matches
+) {
+    if (source == NULL || out_matches == NULL) {
+        return MYLITE_MISUSE;
     }
 
+    *out_matches = false;
+    if (source->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        return table_source_targets_information_schema(database, source, out_matches);
+    }
+    if (source->kind == MYLITE_SQL_AST_FROM_JOIN) {
+        int rc = select_source_targets_information_schema(database, child_at(source, 0U), out_matches);
+
+        if (rc != MYLITE_OK || *out_matches) {
+            return rc;
+        }
+        return select_source_targets_information_schema(database, child_at(source, 1U), out_matches);
+    }
+    if (source->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        return derived_source_targets_information_schema(database, source, out_matches);
+    }
+
+    return MYLITE_OK;
+}
+
+static int table_source_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    bool *out_matches
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_TABLE || out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_matches = false;
     rc = collect_identifier_parts(
-        child_at(from_clause, 0U),
+        child_at(source, 0U),
         parts,
         table_name_part_capacity,
         &part_count,
@@ -1730,6 +1791,24 @@ static int select_statement_targets_information_schema(
     }
 
     return MYLITE_OK;
+}
+
+static int derived_source_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *inner_statement = child_at(source, 0U);
+
+    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED || out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (inner_statement == NULL || inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_OK;
+    }
+
+    return select_statement_targets_information_schema(database, inner_statement, out_matches);
 }
 
 static int execute_mysql_system_table_select_statement(

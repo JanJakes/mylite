@@ -48,14 +48,21 @@ static int append_information_schema_tables_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
+    static const char *const schema_order[] = {
+        "mysql",
+        "information_schema",
+        "performance_schema",
+        "sys",
+    };
     int rc = MYLITE_OK;
 
-    for (size_t table_index = 0U;
-         rc == MYLITE_OK &&
-         table_index < mylite_execution_catalog_builtin_schema_table_directory_count();
+    for (size_t table_index = 0U; rc == MYLITE_OK && table_index < sizeof(schema_order) /
+                                                                       sizeof(schema_order[0]);
          ++table_index) {
         const struct mylite_execution_catalog_builtin_schema_table_directory *directory =
-            mylite_execution_catalog_builtin_schema_table_directory_at(table_index);
+            mylite_execution_catalog_builtin_schema_table_directory_by_name(
+                schema_order[table_index]
+            );
 
         for (size_t name_index = 0U; rc == MYLITE_OK && name_index < directory->table_count;
              ++name_index) {
@@ -75,14 +82,21 @@ static int append_information_schema_tables_extensions_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
+    static const char *const schema_order[] = {
+        "mysql",
+        "information_schema",
+        "performance_schema",
+        "sys",
+    };
     int rc = MYLITE_OK;
 
-    for (size_t table_index = 0U;
-         rc == MYLITE_OK &&
-         table_index < mylite_execution_catalog_builtin_schema_table_directory_count();
+    for (size_t table_index = 0U; rc == MYLITE_OK && table_index < sizeof(schema_order) /
+                                                                       sizeof(schema_order[0]);
          ++table_index) {
         const struct mylite_execution_catalog_builtin_schema_table_directory *directory =
-            mylite_execution_catalog_builtin_schema_table_directory_at(table_index);
+            mylite_execution_catalog_builtin_schema_table_directory_by_name(
+                schema_order[table_index]
+            );
 
         for (size_t name_index = 0U; rc == MYLITE_OK && name_index < directory->table_count;
              ++name_index) {

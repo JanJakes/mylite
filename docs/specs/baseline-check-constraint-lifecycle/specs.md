@@ -104,10 +104,15 @@ Supported DDL:
 
 Supported expression subset:
 
-- unqualified descriptor column references from the same table;
+- unqualified descriptor column references from the same table, excluding
+  `AUTO_INCREMENT` columns;
 - inline column checks may reference only the containing column;
-- integer-family descriptor columns currently stored as SQLite `INTEGER`;
+- descriptor columns whose values can be rendered through the current
+  descriptor-backed SQLite check expression path, including integer-family,
+  decimal, floating-point, string, and JSON descriptors;
 - decimal integer literals with optional unary sign;
+- decimal and floating-point numeric literals with optional unary sign;
+- string literals without embedded NUL bytes;
 - `TRUE` and `FALSE` constants;
 - `NULL` literals in admitted boolean expressions, including `IS NULL`,
   `IS NOT NULL`, and comparisons where MySQL's `UNKNOWN` result should pass
@@ -118,6 +123,8 @@ Supported expression subset:
 - comparisons `=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`;
 - `IS NULL` and `IS NOT NULL`;
 - `AND`, `OR`, and unary `NOT` over admitted boolean terms.
+- the deterministic single-column functions `json_valid(column)` and
+  `length(column)`.
 
 Supported metadata:
 
@@ -149,11 +156,11 @@ Out of scope:
   (`DROP COLUMN`, `RENAME COLUMN`, `MODIFY`, `CHANGE`, `ORDER BY`, and
   `FORCE`) until those planners can rebuild or rewrite check descriptors
   safely;
-- deterministic function support in check expressions;
-- string literals, decimal/float literals, hex/bit literals, temporal literals,
-  parameters, variables, functions, stored functions, subqueries, generated
-  columns, expression default reuse, collations, casts, `IN`, `BETWEEN`,
-  `LIKE`, `REGEXP`, and `XOR`;
+- general deterministic function support in check expressions beyond the
+  admitted `json_valid(column)` and `length(column)` forms;
+- hex/bit literals, temporal literals, parameters, variables, stored functions,
+  subqueries, generated columns, expression default reuse, collations, casts,
+  `IN`, `BETWEEN`, `LIKE`, `REGEXP`, and `XOR`;
 - `CHECK` dependency rules for foreign-key referential actions beyond rejecting
   unsupported action forms already outside the current FK slice;
 - broad `INSERT ... SELECT`, `REPLACE ... SELECT`, or

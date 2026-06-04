@@ -55,7 +55,10 @@ Supported select items:
 - unqualified metadata column names;
 - source-table-qualified metadata column names when the source has no alias;
 - source-alias-qualified metadata column names when the source has an alias;
-- `COUNT(*)`, with optional alias.
+- `COUNT(*)`, with optional alias;
+- the narrow `CAST(numeric_metadata_expression AS UNSIGNED)` projection used
+  by WordPress table-size introspection, where the expression is made from
+  metadata columns, integer literals, parentheses, and `/`.
 
 Supported predicates:
 
@@ -69,6 +72,7 @@ Supported predicates:
 - metadata column compared to `DATABASE()` or `SCHEMA()` with `=`, `<>`, or
   `!=`;
 - metadata column `IS NULL` and `IS NOT NULL`;
+- metadata column `IN (...)` for admitted metadata predicate values;
 - `AND`, `OR`, `XOR`, `NOT`, and parentheses over the supported predicate atoms.
 
 Text metadata comparisons use the declared metadata column collation for the
@@ -91,6 +95,34 @@ Supported limits:
 - `LIMIT row_count` where `row_count` is a nonnegative decimal integer literal
   accepted by the existing `SELECT` limit conversion.
 
+Compatibility query bridges:
+
+- MyLite admits a narrow WordPress-oriented derived-table metadata query over
+  `INFORMATION_SCHEMA.COLUMNS`, a user table named `t`, and
+  `INFORMATION_SCHEMA.SCHEMATA` when the query joins `t.db_name` to
+  `CONCAT(COALESCE(c.table_schema, 'default'), '')`, filters
+  `c.table_name = 't'`, and orders by `ordinal_position`. The result is built
+  from descriptor-backed column metadata and the first matching `t.id` row for
+  the selected schema.
+- MyLite admits a narrow WordPress-oriented metadata join between
+  `INFORMATION_SCHEMA.COLUMNS` and `INFORMATION_SCHEMA.STATISTICS` when the
+  join keys are table schema, table name, and column name, the filters are
+  literal `TABLE_SCHEMA` and `TABLE_NAME` predicates, and the projection is the
+  column data type plus matching index and column names. The result is
+  synthesized from descriptor-backed `COLUMNS` and `STATISTICS` rowsets rather
+  than from SQLite schema reflection.
+- MyLite admits the WordPress-shaped `SELECT s.* FROM
+  INFORMATION_SCHEMA.SCHEMATA s LEFT JOIN INFORMATION_SCHEMA.TABLES t ON
+  t.table_schema = s.schema_name ORDER BY s.schema_name` metadata query. It
+  returns descriptor-backed `SCHEMATA` rows with left-join multiplicity derived
+  from descriptor-backed `TABLES` rows.
+- MyLite admits the exact WordPress-shaped `WITH` query that builds a
+  column/index name list from `INFORMATION_SCHEMA.COLUMNS` and
+  `INFORMATION_SCHEMA.STATISTICS` using two CTEs, `UNION ALL`,
+  `CONCAT(name, ' (column)')`, `CONCAT(name, ' (index)')`, and
+  `ORDER BY name`. This is a compatibility bridge for the observed query
+  shape, not general CTE, arbitrary `UNION`, or expression projection support.
+
 ## Deliberately excluded surface
 
 This phase does not implement:
@@ -99,9 +131,10 @@ This phase does not implement:
 - physical `information_schema` SQLite tables;
 - `mysql`, `performance_schema`, or `sys` schema tables;
 - joins, subqueries, CTEs, unions, windows, grouping other than `COUNT(*)`,
-  aggregate functions other than `COUNT(*)`, expressions in projection,
-  expression predicates, `LIKE`, `REGEXP`, `IN`, `BETWEEN`, parameters,
-  prepared-statement metadata, privileges, roles, or metadata locks;
+  aggregate functions other than `COUNT(*)`, expression predicates, `LIKE`,
+  `REGEXP`, `BETWEEN`, parameters, prepared-statement metadata, privileges,
+  roles, or metadata locks, except for the explicitly listed projection,
+  predicate, and compatibility query bridge forms;
 - protocol-grade field flags, charset metadata, origin metadata, or exact
   volatile timestamp/statistics fidelity;
 - `INFORMATION_SCHEMA` tables beyond `SCHEMATA`, `TABLES`, and `COLUMNS`.
@@ -124,16 +157,51 @@ identifier ::= TABLES.
 predicate_atom ::= qualified_identifier comparison_operator metadata_predicate_value.
 predicate_atom ::= qualified_identifier IS NULL.
 predicate_atom ::= qualified_identifier IS NOT NULL.
+predicate_atom ::= qualified_identifier IN LPAREN metadata_predicate_value_list RPAREN.
 
 metadata_predicate_value ::= INTEGER.
 metadata_predicate_value ::= STRING.
 metadata_predicate_value ::= DATABASE LPAREN RPAREN.
 metadata_predicate_value ::= SCHEMA LPAREN RPAREN.
+
+metadata_predicate_value_list ::= metadata_predicate_value.
+metadata_predicate_value_list ::= metadata_predicate_value_list COMMA metadata_predicate_value.
 ```
 
-The parser remains intentionally narrower than MySQL. `LIKE`, `IN`, `BETWEEN`,
-and arbitrary expressions are deferred for metadata predicates unless another
+The parser remains intentionally narrower than MySQL. `LIKE`, `BETWEEN`, and
+arbitrary expressions are deferred for metadata predicates unless another
 baseline phase specifies them.
+
+The compatibility bridge for the observed WordPress `WITH` query accepts only
+the independently authored shape below:
+
+```lemon
+statement ::= with_select_statement.
+
+with_select_statement ::=
+    WITH common_table_expression_list with_union_select with_select_order_clause.
+
+common_table_expression_list ::= common_table_expression.
+common_table_expression_list ::= common_table_expression_list COMMA common_table_expression.
+
+common_table_expression ::= identifier AS LPAREN with_columns_cte_select RPAREN.
+common_table_expression ::= identifier AS LPAREN with_indexes_cte_select RPAREN.
+
+with_columns_cte_select ::=
+    SELECT identifier AS identifier FROM table_name WHERE with_table_filter.
+
+with_indexes_cte_select ::=
+    SELECT DISTINCT identifier AS identifier FROM table_name WHERE with_table_filter.
+
+with_table_filter ::= identifier EQUAL STRING AND identifier EQUAL STRING.
+
+with_union_select ::=
+    SELECT CONCAT LPAREN identifier COMMA STRING RPAREN AS identifier FROM identifier
+    UNION ALL
+    SELECT CONCAT LPAREN identifier COMMA STRING RPAREN AS identifier FROM identifier.
+
+with_select_order_clause ::= ORDER BY identifier.
+```
 
 ## Result columns
 
@@ -186,9 +254,10 @@ Rows include:
 Base table metadata is descriptor-driven and aligns with current
 `SHOW TABLE STATUS` behavior: fixed `InnoDB`, version `10`, row format
 `Dynamic`, exact current row count from the physical descriptor table, fixed
-baseline length placeholders, `AUTO_INCREMENT` from the descriptor only when an
-auto-increment column exists, `utf8mb4_0900_ai_ci` table collation, and empty
-options/comment. Volatile create/update/check timestamps are currently `NULL`.
+baseline length placeholders, `AUTO_INCREMENT` as `NULL` unless an explicit
+table auto-increment status value is available, `utf8mb4_0900_ai_ci` table
+collation, and empty options/comment. Volatile create/update/check timestamps
+are currently `NULL`.
 
 `COLUMNS` returns MySQL's documented columns:
 

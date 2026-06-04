@@ -213,7 +213,7 @@ For each supported persistent base table, MyLite emits:
 | `Max_data_length` / `MAX_DATA_LENGTH` | `0` |
 | `Index_length` / `INDEX_LENGTH` | `16384` when at least one non-primary index descriptor exists; otherwise `0` |
 | `Data_free` / `DATA_FREE` | `0` |
-| `Auto_increment` / `AUTO_INCREMENT` | Descriptor-owned next value when an auto-increment column exists; otherwise SQL `NULL` |
+| `Auto_increment` / `AUTO_INCREMENT` | SQL `NULL` unless an explicit table auto-increment status value is available |
 | `Create_time` / `CREATE_TIME` | Formatted descriptor creation time, or SQL `NULL` for legacy zero values |
 | `Update_time` / `UPDATE_TIME` | Formatted descriptor update time, or SQL `NULL` for legacy zero values |
 | `Check_time` / `CHECK_TIME` | SQL `NULL` |
@@ -223,7 +223,10 @@ For each supported persistent base table, MyLite emits:
 | `Comment` / `TABLE_COMMENT` | Empty string |
 
 The fixed size fields are MyLite-owned deterministic placeholders. They are not
-SQLite page counts and not full InnoDB statistics.
+SQLite page counts and not full InnoDB statistics. MySQL 8.4.9 can evaluate
+`Auto_increment` predicates using the current next value even when the returned
+status row cell is `NULL`; this baseline mirrors that split for the supported
+predicate forms.
 
 ## DML Side Effects
 

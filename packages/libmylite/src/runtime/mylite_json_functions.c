@@ -268,8 +268,7 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
             .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
             .name = "_mylite_json_valid",
             .argument_count = 1,
-            .text_representation =
-                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .text_representation = SQLITE_UTF8 | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_valid_sqlite_callback,
             .step_callback = NULL,

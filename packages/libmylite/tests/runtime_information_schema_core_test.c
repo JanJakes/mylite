@@ -33,6 +33,7 @@ struct expected_sql_error {
 };
 
 static int test_information_schema_core_queries(void);
+static int test_information_schema_wordpress_bridge_queries(void);
 static int seed_database(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -48,7 +49,11 @@ static int expect_text_or_null(const char *actual, const char *expected, const c
 static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
-    return test_information_schema_core_queries() == 0 ? 0 : 1;
+    int failures = 0;
+
+    failures += test_information_schema_core_queries();
+    failures += test_information_schema_wordpress_bridge_queries();
+    return failures == 0 ? 0 : 1;
 }
 
 static int test_information_schema_core_queries(void) {
@@ -119,7 +124,46 @@ static int test_information_schema_core_queries(void) {
         "Dynamic",
         "1",
         "16384",
-        "2",
+        NULL,
+        "app",
+        "wp_users",
+        "BASE TABLE",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "0",
+        "16384",
+        NULL,
+    };
+    static const char *const table_computed_columns[] = {"name", "engine", "data"};
+    static const char *const table_computed_values[] = {"t", "InnoDB", "0"};
+    static const char *const indexed_column_join_columns[] = {
+        "DATA_TYPE",
+        "INDEX_NAME",
+        "COLUMN_NAME",
+    };
+    static const char *const indexed_column_join_values[] = {
+        "bigint",  "PRIMARY",        "ID",
+        "varchar", "user_email",     "user_email",
+        "varchar", "user_login_key", "user_login",
+        "varchar", "user_nicename",  "user_nicename",
+    };
+    static const char *const with_union_column[] = {"name"};
+    static const char *const with_union_values[] = {
+        "display_name (column)",
+        "ID (column)",
+        "PRIMARY (index)",
+        "user_activation_key (column)",
+        "user_email (column)",
+        "user_email (index)",
+        "user_login (column)",
+        "user_login_key (index)",
+        "user_nicename (column)",
+        "user_nicename (index)",
+        "user_pass (column)",
+        "user_registered (column)",
+        "user_status (column)",
+        "user_url (column)",
     };
     static const char *const column_columns[] = {
         "COLUMN_NAME",
@@ -181,6 +225,13 @@ static int test_information_schema_core_queries(void) {
         "SQL_PATH",
         "DEFAULT_ENCRYPTION",
     };
+    static const char *const schema_name_column[] = {"SCHEMA_NAME"};
+    static const char *const builtin_schemata_default_order_values[] = {
+        "mysql",
+        "information_schema",
+        "performance_schema",
+        "sys",
+    };
     static const char *const system_table_columns[] = {
         "TABLE_SCHEMA",
         "TABLE_NAME",
@@ -235,14 +286,84 @@ static int test_information_schema_core_queries(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
+                   "WHERE SCHEMA_NAME IN ('information_schema', 'mysql', "
+                   "'performance_schema', 'sys')",
+            .column_names = schema_name_column,
+            .column_count = sizeof(schema_name_column) / sizeof(schema_name_column[0]),
+            .values = builtin_schemata_default_order_values,
+            .row_count = sizeof(builtin_schemata_default_order_values) /
+                         sizeof(builtin_schemata_default_order_values[0]),
+            .context = "schemata built-in default order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
                    "TABLE_ROWS, DATA_LENGTH, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES "
                    "WHERE TABLE_SCHEMA = 'app' ORDER BY TABLE_NAME",
             .column_names = table_columns,
             .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
             .values = table_values,
-            .row_count = 2U,
+            .row_count = 3U,
             .context = "tables base descriptor rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME AS name, ENGINE AS engine, "
+                   "CAST(DATA_LENGTH / 1024 / 1024 AS UNSIGNED) AS data "
+                   "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't' ORDER BY name ASC",
+            .column_names = table_computed_columns,
+            .column_count =
+                sizeof(table_computed_columns) / sizeof(table_computed_columns[0]),
+            .values = table_computed_values,
+            .row_count = 1U,
+            .context = "tables computed data length projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT cols.DATA_TYPE, stats.INDEX_NAME, stats.COLUMN_NAME "
+                   "FROM INFORMATION_SCHEMA.COLUMNS AS cols "
+                   "JOIN INFORMATION_SCHEMA.STATISTICS AS stats "
+                   "ON cols.TABLE_SCHEMA = stats.TABLE_SCHEMA "
+                   "AND cols.TABLE_NAME = stats.TABLE_NAME "
+                   "AND cols.COLUMN_NAME = stats.COLUMN_NAME "
+                   "WHERE cols.TABLE_SCHEMA = 'app' AND cols.TABLE_NAME = 'wp_users' "
+                   "ORDER BY INDEX_NAME ASC",
+            .column_names = indexed_column_join_columns,
+            .column_count =
+                sizeof(indexed_column_join_columns) / sizeof(indexed_column_join_columns[0]),
+            .values = indexed_column_join_values,
+            .row_count = sizeof(indexed_column_join_values) /
+                         sizeof(indexed_column_join_values[0]) /
+                         (sizeof(indexed_column_join_columns) /
+                          sizeof(indexed_column_join_columns[0])),
+            .context = "columns statistics join bridge rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "WITH cols AS ("
+                   "SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users'), "
+                   "indexes AS ("
+                   "SELECT DISTINCT INDEX_NAME AS index_name FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users') "
+                   "SELECT CONCAT(column_name, ' (column)') AS name FROM cols "
+                   "UNION ALL "
+                   "SELECT CONCAT(index_name, ' (index)') AS name FROM indexes "
+                   "ORDER BY name",
+            .column_names = with_union_column,
+            .column_count = 1U,
+            .values = with_union_values,
+            .row_count = sizeof(with_union_values) / sizeof(with_union_values[0]),
+            .context = "information schema WITH union bridge rows",
         }
     );
     failures += expect_query(
@@ -434,10 +555,89 @@ static int seed_database(mylite_db *database) {
     failures +=
         expect_statement_ok(database, "ALTER TABLE t ALTER COLUMN hidden SET INVISIBLE", -1);
     failures += expect_statement_ok(database, "CREATE TABLE other (x BIGINT UNSIGNED)", -1);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_users ("
+        "ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, "
+        "user_login VARCHAR(60) NOT NULL DEFAULT '', "
+        "user_pass VARCHAR(255) NOT NULL DEFAULT '', "
+        "user_nicename VARCHAR(50) NOT NULL DEFAULT '', "
+        "user_email VARCHAR(100) NOT NULL DEFAULT '', "
+        "user_url VARCHAR(100) NOT NULL DEFAULT '', "
+        "user_registered DATETIME NOT NULL, "
+        "user_activation_key VARCHAR(255) NOT NULL DEFAULT '', "
+        "user_status INT NOT NULL DEFAULT '0', "
+        "display_name VARCHAR(250) NOT NULL DEFAULT '', "
+        "PRIMARY KEY (ID), "
+        "KEY user_login_key (user_login), "
+        "KEY user_nicename (user_nicename), "
+        "KEY user_email (user_email))",
+        -1
+    );
     failures +=
         expect_statement_ok(database, "INSERT INTO t (v, u, hidden) VALUES ('abc', 2, 9)", 1);
     failures += expect_statement_ok(database, "INSERT INTO other VALUES (42)", 1);
 
+    return failures;
+}
+
+static int test_information_schema_wordpress_bridge_queries(void) {
+    static const char *const dynamic_columns[] = {
+        "id",
+        "TABLE_SCHEMA",
+        "TABLE_NAME",
+        "COLUMN_NAME",
+    };
+    static const char *const dynamic_values[] = {
+        "2",
+        "app",
+        "t",
+        "id",
+        "2",
+        "app",
+        "t",
+        "db_name",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "wordpress_bridges") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open wordpress bridge db");
+    failures += expect_statement_ok(database, "CREATE DATABASE app", -1);
+    failures += expect_statement_ok(database, "USE app", -1);
+    failures += expect_statement_ok(database, "CREATE TABLE t (id INT, db_name TEXT)", -1);
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO t (id, db_name) VALUES (1, 'other'), (2, 'app')",
+        2
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT sub.id, sub.table_schema, sub.table_name, sub.column_name "
+                   "FROM ("
+                   "SELECT * FROM information_schema.columns c "
+                   "JOIN t ON t.db_name = CONCAT(COALESCE(c.table_schema, 'default'), '') "
+                   "JOIN information_schema.schemata s ON s.schema_name = c.table_schema "
+                   "WHERE c.table_name = 't'"
+                   ") sub "
+                   "ORDER BY ordinal_position",
+            .column_names = dynamic_columns,
+            .column_count = sizeof(dynamic_columns) / sizeof(dynamic_columns[0]),
+            .values = dynamic_values,
+            .row_count = sizeof(dynamic_values) / sizeof(dynamic_values[0]) /
+                         (sizeof(dynamic_columns) / sizeof(dynamic_columns[0])),
+            .context = "wordpress dynamic information schema columns bridge",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

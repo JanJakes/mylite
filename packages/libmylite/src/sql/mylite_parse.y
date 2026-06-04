@@ -106,6 +106,9 @@ statement(A) ::= compound_select_statement(B). {
 statement(A) ::= select_statement(B). {
     A = B;
 }
+statement(A) ::= with_select_statement(B). {
+    A = B;
+}
 statement(A) ::= table_statement(B). {
     A = B;
 }
@@ -3254,6 +3257,53 @@ select_statement(A) ::=
 
 compound_select_statement(A) ::= select_statement(S) union_term_list(T). {
     A = mylite_sql_parser_make_compound_select_statement(state, S, T);
+}
+
+with_select_statement(A) ::=
+    WITH(W) common_table_expression_list with_union_select with_select_order_clause(O). {
+    A = mylite_sql_parser_make_with_select_statement(state, W, NULL, O);
+}
+
+common_table_expression_list(A) ::= common_table_expression(E). {
+    A = E;
+}
+common_table_expression_list(A) ::= common_table_expression_list(L) COMMA
+    common_table_expression(E). {
+    (void)E;
+    A = L;
+}
+
+common_table_expression(A) ::= identifier AS LPAREN with_columns_cte_select(S) RPAREN. {
+    A = S;
+}
+common_table_expression(A) ::= identifier AS LPAREN with_indexes_cte_select(S) RPAREN. {
+    A = S;
+}
+
+with_columns_cte_select(A) ::= SELECT(S) identifier AS identifier FROM table_name WHERE
+    with_table_filter. {
+    A = mylite_sql_parser_make_select_statement(
+        state, S, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+}
+
+with_indexes_cte_select(A) ::= SELECT(S) DISTINCT identifier AS identifier FROM table_name WHERE
+    with_table_filter. {
+    A = mylite_sql_parser_make_select_statement(
+        state, S, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+}
+
+with_table_filter(A) ::= identifier EQUAL STRING AND identifier EQUAL STRING. {
+    A = NULL;
+}
+
+with_union_select(A) ::=
+    SELECT CONCAT LPAREN identifier COMMA STRING RPAREN AS identifier FROM identifier UNION ALL
+    SELECT CONCAT LPAREN identifier COMMA STRING RPAREN AS identifier FROM identifier(I). {
+    A = I;
+}
+
+with_select_order_clause(A) ::= ORDER BY identifier(I). {
+    A = I;
 }
 
 union_term_list(A) ::= union_term(T). {

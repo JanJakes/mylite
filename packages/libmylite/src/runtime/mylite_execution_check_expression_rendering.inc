@@ -136,6 +136,9 @@ static int render_check_expression_work_item(
         return render_check_expression_column(context, node);
     case MYLITE_SQL_AST_LITERAL:
         return render_check_expression_literal(context, node, item.require_boolean, out_is_boolean);
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
+        return render_check_expression_function(context, node, out_is_boolean);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return render_check_expression_unary(context, node, items, item_count, out_is_boolean);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
@@ -162,8 +165,8 @@ static int render_check_expression_work_item(
 
     set_unsupported_error(
         context->database,
-        "CHECK constraints support only integer columns, integer literals, boolean comparisons, "
-        "IS NULL, IS NOT NULL, AND, OR, and NOT"
+        "CHECK constraints support only descriptor columns, literals, deterministic baseline "
+        "functions, boolean comparisons, IS NULL, IS NOT NULL, AND, OR, and NOT"
     );
     return MYLITE_ERROR;
 }
@@ -203,16 +206,6 @@ static int render_check_expression_column(
     }
     if (context->plan->columns[column_index].is_auto_increment) {
         set_check_constraint_auto_increment_error(context->database);
-        return MYLITE_ERROR;
-    }
-    if (context->plan->columns[column_index].physical_type == NULL ||
-        strcmp(context->plan->columns[column_index].physical_type, "INTEGER") != 0 ||
-        planned_column_is_year(&context->plan->columns[column_index]) ||
-        planned_column_is_bit(&context->plan->columns[column_index])) {
-        set_unsupported_error(
-            context->database,
-            "CHECK constraints support only integer descriptor columns"
-        );
         return MYLITE_ERROR;
     }
 
@@ -256,7 +249,9 @@ static int render_check_expression_literal(
         set_check_constraint_non_boolean_error(context->database);
         return MYLITE_ERROR;
     }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
         if (append_check_expression_span_text(context->database, context->check_clause, node) !=
             MYLITE_OK) {
             return MYLITE_NOMEM;
@@ -273,12 +268,175 @@ static int render_check_expression_literal(
         }
         return mylite_dynamic_string_append(context->sqlite_expression, "NULL");
     }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *text = NULL;
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal(
+            context->database,
+            node,
+            "CHECK constraints support only SQL string literals",
+            "CHECK constraint string literals cannot contain NUL bytes",
+            &text,
+            &text_length
+        );
+
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(context->check_clause, "_utf8mb4");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_check_expression_mysql_string_literal(
+                context->check_clause,
+                text,
+                text_length
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_check_expression_sqlite_string_literal(
+                context->sqlite_expression,
+                text,
+                text_length
+            );
+        }
+        free(text);
+        return rc;
+    }
 
     set_unsupported_error(
         context->database,
-        "CHECK constraints support only integer and boolean literals"
+        "CHECK constraints support only numeric, string, NULL, and boolean literals"
     );
     return MYLITE_ERROR;
+}
+
+static int render_check_expression_function(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    bool *out_is_boolean
+) {
+    if (mylite_sql_ast_node_child_count(node) != 1U) {
+        set_check_constraint_function_error(context->database);
+        return MYLITE_ERROR;
+    }
+    if (node->kind == MYLITE_SQL_AST_LENGTH_FUNCTION) {
+        return render_check_expression_identifier_argument_function(
+            context,
+            child_at(node, 0U),
+            "length",
+            "length",
+            false,
+            out_is_boolean
+        );
+    }
+    if (node->kind == MYLITE_SQL_AST_JSON_VALID_FUNCTION) {
+        return render_check_expression_identifier_argument_function(
+            context,
+            child_at(node, 0U),
+            "json_valid",
+            "_mylite_json_valid",
+            true,
+            out_is_boolean
+        );
+    }
+
+    set_check_constraint_function_error(context->database);
+    return MYLITE_ERROR;
+}
+
+static int render_check_expression_identifier_argument_function(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *argument,
+    const char *check_clause_function,
+    const char *sqlite_function,
+    bool is_boolean,
+    bool *out_is_boolean
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(argument);
+    int rc = MYLITE_OK;
+
+    *out_is_boolean = false;
+    if (unwrapped == NULL || unwrapped->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_check_constraint_function_error(context->database);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(context->check_clause, check_clause_function);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(context->check_clause, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(context->sqlite_expression, sqlite_function);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(context->sqlite_expression, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = render_check_expression_column(context, unwrapped);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(context->check_clause, ')');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(context->sqlite_expression, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_is_boolean = is_boolean;
+    }
+    return rc;
+}
+
+static int append_check_expression_mysql_string_literal(
+    struct mylite_dynamic_string *string,
+    const char *text,
+    size_t text_length
+) {
+    int rc = mylite_dynamic_string_append_char(string, '\'');
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < text_length; ++index) {
+        switch (text[index]) {
+        case '\'':
+            rc = mylite_dynamic_string_append(string, "''");
+            break;
+        case '\\':
+            rc = mylite_dynamic_string_append(string, "\\\\");
+            break;
+        case '\n':
+            rc = mylite_dynamic_string_append(string, "\\n");
+            break;
+        case '\r':
+            rc = mylite_dynamic_string_append(string, "\\r");
+            break;
+        case '\t':
+            rc = mylite_dynamic_string_append(string, "\\t");
+            break;
+        default:
+            rc = mylite_dynamic_string_append_char(string, text[index]);
+            break;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '\'');
+    }
+    return rc;
+}
+
+static int append_check_expression_sqlite_string_literal(
+    struct mylite_dynamic_string *string,
+    const char *text,
+    size_t text_length
+) {
+    int rc = mylite_dynamic_string_append_char(string, '\'');
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < text_length; ++index) {
+        if (text[index] == '\'') {
+            rc = mylite_dynamic_string_append(string, "''");
+        } else {
+            rc = mylite_dynamic_string_append_char(string, text[index]);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '\'');
+    }
+    return rc;
 }
 
 static int render_check_expression_unary(
@@ -502,10 +660,10 @@ static const char *check_expression_check_clause_operator_sql(
         return "IS NOT";
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
-        return "AND";
+        return "and";
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
-        return "OR";
+        return "or";
     case MYLITE_SQL_AST_OPERATOR_ADD:
         return "+";
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:

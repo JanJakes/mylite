@@ -268,6 +268,8 @@ static int information_schema_is_null_predicate_matches(
     enum information_schema_truth_value *out_truth
 ) {
     size_t column_index = 0U;
+    char predicate_value_text[integer_text_capacity];
+    const char *predicate_value = NULL;
     int rc = information_schema_resolve_column_reference(
         database,
         query,
@@ -277,7 +279,18 @@ static int information_schema_is_null_predicate_matches(
     );
 
     if (rc == MYLITE_OK) {
-        bool is_null = row[column_index] == NULL;
+        rc = information_schema_predicate_row_value(
+            database,
+            query,
+            row,
+            column_index,
+            predicate_value_text,
+            sizeof(predicate_value_text),
+            &predicate_value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        bool is_null = predicate_value == NULL;
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
 
         *out_truth = information_schema_truth_from_bool(is_null);
@@ -287,6 +300,97 @@ static int information_schema_is_null_predicate_matches(
             } else {
                 *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
             }
+        }
+    }
+    return rc;
+}
+
+static int information_schema_predicate_row_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    char **row,
+    size_t column_index,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    int64_t row_count = 0;
+    bool found = false;
+    bool has_auto_increment = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || query == NULL || row == NULL || buffer == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = row[column_index];
+    if (*out_value != NULL || query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES ||
+        column_index != information_schema_tables_auto_increment_column ||
+        row[information_schema_tables_table_schema_column] == NULL ||
+        row[information_schema_tables_table_name_column] == NULL) {
+        return MYLITE_OK;
+    }
+    rc = mylite_catalog_try_read_schema_by_name(
+        database,
+        row[information_schema_tables_table_schema_column],
+        &schema,
+        &found
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA predicate schema");
+        return MYLITE_ERROR;
+    }
+    if (!found) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_try_read_table_by_name(
+        database,
+        schema.schema_id,
+        row[information_schema_tables_table_name_column],
+        &table,
+        &found
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA predicate table");
+        return MYLITE_ERROR;
+    }
+    if (!found || table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+
+    rc = read_show_table_status_row_count(database, &table, &row_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA predicate table rows");
+        return MYLITE_ERROR;
+    }
+    if (row_count <= 0) {
+        return MYLITE_OK;
+    }
+
+    rc = table_status_has_auto_increment(database, &table, &has_auto_increment);
+    if (rc == MYLITE_OK && has_auto_increment) {
+        rc = information_schema_format_i64(
+            database,
+            table.auto_increment_next,
+            buffer,
+            buffer_size
+        );
+        if (rc == MYLITE_OK) {
+            *out_value = buffer;
         }
     }
     return rc;

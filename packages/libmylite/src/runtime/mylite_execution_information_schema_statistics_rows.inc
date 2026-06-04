@@ -135,14 +135,21 @@ static int append_information_schema_statistics_base_rows(
             &index_count
         );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
-        rc = append_information_schema_statistics_base_index_row(
-            database,
-            rows,
-            schema,
-            table,
-            &indexes[index]
-        );
+    for (int group = index_display_group_primary;
+         rc == MYLITE_OK && group <= index_display_group_fulltext;
+         ++group) {
+        for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+            if (index_display_group(&indexes[index]) != group) {
+                continue;
+            }
+            rc = append_information_schema_statistics_base_index_row(
+                database,
+                rows,
+                schema,
+                table,
+                &indexes[index]
+            );
+        }
     }
 
     mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);

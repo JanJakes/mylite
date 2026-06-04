@@ -512,6 +512,36 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_with_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_ast_node *union_terms,
+    struct mylite_sql_ast_node *order_clause
+) {
+    struct mylite_sql_source_span span = span_from_token(&with_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (order_clause != NULL) {
+        span = span_join(span, order_clause->span);
+    } else if (union_terms != NULL) {
+        span = span_join(span, union_terms->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SELECT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, NULL);
+    mylite_sql_ast_node_append_child(statement, NULL);
+    mylite_sql_ast_node_append_child(statement, NULL);
+    mylite_sql_ast_node_append_child(statement, NULL);
+    mylite_sql_ast_node_append_child(statement, NULL);
+    mylite_sql_ast_node_append_child(statement, NULL);
+    mylite_sql_ast_node_append_child(statement, NULL);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_compound_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *first_select,

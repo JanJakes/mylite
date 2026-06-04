@@ -583,6 +583,10 @@ static int finalize_planned_column_string_default_value(
     };
     int rc = MYLITE_OK;
 
+    if (column_default_value_is_numeric_character_literal(value_node)) {
+        return finalize_planned_column_numeric_character_default(database, column, value_node);
+    }
+
     planned_column_descriptor_for_default(column, &descriptor);
     if (planned_column_is_char(column)) {
         rc = convert_char_literal(database, value_node, &descriptor, 1U, false, &value);
@@ -601,6 +605,207 @@ static int finalize_planned_column_string_default_value(
     }
 
     return rc;
+}
+
+static int finalize_planned_column_numeric_character_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct char_text_conversion conversion = {.text = NULL, .text_length = 0U, .row_number = 1U};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = allocate_numeric_character_default_text(database, value_node, &text, &text_length);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    conversion.text = text;
+    conversion.text_length = text_length;
+    if (planned_column_is_char(column)) {
+        rc = convert_char_text(database, &descriptor, &conversion, false);
+    } else {
+        rc = convert_varchar_text(database, &descriptor, &conversion, false);
+    }
+    if (rc != MYLITE_OK) {
+        free(text);
+        if (rc != MYLITE_NOMEM) {
+            set_invalid_default_error(database, column->name);
+            rc = MYLITE_ERROR;
+        }
+        return rc;
+    }
+
+    rc = copy_planned_character_expression_default_text(
+        database,
+        column,
+        conversion.text,
+        conversion.text_length
+    );
+    free(text);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
+    return rc;
+}
+
+static bool column_default_value_is_numeric_character_literal(
+    const struct mylite_sql_ast_node *value_node
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (value_node == NULL) {
+        return false;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+        const struct mylite_sql_ast_node *operand = child_at(value_node, 0U);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        if (operand == NULL || operand->kind != MYLITE_SQL_AST_LITERAL) {
+            return false;
+        }
+        literal_kind = mylite_sql_ast_node_literal_kind(operand);
+        return literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+               literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+               literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+    return literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_FALSE;
+}
+
+static int allocate_numeric_character_default_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_text,
+    size_t *out_text_length
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (value_node == NULL) {
+        set_runtime_error(database, "invalid character default literal");
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+        const struct mylite_sql_ast_node *operand = child_at(value_node, 0U);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return copy_numeric_character_default_span(
+                database,
+                operand,
+                out_text,
+                out_text_length
+            );
+        }
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            size_t operand_length = operand == NULL ? 0U : operand->span.length;
+
+            if (operand == NULL || operand->span.text == NULL ||
+                operand_length > SIZE_MAX - 1U) {
+                set_runtime_error(database, "invalid character default literal");
+                return MYLITE_ERROR;
+            }
+            *out_text = malloc(operand_length + 2U);
+            if (*out_text == NULL) {
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            (*out_text)[0] = '-';
+            memcpy(*out_text + 1, operand->span.text, operand_length);
+            (*out_text)[operand_length + 1U] = '\0';
+            *out_text_length = operand_length + 1U;
+            return MYLITE_OK;
+        }
+        set_runtime_error(database, "invalid character default literal");
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_runtime_error(database, "invalid character default literal");
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        return copy_numeric_character_default_bytes(
+            database,
+            "1",
+            1U,
+            out_text,
+            out_text_length
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        return copy_numeric_character_default_bytes(
+            database,
+            "0",
+            1U,
+            out_text,
+            out_text_length
+        );
+    }
+
+    return copy_numeric_character_default_span(database, value_node, out_text, out_text_length);
+}
+
+static int copy_numeric_character_default_span(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_text,
+    size_t *out_text_length
+) {
+    if (value_node == NULL || value_node->span.text == NULL || value_node->span.length == 0U) {
+        set_runtime_error(database, "invalid character default literal");
+        return MYLITE_ERROR;
+    }
+    return copy_numeric_character_default_bytes(
+        database,
+        value_node->span.text,
+        value_node->span.length,
+        out_text,
+        out_text_length
+    );
+}
+
+static int copy_numeric_character_default_bytes(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length
+) {
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (text == NULL || text_length == 0U) {
+        set_runtime_error(database, "invalid character default literal");
+        return MYLITE_ERROR;
+    }
+    *out_text = malloc(text_length + 1U);
+    if (*out_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_text, text, text_length);
+    (*out_text)[text_length] = '\0';
+    *out_text_length = text_length;
+    return MYLITE_OK;
 }
 
 static int finalize_planned_column_decimal_default(

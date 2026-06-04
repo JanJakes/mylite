@@ -852,6 +852,20 @@ static int test_catalog_v28_character_expression_migration(void) {
 }
 
 static int test_string_defaults_diagnostics(void) {
+    static const char *const numeric_character_show_columns_rows[] = {
+        "v", "varchar(3)", "YES", "", "0", "",
+        "c", "char(3)",    "YES", "", "1", "",
+        "f", "varchar(5)", "YES", "", "0", "",
+    };
+    static const char *const numeric_character_show_create_rows[] = {
+        "numeric_character_defaults",
+        "CREATE TABLE `numeric_character_defaults` (\n"
+        "  `v` varchar(3) DEFAULT '0',\n"
+        "  `c` char(3) DEFAULT '1',\n"
+        "  `f` varchar(5) DEFAULT '0'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const numeric_character_default_rows[] = {"0", "1", "0"};
     mylite_db *database = NULL;
     int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
 
@@ -894,13 +908,40 @@ static int test_string_defaults_diagnostics(void) {
             .message_part = "Invalid default value for 'c'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE bad_non_string (v VARCHAR(3) DEFAULT 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
+        "CREATE TABLE numeric_character_defaults (v VARCHAR(3) DEFAULT 0, "
+        "c CHAR(3) DEFAULT TRUE, f VARCHAR(5) DEFAULT FALSE)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numeric_character_defaults",
+            .values = numeric_character_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "numeric character defaults SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE numeric_character_defaults",
+            .values = numeric_character_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "numeric character defaults SHOW CREATE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO numeric_character_defaults () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v, c, f FROM numeric_character_defaults",
+            .values = numeric_character_default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "numeric character defaults materialization",
         }
     );
     failures += execute_error(
@@ -923,15 +964,7 @@ static int test_string_defaults_diagnostics(void) {
             .message_part = "Invalid default value for 'vc'",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE diag ALTER COLUMN c SET DEFAULT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'c'",
-        }
-    );
+    failures += expect_statement_ok(database, "ALTER TABLE diag ALTER COLUMN c SET DEFAULT 1");
 
     mylite_close(database);
     return failures;

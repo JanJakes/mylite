@@ -17,6 +17,25 @@ enum {
     string_row_count = 5,
 };
 
+#define WP_UTF8_TEXT                                                                               \
+    "\xC4"                                                                                         \
+    "\x85"                                                                                         \
+    "\xC5"                                                                                         \
+    "\x82"                                                                                         \
+    "\xC3"                                                                                         \
+    "\xB3"                                                                                         \
+    "\xC5"                                                                                         \
+    "\x82"                                                                                         \
+    "\xC5"                                                                                         \
+    "\xBA"                                                                                         \
+    "\xC4"                                                                                         \
+    "\x87"                                                                                         \
+    "\xC4"                                                                                         \
+    "\x99"                                                                                         \
+    "\xE2"                                                                                         \
+    "\x80"                                                                                         \
+    "\xA0"
+
 struct expected_sql_error {
     int code;
     const char *sqlstate;
@@ -81,6 +100,7 @@ static int test_string_predicate_queries(void) {
     static const char *const not_null_safe_ids[] = {"3", "4", "5"};
     static const char *const logical_ids[] = {"1", "2", "5"};
     static const char *const aggregate_count[] = {"2"};
+    static const char *const utf8_ids[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -177,6 +197,24 @@ static int test_string_predicate_queries(void) {
             .context = "aggregate source filter string predicate",
         }
     );
+    failures +=
+        execute_ok(database, "CREATE TABLE utf8_strings (id INT, v VARCHAR(16), t TEXT)", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO utf8_strings VALUES (1, '" WP_UTF8_TEXT "', '" WP_UTF8_TEXT "')",
+        NULL
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM utf8_strings WHERE v = '" WP_UTF8_TEXT "' AND t = '" WP_UTF8_TEXT
+                   "'",
+            .values = utf8_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "UTF-8 string equality predicate",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -254,19 +292,6 @@ static int test_string_predicate_diagnostics(void) {
             .message_part = "WHERE string predicates support only string literals",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v = '"
-        "\xC3"
-        "\xA9"
-        "'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicate literals support only ASCII text",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

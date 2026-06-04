@@ -155,11 +155,6 @@ static int validate_varchar_text(
         set_unsupported_error(database, "VARCHAR values are too large for this build");
         return MYLITE_ERROR;
     }
-    if (memchr(validation.text, '\0', validation.text_length) != NULL) {
-        set_unsupported_error(database, "VARCHAR values do not support NUL bytes");
-        return MYLITE_ERROR;
-    }
-
     rc = varchar_length_for_column(database, column, &declared_length);
     if (rc != MYLITE_OK) {
         return rc;
@@ -194,10 +189,6 @@ static int convert_varchar_text(
     }
     if (conversion->text_length > (size_t)INT_MAX) {
         set_unsupported_error(database, "VARCHAR values are too large for this build");
-        return MYLITE_ERROR;
-    }
-    if (memchr(conversion->text, '\0', conversion->text_length) != NULL) {
-        set_unsupported_error(database, "VARCHAR values do not support NUL bytes");
         return MYLITE_ERROR;
     }
     if (column == NULL || !column_descriptor_is_varchar(column)) {
@@ -264,10 +255,6 @@ static int convert_char_text(
     }
     if (conversion->text_length > (size_t)INT_MAX) {
         set_unsupported_error(database, "CHAR values are too large for this build");
-        return MYLITE_ERROR;
-    }
-    if (memchr(conversion->text, '\0', conversion->text_length) != NULL) {
-        set_unsupported_error(database, "CHAR values do not support NUL bytes");
         return MYLITE_ERROR;
     }
     if (column == NULL || !column_descriptor_is_char(column)) {
@@ -343,10 +330,6 @@ static int validate_canonical_char_text(
         set_unsupported_error(database, "CHAR values are too large for this build");
         return MYLITE_ERROR;
     }
-    if (memchr(validation.text, '\0', validation.text_length) != NULL) {
-        set_unsupported_error(database, "CHAR values do not support NUL bytes");
-        return MYLITE_ERROR;
-    }
     if (column == NULL || !column_descriptor_is_char(column)) {
         set_unsupported_error(database, "statement supports only baseline CHAR descriptors");
         return MYLITE_ERROR;
@@ -400,10 +383,6 @@ static int validate_text_family_text(
         set_unsupported_error(database, "TEXT values are too large for this build");
         return MYLITE_ERROR;
     }
-    if (memchr(validation.text, '\0', validation.text_length) != NULL) {
-        set_unsupported_error(database, "TEXT values do not support NUL bytes");
-        return MYLITE_ERROR;
-    }
     if (column == NULL || !column_descriptor_is_text_family(column)) {
         set_unsupported_error(database, "statement supports only baseline TEXT descriptors");
         return MYLITE_ERROR;
@@ -445,10 +424,6 @@ static int convert_text_family_text(
     }
     if (conversion->text_length > (size_t)INT_MAX) {
         set_unsupported_error(database, "TEXT values are too large for this build");
-        return MYLITE_ERROR;
-    }
-    if (memchr(conversion->text, '\0', conversion->text_length) != NULL) {
-        set_unsupported_error(database, "TEXT values do not support NUL bytes");
         return MYLITE_ERROR;
     }
     if (column == NULL || !column_descriptor_is_text_family(column)) {

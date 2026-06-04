@@ -1192,6 +1192,7 @@ static int test_text_diagnostics(void) {
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const empty_text_default_rows[] = {"1", "", NULL};
+    static const unsigned char nul_text_value[] = {'a', '\0', 'b'};
     char path[test_path_capacity];
     char too_long_sql
         [sizeof("INSERT INTO diag VALUES (1, '', 'x')") + tinytext_overlength_byte_count];
@@ -1271,15 +1272,50 @@ static int test_text_diagnostics(void) {
             .context = "text numeric and hex literal DML",
         }
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO diag VALUES (3, 'a\\0', 'x')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "TEXT values do not support NUL bytes",
+    failures += expect_dml_ok(database, "INSERT INTO diag VALUES (3, 'zz', 'a\\0b')", 1);
+    failures += execute_ok(database, "SELECT nn FROM diag WHERE id = 3", &result);
+    if (result != NULL) {
+        const unsigned char *actual =
+            (const unsigned char *)mylite_result_value_bytes(result, 0U, 0U);
+
+        failures += expect_size(
+            mylite_result_value_size(result, 0U, 0U),
+            sizeof(nul_text_value),
+            "TEXT NUL byte result size"
+        );
+        failures += expect_true(actual != NULL, "TEXT NUL byte result value");
+        if (actual != NULL) {
+            failures +=
+                expect_bytes(actual, nul_text_value, sizeof(nul_text_value), "TEXT NUL bytes");
         }
-    );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_statement_ok(database, "CREATE TABLE nul_text_copy (value TEXT)");
+    failures +=
+        expect_dml_ok(database, "INSERT INTO nul_text_copy SELECT nn FROM diag WHERE id = 3", 1);
+    failures += execute_ok(database, "SELECT value FROM nul_text_copy", &result);
+    if (result != NULL) {
+        const unsigned char *actual =
+            (const unsigned char *)mylite_result_value_bytes(result, 0U, 0U);
+
+        failures += expect_size(
+            mylite_result_value_size(result, 0U, 0U),
+            sizeof(nul_text_value),
+            "TEXT INSERT SELECT NUL byte result size"
+        );
+        failures += expect_true(actual != NULL, "TEXT INSERT SELECT NUL byte result value");
+        if (actual != NULL) {
+            failures += expect_bytes(
+                actual,
+                nul_text_value,
+                sizeof(nul_text_value),
+                "TEXT INSERT SELECT NUL bytes"
+            );
+        }
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "CREATE TABLE bad_default (v TEXT DEFAULT 1)",

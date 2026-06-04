@@ -23,11 +23,6 @@ static int validate_insert_select_convertible_string_value(
         return MYLITE_ERROR;
     }
     text_length = (size_t)byte_count;
-    if (memchr(text, '\0', text_length) != NULL) {
-        set_unsupported_error(database, "string values do not support NUL bytes");
-        return MYLITE_ERROR;
-    }
-
     if (column_descriptor_is_varchar(validation.target_column)) {
         return validate_insert_select_convertible_varchar_value(
             database,

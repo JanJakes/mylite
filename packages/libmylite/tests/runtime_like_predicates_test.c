@@ -22,6 +22,34 @@ enum {
     like_remaining_row_count = 5,
 };
 
+#define WP_UTF8_TEXT                                                                               \
+    "\xC4"                                                                                         \
+    "\x85"                                                                                         \
+    "\xC5"                                                                                         \
+    "\x82"                                                                                         \
+    "\xC3"                                                                                         \
+    "\xB3"                                                                                         \
+    "\xC5"                                                                                         \
+    "\x82"                                                                                         \
+    "\xC5"                                                                                         \
+    "\xBA"                                                                                         \
+    "\xC4"                                                                                         \
+    "\x87"                                                                                         \
+    "\xC4"                                                                                         \
+    "\x99"                                                                                         \
+    "\xE2"                                                                                         \
+    "\x80"                                                                                         \
+    "\xA0"
+#define WP_UTF8_FRAGMENT                                                                           \
+    "\xC3"                                                                                         \
+    "\xB3"                                                                                         \
+    "\xC5"                                                                                         \
+    "\x82"                                                                                         \
+    "\xC5"                                                                                         \
+    "\xBA"                                                                                         \
+    "\xC4"                                                                                         \
+    "\x87"
+
 struct expected_sql_error {
     int code;
     const char *sqlstate;
@@ -104,6 +132,7 @@ static int test_like_predicate_queries(void) {
     static const char *const not_like_ab_ids[] = {"8"};
     static const char *const aggregate_count[] = {"6"};
     static const char *const logical_ids[] = {"1", "8"};
+    static const char *const utf8_ids[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -220,11 +249,20 @@ static int test_like_predicate_queries(void) {
             .context = "LIKE accepts CONCAT pattern expression",
         }
     );
-    failures += execute_ok(
+    failures += execute_ok(database, "CREATE TABLE utf8_strings (id INT, v VARCHAR(16))", NULL);
+    failures +=
+        execute_ok(database, "INSERT INTO utf8_strings VALUES (1, '" WP_UTF8_TEXT "')", NULL);
+    failures += expect_query_values(
         database,
-        "CREATE TABLE having_names(name VARCHAR(32))",
-        NULL
+        (struct expected_query){
+            .sql = "SELECT id FROM utf8_strings WHERE v LIKE '%" WP_UTF8_FRAGMENT "%'",
+            .values = utf8_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "UTF-8 LIKE pattern",
+        }
     );
+    failures += execute_ok(database, "CREATE TABLE having_names(name VARCHAR(32))", NULL);
     failures += execute_ok(
         database,
         "INSERT INTO having_names VALUES "
@@ -278,16 +316,8 @@ static int test_like_predicate_queries(void) {
             size_t age_column_count = mylite_result_column_count(age_result);
             size_t age_row_count = mylite_result_row_count(age_result);
 
-            failures += expect_size(
-                age_column_count,
-                1U,
-                "unix_timestamp text arithmetic columns"
-            );
-            failures += expect_size(
-                age_row_count,
-                1U,
-                "unix_timestamp text arithmetic rows"
-            );
+            failures += expect_size(age_column_count, 1U, "unix_timestamp text arithmetic columns");
+            failures += expect_size(age_row_count, 1U, "unix_timestamp text arithmetic rows");
             if (age_column_count == 1U && age_row_count == 1U) {
                 age_text = mylite_result_value_text(age_result, 0U, 0U);
                 age = age_text == NULL ? -1LL : strtoll(age_text, &age_end, 10);
@@ -559,28 +589,6 @@ static int test_like_predicate_diagnostics(void) {
             .message_part = "near 'ESCAPE'",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v LIKE '"
-        "\xC3"
-        "\xA9"
-        "%'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE LIKE pattern literals support only ASCII text",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v LIKE 'a\\0%'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE LIKE pattern literals do not support NUL bytes",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

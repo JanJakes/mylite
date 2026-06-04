@@ -15,6 +15,7 @@ static int convert_char_literal(
         value_node,
         "CHAR values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "CHAR values do not support NUL bytes",
+        true,
         &text,
         &text_length
     );
@@ -58,6 +59,7 @@ static int convert_varchar_literal(
         value_node,
         "VARCHAR values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "VARCHAR values do not support NUL bytes",
+        true,
         &text,
         &text_length
     );
@@ -102,6 +104,7 @@ static int convert_text_family_literal(
         value_node,
         "TEXT values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "TEXT values do not support NUL bytes",
+        true,
         &text,
         &text_length
     );
@@ -141,6 +144,7 @@ static int decode_dml_character_literal(
     const struct mylite_sql_ast_node *value_node,
     const char *unsupported_message,
     const char *nul_message,
+    bool allow_nul,
     char **out_text,
     size_t *out_text_length
 ) {
@@ -180,11 +184,12 @@ static int decode_dml_character_literal(
             set_unsupported_error(database, unsupported_message);
             return MYLITE_ERROR;
         }
-        return decode_sql_string_literal(
+        return decode_sql_string_literal_with_policy(
             database,
             literal,
             unsupported_message,
             nul_message,
+            allow_nul,
             out_text,
             out_text_length
         );
@@ -310,6 +315,7 @@ static int decode_binary_string_literal(
             "Binary string values support only string, numeric, boolean, hex, bit, NULL, and "
             "DEFAULT values",
             "invalid binary string literal",
+            false,
             out_bytes,
             out_byte_count
         );
@@ -338,6 +344,7 @@ static int decode_binary_string_literal(
         "Binary string values support only string, numeric, boolean, hex, bit, NULL, and DEFAULT "
         "values",
         "invalid binary string literal",
+        false,
         out_bytes,
         out_byte_count
     );

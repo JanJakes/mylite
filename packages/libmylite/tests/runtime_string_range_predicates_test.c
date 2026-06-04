@@ -453,27 +453,6 @@ static int test_string_range_predicate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v > '"
-        "\xC3"
-        "\xA9"
-        "'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicate literals support only ASCII text",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v > 'a\\0'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicate literals do not support NUL bytes",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT id FROM strings WHERE id > 'abc'",
         (struct expected_sql_error){
             .code = mysql_error_parse,

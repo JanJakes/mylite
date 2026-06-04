@@ -17024,6 +17024,7 @@ static int decode_dml_character_literal(
     const struct mylite_sql_ast_node *value_node,
     const char *unsupported_message,
     const char *nul_message,
+    bool allow_nul,
     char **out_text,
     size_t *out_text_length
 );

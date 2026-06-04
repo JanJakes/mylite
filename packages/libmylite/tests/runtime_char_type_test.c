@@ -430,8 +430,10 @@ static int test_char_diagnostics(void) {
     static const char *const ignore_default_row[] = {"11", ""};
     static const char *const numeric_literal_row[] = {"2", "2", "x"};
     static const char *const numeric_default_row[] = {"1"};
+    static const unsigned char nul_char_value[] = {'a', '\0', 'b'};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
@@ -533,15 +535,51 @@ static int test_char_diagnostics(void) {
             .context = "char numeric and hex literal DML",
         }
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO diag VALUES (3, 'a\\0', 'x')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "CHAR values do not support NUL bytes",
+    failures += expect_statement_ok(database, "CREATE TABLE nul_char (id INT, c CHAR(20))");
+    failures += expect_dml_ok(database, "INSERT INTO nul_char VALUES (1, 'a\\0b')", 1);
+    failures += execute_ok(database, "SELECT c FROM nul_char WHERE id = 1", &result);
+    if (result != NULL) {
+        const unsigned char *actual =
+            (const unsigned char *)mylite_result_value_bytes(result, 0U, 0U);
+
+        failures += expect_size(
+            mylite_result_value_size(result, 0U, 0U),
+            sizeof(nul_char_value),
+            "CHAR NUL byte result size"
+        );
+        failures += expect_true(actual != NULL, "CHAR NUL byte result value");
+        if (actual != NULL) {
+            failures +=
+                expect_bytes(actual, nul_char_value, sizeof(nul_char_value), "CHAR NUL bytes");
         }
-    );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_statement_ok(database, "CREATE TABLE nul_char_copy (c CHAR(20))");
+    failures +=
+        expect_dml_ok(database, "INSERT INTO nul_char_copy SELECT c FROM nul_char WHERE id = 1", 1);
+    failures += execute_ok(database, "SELECT c FROM nul_char_copy", &result);
+    if (result != NULL) {
+        const unsigned char *actual =
+            (const unsigned char *)mylite_result_value_bytes(result, 0U, 0U);
+
+        failures += expect_size(
+            mylite_result_value_size(result, 0U, 0U),
+            sizeof(nul_char_value),
+            "CHAR INSERT SELECT NUL byte result size"
+        );
+        failures += expect_true(actual != NULL, "CHAR INSERT SELECT NUL byte result value");
+        if (actual != NULL) {
+            failures += expect_bytes(
+                actual,
+                nul_char_value,
+                sizeof(nul_char_value),
+                "CHAR INSERT SELECT NUL bytes"
+            );
+        }
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM diag WHERE v = 1",

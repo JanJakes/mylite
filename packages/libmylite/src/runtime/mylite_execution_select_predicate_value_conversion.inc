@@ -426,21 +426,17 @@ static int convert_predicate_string_literal(
         return MYLITE_ERROR;
     }
 
-    rc = decode_sql_string_literal(
+    rc = decode_sql_string_literal_with_policy(
         database,
         value_node,
         "WHERE string predicates support only string literals",
         "WHERE string predicate literals do not support NUL bytes",
+        true,
         &text,
         &text_length
     );
     if (rc != MYLITE_OK) {
         return rc;
-    }
-    if (!text_value_is_supported_string_key(text, text_length)) {
-        free(text);
-        set_unsupported_error(database, "WHERE string predicate literals support only ASCII text");
-        return MYLITE_ERROR;
     }
 
     return assign_text_value(database, text, text_length, out_value);
@@ -469,21 +465,17 @@ static int convert_predicate_string_pattern_literal(
         return MYLITE_ERROR;
     }
 
-    rc = decode_sql_string_literal(
+    rc = decode_sql_string_literal_with_policy(
         database,
         value_node,
         "WHERE LIKE predicates support only string pattern literals",
         "WHERE LIKE pattern literals do not support NUL bytes",
+        true,
         &text,
         &text_length
     );
     if (rc != MYLITE_OK) {
         return rc;
-    }
-    if (!text_value_is_supported_string_key(text, text_length)) {
-        free(text);
-        set_unsupported_error(database, "WHERE LIKE pattern literals support only ASCII text");
-        return MYLITE_ERROR;
     }
 
     return assign_text_value(database, text, text_length, out_value);

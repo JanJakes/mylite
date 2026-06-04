@@ -196,7 +196,6 @@ static int append_selected_sqlite_text_value(
     size_t character_count = 0U;
 
     if (sqlite_text == NULL || byte_count < 0 ||
-        memchr(sqlite_text, '\0', (size_t)byte_count) != NULL ||
         validate_utf8_text((const char *)sqlite_text, (size_t)byte_count, &character_count) !=
             MYLITE_OK) {
         return MYLITE_ERROR;

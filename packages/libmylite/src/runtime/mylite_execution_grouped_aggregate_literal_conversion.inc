@@ -15,6 +15,7 @@ static int convert_date_literal(
         value_node,
         "DATE values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "DATE values do not support NUL bytes",
+        false,
         &text,
         &text_length
     );
@@ -302,6 +303,7 @@ static int convert_time_literal(
         value_node,
         "TIME values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "TIME values do not support NUL bytes",
+        false,
         &text,
         &text_length
     );
@@ -524,6 +526,7 @@ static int convert_datetime_literal(
         value_node,
         "DATETIME values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "DATETIME values do not support NUL bytes",
+        false,
         &text,
         &text_length
     );
@@ -560,6 +563,7 @@ static int convert_timestamp_literal(
         value_node,
         "TIMESTAMP values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "TIMESTAMP values do not support NUL bytes",
+        false,
         &text,
         &text_length
     );

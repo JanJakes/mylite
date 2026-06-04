@@ -146,9 +146,13 @@ column_type ::= char_type.
 column_type ::= varchar_type.
 column_type ::= text_type.
 
-show_character_set_statement ::= SHOW CHARACTER SET show_like_clause_opt.
-show_character_set_statement ::= SHOW CHARSET show_like_clause_opt.
-show_collation_statement ::= SHOW COLLATION show_like_clause_opt.
+show_character_set_statement ::= SHOW CHARACTER SET show_catalog_filter_opt.
+show_character_set_statement ::= SHOW CHARSET show_catalog_filter_opt.
+show_collation_statement ::= SHOW COLLATION show_catalog_filter_opt.
+
+show_catalog_filter_opt ::= .
+show_catalog_filter_opt ::= LIKE STRING.
+show_catalog_filter_opt ::= WHERE predicate.
 ```
 
 ## Semantics

@@ -5,6 +5,7 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_execution_system_variables.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_temporary_catalog.h"
 
@@ -107,6 +108,12 @@ struct mylite_session_user_variable {
     bool is_null;
 };
 
+struct mylite_session_system_variable_override {
+    enum mylite_execution_system_variable_kind kind;
+    char *value;
+    size_t value_size;
+};
+
 struct mylite_session_prepared_statement {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char *sql;
@@ -153,6 +160,9 @@ struct mylite_session_state {
     struct mylite_session_user_variable *user_variables;
     size_t user_variable_count;
     size_t user_variable_capacity;
+    struct mylite_session_system_variable_override *system_variable_overrides;
+    size_t system_variable_override_count;
+    size_t system_variable_override_capacity;
     struct mylite_session_prepared_statement *prepared_statements;
     size_t prepared_statement_count;
     size_t prepared_statement_capacity;

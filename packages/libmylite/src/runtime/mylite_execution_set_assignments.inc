@@ -121,6 +121,9 @@ static int apply_set_system_variable_assignment(
         target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
         return apply_set_transaction_system_variable_value(database, &target, value_node);
     }
+    if (set_system_variable_is_text_session_state(target.kind)) {
+        return apply_set_text_session_system_variable_value(database, &target, value_node);
+    }
     rc = apply_set_integer_system_variable_value(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -137,6 +140,9 @@ static int apply_set_system_variable_assignment(
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
+    }
+    if (mylite_execution_system_variable_is_session_placeholder(target.kind)) {
+        return apply_set_session_placeholder_system_variable_value(database, &target, value_node);
     }
     if (mylite_execution_system_variable_fixed_boolean_value(
             target.kind,
@@ -366,6 +372,7 @@ static int evaluate_user_variable_assignment_value(
     switch (unwrapped->kind) {
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_USER_VARIABLE:
         rc = session_scalar_value(database, unwrapped, out_cell);
@@ -865,4 +872,486 @@ static int ensure_session_user_variable_capacity(struct mylite_db *database) {
     session->user_variables = variables;
     session->user_variable_capacity = new_capacity;
     return MYLITE_OK;
+}
+
+static int set_session_system_variable_override(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    const char *value,
+    size_t value_size
+) {
+    struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    struct mylite_session_system_variable_override *override = NULL;
+    char *owned_value = NULL;
+    int rc = MYLITE_OK;
+
+    if (session == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value_size == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    override = find_session_system_variable_override(session, kind);
+    if (override == NULL) {
+        rc = ensure_session_system_variable_override_capacity(database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        override = &session->system_variable_overrides[session->system_variable_override_count];
+        *override = (struct mylite_session_system_variable_override){0};
+        override->kind = kind;
+        ++session->system_variable_override_count;
+    }
+
+    owned_value = (char *)malloc(value_size + 1U);
+    if (owned_value == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(owned_value, value, value_size);
+    owned_value[value_size] = '\0';
+
+    free(override->value);
+    override->value = owned_value;
+    override->value_size = value_size;
+    session->system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static const char *session_system_variable_override_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+) {
+    struct mylite_session_state *session = (struct mylite_session_state *)
+        (database == NULL ? NULL : &database->session);
+    struct mylite_session_system_variable_override *override =
+        find_session_system_variable_override(session, kind);
+
+    if (override == NULL) {
+        return NULL;
+    }
+    return override->value;
+}
+
+static const char *session_system_variable_override_show_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+) {
+    const char *value = session_system_variable_override_value(database, kind);
+
+    if (value == NULL) {
+        return NULL;
+    }
+    if (!mylite_execution_system_variable_is_boolean_session_placeholder(kind)) {
+        return value;
+    }
+    if (strcmp(value, "1") == 0) {
+        return "ON";
+    }
+    if (strcmp(value, "0") == 0) {
+        return "OFF";
+    }
+    return value;
+}
+
+static struct mylite_session_system_variable_override *find_session_system_variable_override(
+    struct mylite_session_state *session,
+    enum mylite_execution_system_variable_kind kind
+) {
+    if (session == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < session->system_variable_override_count; ++index) {
+        if (session->system_variable_overrides[index].kind == kind) {
+            return &session->system_variable_overrides[index];
+        }
+    }
+    return NULL;
+}
+
+static int ensure_session_system_variable_override_capacity(struct mylite_db *database) {
+    struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    struct mylite_session_system_variable_override *overrides = NULL;
+    size_t new_capacity = 0U;
+
+    if (session == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (session->system_variable_override_count < session->system_variable_override_capacity) {
+        return MYLITE_OK;
+    }
+    new_capacity = session->system_variable_override_capacity == 0U
+                       ? 4U
+                       : session->system_variable_override_capacity * 2U;
+    if (new_capacity < session->system_variable_override_capacity ||
+        new_capacity > SIZE_MAX / sizeof(*overrides)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    overrides = (struct mylite_session_system_variable_override *)realloc(
+        session->system_variable_overrides,
+        new_capacity * sizeof(*overrides)
+    );
+    if (overrides == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memset(
+        overrides + session->system_variable_override_capacity,
+        0,
+        (new_capacity - session->system_variable_override_capacity) * sizeof(*overrides)
+    );
+    session->system_variable_overrides = overrides;
+    session->system_variable_override_capacity = new_capacity;
+    return MYLITE_OK;
+}
+
+static int apply_set_text_session_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    char *value = NULL;
+    size_t value_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_set_text_system_variable_node_value(
+        database,
+        value_node,
+        target->kind,
+        target->name,
+        &value,
+        &value_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = set_text_session_system_variable(database, target->kind, value, value_size);
+    }
+    free(value);
+    return rc;
+}
+
+static int apply_set_text_session_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value
+) {
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+    if (text == NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "NULL");
+        return MYLITE_ERROR;
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    return set_text_session_system_variable(database, target->kind, text, text_size);
+}
+
+static bool set_system_variable_is_text_session_state(
+    enum mylite_execution_system_variable_kind kind
+) {
+    return text_session_system_variable_default_value(kind) != NULL;
+}
+
+static int set_text_session_system_variable(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    const char *value,
+    size_t value_size
+) {
+    char *target = NULL;
+    size_t target_size = 0U;
+
+    if (database == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (kind) {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+        target = database->session.character_set_client;
+        target_size = sizeof(database->session.character_set_client);
+        break;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
+        target = database->session.character_set_connection;
+        target_size = sizeof(database->session.character_set_connection);
+        break;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+        target = database->session.character_set_results;
+        target_size = sizeof(database->session.character_set_results);
+        break;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+        target = database->session.collation_connection;
+        target_size = sizeof(database->session.collation_connection);
+        break;
+    default:
+        return MYLITE_MISUSE;
+    }
+    if (value_size >= target_size) {
+        set_system_variable_cant_be_set_value_error(database, "character set", value);
+        return MYLITE_ERROR;
+    }
+
+    memcpy(target, value, value_size);
+    target[value_size] = '\0';
+    database->session.character_set_state_is_placeholder = false;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static const char *text_session_system_variable_default_value(
+    enum mylite_execution_system_variable_kind kind
+) {
+    switch (kind) {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+        return MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+        return MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+    default:
+        return NULL;
+    }
+}
+
+static int copy_set_text_system_variable_node_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_execution_system_variable_kind kind,
+    const char *variable_name,
+    char **out_value,
+    size_t *out_value_size
+) {
+    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *default_value = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_value_size == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = NULL;
+    *out_value_size = 0U;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        default_value = text_session_system_variable_default_value(kind);
+        if (default_value == NULL) {
+            default_value = mylite_execution_system_variable_default_value(kind);
+        }
+        if (default_value == NULL) {
+            set_runtime_error(database, "invalid SET DEFAULT text system variable");
+            return MYLITE_ERROR;
+        }
+        *out_value_size = strlen(default_value);
+        *out_value = (char *)malloc(*out_value_size + 1U);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(*out_value, default_value, *out_value_size + 1U);
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return decode_sql_string_literal(
+            database,
+            value_node,
+            "SET system variable values support only string literals",
+            "SET system variable string values do not support NUL bytes",
+            out_value,
+            out_value_size
+        );
+    }
+    if (value_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        rc = copy_identifier_text(value_node, identifier, sizeof(identifier), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_value_size = strlen(identifier);
+        *out_value = (char *)malloc(*out_value_size + 1U);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(*out_value, identifier, *out_value_size + 1U);
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL ||
+        value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        struct session_scalar_cell value = {0};
+
+        rc = session_scalar_value(database, value_node, &value);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (value.value == NULL) {
+            set_system_variable_cant_be_set_value_error(database, variable_name, "NULL");
+            session_scalar_cell_deinit(&value);
+            return MYLITE_ERROR;
+        }
+        *out_value_size = value.has_value_size ? value.value_size : strlen(value.value);
+        *out_value = (char *)malloc(*out_value_size + 1U);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            session_scalar_cell_deinit(&value);
+            return MYLITE_NOMEM;
+        }
+        memcpy(*out_value, value.value, *out_value_size);
+        (*out_value)[*out_value_size] = '\0';
+        session_scalar_cell_deinit(&value);
+        return MYLITE_OK;
+    }
+
+    set_system_variable_cant_be_set_value_error(database, variable_name, "");
+    return MYLITE_ERROR;
+}
+
+static int apply_set_session_placeholder_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    char *value = NULL;
+    size_t value_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_set_session_placeholder_node_value(database, value_node, target, &value, &value_size);
+    if (rc == MYLITE_OK) {
+        rc = set_session_system_variable_override(database, target->kind, value, value_size);
+    }
+    free(value);
+    return rc;
+}
+
+static int apply_set_session_placeholder_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool boolean_value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+    if (mylite_execution_system_variable_is_boolean_session_placeholder(target->kind)) {
+        rc = parse_set_big_tables_cell_value(database, target->name, value, value_kind, &boolean_value);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return apply_set_session_placeholder_boolean_value(database, target, boolean_value);
+    }
+    if (text == NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "NULL");
+        return MYLITE_ERROR;
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    return set_session_system_variable_override(database, target->kind, text, text_size);
+}
+
+static int apply_set_session_placeholder_boolean_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    bool value
+) {
+    const char *text = value ? "1" : "0";
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    return set_session_system_variable_override(database, target->kind, text, 1U);
+}
+
+static int copy_set_session_placeholder_node_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct resolved_set_system_variable_target *target,
+    char **out_value,
+    size_t *out_value_size
+) {
+    const char *default_value = NULL;
+    bool boolean_value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_value == NULL || out_value_size == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = NULL;
+    *out_value_size = 0U;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        default_value = mylite_execution_system_variable_default_value(target->kind);
+        if (default_value == NULL) {
+            set_runtime_error(database, "invalid SET DEFAULT placeholder system variable");
+            return MYLITE_ERROR;
+        }
+        *out_value_size = strlen(default_value);
+        *out_value = (char *)malloc(*out_value_size + 1U);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(*out_value, default_value, *out_value_size + 1U);
+        return MYLITE_OK;
+    }
+    if (mylite_execution_system_variable_is_boolean_session_placeholder(target->kind)) {
+        rc = parse_set_big_tables_value(database, target->name, value_node, &boolean_value);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_value_size = 1U;
+        *out_value = (char *)malloc(2U);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        (*out_value)[0] = boolean_value ? '1' : '0';
+        (*out_value)[1] = '\0';
+        return MYLITE_OK;
+    }
+    return copy_set_text_system_variable_node_value(
+        database,
+        value_node,
+        target->kind,
+        target->name,
+        out_value,
+        out_value_size
+    );
 }

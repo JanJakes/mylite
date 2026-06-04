@@ -264,6 +264,13 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.user_variables = NULL;
     database->session.user_variable_count = 0U;
     database->session.user_variable_capacity = 0U;
+    for (size_t index = 0U; index < database->session.system_variable_override_count; ++index) {
+        free(database->session.system_variable_overrides[index].value);
+    }
+    free(database->session.system_variable_overrides);
+    database->session.system_variable_overrides = NULL;
+    database->session.system_variable_override_count = 0U;
+    database->session.system_variable_override_capacity = 0U;
     for (size_t index = 0U; index < database->session.prepared_statement_count; ++index) {
         free(database->session.prepared_statements[index].sql);
     }
@@ -381,6 +388,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->user_variables = NULL;
     session->user_variable_count = 0U;
     session->user_variable_capacity = 0U;
+    session->system_variable_overrides = NULL;
+    session->system_variable_override_count = 0U;
+    session->system_variable_override_capacity = 0U;
     session->prepared_statements = NULL;
     session->prepared_statement_count = 0U;
     session->prepared_statement_capacity = 0U;

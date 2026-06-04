@@ -84,6 +84,21 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_OS = 75,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB = 76,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE = 77,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4 = 78,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON = 79,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE = 80,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE = 81,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX = 82,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT = 83,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA = 84,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC = 85,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS = 86,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SCHEMA = 87,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_STATE_CHANGE = 88,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO = 89,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE = 90,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY = 91,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE = 92,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -136,6 +151,15 @@ bool mylite_execution_system_variable_is_read_only_server_environment(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);
+bool mylite_execution_system_variable_is_session_placeholder(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_boolean_session_placeholder(
+    enum mylite_execution_system_variable_kind kind
+);
+const char *mylite_execution_system_variable_default_value(
+    enum mylite_execution_system_variable_kind kind
+);
 
 size_t mylite_execution_show_status_descriptor_count(void);
 const struct mylite_execution_show_status_descriptor *mylite_execution_show_status_descriptor_at(

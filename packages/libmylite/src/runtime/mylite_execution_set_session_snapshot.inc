@@ -4,6 +4,7 @@ static int copy_set_session_snapshot(
 ) {
     const struct mylite_session_state *session = database == NULL ? NULL : &database->session;
     struct mylite_session_user_variable *variables = NULL;
+    struct mylite_session_system_variable_override *overrides = NULL;
     int rc = MYLITE_OK;
 
     if (session == NULL || out_snapshot == NULL) {
@@ -12,6 +13,11 @@ static int copy_set_session_snapshot(
     *out_snapshot = (struct set_session_snapshot){0};
     rc = copy_session_user_variables(database, session, &variables);
     if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = copy_session_system_variable_overrides(database, session, &overrides);
+    if (rc != MYLITE_OK) {
+        free_session_user_variables(variables, session->user_variable_count);
         return rc;
     }
 
@@ -31,6 +37,7 @@ static int copy_set_session_snapshot(
     out_snapshot->next_transaction_access_mode = session->next_transaction_access_mode;
     out_snapshot->sql_mode_is_placeholder = session->sql_mode_is_placeholder;
     out_snapshot->time_zone_is_placeholder = session->time_zone_is_placeholder;
+    out_snapshot->character_set_state_is_placeholder = session->character_set_state_is_placeholder;
     out_snapshot->system_variables_are_placeholder = session->system_variables_are_placeholder;
     out_snapshot->big_tables = session->big_tables;
     out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
@@ -44,6 +51,26 @@ static int copy_set_session_snapshot(
     out_snapshot->has_timestamp_override = session->has_timestamp_override;
     memcpy(out_snapshot->time_zone, session->time_zone, sizeof(out_snapshot->time_zone));
     memcpy(
+        out_snapshot->character_set_client,
+        session->character_set_client,
+        sizeof(out_snapshot->character_set_client)
+    );
+    memcpy(
+        out_snapshot->character_set_connection,
+        session->character_set_connection,
+        sizeof(out_snapshot->character_set_connection)
+    );
+    memcpy(
+        out_snapshot->character_set_results,
+        session->character_set_results,
+        sizeof(out_snapshot->character_set_results)
+    );
+    memcpy(
+        out_snapshot->collation_connection,
+        session->collation_connection,
+        sizeof(out_snapshot->collation_connection)
+    );
+    memcpy(
         out_snapshot->sql_mode_text,
         session->sql_mode_text,
         sizeof(out_snapshot->sql_mode_text)
@@ -51,6 +78,9 @@ static int copy_set_session_snapshot(
     out_snapshot->user_variables = variables;
     out_snapshot->user_variable_count = session->user_variable_count;
     out_snapshot->user_variable_capacity = session->user_variable_capacity;
+    out_snapshot->system_variable_overrides = overrides;
+    out_snapshot->system_variable_override_count = session->system_variable_override_count;
+    out_snapshot->system_variable_override_capacity = session->system_variable_override_capacity;
     return MYLITE_OK;
 }
 
@@ -102,13 +132,63 @@ static int copy_session_user_variables(
     return MYLITE_OK;
 }
 
+static int copy_session_system_variable_overrides(
+    struct mylite_db *database,
+    const struct mylite_session_state *source,
+    struct mylite_session_system_variable_override **out_overrides
+) {
+    struct mylite_session_system_variable_override *copy = NULL;
+    const struct mylite_session_system_variable_override *overrides = NULL;
+    size_t count = 0U;
+    size_t capacity = 0U;
+
+    if (source == NULL || out_overrides == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_overrides = NULL;
+    overrides = source->system_variable_overrides;
+    count = source->system_variable_override_count;
+    capacity = source->system_variable_override_capacity;
+    if (capacity == 0U) {
+        return MYLITE_OK;
+    }
+    if (capacity > SIZE_MAX / sizeof(*copy)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    copy = (struct mylite_session_system_variable_override *)calloc(capacity, sizeof(*copy));
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        copy[index] = overrides[index];
+        copy[index].value = NULL;
+        if (overrides[index].value != NULL) {
+            copy[index].value = (char *)malloc(overrides[index].value_size + 1U);
+            if (copy[index].value == NULL) {
+                free_session_system_variable_overrides(copy, index);
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            memcpy(copy[index].value, overrides[index].value, overrides[index].value_size);
+            copy[index].value[overrides[index].value_size] = '\0';
+        }
+    }
+
+    *out_overrides = copy;
+    return MYLITE_OK;
+}
+
 static void restore_set_session_snapshot(
     struct mylite_db *database,
     struct set_session_snapshot *snapshot
 ) {
     struct mylite_session_state *session = database == NULL ? NULL : &database->session;
     struct mylite_session_user_variable *current_variables = NULL;
+    struct mylite_session_system_variable_override *current_overrides = NULL;
     size_t current_variable_count = 0U;
+    size_t current_override_count = 0U;
 
     if (session == NULL || snapshot == NULL) {
         return;
@@ -116,6 +196,8 @@ static void restore_set_session_snapshot(
 
     current_variables = session->user_variables;
     current_variable_count = session->user_variable_count;
+    current_overrides = session->system_variable_overrides;
+    current_override_count = session->system_variable_override_count;
 
     session->sql_mode = snapshot->sql_mode;
     session->auto_increment_increment = snapshot->auto_increment_increment;
@@ -133,6 +215,7 @@ static void restore_set_session_snapshot(
     session->next_transaction_access_mode = snapshot->next_transaction_access_mode;
     session->sql_mode_is_placeholder = snapshot->sql_mode_is_placeholder;
     session->time_zone_is_placeholder = snapshot->time_zone_is_placeholder;
+    session->character_set_state_is_placeholder = snapshot->character_set_state_is_placeholder;
     session->system_variables_are_placeholder = snapshot->system_variables_are_placeholder;
     session->big_tables = snapshot->big_tables;
     session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
@@ -145,15 +228,42 @@ static void restore_set_session_snapshot(
         snapshot->next_transaction_access_mode_from_system_variable;
     session->has_timestamp_override = snapshot->has_timestamp_override;
     memcpy(session->time_zone, snapshot->time_zone, sizeof(session->time_zone));
+    memcpy(
+        session->character_set_client,
+        snapshot->character_set_client,
+        sizeof(session->character_set_client)
+    );
+    memcpy(
+        session->character_set_connection,
+        snapshot->character_set_connection,
+        sizeof(session->character_set_connection)
+    );
+    memcpy(
+        session->character_set_results,
+        snapshot->character_set_results,
+        sizeof(session->character_set_results)
+    );
+    memcpy(
+        session->collation_connection,
+        snapshot->collation_connection,
+        sizeof(session->collation_connection)
+    );
     memcpy(session->sql_mode_text, snapshot->sql_mode_text, sizeof(session->sql_mode_text));
     session->user_variables = snapshot->user_variables;
     session->user_variable_count = snapshot->user_variable_count;
     session->user_variable_capacity = snapshot->user_variable_capacity;
+    session->system_variable_overrides = snapshot->system_variable_overrides;
+    session->system_variable_override_count = snapshot->system_variable_override_count;
+    session->system_variable_override_capacity = snapshot->system_variable_override_capacity;
 
     snapshot->user_variables = NULL;
     snapshot->user_variable_count = 0U;
     snapshot->user_variable_capacity = 0U;
+    snapshot->system_variable_overrides = NULL;
+    snapshot->system_variable_override_count = 0U;
+    snapshot->system_variable_override_capacity = 0U;
     free_session_user_variables(current_variables, current_variable_count);
+    free_session_system_variable_overrides(current_overrides, current_override_count);
 }
 
 static void deinit_set_session_snapshot(struct set_session_snapshot *snapshot) {
@@ -161,6 +271,10 @@ static void deinit_set_session_snapshot(struct set_session_snapshot *snapshot) {
         return;
     }
     free_session_user_variables(snapshot->user_variables, snapshot->user_variable_count);
+    free_session_system_variable_overrides(
+        snapshot->system_variable_overrides,
+        snapshot->system_variable_override_count
+    );
     *snapshot = (struct set_session_snapshot){0};
 }
 
@@ -175,4 +289,17 @@ static void free_session_user_variables(
         free(variables[index].value);
     }
     free(variables);
+}
+
+static void free_session_system_variable_overrides(
+    struct mylite_session_system_variable_override *overrides,
+    size_t count
+) {
+    if (overrides == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        free(overrides[index].value);
+    }
+    free(overrides);
 }

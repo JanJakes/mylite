@@ -96,6 +96,17 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         "0", "0", "-1",
     };
     static const char *const warning_count_values[] = {"0"};
+    static const char *const bare_keyword_values[] = {
+        "InnoDB",
+        "utf8mb4_0900_ai_ci",
+        "FULL",
+        "OWN_GTID",
+        "STATE",
+        "FORCED",
+    };
+    static const char *const user_variable_increment_value[] = {"2"};
+    static const char *const restored_charset_value[] = {"utf8mb4"};
+    static const char *const dump_restore_values[] = {"1", "1", default_sql_mode};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -145,6 +156,78 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
         "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"
     );
+    failures += expect_set_ok(database, "SET default_storage_engine = InnoDB");
+    failures += expect_set_ok(database, "SET default_collation_for_utf8mb4 = utf8mb4_0900_ai_ci");
+    failures += expect_set_ok(database, "SET resultset_metadata = FULL");
+    failures += expect_set_ok(database, "SET session_track_gtids = OWN_GTID");
+    failures += expect_set_ok(database, "SET session_track_transaction_info = STATE");
+    failures += expect_set_ok(database, "SET use_secondary_engine = FORCED");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@default_storage_engine, @@default_collation_for_utf8mb4, "
+                   "@@resultset_metadata, @@session_track_gtids, "
+                   "@@session_track_transaction_info, @@use_secondary_engine",
+            .values = bare_keyword_values,
+            .column_count = 6U,
+            .row_count = 1U,
+            .context = "bare keyword SET values read back",
+        }
+    );
+    failures += expect_set_ok(database, "SET @my_var = 1");
+    failures += expect_set_ok(database, "SET @my_var = @my_var + 1");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @my_var",
+            .values = user_variable_increment_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "SET user variable increment",
+        }
+    );
+    failures += expect_set_ok(
+        database,
+        "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;"
+    );
+    failures += expect_set_ok(database, "/*!50503 SET character_set_client = latin1 */;");
+    failures += expect_set_ok(database, "/*!40101 SET character_set_client = @OLD_CHARACTER_SET_CLIENT */;");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client",
+            .values = restored_charset_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "executable comment SET restores charset",
+        }
+    );
+    failures += expect_set_ok(
+        database,
+        "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;"
+    );
+    failures += expect_set_ok(
+        database,
+        "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;"
+    );
+    failures += expect_set_ok(
+        database,
+        "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;"
+    );
+    failures += expect_set_ok(database, "/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;");
+    failures += expect_set_ok(database, "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;");
+    failures += expect_set_ok(database, "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@unique_checks, @@sql_notes, @@sql_mode",
+            .values = dump_restore_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "executable comment SET restores dump toggles",
+        }
+    );
+    failures += expect_set_ok(database, "SET sql_mode = DEFAULT");
 
     failures += expect_query_values(
         database,
@@ -227,6 +310,8 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
 
 static int test_set_fixed_system_variables_diagnostics(void) {
     static const char *const diagnostic_values[] = {"1", "1", "-1"};
+    static const char *const sql_warnings_on[] = {"1"};
+    static const char *const explicit_defaults_off[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -444,33 +529,29 @@ static int test_set_fixed_system_variables_diagnostics(void) {
             .message_part = "SET supports only fixed no-op system variable assignments",
         }
     );
-    failures += execute_error(
+    failures += expect_set_ok(database, "SET sql_warnings = 1");
+    failures += expect_query_values(
         database,
-        "SET sql_warnings = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+        (struct expected_query){
+            .sql = "SELECT @@sql_warnings",
+            .values = sql_warnings_on,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "mutable sql_warnings readback",
         }
     );
-    failures += execute_error(
+    failures += expect_set_ok(database, "SET explicit_defaults_for_timestamp = OFF");
+    failures += expect_query_values(
         database,
-        "SET explicit_defaults_for_timestamp = OFF",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+        (struct expected_query){
+            .sql = "SELECT @@explicit_defaults_for_timestamp",
+            .values = explicit_defaults_off,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "mutable explicit_defaults_for_timestamp readback",
         }
     );
-    failures += execute_error(
-        database,
-        "SET explicit_defaults_for_timestamp = 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
-        }
-    );
+    failures += expect_set_ok(database, "SET explicit_defaults_for_timestamp = 0");
     failures += execute_error(
         database,
         "SET sql_mode = 'BOGUS'",

@@ -5,11 +5,22 @@ static int system_variable_value(
     struct session_scalar_cell *out_cell
 ) {
     enum mylite_execution_system_variable_kind variable = MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+    const char *override_value = NULL;
+    const char *default_value = NULL;
     uint64_t count = 0U;
+    bool global_scope = false;
     int rc = resolve_session_system_variable(database, expression, &variable);
 
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    global_scope = system_variable_expression_has_global_scope(expression);
+    if (!global_scope) {
+        override_value = session_system_variable_override_value(database, variable);
+        if (override_value != NULL) {
+            out_cell->value = override_value;
+            return MYLITE_OK;
+        }
     }
 
     switch (variable) {
@@ -34,7 +45,7 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
         return database_character_set_system_variable_value(
             database,
-            system_variable_expression_has_global_scope(expression),
+            global_scope,
             out_cell->literal_text,
             sizeof(out_cell->literal_text),
             &out_cell->value
@@ -42,7 +53,7 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE:
         return database_collation_system_variable_value(
             database,
-            system_variable_expression_has_global_scope(expression),
+            global_scope,
             out_cell->literal_text,
             sizeof(out_cell->literal_text),
             &out_cell->value
@@ -61,7 +72,7 @@ static int system_variable_value(
         out_cell->value = "binary";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE:
-        if (system_variable_expression_has_global_scope(expression)) {
+        if (global_scope) {
             out_cell->value = default_sql_mode_value();
         } else {
             out_cell->value = database->session.sql_mode_text;
@@ -71,7 +82,7 @@ static int system_variable_value(
         out_cell->value = "UTC";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE:
-        if (system_variable_expression_has_global_scope(expression)) {
+        if (global_scope) {
             out_cell->value = "SYSTEM";
         } else {
             out_cell->value = database->session.time_zone;
@@ -131,7 +142,7 @@ static int system_variable_value(
             auto_increment_step_system_variable_value(
                 database,
                 variable,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell
         );
@@ -142,12 +153,12 @@ static int system_variable_value(
             timeout_system_variable_value(
                 database,
                 variable,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
-        if (system_variable_expression_has_global_scope(expression)) {
+        if (global_scope) {
             return format_session_scalar_uint64_value(
                 database,
                 group_concat_max_len_default_value,
@@ -164,7 +175,7 @@ static int system_variable_value(
             database,
             information_schema_stats_expiry_system_variable_value(
                 database,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell
         );
@@ -173,7 +184,7 @@ static int system_variable_value(
             database,
             foreign_key_checks_system_variable_uint64_value(
                 database,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell
         );
@@ -182,7 +193,7 @@ static int system_variable_value(
             database,
             sql_require_primary_key_system_variable_uint64_value(
                 database,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell
         );
@@ -191,7 +202,7 @@ static int system_variable_value(
             database,
             big_tables_system_variable_uint64_value(
                 database,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell
         );
@@ -252,7 +263,7 @@ static int system_variable_value(
             database,
             sql_select_limit_system_variable_value(
                 database,
-                system_variable_expression_has_global_scope(expression)
+                global_scope
             ),
             out_cell->integer_text,
             sizeof(out_cell->integer_text)
@@ -296,6 +307,12 @@ static int system_variable_value(
         return MYLITE_OK;
     default:
         break;
+    }
+
+    default_value = mylite_execution_system_variable_default_value(variable);
+    if (default_value != NULL) {
+        out_cell->value = default_value;
+        return MYLITE_OK;
     }
 
     rc = diagnostics_count_system_variable_value(
@@ -722,6 +739,12 @@ static int show_system_variable_value(
         return MYLITE_ERROR;
     }
     *out_value = NULL;
+    if (!global_scope) {
+        *out_value = session_system_variable_override_show_value(database, kind);
+        if (*out_value != NULL) {
+            return MYLITE_OK;
+        }
+    }
 
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
@@ -1004,8 +1027,30 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMMENT:
         *out_value = MYLITE_MYSQL_SERVER_VERSION_COMMENT_STRING;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SCHEMA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_STATE_CHANGE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE:
+        *out_value = mylite_execution_system_variable_default_value(kind);
+        return *out_value == NULL ? MYLITE_ERROR : MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE:
         break;
+    }
+
+    *out_value = mylite_execution_system_variable_default_value(kind);
+    if (*out_value != NULL) {
+        return MYLITE_OK;
     }
 
     set_runtime_error(database, "unsupported SHOW VARIABLES value");

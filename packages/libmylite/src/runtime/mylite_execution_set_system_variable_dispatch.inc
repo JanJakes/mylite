@@ -19,6 +19,9 @@ static int apply_set_system_variable_cell_value(
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
         return apply_set_time_zone_cell_value(database, value);
     }
+    if (set_system_variable_is_text_session_state(target->kind)) {
+        return apply_set_text_session_system_variable_cell_value(database, target, value);
+    }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_cell_value(database, target, value, value_kind);
     }
@@ -49,6 +52,14 @@ static int apply_set_system_variable_cell_value(
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_cell_value(database, target, value, value_kind);
+    }
+    if (mylite_execution_system_variable_is_session_placeholder(target->kind)) {
+        return apply_set_session_placeholder_system_variable_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
     }
     if (fixed_global_uint64_server_identity_system_variable_value(target->kind, NULL, NULL)) {
         set_unsupported_error(
@@ -472,6 +483,36 @@ static int validate_set_fixed_boolean_value(
         actual_value = true;
     } else if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
         actual_value = false;
+    } else if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *decoded = NULL;
+        size_t decoded_size = 0U;
+        int rc = decode_sql_string_literal(
+            database,
+            value_node,
+            "SET system variables support only string literals",
+            "SET system variable string values do not support NUL bytes",
+            &decoded,
+            &decoded_size
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(decoded, "ON") ||
+            text_equals_ascii_case_insensitive(decoded, "TRUE")) {
+            actual_value = true;
+        } else if (text_equals_ascii_case_insensitive(decoded, "OFF") ||
+                   text_equals_ascii_case_insensitive(decoded, "FALSE")) {
+            actual_value = false;
+        } else {
+            free(decoded);
+            set_unsupported_error(
+                database,
+                "SET supports only fixed no-op system variable assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        free(decoded);
     } else if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         if (parse_unsigned_integer_literal(&value_node->span, &magnitude) != MYLITE_OK ||
             magnitude > 1U) {

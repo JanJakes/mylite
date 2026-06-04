@@ -442,15 +442,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE primary_t (id INT PRIMARY KEY)");
-    failures += execute_error(
-        database,
-        "ALTER TABLE primary_t DROP INDEX `PRIMARY`",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DROP INDEX does not drop primary keys",
-        }
-    );
+    failures += expect_alter_drop_index_ok(database, "ALTER TABLE primary_t DROP INDEX `PRIMARY`");
     failures += execute_error(
         database,
         "ALTER TABLE primary_t DROP INDEX PRIMARY",

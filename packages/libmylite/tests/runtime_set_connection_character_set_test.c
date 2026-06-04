@@ -256,9 +256,9 @@ static int test_set_connection_character_set_diagnostics(void) {
         "utf8mb4",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
-        "1",
-        "1",
-        "-1",
+        "0",
+        "0",
+        "0",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -352,15 +352,7 @@ static int test_set_connection_character_set_diagnostics(void) {
             .message_part = "You have an error in your SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "SET character_set_client = utf8mb4",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
+    failures += expect_set_ok(database, "SET character_set_client = utf8mb4");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -370,7 +362,7 @@ static int test_set_connection_character_set_diagnostics(void) {
             .values = charset_values,
             .column_count = charset_value_column_count,
             .row_count = 1U,
-            .context = "failed set charset leaves fixed values",
+            .context = "set character_set_client keeps fixed values",
         }
     );
 

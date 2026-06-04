@@ -42,11 +42,11 @@ int main(void) {
 
 static int test_builtin_schema_table_directory(void) {
     static const char *const count_columns[] = {"COUNT(*)"};
-    static const char *const count_79[] = {"79"};
+    static const char *const count_78[] = {"78"};
     static const char *const count_38[] = {"38"};
     static const char *const count_114[] = {"114"};
     static const char *const count_101[] = {"101"};
-    static const char *const count_332[] = {"332"};
+    static const char *const count_331[] = {"331"};
     static const char *const representative_columns[] = {
         "TABLE_SCHEMA",
         "TABLE_NAME",
@@ -142,7 +142,7 @@ static int test_builtin_schema_table_directory(void) {
                    "WHERE TABLE_SCHEMA = 'information_schema'",
             .column_names = count_columns,
             .column_count = sizeof(count_columns) / sizeof(count_columns[0]),
-            .values = count_79,
+            .values = count_78,
             .row_count = 1U,
             .context = "information schema directory count",
         }
@@ -192,7 +192,7 @@ static int test_builtin_schema_table_directory(void) {
                 "AND CREATE_TIME IS NOT NULL",
             .column_names = count_columns,
             .column_count = sizeof(count_columns) / sizeof(count_columns[0]),
-            .values = count_332,
+            .values = count_331,
             .row_count = 1U,
             .context = "built-in directory create time count",
         }

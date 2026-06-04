@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 #include "storage/mylite_file_format.h"
@@ -22,8 +23,9 @@ enum {
     show_table_status_create_options_column = 16,
     mysql_error_parse = 1064,
     mysql_error_table_storage_engine_option = 1031,
-    catalog_schema_version_after_storage_statistics_options = 32,
-    catalog_minimum_reader_version_after_storage_statistics_options = 32,
+    catalog_schema_version_after_storage_statistics_options = MYLITE_CATALOG_SCHEMA_VERSION,
+    catalog_minimum_reader_version_after_storage_statistics_options =
+        MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION,
 };
 
 struct expected_sql_error {

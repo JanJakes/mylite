@@ -3221,6 +3221,13 @@ struct information_schema_query {
     struct planned_select_limit limit;
 };
 
+struct information_schema_projection_slot_request {
+    size_t column_index;
+    enum information_schema_projection_kind kind;
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+};
+
 struct information_schema_catalog_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;
@@ -7523,6 +7530,16 @@ static int information_schema_plan_projection(
     const struct mylite_sql_ast_node *select_list,
     struct information_schema_query *out_query
 );
+static int information_schema_plan_wildcard_projection(
+    struct mylite_db *database,
+    struct information_schema_query *out_query
+);
+static int information_schema_plan_select_item_projection(
+    struct mylite_db *database,
+    bool select_list_has_one_item,
+    const struct mylite_sql_ast_node *item,
+    struct information_schema_query *out_query
+);
 static int information_schema_append_projection(
     struct mylite_db *database,
     struct information_schema_query *query,
@@ -7538,10 +7555,7 @@ static int information_schema_append_expression_projection(
 static int information_schema_append_projection_slot(
     struct mylite_db *database,
     struct information_schema_query *query,
-    size_t column_index,
-    enum information_schema_projection_kind kind,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node *alias
+    const struct information_schema_projection_slot_request *request
 );
 static int information_schema_validate_unsigned_projection_expression(
     struct mylite_db *database,

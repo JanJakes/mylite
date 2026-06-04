@@ -4,85 +4,25 @@ static int information_schema_plan_projection(
     const struct mylite_sql_ast_node *select_list,
     struct information_schema_query *out_query
 ) {
-    const struct mylite_sql_ast_node *item = NULL;
-
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
     if (select_list_is_wildcard(select_list)) {
-        for (size_t column_index = 0U; column_index < out_query->definition->column_count;
-             ++column_index) {
-            int rc = information_schema_append_projection(database, out_query, column_index, NULL);
-
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-        }
-        return MYLITE_OK;
+        return information_schema_plan_wildcard_projection(database, out_query);
     }
 
-    item = child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *item = child_at(select_list, 0U);
+    bool select_list_has_one_item = mylite_sql_ast_node_child_count(select_list) == 1U;
+
     while (item != NULL) {
-        const struct mylite_sql_ast_node *expression =
-            unwrap_parenthesized_expression(child_at(item, 0U));
-        enum planned_count_function count_function = count_function_from_expression(expression);
-        size_t column_index = 0U;
-        int rc = MYLITE_OK;
+        int rc = information_schema_plan_select_item_projection(
+            database,
+            select_list_has_one_item,
+            item,
+            out_query
+        );
 
-        if (count_function == PLANNED_COUNT_STAR) {
-            if (mylite_sql_ast_node_child_count(select_list) != 1U) {
-                set_unsupported_error(
-                    database,
-                    "INFORMATION_SCHEMA SELECT supports either COUNT(*) or metadata columns"
-                );
-                return MYLITE_ERROR;
-            }
-            out_query->is_count_star = true;
-            out_query->count_expression = expression;
-            out_query->count_alias = child_at(item, 1U);
-            return MYLITE_OK;
-        }
-        if (count_function != PLANNED_COUNT_NONE || expression == NULL) {
-            set_unsupported_error(
-                database,
-                "INFORMATION_SCHEMA SELECT supports only metadata columns and COUNT(*)"
-            );
-            return MYLITE_ERROR;
-        }
-
-        if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
-            expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-            rc = information_schema_resolve_column_reference(
-                database,
-                out_query,
-                expression,
-                COLUMN_REFERENCE_FIELD,
-                &column_index
-            );
-            if (rc == MYLITE_OK) {
-                rc = information_schema_append_projection(
-                    database,
-                    out_query,
-                    column_index,
-                    child_at(item, 1U)
-                );
-            }
-        } else if (expression->kind == MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION) {
-            rc = information_schema_append_expression_projection(
-                database,
-                out_query,
-                expression,
-                child_at(item, 1U)
-            );
-        } else {
-            set_unsupported_error(
-                database,
-                "INFORMATION_SCHEMA SELECT supports only metadata columns, COUNT(*), and "
-                "CAST(numeric metadata expression AS UNSIGNED)"
-            );
-            return MYLITE_ERROR;
-        }
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -90,6 +30,90 @@ static int information_schema_plan_projection(
     }
 
     return MYLITE_OK;
+}
+
+static int information_schema_plan_wildcard_projection(
+    struct mylite_db *database,
+    struct information_schema_query *out_query
+) {
+    for (size_t column_index = 0U; column_index < out_query->definition->column_count;
+         ++column_index) {
+        int rc = information_schema_append_projection(database, out_query, column_index, NULL);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_plan_select_item_projection(
+    struct mylite_db *database,
+    bool select_list_has_one_item,
+    const struct mylite_sql_ast_node *item,
+    struct information_schema_query *out_query
+) {
+    const struct mylite_sql_ast_node *expression =
+        unwrap_parenthesized_expression(child_at(item, 0U));
+    enum planned_count_function count_function = count_function_from_expression(expression);
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (count_function == PLANNED_COUNT_STAR) {
+        if (!select_list_has_one_item) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA SELECT supports either COUNT(*) or metadata columns"
+            );
+            return MYLITE_ERROR;
+        }
+        out_query->is_count_star = true;
+        out_query->count_expression = expression;
+        out_query->count_alias = child_at(item, 1U);
+        return MYLITE_OK;
+    }
+    if (count_function != PLANNED_COUNT_NONE || expression == NULL) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA SELECT supports only metadata columns and COUNT(*)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        rc = information_schema_resolve_column_reference(
+            database,
+            out_query,
+            expression,
+            COLUMN_REFERENCE_FIELD,
+            &column_index
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_append_projection(
+                database,
+                out_query,
+                column_index,
+                child_at(item, 1U)
+            );
+        }
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION) {
+        return information_schema_append_expression_projection(
+            database,
+            out_query,
+            expression,
+            child_at(item, 1U)
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "INFORMATION_SCHEMA SELECT supports only metadata columns, COUNT(*), and "
+        "CAST(numeric metadata expression AS UNSIGNED)"
+    );
+    return MYLITE_ERROR;
 }
 
 static int information_schema_append_projection(
@@ -101,10 +125,12 @@ static int information_schema_append_projection(
     return information_schema_append_projection_slot(
         database,
         query,
-        column_index,
-        INFORMATION_SCHEMA_PROJECTION_COLUMN,
-        NULL,
-        alias
+        &(const struct information_schema_projection_slot_request){
+            .column_index = column_index,
+            .kind = INFORMATION_SCHEMA_PROJECTION_COLUMN,
+            .expression = NULL,
+            .alias = alias,
+        }
     );
 }
 
@@ -122,20 +148,19 @@ static int information_schema_append_expression_projection(
     return information_schema_append_projection_slot(
         database,
         query,
-        0U,
-        INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION,
-        expression,
-        alias
+        &(const struct information_schema_projection_slot_request){
+            .column_index = 0U,
+            .kind = INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION,
+            .expression = expression,
+            .alias = alias,
+        }
     );
 }
 
 static int information_schema_append_projection_slot(
     struct mylite_db *database,
     struct information_schema_query *query,
-    size_t column_index,
-    enum information_schema_projection_kind kind,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node *alias
+    const struct information_schema_projection_slot_request *request
 ) {
     size_t required_count = query->projection_count + 1U;
     size_t *indexes = NULL;
@@ -184,20 +209,24 @@ static int information_schema_append_projection_slot(
     }
     query->projection_names = names;
 
-    if (alias != NULL) {
-        rc = copy_select_item_alias_text(database, alias, &column_name);
-    } else if (expression != NULL) {
-        rc = copy_source_span_text(database, &expression->span, &column_name);
+    if (request->alias != NULL) {
+        rc = copy_select_item_alias_text(database, request->alias, &column_name);
+    } else if (request->expression != NULL) {
+        rc = copy_source_span_text(database, &request->expression->span, &column_name);
     } else {
-        rc = duplicate_text(database, query->definition->columns[column_index].name, &column_name);
+        rc = duplicate_text(
+            database,
+            query->definition->columns[request->column_index].name,
+            &column_name
+        );
     }
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    query->projection_indexes[query->projection_count] = column_index;
-    query->projection_kinds[query->projection_count] = kind;
-    query->projection_expressions[query->projection_count] = expression;
+    query->projection_indexes[query->projection_count] = request->column_index;
+    query->projection_kinds[query->projection_count] = request->kind;
+    query->projection_expressions[query->projection_count] = request->expression;
     query->projection_names[query->projection_count] = column_name;
     query->projection_count = required_count;
     return MYLITE_OK;
@@ -227,52 +256,56 @@ static int information_schema_validate_numeric_projection_expression(
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *expression
 ) {
-    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
 
-    if (unwrapped == NULL) {
-        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT numeric expression is invalid");
-        return MYLITE_ERROR;
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
-    if (unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
-        mylite_sql_ast_node_literal_kind(unwrapped) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        return MYLITE_OK;
-    }
-    if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        size_t column_index = 0U;
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct mylite_sql_ast_node *unwrapped =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
 
-        return information_schema_resolve_column_reference(
-            database,
-            query,
-            unwrapped,
-            COLUMN_REFERENCE_FIELD,
-            &column_index
-        );
-    }
-    if (unwrapped->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
-        mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
-        int rc = information_schema_validate_numeric_projection_expression(
-            database,
-            query,
-            child_at(unwrapped, 0U)
-        );
+        if (unwrapped == NULL) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA SELECT numeric expression is invalid"
+            );
+            rc = MYLITE_ERROR;
+        } else if (unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
+                   mylite_sql_ast_node_literal_kind(unwrapped) ==
+                       MYLITE_SQL_AST_LITERAL_INTEGER) {
+            rc = MYLITE_OK;
+        } else if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                   unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+            size_t column_index = 0U;
 
-        if (rc == MYLITE_OK) {
-            rc = information_schema_validate_numeric_projection_expression(
+            rc = information_schema_resolve_column_reference(
                 database,
                 query,
-                child_at(unwrapped, 1U)
+                unwrapped,
+                COLUMN_REFERENCE_FIELD,
+                &column_index
             );
+        } else if (unwrapped->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+                   mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(unwrapped, 1U)) ||
+                !scalar_arithmetic_node_stack_push(&stack, child_at(unwrapped, 0U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+        } else {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA SELECT supports numeric metadata expressions with columns, "
+                "integer literals, and /"
+            );
+            rc = MYLITE_ERROR;
         }
-        return rc;
     }
-
-    set_unsupported_error(
-        database,
-        "INFORMATION_SCHEMA SELECT supports numeric metadata expressions with columns, integer "
-        "literals, and /"
-    );
-    return MYLITE_ERROR;
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
 }
 
 static int information_schema_plan_order(

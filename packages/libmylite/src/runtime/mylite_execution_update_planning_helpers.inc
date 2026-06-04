@@ -2228,7 +2228,8 @@ static int convert_update_integer_literal(
     if (!boolean_literal_magnitude(literal, &magnitude)) {
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
             (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
-             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING &&
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_HEX)) {
             set_unsupported_error(
                 database,
                 "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values"
@@ -2242,6 +2243,17 @@ static int convert_update_integer_literal(
                 column,
                 row_number,
                 ignore_errors,
+                out_value
+            );
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_HEX) {
+            return convert_integer_hex_literal(
+                database,
+                literal,
+                column,
+                row_number,
+                ignore_errors,
+                is_negative,
                 out_value
             );
         }

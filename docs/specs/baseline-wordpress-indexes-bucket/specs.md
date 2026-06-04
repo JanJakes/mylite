@@ -13,6 +13,8 @@ WordPress-oriented tests reach during setup and index introspection:
 - `SHOW CREATE TABLE` rendering for comments, defaults, keys, and table
   options;
 - index hint key-name resolution;
+- WordPress replay cast-value `INSERT` / `UPDATE` coercion for descriptor
+  storage targets;
 - duplicate-key diagnostics for composite primary keys;
 - `DESCRIBE` / `SHOW INDEX` prefix-key metadata.
 
@@ -49,6 +51,8 @@ logic into the SQLite fork.
   - `SHOW CREATE TABLE`: <https://dev.mysql.com/doc/refman/8.4/en/show-create-table.html>
   - `SHOW TABLE STATUS`: <https://dev.mysql.com/doc/refman/8.4/en/show-table-status.html>
   - Index hints: <https://dev.mysql.com/doc/refman/8.4/en/index-hints.html>
+  - Type conversion: <https://dev.mysql.com/doc/refman/8.4/en/type-conversion.html>
+  - Server SQL modes: <https://dev.mysql.com/doc/refman/8.4/en/sql-mode.html>
 - Reported WordPress test methods in the cloned
   `build/wp-sqlite-integration-src/packages/mysql-on-sqlite/tests/` tree.
 - MySQL 8.4.9 runtime probes from existing expectation scripts and new probes
@@ -96,6 +100,21 @@ The batch must address the reported failure groups:
   - mixed valid and stale names are accepted as a no-op when at least one name
     resolves, matching the reported WordPress setup shape;
   - all-missing name lists keep the MySQL `1176 / 42000` shape;
+- cast-value DML coercion:
+  - descriptor-backed `INSERT` and single-table `UPDATE` assignments accept the
+    observed WordPress/MySQL cast-value literal shapes for compatible integer,
+    decimal, approximate, nonbinary string, binary string, `YEAR`, `DATE`,
+    `TIME`, `DATETIME`, and `TIMESTAMP` targets;
+  - numeric and boolean literals convert to text for nonbinary string and
+    binary-string targets, while hex literals decode through the target
+    descriptor's text or byte rules;
+  - hex literals convert to numeric magnitudes for integer, decimal, and
+    approximate targets within MyLite's current storage envelope;
+  - temporal targets admit compact numeric time values, date-only
+    datetime/timestamp values, fractional-second strings stored at current
+    zero precision, and existing strict/non-strict zero-temporal diagnostics;
+  - `YEAR` targets accept date-like string prefixes and non-strict invalid-year
+    adjustment to `0000`;
 - key diagnostics and metadata:
   - composite primary-key duplicate diagnostics use MySQL-shaped tuple text;
   - `DESCRIBE` and `SHOW INDEX` report prefix key metadata consistently.
@@ -108,6 +127,10 @@ This batch must not implement:
 - full WordPress or `dbDelta()` compatibility;
 - a MySQL-incompatible global parser mode;
 - optimizer use of hints or secondary indexes;
+- arbitrary expression coercion beyond the descriptor-backed DML value
+  positions documented above;
+- loaded time-zone data, leap-second behavior, or broader temporal expression
+  parsing;
 - full InnoDB statistics, privileges, partitions, or temporary-table status;
 - full Unicode collation semantics beyond existing MyLite baselines;
 - SQLite-driver-only assertion behavior such as raw SQLite duplicate-key

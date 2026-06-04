@@ -569,6 +569,8 @@ static int test_varchar_diagnostics(void) {
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
     static const char *const text_trailing_space_row[] = {"43", "ab ", "3"};
+    static const char *const numeric_literal_row[] = {"2", "2", "x"};
+    static const char *const numeric_default_row[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -638,27 +640,21 @@ static int test_varchar_diagnostics(void) {
             .message_part = "Column 'nn' cannot be null",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(database, "INSERT INTO diag VALUES (2, 1, 'x')", 1);
+    failures += expect_dml_ok(database, "UPDATE diag SET v = 0x32 WHERE id = 2", 1);
+    failures += expect_query_values(
         database,
-        "INSERT INTO diag VALUES (2, 1, 'x')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "VARCHAR values support only string, NULL, and DEFAULT values",
+        (struct expected_query){
+            .sql = "SELECT id, v, nn FROM diag WHERE id = 2",
+            .values = numeric_literal_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "varchar numeric and hex literal DML",
         }
     );
     failures += execute_error(
         database,
-        "UPDATE diag SET v = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "VARCHAR values support only string, NULL, and DEFAULT values",
-        }
-    );
-    failures += execute_error(
-        database,
-        "INSERT INTO diag VALUES (2, 'a\\0', 'x')",
+        "INSERT INTO diag VALUES (3, 'a\\0', 'x')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -757,13 +753,17 @@ static int test_varchar_diagnostics(void) {
             .message_part = "The used storage engine can't index column 'v'",
         }
     );
-    failures += execute_error(
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE numeric_default (v VARCHAR(2) DEFAULT 1)");
+    failures += expect_dml_ok(database, "INSERT INTO numeric_default () VALUES ()", 1);
+    failures += expect_query_values(
         database,
-        "CREATE TABLE bad_default (v VARCHAR(2) DEFAULT 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
+        (struct expected_query){
+            .sql = "SELECT v FROM numeric_default",
+            .values = numeric_default_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "varchar numeric literal default",
         }
     );
     failures += execute_error(

@@ -1174,6 +1174,7 @@ static int test_text_diagnostics(void) {
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
     static const char *const text_predicate_row[] = {"1"};
+    static const char *const numeric_literal_row[] = {"2", "2", "x"};
     static const char *const empty_text_default_warnings[] = {
         "Warning",
         "1101",
@@ -1251,15 +1252,6 @@ static int test_text_diagnostics(void) {
     failures += expect_dml_ok(database, "INSERT INTO diag VALUES (1, 'ok', 'x')", 1);
     failures += execute_error(
         database,
-        "UPDATE diag SET tt = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "TEXT values support only string, NULL, and DEFAULT values",
-        }
-    );
-    failures += execute_error(
-        database,
         "UPDATE diag SET nn = NULL",
         (struct expected_sql_error){
             .code = mysql_error_bad_null,
@@ -1267,18 +1259,21 @@ static int test_text_diagnostics(void) {
             .message_part = "Column 'nn' cannot be null",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(database, "INSERT INTO diag VALUES (2, 1, 'x')", 1);
+    failures += expect_dml_ok(database, "UPDATE diag SET tt = 0x32 WHERE id = 2", 1);
+    failures += expect_query_values(
         database,
-        "INSERT INTO diag VALUES (2, 1, 'x')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "TEXT values support only string, NULL, and DEFAULT values",
+        (struct expected_query){
+            .sql = "SELECT id, tt, nn FROM diag WHERE id = 2",
+            .values = numeric_literal_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "text numeric and hex literal DML",
         }
     );
     failures += execute_error(
         database,
-        "INSERT INTO diag VALUES (2, 'a\\0', 'x')",
+        "INSERT INTO diag VALUES (3, 'a\\0', 'x')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

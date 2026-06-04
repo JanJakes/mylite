@@ -10664,9 +10664,7 @@ static int append_select_column_from_source(
     const struct mylite_sql_ast_node *alias
 );
 static void planned_select_order_deinit(struct planned_select_order *order);
-static void planned_select_join_condition_deinit(
-    struct planned_select_join_condition *condition
-);
+static void planned_select_join_condition_deinit(struct planned_select_join_condition *condition);
 static void planned_select_deinit(struct planned_select *plan);
 static int execute_select_from_plan(
     struct mylite_db *database,
@@ -10723,9 +10721,7 @@ static int plan_count_having_select_projection(
     size_t table_column_count,
     struct planned_count_having_select *out_plan
 );
-static bool select_list_is_descriptor_projection(
-    const struct mylite_sql_ast_node *select_list
-);
+static bool select_list_is_descriptor_projection(const struct mylite_sql_ast_node *select_list);
 static int plan_count_having_descriptor_projection(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -10753,9 +10749,7 @@ static int plan_count_having_clause(
 static const struct mylite_sql_ast_node *count_having_comparison_node(
     const struct mylite_sql_ast_node *having_clause
 );
-static bool count_having_comparison_uses_count_star(
-    const struct mylite_sql_ast_node *comparison
-);
+static bool count_having_comparison_uses_count_star(const struct mylite_sql_ast_node *comparison);
 static void planned_count_having_select_deinit(struct planned_count_having_select *plan);
 static int collect_row_scalar_select_clauses(
     struct mylite_db *database,
@@ -16812,6 +16806,21 @@ static int convert_integer_string_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int parse_dml_hex_literal_magnitude(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_magnitude,
+    bool *out_overflow
+);
+static int convert_integer_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool is_negative,
+    struct planned_value *out_value
+);
 static bool ascii_decimal_digit(unsigned char byte);
 static int copy_dml_numeric_scan_digits(
     struct mylite_db *database,
@@ -16961,6 +16970,22 @@ static int convert_text_family_literal(
     bool warn_on_trailing_space_truncation,
     struct planned_value *out_value
 );
+static int decode_dml_character_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *unsupported_message,
+    const char *nul_message,
+    char **out_text,
+    size_t *out_text_length
+);
+static int copy_dml_character_literal_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool is_negative,
+    char **out_text,
+    size_t *out_text_length
+);
 static int convert_decimal_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -16975,6 +17000,16 @@ static int convert_decimal_string_literal(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+);
+static int convert_decimal_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool is_negative,
     const struct decimal_type_info *info,
     struct planned_value *out_value
 );
@@ -17031,6 +17066,16 @@ static int convert_approximate_string_literal(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+);
+static int convert_approximate_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool is_negative,
     const struct approximate_type_info *info,
     struct planned_value *out_value
 );
@@ -17192,6 +17237,14 @@ static bool normalize_date_storage_text(
     char *out_text,
     enum temporal_storage_truncation *out_truncation
 );
+static bool normalize_fractional_datetime_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+);
+static bool normalize_date_only_datetime_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+);
 static bool datetime_storage_time_is_midnight(const char *text);
 static char *copy_temporal_text(struct mylite_db *database, const char *text, size_t text_length);
 static int canonicalize_time_text(
@@ -17202,6 +17255,18 @@ static int canonicalize_time_text(
     size_t row_number,
     bool ignore_errors,
     struct planned_value *out_value
+);
+static bool normalize_time_numeric_text(
+    const char *text,
+    size_t text_length,
+    char *out_text,
+    size_t *out_text_length
+);
+static bool normalize_fractional_time_text(
+    const char *text,
+    size_t text_length,
+    char *out_text,
+    size_t *out_text_length
 );
 static int canonicalize_datetime_text(
     struct mylite_db *database,
@@ -25401,6 +25466,7 @@ static void set_multi_statement_parse_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *root
 );
+
 struct normalized_mysql_compat_sql {
     const char *sql;
     size_t sql_size;
@@ -25438,12 +25504,7 @@ static int quote_set_bare_compat_values_sql(
     size_t *out_sql_size,
     bool *out_changed
 );
-static bool trim_sql_span(
-    const char *sql,
-    size_t sql_size,
-    size_t *out_start,
-    size_t *out_end
-);
+static bool trim_sql_span(const char *sql, size_t sql_size, size_t *out_start, size_t *out_end);
 static bool sql_span_equals_ascii_case_insensitive(
     const char *text,
     size_t text_size,
@@ -25582,8 +25643,8 @@ static int extract_mysql_executable_comment_sql(
     *out_sql = NULL;
     *out_sql_size = 0U;
     *out_changed = false;
-    if (!trim_sql_span(sql, sql_size, &start, &end) || end - start < 5U ||
-        sql[start] != '/' || sql[start + 1U] != '*' || sql[start + 2U] != '!') {
+    if (!trim_sql_span(sql, sql_size, &start, &end) || end - start < 5U || sql[start] != '/' ||
+        sql[start + 1U] != '*' || sql[start + 2U] != '!') {
         return MYLITE_OK;
     }
 
@@ -25755,8 +25816,7 @@ static int rewrite_set_user_variable_increment_sql(
     if (errno != 0 || endptr == variable->value || *endptr != '\0') {
         return MYLITE_OK;
     }
-    if (parsed_current_value < (intmax_t)INT64_MIN ||
-        parsed_current_value > (intmax_t)INT64_MAX) {
+    if (parsed_current_value < (intmax_t)INT64_MIN || parsed_current_value > (intmax_t)INT64_MAX) {
         return MYLITE_OK;
     }
     current_value = (int64_t)parsed_current_value;
@@ -25867,7 +25927,7 @@ static int quote_set_bare_compat_values_sql(
         }
 
         if (mylite_dynamic_string_append_bytes(&rewritten, sql + cursor, value_start - cursor) !=
-            MYLITE_OK ||
+                MYLITE_OK ||
             mylite_dynamic_string_append_char(&rewritten, '\'') != MYLITE_OK ||
             mylite_dynamic_string_append_bytes(
                 &rewritten,
@@ -25906,12 +25966,7 @@ static int quote_set_bare_compat_values_sql(
     return MYLITE_OK;
 }
 
-static bool trim_sql_span(
-    const char *sql,
-    size_t sql_size,
-    size_t *out_start,
-    size_t *out_end
-) {
+static bool trim_sql_span(const char *sql, size_t sql_size, size_t *out_start, size_t *out_end) {
     size_t start = 0U;
     size_t end = sql_size;
 

@@ -10,19 +10,10 @@ static int convert_char_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "CHAR values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "CHAR values support only string literals",
+        "CHAR values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "CHAR values do not support NUL bytes",
         &text,
         &text_length
@@ -62,19 +53,10 @@ static int convert_varchar_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "VARCHAR values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "VARCHAR values support only string literals",
+        "VARCHAR values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "VARCHAR values do not support NUL bytes",
         &text,
         &text_length
@@ -115,19 +97,10 @@ static int convert_text_family_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "TEXT values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "TEXT values support only string literals",
+        "TEXT values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "TEXT values do not support NUL bytes",
         &text,
         &text_length
@@ -160,6 +133,137 @@ static int convert_text_family_literal(
     out_value->integer = 0;
     out_value->text = text;
     out_value->text_length = text_length;
+    return MYLITE_OK;
+}
+
+static int decode_dml_character_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *unsupported_message,
+    const char *nul_message,
+    char **out_text,
+    size_t *out_text_length
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    uint64_t boolean_magnitude = 0U;
+
+    if (out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (value_node == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        if (value_node != literal) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        return decode_sql_string_literal(
+            database,
+            literal,
+            unsupported_message,
+            nul_message,
+            out_text,
+            out_text_length
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        if (value_node != literal) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        return decode_binary_hex_literal(database, literal, out_text, out_text_length);
+    }
+    if (boolean_literal_magnitude(literal, &boolean_magnitude)) {
+        if (is_negative && boolean_magnitude != 0U) {
+            return copy_dml_character_literal_text(
+                database,
+                "-1",
+                2U,
+                false,
+                out_text,
+                out_text_length
+            );
+        }
+        return copy_dml_character_literal_text(
+            database,
+            boolean_magnitude == 0U ? "0" : "1",
+            1U,
+            false,
+            out_text,
+            out_text_length
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+        return copy_dml_character_literal_text(
+            database,
+            literal->span.text,
+            literal->span.length,
+            is_negative,
+            out_text,
+            out_text_length
+        );
+    }
+
+    set_unsupported_error(database, unsupported_message);
+    return MYLITE_ERROR;
+}
+
+static int copy_dml_character_literal_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool is_negative,
+    char **out_text,
+    size_t *out_text_length
+) {
+    size_t prefix_length = is_negative ? 1U : 0U;
+    char *copy = NULL;
+
+    if (text == NULL || out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (text_length > SIZE_MAX - prefix_length - 1U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    copy = malloc(prefix_length + text_length + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (is_negative) {
+        copy[0] = '-';
+    }
+    memcpy(copy + prefix_length, text, text_length);
+    copy[prefix_length + text_length] = '\0';
+
+    *out_text = copy;
+    *out_text_length = prefix_length + text_length;
     return MYLITE_OK;
 }
 
@@ -200,17 +304,21 @@ static int decode_binary_string_literal(
     size_t *out_byte_count
 ) {
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL) {
-        set_unsupported_error(
+        return decode_dml_character_literal(
             database,
-            "Binary string values support only string, hex, NULL, and DEFAULT values"
+            value_node,
+            "Binary string values support only string, numeric, boolean, hex, bit, NULL, and "
+            "DEFAULT values",
+            "invalid binary string literal",
+            out_bytes,
+            out_byte_count
         );
-        return MYLITE_ERROR;
     }
     if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
         return decode_sql_string_literal_with_policy(
             database,
             value_node,
-            "Binary string values support only string and hex literals",
+            "Binary string values support only string, numeric, boolean, hex, and bit literals",
             "invalid binary string literal",
             true,
             out_bytes,
@@ -224,11 +332,15 @@ static int decode_binary_string_literal(
         return decode_binary_bit_literal(database, &value_node->span, out_bytes, out_byte_count);
     }
 
-    set_unsupported_error(
+    return decode_dml_character_literal(
         database,
-        "Binary string values support only string, hex, NULL, and DEFAULT values"
+        value_node,
+        "Binary string values support only string, numeric, boolean, hex, bit, NULL, and DEFAULT "
+        "values",
+        "invalid binary string literal",
+        out_bytes,
+        out_byte_count
     );
-    return MYLITE_ERROR;
 }
 
 static int decode_binary_bit_literal(

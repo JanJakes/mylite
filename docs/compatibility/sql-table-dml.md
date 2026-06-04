@@ -43,25 +43,38 @@ targets. Explicit `NULL` in ordinary `INSERT` / `REPLACE` still errors outside
 `IGNORE`, and broader non-strict conversion remains deferred.
 
 The current numeric DML storage conversion also admits quoted numeric strings
-for descriptor-backed `INSERT`, `REPLACE`, admitted duplicate-key assignment
-values, and single-table `UPDATE`: integer-family targets support leading
-ASCII whitespace, numeric-prefix scanning, decimal/exponent rounding, and
-non-strict or `INSERT IGNORE` warning adjustment; `DECIMAL` targets support
-fixed and exponent strings with descriptor scale rounding, strict
-incorrect-decimal diagnostics, and non-strict or `INSERT IGNORE` warning
-adjustment; and approximate targets support finite decimal/scientific strings
-with descriptor range adjustment and `FLOAT` single-precision rounding. This
-does not imply general expression coercion, selected-row conversion, predicate
+and ordinary hexadecimal literals for descriptor-backed `INSERT`, `REPLACE`,
+admitted duplicate-key assignment values, and single-table `UPDATE`:
+integer-family targets support leading ASCII whitespace, numeric-prefix
+scanning, decimal/exponent rounding, hexadecimal magnitudes, and non-strict or
+`INSERT IGNORE` warning adjustment; `DECIMAL` targets support fixed and
+exponent strings plus hexadecimal magnitudes with descriptor scale rounding,
+strict incorrect-decimal diagnostics, and non-strict or `INSERT IGNORE`
+warning adjustment; and approximate targets support finite decimal/scientific
+strings plus hexadecimal magnitudes with descriptor range adjustment and
+`FLOAT` single-precision rounding. This does not imply general expression
+coercion, selected-row conversion, predicate conversion, bit-string numeric
 conversion, or full unsigned `BIGINT` storage above MyLite's current signed-64
 physical range.
 
+The current nonbinary string and binary-string DML storage conversion accepts
+compatible string, numeric, boolean, and hexadecimal literals in the same
+descriptor-backed row-value paths. Nonbinary targets still require valid
+non-`NUL` UTF-8 after literal decoding, while binary-string targets preserve
+byte values subject to descriptor length rules.
+
 The current temporal DML storage conversion admits canonical temporal strings
 plus a limited `DATE`, `DATETIME`, and `TIMESTAMP` string subset with a `T`
-date/time separator, valid numeric `+HH:MM` / `-HH:MM` offsets, or one trailing
-`Z` / `z` suffix. Supported values are converted through MyLite descriptors and
-stored as canonical text; this does not imply fractional seconds, temporal
-literal introducers, arbitrary trailing text, broad relaxed delimiters, or
-general temporal expression coercion.
+date/time separator, valid numeric `+HH:MM` / `-HH:MM` offsets, one trailing
+`Z` / `z` suffix, date-only datetime/timestamp values, and fractional-second
+temporal strings stored at MyLite's current zero fractional precision. Compact
+numeric and compatible string forms are admitted for `TIME` storage conversion,
+and invalid numeric/boolean temporal values follow the existing strict versus
+non-strict or `IGNORE` zero-temporal diagnostics. Supported values are
+converted through MyLite descriptors and stored as canonical text; this does
+not imply temporal literal introducers, arbitrary trailing text, broad relaxed
+delimiters, loaded time-zone rows, leap seconds, or general temporal expression
+coercion.
 
 Generated-column DML is limited to MySQL's DEFAULT-only target behavior for the
 current generated-column descriptor subset. Supported insert `VALUES`/`SET`

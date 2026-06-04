@@ -22,7 +22,7 @@ static int convert_decimal_literal(
     if (value_node == NULL) {
         set_unsupported_error(
             database,
-            "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
+            "DECIMAL values support only numeric, boolean, hex, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
     }
@@ -34,7 +34,7 @@ static int convert_decimal_literal(
         } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
             set_unsupported_error(
                 database,
-                "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
+                "DECIMAL values support only numeric, boolean, hex, NULL, and DEFAULT values"
             );
             return MYLITE_ERROR;
         }
@@ -56,10 +56,11 @@ static int convert_decimal_literal(
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
         (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
          mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
-         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_HEX)) {
         set_unsupported_error(
             database,
-            "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
+            "DECIMAL values support only numeric, boolean, hex, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
     }
@@ -70,6 +71,18 @@ static int convert_decimal_literal(
             column,
             row_number,
             ignore_errors,
+            &info,
+            out_value
+        );
+    }
+    if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_HEX) {
+        return convert_decimal_hex_literal(
+            database,
+            literal,
+            column,
+            row_number,
+            ignore_errors,
+            is_negative,
             &info,
             out_value
         );
@@ -106,8 +119,8 @@ static int convert_decimal_string_literal(
     int rc = decode_sql_string_literal(
         database,
         literal,
-        "DECIMAL values support only numeric, boolean, NULL, DEFAULT, and quoted numeric string "
-        "values",
+        "DECIMAL values support only numeric, boolean, hex, NULL, DEFAULT, and quoted numeric "
+        "string values",
         "invalid DECIMAL string literal",
         &text,
         &text_length
@@ -146,6 +159,49 @@ static int convert_decimal_string_literal(
     }
     free(text);
     return rc;
+}
+
+static int convert_decimal_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool is_negative,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+) {
+    char text[sizeof("18446744073709551615")];
+    uint64_t magnitude = 0U;
+    bool overflow = false;
+    int rc = parse_dml_hex_literal_magnitude(database, literal, &magnitude, &overflow);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (overflow) {
+        return handle_decimal_out_of_range(
+            database,
+            info,
+            column->name,
+            row_number,
+            is_negative,
+            ignore_errors,
+            out_value
+        );
+    }
+    snprintf(text, sizeof(text), "%" PRIu64, magnitude);
+    return canonicalize_decimal_text(
+        database,
+        text,
+        strlen(text),
+        is_negative,
+        info,
+        column->name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
 }
 
 static int convert_decimal_scanned_string_literal(
@@ -394,7 +450,7 @@ static int convert_approximate_literal(
     if (value_node == NULL) {
         set_unsupported_error(
             database,
-            "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+            "FLOAT and DOUBLE values support only numeric, boolean, hex, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
     }
@@ -406,7 +462,8 @@ static int convert_approximate_literal(
         } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
             set_unsupported_error(
                 database,
-                "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+                "FLOAT and DOUBLE values support only numeric, boolean, hex, NULL, and DEFAULT "
+                "values"
             );
             return MYLITE_ERROR;
         }
@@ -432,10 +489,11 @@ static int convert_approximate_literal(
         (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
          mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
          mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_FLOAT &&
-         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_HEX)) {
         set_unsupported_error(
             database,
-            "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+            "FLOAT and DOUBLE values support only numeric, boolean, hex, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
     }
@@ -446,6 +504,18 @@ static int convert_approximate_literal(
             column,
             row_number,
             ignore_errors,
+            &info,
+            out_value
+        );
+    }
+    if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_HEX) {
+        return convert_approximate_hex_literal(
+            database,
+            literal,
+            column,
+            row_number,
+            ignore_errors,
+            is_negative,
             &info,
             out_value
         );
@@ -467,6 +537,60 @@ static int convert_approximate_literal(
     return rc;
 }
 
+static int convert_approximate_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool is_negative,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+) {
+    uint64_t magnitude = 0U;
+    bool overflow = false;
+    double value = 0.0;
+    int rc = parse_dml_hex_literal_magnitude(database, literal, &magnitude, &overflow);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (overflow) {
+        if (!ignore_errors) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        return convert_adjusted_approximate_range_value(
+            database,
+            info,
+            is_negative,
+            column->name,
+            row_number,
+            out_value
+        );
+    }
+
+    value = (double)magnitude;
+    if (is_negative) {
+        value = -value;
+    }
+    if (approximate_value_is_out_of_range(value, info)) {
+        if (!ignore_errors) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        return convert_adjusted_approximate_range_value(
+            database,
+            info,
+            is_negative,
+            column->name,
+            row_number,
+            out_value
+        );
+    }
+    return assign_approximate_value(approximate_storage_value(value, info), out_value);
+}
+
 static int convert_approximate_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
@@ -485,7 +609,7 @@ static int convert_approximate_string_literal(
     int rc = decode_sql_string_literal(
         database,
         literal,
-        "FLOAT and DOUBLE values support only numeric, boolean, NULL, DEFAULT, and quoted "
+        "FLOAT and DOUBLE values support only numeric, boolean, hex, NULL, DEFAULT, and quoted "
         "numeric string values",
         "invalid FLOAT or DOUBLE string literal",
         &text,
@@ -700,15 +824,15 @@ static int parse_approximate_literal_value(
         text_length == 0U || text_length >= sizeof(buffer)) {
         set_unsupported_error(
             database,
-            "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+            "FLOAT and DOUBLE values support only numeric, boolean, hex, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
     }
     memcpy(buffer, text, text_length);
     buffer[text_length] = '\0';
 
-    if (mylite_execution_parse_c_locale_double(buffer, &end, &parsed) != MYLITE_OK || end == buffer || end == NULL ||
-        *end != '\0' || !isfinite(parsed)) {
+    if (mylite_execution_parse_c_locale_double(buffer, &end, &parsed) != MYLITE_OK ||
+        end == buffer || end == NULL || *end != '\0' || !isfinite(parsed)) {
         set_out_of_range_error(database, column_name, row_number);
         return MYLITE_ERROR;
     }
@@ -888,7 +1012,13 @@ static int format_float_value_text(
             buffer_size
         );
     }
-    return mylite_execution_copy_normalized_double_text(database, candidate, context_name, buffer, buffer_size);
+    return mylite_execution_copy_normalized_double_text(
+        database,
+        candidate,
+        context_name,
+        buffer,
+        buffer_size
+    );
 }
 
 static int canonicalize_decimal_text(

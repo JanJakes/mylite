@@ -13,6 +13,8 @@
   missing-table assertion behavior as a documented non-goal.
 - [x] Fix `SELECT` index hint key resolution for aliases, table ownership,
   exact names, `PRIMARY`, and unambiguous prefixes.
+- [x] Fix WordPress cast-value `INSERT` / `UPDATE` DML coercion for compatible
+  numeric, string, binary string, `YEAR`, and temporal descriptor targets.
 - [x] Fix composite primary-key duplicate diagnostics and prefix-key metadata
   readback in `DESCRIBE` / `SHOW INDEX`; keep raw SQLite duplicate diagnostics
   as a documented non-goal for core MyLite.

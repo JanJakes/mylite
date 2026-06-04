@@ -171,6 +171,23 @@ static int test_relaxed_temporal_dml_defaults_and_persistence(void) {
         "2024-01-05 01:02:03",
         "2024-01-04 22:32:03",
     };
+    static const char *const numeric_temporal_rows[] = {
+        "10",
+        "0000-00-00",
+        "00:00:01",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "11",
+        "0000-00-00",
+        "-00:01:23",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "12",
+        "0000-00-00",
+        "00:01:23",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -306,6 +323,35 @@ static int test_relaxed_temporal_dml_defaults_and_persistence(void) {
             .context = "relaxed temporal final rows",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE temporal_numbers("
+        "id INT PRIMARY KEY, d DATE, tm TIME, dt DATETIME, ts TIMESTAMP NULL)"
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO temporal_numbers VALUES "
+        "(10, TRUE, TRUE, TRUE, TRUE), "
+        "(11, FALSE, FALSE, FALSE, FALSE), "
+        "(12, 0, 123, 0, 0)",
+        (struct expected_dml_result){.affected_rows = 3, .warning_count = 9U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE temporal_numbers SET d = FALSE, tm = -123, dt = FALSE, ts = FALSE "
+        "WHERE id = 11",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, tm, dt, ts FROM temporal_numbers ORDER BY id",
+            .values = numeric_temporal_rows,
+            .column_count = 5U,
+            .row_count = 3U,
+            .context = "relaxed numeric temporal rows",
+        }
+    );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
@@ -435,9 +481,10 @@ static int test_relaxed_temporal_strict_diagnostics(void) {
         "INSERT INTO temporal VALUES "
         "(3, '2024-01-02', '2024-01-02T03:04:05+1:00', NULL)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings",
+            .code = mysql_error_incorrect_date_value,
+            .sqlstate = "22007",
+            .message_part =
+                "Incorrect datetime value: '2024-01-02T03:04:05+1:00' for column 'dt' at row 1",
         }
     );
 

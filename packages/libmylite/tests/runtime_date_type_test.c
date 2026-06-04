@@ -690,37 +690,25 @@ static int test_date_diagnostics(void) {
         database,
         "INSERT INTO dates VALUES (1, '2024/01/02')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATE values support only canonical YYYY-MM-DD strings",
+            .code = mysql_error_incorrect_date_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect date value: '2024/01/02' for column 'd' at row 1",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, '2024/01/02')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATE values support only canonical YYYY-MM-DD strings",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, '240102')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATE values support only canonical YYYY-MM-DD strings",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, 20240102)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATE values support only string, NULL, and DEFAULT values",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
     failures += execute_error(
         database,
@@ -735,10 +723,10 @@ static int test_date_diagnostics(void) {
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM dates",
-            .values = (const char *const[]){"0"},
+            .values = (const char *const[]){"3"},
             .column_count = 1U,
             .row_count = 1U,
-            .context = "unsupported date inputs do not insert rows",
+            .context = "date INSERT IGNORE adjusted rows",
         }
     );
     failures += execute_error(
@@ -764,9 +752,9 @@ static int test_date_diagnostics(void) {
         database,
         "UPDATE dates SET d = 1 WHERE id = 9",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATE values support only string, NULL, and DEFAULT values",
+            .code = mysql_error_incorrect_date_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect date value: '1' for column 'd' at row 1",
         }
     );
     failures += execute_error(

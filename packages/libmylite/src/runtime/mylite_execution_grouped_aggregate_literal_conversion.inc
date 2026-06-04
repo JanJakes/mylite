@@ -10,19 +10,10 @@ static int convert_date_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "DATE values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "DATE values support only string literals",
+        "DATE values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "DATE values do not support NUL bytes",
         &text,
         &text_length
@@ -151,6 +142,16 @@ static bool normalize_date_storage_text(
         }
         return date_text_has_canonical_shape(out_text, date_text_length);
     }
+    if (normalize_fractional_datetime_storage_text(input, normalized_datetime)) {
+        memcpy(out_text, normalized_datetime, date_text_length);
+        out_text[date_text_length] = '\0';
+        if (datetime_storage_time_is_midnight(text)) {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NONE;
+        } else {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NOTE;
+        }
+        return date_text_has_canonical_shape(out_text, date_text_length);
+    }
     if (!normalize_z_temporal_predicate_text(text, input->text_length, normalized_datetime)) {
         return false;
     }
@@ -159,6 +160,49 @@ static bool normalize_date_storage_text(
     out_text[date_text_length] = '\0';
     *out_truncation = TEMPORAL_STORAGE_TRUNCATION_WARNING;
     return date_text_has_canonical_shape(out_text, date_text_length);
+}
+
+static bool normalize_fractional_datetime_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+) {
+    const char *text = input == NULL ? NULL : input->text;
+
+    if (input == NULL || text == NULL || out_text == NULL ||
+        input->text_length <= datetime_text_length + 1U ||
+        input->text_length > datetime_text_length + 7U || text[datetime_text_length] != '.') {
+        return false;
+    }
+    memcpy(out_text, text, datetime_text_length);
+    out_text[datetime_text_length] = '\0';
+    if (!datetime_text_has_canonical_shape(out_text, datetime_text_length)) {
+        return false;
+    }
+    for (size_t index = datetime_text_length + 1U; index < input->text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte < '0' || byte > '9') {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool normalize_date_only_datetime_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+) {
+    if (input == NULL || input->text == NULL || out_text == NULL ||
+        input->text_length != date_text_length ||
+        !date_text_has_canonical_shape(input->text, input->text_length)) {
+        return false;
+    }
+
+    memcpy(out_text, input->text, date_text_length);
+    memcpy(out_text + date_text_length, " 00:00:00", datetime_text_length - date_text_length);
+    out_text[datetime_text_length] = '\0';
+    return true;
 }
 
 static bool datetime_storage_time_is_midnight(const char *text) {
@@ -189,7 +233,11 @@ static int canonicalize_date_text(
         return MYLITE_MISUSE;
     }
     if (!date_text_has_canonical_shape(text, text_length)) {
-        set_unsupported_error(database, "DATE values support only canonical YYYY-MM-DD strings");
+        strict = temporal_sql_mode_is_strict(database);
+        if (ignore_errors || !strict) {
+            return make_date_zero_with_warning(database, text, column_name, row_number, out_value);
+        }
+        set_incorrect_date_value_error(database, text, column_name, row_number);
         free(text);
         return MYLITE_ERROR;
     }
@@ -249,19 +297,10 @@ static int convert_time_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "TIME values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "TIME values support only string literals",
+        "TIME values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "TIME values do not support NUL bytes",
         &text,
         &text_length
@@ -300,6 +339,36 @@ static int canonicalize_time_text(
     if (text == NULL || column_name == NULL || out_value == NULL) {
         free(text);
         return MYLITE_MISUSE;
+    }
+    {
+        char normalized[time_text_maximum_length + 1U];
+        size_t normalized_length = 0U;
+
+        if (normalize_time_numeric_text(text, text_length, normalized, &normalized_length)) {
+            char *copy = copy_temporal_text(database, normalized, normalized_length);
+
+            free(text);
+            if (copy == NULL) {
+                return MYLITE_NOMEM;
+            }
+            text = copy;
+            text_length = normalized_length;
+        }
+    }
+    {
+        char normalized[time_text_maximum_length + 1U];
+        size_t normalized_length = 0U;
+
+        if (normalize_fractional_time_text(text, text_length, normalized, &normalized_length)) {
+            char *copy = copy_temporal_text(database, normalized, normalized_length);
+
+            free(text);
+            if (copy == NULL) {
+                return MYLITE_NOMEM;
+            }
+            text = copy;
+            text_length = normalized_length;
+        }
     }
     if (time_text_is_canonical_valid(text, text_length)) {
         return assign_text_value(database, text, text_length, out_value);
@@ -346,6 +415,98 @@ static int canonicalize_time_text(
     return copy_text_value(database, "838:59:59", out_value);
 }
 
+static bool normalize_time_numeric_text(
+    const char *text,
+    size_t text_length,
+    char *out_text,
+    size_t *out_text_length
+) {
+    bool is_negative = false;
+    size_t digit_offset = 0U;
+    uint32_t packed = 0U;
+    uint32_t hour = 0U;
+    uint32_t minute = 0U;
+    uint32_t second = 0U;
+    int written = 0;
+
+    if (text == NULL || out_text == NULL || out_text_length == NULL || text_length == 0U) {
+        return false;
+    }
+    if (text[0] == '-') {
+        is_negative = true;
+        digit_offset = 1U;
+    }
+    if (digit_offset == text_length || text_length - digit_offset > 6U) {
+        return false;
+    }
+    for (size_t index = digit_offset; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte < '0' || byte > '9') {
+            return false;
+        }
+        packed = (packed * 10U) + (uint32_t)(byte - '0');
+    }
+
+    hour = packed / 10000U;
+    minute = (packed / 100U) % 100U;
+    second = packed % 100U;
+    written = snprintf(
+        out_text,
+        time_text_maximum_length + 1U,
+        "%s%02" PRIu32 ":%02" PRIu32 ":%02" PRIu32,
+        is_negative && packed != 0U ? "-" : "",
+        hour,
+        minute,
+        second
+    );
+    if (written < 0 || (size_t)written > time_text_maximum_length) {
+        return false;
+    }
+
+    *out_text_length = (size_t)written;
+    return true;
+}
+
+static bool normalize_fractional_time_text(
+    const char *text,
+    size_t text_length,
+    char *out_text,
+    size_t *out_text_length
+) {
+    size_t prefix_length = 0U;
+
+    if (text == NULL || out_text == NULL || out_text_length == NULL ||
+        text_length <= time_text_minimum_length + 1U ||
+        text_length > time_text_maximum_length + 7U) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (text[index] == '.') {
+            prefix_length = index;
+            break;
+        }
+    }
+    if (prefix_length == 0U || prefix_length > time_text_maximum_length ||
+        !time_text_has_canonical_shape(text, prefix_length)) {
+        return false;
+    }
+    if (text_length - prefix_length - 1U > 6U) {
+        return false;
+    }
+    for (size_t index = prefix_length + 1U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte < '0' || byte > '9') {
+            return false;
+        }
+    }
+    memcpy(out_text, text, prefix_length);
+    out_text[prefix_length] = '\0';
+    *out_text_length = prefix_length;
+    return true;
+}
+
 static int convert_datetime_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -358,19 +519,10 @@ static int convert_datetime_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "DATETIME values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "DATETIME values support only string literals",
+        "DATETIME values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "DATETIME values do not support NUL bytes",
         &text,
         &text_length
@@ -403,19 +555,10 @@ static int convert_timestamp_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "TIMESTAMP values support only string, NULL, and DEFAULT values"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = decode_sql_string_literal(
+    rc = decode_dml_character_literal(
         database,
         value_node,
-        "TIMESTAMP values support only string literals",
+        "TIMESTAMP values support only string, numeric, boolean, hex, NULL, and DEFAULT values",
         "TIMESTAMP values do not support NUL bytes",
         &text,
         &text_length
@@ -454,7 +597,39 @@ static int convert_relaxed_datetime_storage_text(
     normalization.text = text;
     normalization.text_length = text_length;
     normalization.target_offset_minutes = target_offset_minutes;
+    if (normalize_date_only_datetime_storage_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (normalize_fractional_datetime_storage_text(&normalization, normalized)) {
         free(text);
         copy = copy_temporal_text(database, normalized, datetime_text_length);
         if (copy == NULL) {
@@ -521,10 +696,16 @@ static int canonicalize_timestamp_text(
         return assign_text_value(database, text, text_length, out_value);
     }
     if (!datetime_text_has_canonical_shape(text, text_length)) {
-        set_unsupported_error(
-            database,
-            "TIMESTAMP values support only canonical YYYY-MM-DD HH:MM:SS strings"
-        );
+        if (ignore_errors || !temporal_sql_mode_is_strict(database)) {
+            return make_timestamp_zero_with_warning(
+                database,
+                text,
+                column_name,
+                row_number,
+                out_value
+            );
+        }
+        set_incorrect_datetime_value_error(database, text, column_name, row_number);
         free(text);
         return MYLITE_ERROR;
     }
@@ -568,7 +749,39 @@ static int convert_relaxed_timestamp_storage_text(
     normalization.text = text;
     normalization.text_length = text_length;
     normalization.target_offset_minutes = target_offset_minutes;
+    if (normalize_date_only_datetime_storage_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (normalize_fractional_datetime_storage_text(&normalization, normalized)) {
         free(text);
         copy = copy_temporal_text(database, normalized, datetime_text_length);
         if (copy == NULL) {
@@ -649,6 +862,7 @@ static int convert_year_literal(
     const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(value_node);
     bool is_negative = false;
     bool parse_overflow = false;
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
     uint64_t magnitude = 0U;
     char *text = NULL;
     size_t text_length = 0U;
@@ -680,7 +894,7 @@ static int convert_year_literal(
             text_length,
             column,
             row_number,
-            ignore_errors,
+            adjust_errors,
             out_value
         );
     }
@@ -694,7 +908,7 @@ static int convert_year_literal(
         return MYLITE_ERROR;
     }
     if (parse_overflow) {
-        if (!ignore_errors) {
+        if (!adjust_errors) {
             set_out_of_range_error(database, column->name, row_number);
             return MYLITE_ERROR;
         }
@@ -714,7 +928,7 @@ static int convert_year_literal(
         is_negative,
         column,
         row_number,
-        ignore_errors,
+        adjust_errors,
         out_value
     );
 }
@@ -799,6 +1013,12 @@ static int convert_year_string_magnitude(const char *text, size_t text_length, u
         uint64_t digit = 0U;
 
         if (byte < '0' || byte > '9') {
+            if (index == year_text_length && byte == '-' &&
+                (magnitude == 0U ||
+                 (magnitude >= year_minimum_normal && magnitude <= year_maximum))) {
+                *out_year = (uint32_t)magnitude;
+                return MYLITE_OK;
+            }
             return year_conversion_incorrect_integer;
         }
         digit = (uint64_t)(byte - '0');
@@ -1065,10 +1285,17 @@ static int canonicalize_datetime_text(
         return MYLITE_MISUSE;
     }
     if (!datetime_text_has_canonical_shape(text, text_length)) {
-        set_unsupported_error(
-            database,
-            "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings"
-        );
+        strict = temporal_sql_mode_is_strict(database);
+        if (ignore_errors || !strict) {
+            return make_datetime_zero_with_warning(
+                database,
+                text,
+                column_name,
+                row_number,
+                out_value
+            );
+        }
+        set_incorrect_datetime_value_error(database, text, column_name, row_number);
         free(text);
         return MYLITE_ERROR;
     }

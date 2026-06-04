@@ -893,55 +893,35 @@ static int test_datetime_diagnostics(void) {
         database,
         "INSERT INTO dates VALUES (1, '2024/01/02')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings",
+            .code = mysql_error_incorrect_datetime_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect datetime value: '2024/01/02' for column 'd' at row 1",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, '2024/01/02')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, '240102')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, '2024-01-02T03:04:05+1:00')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, '2024-01-02 03:04:05.123456')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, 20240102)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only string, NULL, and DEFAULT values",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
     failures += execute_error(
         database,
@@ -956,10 +936,10 @@ static int test_datetime_diagnostics(void) {
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM dates",
-            .values = (const char *const[]){"0"},
+            .values = (const char *const[]){"5"},
             .column_count = 1U,
             .row_count = 1U,
-            .context = "unsupported datetime inputs do not insert rows",
+            .context = "datetime INSERT IGNORE adjusted rows",
         }
     );
     failures += execute_error(
@@ -1016,9 +996,9 @@ static int test_datetime_diagnostics(void) {
         database,
         "UPDATE dates SET d = 1 WHERE id = 9",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DATETIME values support only string, NULL, and DEFAULT values",
+            .code = mysql_error_incorrect_datetime_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect datetime value: '1' for column 'd' at row 1",
         }
     );
     failures += execute_error(

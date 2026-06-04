@@ -445,6 +445,7 @@ static int test_decimal_approx_string_prefix_scanning_and_adjustment(void) {
         "80",
         "9.5",
     };
+    static const char *const hex_numeric_row[] = {"80", "9.00", "10", "11"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -648,6 +649,26 @@ static int test_decimal_approx_string_prefix_scanning_and_adjustment(void) {
     );
     failures += expect_dml_result(
         database,
+        "INSERT INTO nums(id, d, f, fl) VALUES (80, 0x08, x'06', 0x07)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET d = x'09', f = 0x0A, fl = x'0B' WHERE id = 80",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, f, fl FROM nums WHERE id = 80",
+            .values = hex_numeric_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "decimal approximate hex literal DML row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
         "UPDATE nums SET d = 'bad', f = 'bad', fl = 'bad' WHERE id = 999",
         (struct expected_dml_result){.affected_rows = 0, .warning_count = 0U}
     );
@@ -694,6 +715,18 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
     };
     static const char *const rounded_update_row[] = {"10", "2"};
     static const char *const duplicate_update_row[] = {"10", "3"};
+    static const char *const hex_integer_rows[] = {"41", "8", "9", "7"};
+    static const char *const string_literal_rows[] = {
+        "50",
+        "1",
+        "123",
+        "51",
+        "123.456",
+        "b",
+        "52",
+        "c",
+        "d",
+    };
     static const char *const nonstrict_insert_warnings[] = {
         "Warning",
         "1265",
@@ -840,6 +873,51 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "duplicate update rounded integer string row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i, bi, bu) VALUES (41, 0x05, x'06', 0x07)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET i = x'08', bi = 0x09 WHERE id = 41",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, bi, bu FROM nums WHERE id = 41",
+            .values = hex_integer_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "integer hex literal DML rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE literal_strings(id INT PRIMARY KEY, tt TEXT, bb BLOB)"
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO literal_strings VALUES "
+        "(50, FALSE, TRUE), (51, 123.456, 0x62), (52, 0x63, x'64')",
+        (struct expected_dml_result){.affected_rows = 3, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE literal_strings SET tt = TRUE, bb = 123 WHERE id = 50",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, tt, bb FROM literal_strings ORDER BY id",
+            .values = string_literal_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "string target numeric and hex literal DML rows",
         }
     );
 

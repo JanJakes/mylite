@@ -186,6 +186,8 @@ static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql,
                                       zval *out_result);
 static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_result *source,
                                         zval *out_result);
+static zend_string *mylite_mysqli_column_string(const char *value);
+static int mylite_mysqli_column_type(enum mylite_result_column_type type);
 static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value);
 static void mylite_mysqli_result_fetch_column(mylite_mysqli_result *result, zend_long column,
                                               zval *return_value);
@@ -4274,28 +4276,38 @@ static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_r
 
     for (uint32_t column = 0; column < result->column_count; column++) {
         const char *name = mylite_result_column_name(source, column);
+        const char *schema = mylite_result_column_schema_name(source, column);
+        const char *table = mylite_result_column_table_name(source, column);
+        const char *origin_table = mylite_result_column_origin_table_name(source, column);
+        const char *origin_name = mylite_result_column_origin_name(source, column);
+        uint32_t collation_id = mylite_result_column_collation_id(source, column);
 
-        result->names[column] =
-            zend_string_init(name == NULL ? "" : name, name == NULL ? 0U : strlen(name), false);
-        result->types[column] = MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING;
-        result->charsets[column] = 255U;
-        result->nullable[column] = true;
+        result->names[column] = mylite_mysqli_column_string(name);
+        result->schemas[column] = mylite_mysqli_column_string(schema);
+        result->tables[column] = mylite_mysqli_column_string(table);
+        result->origin_tables[column] = mylite_mysqli_column_string(origin_table);
+        result->origin_names[column] = mylite_mysqli_column_string(origin_name);
+        result->types[column] = mylite_mysqli_column_type(mylite_result_column_type(source, column));
+        result->flags[column] = mylite_result_column_flags(source, column);
+        result->lengths[column] = mylite_result_column_display_length(source, column);
+        result->decimals[column] = mylite_result_column_decimals(source, column);
+        result->charsets[column] = collation_id == 0U ? 255U : collation_id;
+        result->nullable[column] = mylite_result_column_nullable(source, column) != 0;
     }
 
     for (uint32_t row = 0; row < result->row_count; row++) {
         for (uint32_t column = 0; column < result->column_count; column++) {
             zval *value = &result->values[(size_t)row * result->column_count + column];
-            const char *text = mylite_result_value_text(source, row, column);
+            const void *bytes = mylite_result_value_bytes(source, row, column);
+            size_t byte_count = mylite_result_value_size(source, row, column);
 
-            if (text == NULL) {
+            if (bytes == NULL) {
                 ZVAL_NULL(value);
             } else {
-                size_t text_length = strlen(text);
-
-                if (text_length > result->max_lengths[column]) {
-                    result->max_lengths[column] = text_length;
+                if (byte_count > result->max_lengths[column]) {
+                    result->max_lengths[column] = byte_count;
                 }
-                ZVAL_STRING(value, text);
+                ZVAL_STRINGL(value, (const char *)bytes, byte_count);
             }
         }
     }
@@ -4304,6 +4316,19 @@ static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_r
     link->insert_id = (zend_long)mylite_result_insert_id(source);
     mylite_mysqli_update_result_properties(result);
     return true;
+}
+
+static zend_string *mylite_mysqli_column_string(const char *value)
+{
+    return zend_string_init(value == NULL ? "" : value, value == NULL ? 0U : strlen(value), false);
+}
+
+static int mylite_mysqli_column_type(enum mylite_result_column_type type)
+{
+    if (type == MYLITE_RESULT_COLUMN_TYPE_UNKNOWN) {
+        return MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING;
+    }
+    return (int)type;
 }
 
 static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value)

@@ -49,7 +49,19 @@ expect_same(2, $mysqli->insert_id, 'multi auto insert id property');
 $result->data_seek(0);
 $field = $result->fetch_field();
 expect_same('id', $field->name, 'field name');
-expect_same('', $field->table, 'field table');
-expect_same(MYSQLI_TYPE_VAR_STRING, $field->type, 'field type');
+expect_same('posts', $field->table, 'field table');
+expect_same('posts', $field->orgtable, 'origin field table');
+expect_same('id', $field->orgname, 'origin field name');
+expect_same(MYSQLI_TYPE_LONG, $field->type, 'field type');
+expect_same(11, $field->length, 'field length');
+
+$empty_result = $mysqli->query('SELECT id FROM posts WHERE id = 0');
+if (!$empty_result instanceof mysqli_result) {
+    throw new RuntimeException('empty query result type');
+}
+$empty_field = $empty_result->fetch_field();
+expect_same('posts', $empty_field->table, 'empty field table');
+expect_same(MYSQLI_TYPE_LONG, $empty_field->type, 'empty field type');
+expect_same(11, $empty_field->length, 'empty field length');
 
 $mysqli->close();

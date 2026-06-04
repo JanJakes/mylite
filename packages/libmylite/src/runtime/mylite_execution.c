@@ -2144,6 +2144,34 @@ struct select_sql_work_stack {
     size_t capacity;
 };
 
+enum select_parameter_bind_item_kind {
+    SELECT_PARAMETER_BIND_PLAN = 0,
+    SELECT_PARAMETER_BIND_SOURCE_LIST = 1,
+    SELECT_PARAMETER_BIND_SOURCE = 2,
+    SELECT_PARAMETER_BIND_JOIN_CONDITION = 3,
+    SELECT_PARAMETER_BIND_PREDICATE = 4,
+    SELECT_PARAMETER_BIND_ORDER = 5,
+    SELECT_PARAMETER_BIND_LIMIT = 6,
+};
+
+struct select_parameter_bind_item {
+    enum select_parameter_bind_item_kind kind;
+    const struct planned_select *plan;
+    const struct planned_select_source *sources;
+    const struct planned_select_source *source;
+    const struct planned_select_join_condition *join_condition;
+    const struct planned_select_predicate *predicate;
+    const struct planned_select_order *order;
+    const struct planned_select_limit *limit;
+    size_t source_count;
+};
+
+struct select_parameter_bind_stack {
+    struct select_parameter_bind_item *items;
+    size_t count;
+    size_t capacity;
+};
+
 struct planned_select_order_item {
     enum planned_select_order_item_kind kind;
     enum planned_select_order_direction direction;
@@ -25545,6 +25573,36 @@ static int bind_select_parameters_at(
     const struct planned_select *plan,
     int *parameter_index
 );
+static int bind_select_parameter_work_stack(
+    sqlite3_stmt *statement,
+    struct select_parameter_bind_stack *stack,
+    int *parameter_index
+);
+static int bind_select_parameter_work_item(
+    sqlite3_stmt *statement,
+    struct select_parameter_bind_stack *stack,
+    const struct select_parameter_bind_item *item,
+    int *parameter_index
+);
+static int push_select_plan_parameter_work(
+    struct select_parameter_bind_stack *stack,
+    const struct planned_select *plan
+);
+static int push_select_source_list_parameter_work(
+    struct select_parameter_bind_stack *stack,
+    const struct planned_select_source *sources,
+    size_t source_count
+);
+static int bind_select_limit_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_limit *limit,
+    int *parameter_index
+);
+static int select_parameter_bind_stack_push(
+    struct select_parameter_bind_stack *stack,
+    struct select_parameter_bind_item item
+);
+static void select_parameter_bind_stack_deinit(struct select_parameter_bind_stack *stack);
 static int bind_select_join_condition_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_join_condition *condition,
@@ -25565,6 +25623,16 @@ static int bind_count_having_select_parameters(
     const struct planned_count_having_select *plan
 );
 static int bind_row_scalar_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_select *plan,
+    int *parameter_index
+);
+static int bind_row_scalar_select_source_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_select *plan,
+    int *parameter_index
+);
+static int bind_row_scalar_tableless_filter_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_select *plan,
     int *parameter_index

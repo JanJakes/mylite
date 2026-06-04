@@ -4703,6 +4703,12 @@ expression(A) ::= USER_VARIABLE(T). {
 expression(A) ::= qualified_identifier(B). {
     A = B;
 }
+expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, NULL, R);
+}
+expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+}
 expression(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);

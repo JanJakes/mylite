@@ -4109,6 +4109,31 @@ static int test_select_item_alias_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT 1, BOGUS(1) FROM bogus;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(statement, 0U);
+    {
+        const struct mylite_sql_ast_node *function =
+            parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+        failures +=
+            parser_test_expect_node(function, MYLITE_SQL_AST_GENERIC_FUNCTION, "generic function");
+        failures += parser_test_expect_span_text(
+            parser_test_child_at(function, 0U),
+            "BOGUS",
+            "generic function name"
+        );
+        failures += parser_test_expect_node(
+            parser_test_child_at(function, 1U),
+            MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
+            "generic function arguments"
+        );
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT * AS x FROM numbers;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result

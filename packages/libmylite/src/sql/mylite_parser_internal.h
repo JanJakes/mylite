@@ -1808,6 +1808,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_list_argument_function(
     struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

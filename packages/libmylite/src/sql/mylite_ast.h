@@ -663,6 +663,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION = 654,
     MYLITE_SQL_AST_FROM_DERIVED = 655,
     MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION = 656,
+    MYLITE_SQL_AST_GENERIC_FUNCTION = 657,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -24123,6 +24123,11 @@ static int append_row_scalar_non_concat_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_non_control_flow_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_integer_arithmetic_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -24484,7 +24489,17 @@ static int append_row_scalar_searched_case_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_nested_searched_case_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_like_predicate_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_leaf_like_predicate_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -24550,6 +24565,11 @@ static int append_row_scalar_control_flow_argument_sql(
     size_t *next_parameter
 );
 static int append_row_scalar_control_flow_leaf_argument_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_control_flow_leaf_condition_argument_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter

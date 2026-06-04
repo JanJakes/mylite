@@ -115,12 +115,17 @@ static int append_row_scalar_registered_function_expression_sql(
         if (argument_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
-        if (rc == MYLITE_OK) {
-            rc = append_row_scalar_non_concat_expression_sql(
-                string,
-                &expression->arguments[argument_index],
-                next_parameter
-            );
+        if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
+                                   PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+            rc = append_numbered_parameter(string, *next_parameter);
+            if (rc == MYLITE_OK) {
+                ++(*next_parameter);
+            }
+        } else if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
+                                      PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+            rc = append_row_scalar_column_sql(string, &expression->arguments[argument_index]);
+        } else if (rc == MYLITE_OK) {
+            rc = MYLITE_ERROR;
         }
     }
     if (rc == MYLITE_OK) {
@@ -536,12 +541,17 @@ static int append_row_scalar_char_expression_sql(
         if (argument_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
-        if (rc == MYLITE_OK) {
-            rc = append_row_scalar_non_concat_expression_sql(
-                string,
-                &expression->arguments[argument_index],
-                next_parameter
-            );
+        if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
+                                   PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+            rc = append_numbered_parameter(string, *next_parameter);
+            if (rc == MYLITE_OK) {
+                ++(*next_parameter);
+            }
+        } else if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
+                                      PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+            rc = append_row_scalar_column_sql(string, &expression->arguments[argument_index]);
+        } else if (rc == MYLITE_OK) {
+            rc = MYLITE_ERROR;
         }
     }
     if (rc == MYLITE_OK) {

@@ -354,3 +354,46 @@ static void set_parse_error(
         message
     );
 }
+
+static void set_multi_statement_parse_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *root
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const struct mylite_sql_ast_node *second_statement = child_at(root, 1U);
+    const struct mylite_sql_source_span *span =
+        second_statement == NULL ? NULL : &second_statement->span;
+    const char *near_text = "end of input";
+    size_t near_length = strlen(near_text);
+    size_t line = 1U;
+    int written = 0;
+
+    if (span != NULL && span->text != NULL && span->length != 0U) {
+        near_text = span->text;
+        near_length = span->length;
+        line = span->line == 0U ? 1U : span->line;
+    }
+    if (near_length > (size_t)INT_MAX) {
+        near_length = (size_t)INT_MAX;
+    }
+
+    written = snprintf(
+        message,
+        sizeof(message),
+        "You have an error in your SQL syntax; check the manual that corresponds to your "
+        "MySQL server version for the right syntax to use near '%.*s' at line %zu",
+        (int)near_length,
+        near_text,
+        line
+    );
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_parse,
+        "42000",
+        message
+    );
+}

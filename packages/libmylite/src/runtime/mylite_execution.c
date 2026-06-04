@@ -24965,6 +24965,10 @@ static void set_parse_error(
     struct mylite_db *database,
     const struct mylite_sql_parse_result *parse_result
 );
+static void set_multi_statement_parse_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *root
+);
 struct normalized_mysql_compat_sql {
     const char *sql;
     size_t sql_size;
@@ -25697,7 +25701,7 @@ int mylite_execute(
         statement = child_at(parse_result.root, 0U);
         rc = execute_parsed_statement(database, &context, statement, out_result);
     } else if (rc == MYLITE_OK) {
-        set_unsupported_error(database, "multiple statements are not supported");
+        set_multi_statement_parse_error(database, parse_result.root);
         rc = MYLITE_ERROR;
     }
 

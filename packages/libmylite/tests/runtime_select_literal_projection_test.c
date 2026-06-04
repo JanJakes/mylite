@@ -273,6 +273,15 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
             .message_part = "near 'LIMIT'",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT 1; SELECT 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'SELECT 2' at line 1",
+        }
+    );
     if (snprintf(select_digits82, sizeof(select_digits82), "SELECT %s", digits82) < 0) {
         failures += expect_int(1, 0, "format 82 digit query");
     } else {

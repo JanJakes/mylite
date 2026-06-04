@@ -171,45 +171,90 @@ static mylite_mysqli_link *mylite_mysqli_link_from_obj(zend_object *object);
 static mylite_mysqli_result *mylite_mysqli_result_from_obj(zend_object *object);
 static mylite_mysqli_stmt *mylite_mysqli_stmt_from_obj(zend_object *object);
 
-static bool mylite_mysqli_connect_link(mylite_mysqli_link *link, const char *host,
-                                       size_t host_length, const char *database,
-                                       size_t database_length, const char *socket,
-                                       size_t socket_length);
-static bool mylite_mysqli_link_query(mylite_mysqli_link *link, const char *sql, size_t sql_length,
-                                     zval *out_result);
-static bool mylite_mysqli_link_real_query(mylite_mysqli_link *link, const char *sql,
-                                          size_t sql_length);
-static bool mylite_mysqli_stmt_prepare_internal(mylite_mysqli_stmt *stmt, const char *sql,
-                                                size_t sql_length);
+static bool mylite_mysqli_connect_link(
+    mylite_mysqli_link *link,
+    const char *host,
+    size_t host_length,
+    const char *database,
+    size_t database_length,
+    const char *socket,
+    size_t socket_length
+);
+static bool mylite_mysqli_link_query(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *out_result
+);
+static bool mylite_mysqli_link_real_query(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length
+);
+static bool mylite_mysqli_stmt_prepare_internal(
+    mylite_mysqli_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+);
 static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params);
-static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql, size_t sql_length,
-                                      zval *out_result);
-static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_result *source,
-                                        zval *out_result);
+static bool mylite_mysqli_execute_sql(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *out_result
+);
+static bool mylite_mysqli_buffer_result(
+    mylite_mysqli_link *link,
+    const mylite_result *source,
+    zval *out_result
+);
 static zend_string *mylite_mysqli_column_string(const char *value);
 static int mylite_mysqli_column_type(enum mylite_result_column_type type);
 static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value);
-static void mylite_mysqli_result_fetch_column(mylite_mysqli_result *result, zend_long column,
-                                              zval *return_value);
-static void mylite_mysqli_result_fetch_field(mylite_mysqli_result *result, uint32_t index,
-                                             zval *return_value);
-static zend_string *mylite_mysqli_interpolate_query(zend_string *query, zval *params,
-                                                    uint32_t param_count);
+static void mylite_mysqli_result_fetch_column(
+    mylite_mysqli_result *result,
+    zend_long column,
+    zval *return_value
+);
+static void mylite_mysqli_result_fetch_field(
+    mylite_mysqli_result *result,
+    uint32_t index,
+    zval *return_value
+);
+static zend_string *mylite_mysqli_interpolate_query(
+    zend_string *query,
+    zval *params,
+    uint32_t param_count
+);
 static zend_string *mylite_mysqli_param_to_sql(zval *value);
 static uint32_t mylite_mysqli_count_markers(const char *sql, size_t sql_length);
 static bool mylite_mysqli_is_local_path(const char *value, size_t length);
-static zend_string *mylite_mysqli_resolve_path(const char *host, size_t host_length,
-                                               const char *database, size_t database_length,
-                                               const char *socket, size_t socket_length,
-                                               bool *out_memory, bool *out_use_database);
+static zend_string *mylite_mysqli_resolve_path(
+    const char *host,
+    size_t host_length,
+    const char *database,
+    size_t database_length,
+    const char *socket,
+    size_t socket_length,
+    bool *out_memory,
+    bool *out_use_database
+);
 static zend_string *mylite_mysqli_quote_identifier(const char *value, size_t length);
 static zend_string *mylite_mysqli_escape_string(const char *value, size_t length);
 static bool mylite_mysqli_is_line_comment_terminator(char ch);
 static bool mylite_mysqli_is_dash_comment_start(const char *sql, size_t sql_length, size_t index);
-static void mylite_mysqli_set_error(mylite_mysqli_link *link, int error_code, const char *sqlstate,
-                                    const char *message);
-static void mylite_mysqli_set_stmt_error(mylite_mysqli_stmt *stmt, int error_code,
-                                         const char *sqlstate, const char *message);
+static void mylite_mysqli_set_error(
+    mylite_mysqli_link *link,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+);
+static void mylite_mysqli_set_stmt_error(
+    mylite_mysqli_stmt *stmt,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+);
 static void mylite_mysqli_clear_error(mylite_mysqli_link *link);
 static void mylite_mysqli_clear_stmt_error(mylite_mysqli_stmt *stmt);
 static void mylite_mysqli_report_link_error(mylite_mysqli_link *link);
@@ -972,8 +1017,7 @@ static const zend_function_entry mylite_mysqli_exception_methods[] = {
 };
 /* clang-format on */
 
-PHP_FUNCTION(mysqli_connect)
-{
+PHP_FUNCTION(mysqli_connect) {
     char *host = NULL;
     char *username = NULL;
     char *password = NULL;
@@ -1007,21 +1051,26 @@ PHP_FUNCTION(mysqli_connect)
 
     object_init_ex(return_value, mylite_mysqli_link_ce);
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(return_value));
-    if (!mylite_mysqli_connect_link(link, host, host_length, database, database_length, socket,
-                                    socket_length)) {
+    if (!mylite_mysqli_connect_link(
+            link,
+            host,
+            host_length,
+            database,
+            database_length,
+            socket,
+            socket_length
+        )) {
         zval_ptr_dtor(return_value);
         RETURN_FALSE;
     }
 }
 
-PHP_FUNCTION(mysqli_init)
-{
+PHP_FUNCTION(mysqli_init) {
     ZEND_PARSE_PARAMETERS_NONE();
     object_init_ex(return_value, mylite_mysqli_link_ce);
 }
 
-PHP_FUNCTION(mysqli_real_connect)
-{
+PHP_FUNCTION(mysqli_real_connect) {
     zval *mysql = NULL;
     char *host = NULL;
     char *username = NULL;
@@ -1057,13 +1106,18 @@ PHP_FUNCTION(mysqli_real_connect)
     (void)port_is_null;
     (void)flags;
 
-    RETURN_BOOL(mylite_mysqli_connect_link(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), host,
-                                           host_length, database, database_length, socket,
-                                           socket_length));
+    RETURN_BOOL(mylite_mysqli_connect_link(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        host,
+        host_length,
+        database,
+        database_length,
+        socket,
+        socket_length
+    ));
 }
 
-PHP_FUNCTION(mysqli_query)
-{
+PHP_FUNCTION(mysqli_query) {
     zval *mysql = NULL;
     char *query = NULL;
     size_t query_length = 0U;
@@ -1077,14 +1131,17 @@ PHP_FUNCTION(mysqli_query)
     ZEND_PARSE_PARAMETERS_END();
 
     (void)result_mode;
-    if (!mylite_mysqli_link_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), query, query_length,
-                                  return_value)) {
+    if (!mylite_mysqli_link_query(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+            query,
+            query_length,
+            return_value
+        )) {
         RETURN_FALSE;
     }
 }
 
-PHP_FUNCTION(mysqli_execute_query)
-{
+PHP_FUNCTION(mysqli_execute_query) {
     zval *mysql = NULL;
     char *query = NULL;
     size_t query_length = 0U;
@@ -1100,10 +1157,12 @@ PHP_FUNCTION(mysqli_execute_query)
     ZEND_PARSE_PARAMETERS_END();
 
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
-    sql = params == NULL
-              ? zend_string_init(query, query_length, false)
-              : mylite_mysqli_interpolate_query(zend_string_init(query, query_length, false),
-                                                params, zend_hash_num_elements(Z_ARRVAL_P(params)));
+    sql = params == NULL ? zend_string_init(query, query_length, false)
+                         : mylite_mysqli_interpolate_query(
+                               zend_string_init(query, query_length, false),
+                               params,
+                               zend_hash_num_elements(Z_ARRVAL_P(params))
+                           );
     if (sql == NULL) {
         mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
         mylite_mysqli_report_link_error(link);
@@ -1117,8 +1176,7 @@ PHP_FUNCTION(mysqli_execute_query)
     zend_string_release(sql);
 }
 
-PHP_FUNCTION(mysqli_real_query)
-{
+PHP_FUNCTION(mysqli_real_query) {
     zval *mysql = NULL;
     char *query = NULL;
     size_t query_length = 0U;
@@ -1128,12 +1186,14 @@ PHP_FUNCTION(mysqli_real_query)
     Z_PARAM_STRING(query, query_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), query,
-                                              query_length));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        query,
+        query_length
+    ));
 }
 
-PHP_FUNCTION(mysqli_store_result)
-{
+PHP_FUNCTION(mysqli_store_result) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
     zend_long mode = 0;
@@ -1154,13 +1214,11 @@ PHP_FUNCTION(mysqli_store_result)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_use_result)
-{
+PHP_FUNCTION(mysqli_use_result) {
     ZEND_MN(mysqli_store_result)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
-PHP_FUNCTION(mysqli_close)
-{
+PHP_FUNCTION(mysqli_close) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
 
@@ -1178,14 +1236,12 @@ PHP_FUNCTION(mysqli_close)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_connect_errno)
-{
+PHP_FUNCTION(mysqli_connect_errno) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_LONG(MYLITE_MYSQLI_G(connect_errno));
 }
 
-PHP_FUNCTION(mysqli_connect_error)
-{
+PHP_FUNCTION(mysqli_connect_error) {
     ZEND_PARSE_PARAMETERS_NONE();
     if (MYLITE_MYSQLI_G(connect_errno) == 0) {
         RETURN_NULL();
@@ -1193,8 +1249,7 @@ PHP_FUNCTION(mysqli_connect_error)
     RETURN_STRING(MYLITE_MYSQLI_G(connect_error));
 }
 
-PHP_FUNCTION(mysqli_errno)
-{
+PHP_FUNCTION(mysqli_errno) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1204,8 +1259,7 @@ PHP_FUNCTION(mysqli_errno)
     RETURN_LONG(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->error_code);
 }
 
-PHP_FUNCTION(mysqli_error)
-{
+PHP_FUNCTION(mysqli_error) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
 
@@ -1217,8 +1271,7 @@ PHP_FUNCTION(mysqli_error)
     RETURN_STR_COPY(link->error);
 }
 
-PHP_FUNCTION(mysqli_error_list)
-{
+PHP_FUNCTION(mysqli_error_list) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
     zval entry;
@@ -1240,8 +1293,7 @@ PHP_FUNCTION(mysqli_error_list)
     add_next_index_zval(return_value, &entry);
 }
 
-PHP_FUNCTION(mysqli_sqlstate)
-{
+PHP_FUNCTION(mysqli_sqlstate) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1251,8 +1303,7 @@ PHP_FUNCTION(mysqli_sqlstate)
     RETURN_STRING(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->sqlstate);
 }
 
-PHP_FUNCTION(mysqli_field_count)
-{
+PHP_FUNCTION(mysqli_field_count) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1262,8 +1313,7 @@ PHP_FUNCTION(mysqli_field_count)
     RETURN_LONG(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->field_count);
 }
 
-PHP_FUNCTION(mysqli_affected_rows)
-{
+PHP_FUNCTION(mysqli_affected_rows) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1273,8 +1323,7 @@ PHP_FUNCTION(mysqli_affected_rows)
     RETURN_LONG(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->affected_rows);
 }
 
-PHP_FUNCTION(mysqli_insert_id)
-{
+PHP_FUNCTION(mysqli_insert_id) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1284,8 +1333,7 @@ PHP_FUNCTION(mysqli_insert_id)
     RETURN_LONG(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->insert_id);
 }
 
-PHP_FUNCTION(mysqli_info)
-{
+PHP_FUNCTION(mysqli_info) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1296,8 +1344,7 @@ PHP_FUNCTION(mysqli_info)
     RETURN_NULL();
 }
 
-PHP_FUNCTION(mysqli_warning_count)
-{
+PHP_FUNCTION(mysqli_warning_count) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1307,8 +1354,7 @@ PHP_FUNCTION(mysqli_warning_count)
     RETURN_LONG(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->warning_count);
 }
 
-PHP_FUNCTION(mysqli_get_warnings)
-{
+PHP_FUNCTION(mysqli_get_warnings) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
     const char *message = NULL;
@@ -1324,16 +1370,30 @@ PHP_FUNCTION(mysqli_get_warnings)
 
     object_init_ex(return_value, mylite_mysqli_warning_ce);
     message = "MyLite warning";
-    zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "message",
-                                strlen("message"), message == NULL ? "" : message);
-    zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "sqlstate",
-                                strlen("sqlstate"), "HY000");
-    zend_update_property_long(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "errno",
-                              strlen("errno"), 0);
+    zend_update_property_string(
+        mylite_mysqli_warning_ce,
+        Z_OBJ_P(return_value),
+        "message",
+        strlen("message"),
+        message == NULL ? "" : message
+    );
+    zend_update_property_string(
+        mylite_mysqli_warning_ce,
+        Z_OBJ_P(return_value),
+        "sqlstate",
+        strlen("sqlstate"),
+        "HY000"
+    );
+    zend_update_property_long(
+        mylite_mysqli_warning_ce,
+        Z_OBJ_P(return_value),
+        "errno",
+        strlen("errno"),
+        0
+    );
 }
 
-PHP_FUNCTION(mysqli_get_client_info)
-{
+PHP_FUNCTION(mysqli_get_client_info) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(0, 1)
@@ -1345,14 +1405,12 @@ PHP_FUNCTION(mysqli_get_client_info)
     RETURN_STRING("mylite mysqli " PHP_MYLITE_MYSQLI_VERSION);
 }
 
-PHP_FUNCTION(mysqli_get_client_version)
-{
+PHP_FUNCTION(mysqli_get_client_version) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_LONG(100);
 }
 
-PHP_FUNCTION(mysqli_get_host_info)
-{
+PHP_FUNCTION(mysqli_get_host_info) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
 
@@ -1367,8 +1425,7 @@ PHP_FUNCTION(mysqli_get_host_info)
     RETURN_STRING("MyLite embedded memory");
 }
 
-PHP_FUNCTION(mysqli_get_proto_info)
-{
+PHP_FUNCTION(mysqli_get_proto_info) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1378,8 +1435,7 @@ PHP_FUNCTION(mysqli_get_proto_info)
     RETURN_LONG(10);
 }
 
-PHP_FUNCTION(mysqli_get_server_info)
-{
+PHP_FUNCTION(mysqli_get_server_info) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1389,8 +1445,7 @@ PHP_FUNCTION(mysqli_get_server_info)
     RETURN_STRING(MYLITE_MYSQLI_SERVER_INFO);
 }
 
-PHP_FUNCTION(mysqli_get_server_version)
-{
+PHP_FUNCTION(mysqli_get_server_version) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1400,8 +1455,7 @@ PHP_FUNCTION(mysqli_get_server_version)
     RETURN_LONG(MYLITE_MYSQLI_SERVER_VERSION);
 }
 
-PHP_FUNCTION(mysqli_character_set_name)
-{
+PHP_FUNCTION(mysqli_character_set_name) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1411,8 +1465,7 @@ PHP_FUNCTION(mysqli_character_set_name)
     RETURN_STRING("utf8mb4");
 }
 
-PHP_FUNCTION(mysqli_get_charset)
-{
+PHP_FUNCTION(mysqli_get_charset) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1430,8 +1483,7 @@ PHP_FUNCTION(mysqli_get_charset)
     add_property_string(return_value, "comment", "MyLite default charset");
 }
 
-PHP_FUNCTION(mysqli_set_charset)
-{
+PHP_FUNCTION(mysqli_set_charset) {
     zval *mysql = NULL;
     char *value = NULL;
     size_t value_length = 0U;
@@ -1444,14 +1496,16 @@ PHP_FUNCTION(mysqli_set_charset)
     ZEND_PARSE_PARAMETERS_END();
 
     sql = zend_strpprintf(0, "SET NAMES %.*s", (int)value_length, value);
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), ZSTR_VAL(sql),
-                                       ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     RETURN_BOOL(ok);
 }
 
-PHP_FUNCTION(mysqli_select_db)
-{
+PHP_FUNCTION(mysqli_select_db) {
     zval *mysql = NULL;
     char *value = NULL;
     size_t value_length = 0U;
@@ -1466,15 +1520,17 @@ PHP_FUNCTION(mysqli_select_db)
 
     quoted = mylite_mysqli_quote_identifier(value, value_length);
     sql = zend_strpprintf(0, "USE %s", ZSTR_VAL(quoted));
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), ZSTR_VAL(sql),
-                                       ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_FUNCTION(mysqli_real_escape_string)
-{
+PHP_FUNCTION(mysqli_real_escape_string) {
     zval *mysql = NULL;
     char *value = NULL;
     size_t value_length = 0U;
@@ -1489,13 +1545,11 @@ PHP_FUNCTION(mysqli_real_escape_string)
     RETURN_STR(escaped);
 }
 
-PHP_FUNCTION(mysqli_escape_string)
-{
+PHP_FUNCTION(mysqli_escape_string) {
     ZEND_MN(mysqli_real_escape_string)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
-PHP_FUNCTION(mysqli_autocommit)
-{
+PHP_FUNCTION(mysqli_autocommit) {
     zval *mysql = NULL;
     bool enable = false;
 
@@ -1509,8 +1563,7 @@ PHP_FUNCTION(mysqli_autocommit)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_begin_transaction)
-{
+PHP_FUNCTION(mysqli_begin_transaction) {
     zval *mysql = NULL;
     zend_long flags = 0;
     char *name = NULL;
@@ -1526,12 +1579,14 @@ PHP_FUNCTION(mysqli_begin_transaction)
     (void)flags;
     (void)name;
     (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
-                                              "START TRANSACTION", strlen("START TRANSACTION")));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        "START TRANSACTION",
+        strlen("START TRANSACTION")
+    ));
 }
 
-PHP_FUNCTION(mysqli_commit)
-{
+PHP_FUNCTION(mysqli_commit) {
     zval *mysql = NULL;
     zend_long flags = 0;
     char *name = NULL;
@@ -1547,12 +1602,14 @@ PHP_FUNCTION(mysqli_commit)
     (void)flags;
     (void)name;
     (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), "COMMIT",
-                                              strlen("COMMIT")));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        "COMMIT",
+        strlen("COMMIT")
+    ));
 }
 
-PHP_FUNCTION(mysqli_rollback)
-{
+PHP_FUNCTION(mysqli_rollback) {
     zval *mysql = NULL;
     zend_long flags = 0;
     char *name = NULL;
@@ -1568,12 +1625,14 @@ PHP_FUNCTION(mysqli_rollback)
     (void)flags;
     (void)name;
     (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
-                                              "ROLLBACK", strlen("ROLLBACK")));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        "ROLLBACK",
+        strlen("ROLLBACK")
+    ));
 }
 
-PHP_FUNCTION(mysqli_savepoint)
-{
+PHP_FUNCTION(mysqli_savepoint) {
     zval *mysql = NULL;
     char *name = NULL;
     size_t name_length = 0U;
@@ -1588,15 +1647,17 @@ PHP_FUNCTION(mysqli_savepoint)
 
     quoted = mylite_mysqli_quote_identifier(name, name_length);
     sql = zend_strpprintf(0, "SAVEPOINT %s", ZSTR_VAL(quoted));
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), ZSTR_VAL(sql),
-                                       ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_FUNCTION(mysqli_release_savepoint)
-{
+PHP_FUNCTION(mysqli_release_savepoint) {
     zval *mysql = NULL;
     char *name = NULL;
     size_t name_length = 0U;
@@ -1611,15 +1672,17 @@ PHP_FUNCTION(mysqli_release_savepoint)
 
     quoted = mylite_mysqli_quote_identifier(name, name_length);
     sql = zend_strpprintf(0, "RELEASE SAVEPOINT %s", ZSTR_VAL(quoted));
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), ZSTR_VAL(sql),
-                                       ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_FUNCTION(mysqli_change_user)
-{
+PHP_FUNCTION(mysqli_change_user) {
     zval *mysql = NULL;
     char *username = NULL;
     char *password = NULL;
@@ -1645,16 +1708,18 @@ PHP_FUNCTION(mysqli_change_user)
 
     zend_string *quoted = mylite_mysqli_quote_identifier(database, database_length);
     zend_string *sql = zend_strpprintf(0, "USE %s", ZSTR_VAL(quoted));
-    bool ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
-                                            ZSTR_VAL(sql), ZSTR_LEN(sql));
+    bool ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
 
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_FUNCTION(mysqli_options)
-{
+PHP_FUNCTION(mysqli_options) {
     zval *mysql = NULL;
     zval *value = NULL;
     zend_long option = 0;
@@ -1671,13 +1736,11 @@ PHP_FUNCTION(mysqli_options)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_set_opt)
-{
+PHP_FUNCTION(mysqli_set_opt) {
     ZEND_MN(mysqli_options)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
-PHP_FUNCTION(mysqli_ssl_set)
-{
+PHP_FUNCTION(mysqli_ssl_set) {
     zval *mysql = NULL;
     char *key = NULL;
     char *certificate = NULL;
@@ -1713,8 +1776,7 @@ PHP_FUNCTION(mysqli_ssl_set)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stat)
-{
+PHP_FUNCTION(mysqli_stat) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1724,8 +1786,7 @@ PHP_FUNCTION(mysqli_stat)
     RETURN_STRING("MyLite embedded mysqli connection");
 }
 
-PHP_FUNCTION(mysqli_ping)
-{
+PHP_FUNCTION(mysqli_ping) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1735,8 +1796,7 @@ PHP_FUNCTION(mysqli_ping)
     RETURN_BOOL(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->connected);
 }
 
-PHP_FUNCTION(mysqli_kill)
-{
+PHP_FUNCTION(mysqli_kill) {
     zval *mysql = NULL;
     zend_long process_id = 0;
 
@@ -1750,8 +1810,7 @@ PHP_FUNCTION(mysqli_kill)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_dump_debug_info)
-{
+PHP_FUNCTION(mysqli_dump_debug_info) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1761,8 +1820,7 @@ PHP_FUNCTION(mysqli_dump_debug_info)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_debug)
-{
+PHP_FUNCTION(mysqli_debug) {
     char *options = NULL;
     size_t options_length = 0U;
 
@@ -1775,8 +1833,7 @@ PHP_FUNCTION(mysqli_debug)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_refresh)
-{
+PHP_FUNCTION(mysqli_refresh) {
     zval *mysql = NULL;
     zend_long flags = 0;
 
@@ -1790,13 +1847,11 @@ PHP_FUNCTION(mysqli_refresh)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_multi_query)
-{
+PHP_FUNCTION(mysqli_multi_query) {
     ZEND_MN(mysqli_real_query)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
-PHP_FUNCTION(mysqli_more_results)
-{
+PHP_FUNCTION(mysqli_more_results) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1806,8 +1861,7 @@ PHP_FUNCTION(mysqli_more_results)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_next_result)
-{
+PHP_FUNCTION(mysqli_next_result) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1817,8 +1871,7 @@ PHP_FUNCTION(mysqli_next_result)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_reap_async_query)
-{
+PHP_FUNCTION(mysqli_reap_async_query) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1828,8 +1881,7 @@ PHP_FUNCTION(mysqli_reap_async_query)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_poll)
-{
+PHP_FUNCTION(mysqli_poll) {
     zval *read = NULL;
     zval *error = NULL;
     zval *reject = NULL;
@@ -1853,8 +1905,7 @@ PHP_FUNCTION(mysqli_poll)
     RETURN_LONG(0);
 }
 
-PHP_FUNCTION(mysqli_thread_id)
-{
+PHP_FUNCTION(mysqli_thread_id) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1864,14 +1915,12 @@ PHP_FUNCTION(mysqli_thread_id)
     RETURN_LONG(1);
 }
 
-PHP_FUNCTION(mysqli_thread_safe)
-{
+PHP_FUNCTION(mysqli_thread_safe) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_get_connection_stats)
-{
+PHP_FUNCTION(mysqli_get_connection_stats) {
     zval *mysql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1881,20 +1930,17 @@ PHP_FUNCTION(mysqli_get_connection_stats)
     array_init(return_value);
 }
 
-PHP_FUNCTION(mysqli_get_client_stats)
-{
+PHP_FUNCTION(mysqli_get_client_stats) {
     ZEND_PARSE_PARAMETERS_NONE();
     array_init(return_value);
 }
 
-PHP_FUNCTION(mysqli_get_links_stats)
-{
+PHP_FUNCTION(mysqli_get_links_stats) {
     ZEND_PARSE_PARAMETERS_NONE();
     array_init(return_value);
 }
 
-PHP_FUNCTION(mysqli_report)
-{
+PHP_FUNCTION(mysqli_report) {
     zend_long flags = 0;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -1905,8 +1951,7 @@ PHP_FUNCTION(mysqli_report)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_prepare)
-{
+PHP_FUNCTION(mysqli_prepare) {
     zval *mysql = NULL;
     char *query = NULL;
     size_t query_length = 0U;
@@ -1926,8 +1971,7 @@ PHP_FUNCTION(mysqli_prepare)
     }
 }
 
-PHP_FUNCTION(mysqli_stmt_init)
-{
+PHP_FUNCTION(mysqli_stmt_init) {
     zval *mysql = NULL;
     mylite_mysqli_stmt *stmt = NULL;
 
@@ -1941,32 +1985,35 @@ PHP_FUNCTION(mysqli_stmt_init)
     mylite_mysqli_update_stmt_properties(stmt);
 }
 
-PHP_FUNCTION(mysqli_fetch_assoc)
-{
+PHP_FUNCTION(mysqli_fetch_assoc) {
     zval *result_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(result_zval, mylite_mysqli_result_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
-                               MYLITE_MYSQLI_ASSOC, return_value);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
+        MYLITE_MYSQLI_ASSOC,
+        return_value
+    );
 }
 
-PHP_FUNCTION(mysqli_fetch_row)
-{
+PHP_FUNCTION(mysqli_fetch_row) {
     zval *result_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(result_zval, mylite_mysqli_result_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
-                               MYLITE_MYSQLI_NUM, return_value);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
+        MYLITE_MYSQLI_NUM,
+        return_value
+    );
 }
 
-PHP_FUNCTION(mysqli_fetch_array)
-{
+PHP_FUNCTION(mysqli_fetch_array) {
     zval *result_zval = NULL;
     zend_long mode = MYLITE_MYSQLI_BOTH;
 
@@ -1976,12 +2023,14 @@ PHP_FUNCTION(mysqli_fetch_array)
     Z_PARAM_LONG(mode)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)), (int)mode,
-                               return_value);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
+        (int)mode,
+        return_value
+    );
 }
 
-PHP_FUNCTION(mysqli_fetch_all)
-{
+PHP_FUNCTION(mysqli_fetch_all) {
     zval *result_zval = NULL;
     zend_long mode = MYLITE_MYSQLI_NUM;
     mylite_mysqli_result *result = NULL;
@@ -2002,8 +2051,7 @@ PHP_FUNCTION(mysqli_fetch_all)
     }
 }
 
-PHP_FUNCTION(mysqli_fetch_object)
-{
+PHP_FUNCTION(mysqli_fetch_object) {
     zval *result_zval = NULL;
     char *class_name = NULL;
     size_t class_name_length = 0U;
@@ -2019,8 +2067,11 @@ PHP_FUNCTION(mysqli_fetch_object)
     ZEND_PARSE_PARAMETERS_END();
 
     (void)constructor_args;
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
-                               MYLITE_MYSQLI_ASSOC, &row);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
+        MYLITE_MYSQLI_ASSOC,
+        &row
+    );
     if (Z_TYPE(row) != IS_ARRAY) {
         ZVAL_COPY_VALUE(return_value, &row);
         return;
@@ -2038,8 +2089,7 @@ PHP_FUNCTION(mysqli_fetch_object)
     zval_ptr_dtor(&row);
 }
 
-PHP_FUNCTION(mysqli_fetch_column)
-{
+PHP_FUNCTION(mysqli_fetch_column) {
     zval *result_zval = NULL;
     zend_long column = 0;
 
@@ -2049,12 +2099,14 @@ PHP_FUNCTION(mysqli_fetch_column)
     Z_PARAM_LONG(column)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_result_fetch_column(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)), column,
-                                      return_value);
+    mylite_mysqli_result_fetch_column(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
+        column,
+        return_value
+    );
 }
 
-PHP_FUNCTION(mysqli_fetch_field)
-{
+PHP_FUNCTION(mysqli_fetch_field) {
     zval *result_zval = NULL;
     mylite_mysqli_result *result = NULL;
 
@@ -2071,8 +2123,7 @@ PHP_FUNCTION(mysqli_fetch_field)
     mylite_mysqli_update_result_properties(result);
 }
 
-PHP_FUNCTION(mysqli_fetch_fields)
-{
+PHP_FUNCTION(mysqli_fetch_fields) {
     zval *result_zval = NULL;
     mylite_mysqli_result *result = NULL;
 
@@ -2090,8 +2141,7 @@ PHP_FUNCTION(mysqli_fetch_fields)
     }
 }
 
-PHP_FUNCTION(mysqli_fetch_field_direct)
-{
+PHP_FUNCTION(mysqli_fetch_field_direct) {
     zval *result_zval = NULL;
     zend_long index = 0;
     mylite_mysqli_result *result = NULL;
@@ -2108,8 +2158,7 @@ PHP_FUNCTION(mysqli_fetch_field_direct)
     mylite_mysqli_result_fetch_field(result, (uint32_t)index, return_value);
 }
 
-PHP_FUNCTION(mysqli_fetch_lengths)
-{
+PHP_FUNCTION(mysqli_fetch_lengths) {
     zval *result_zval = NULL;
     mylite_mysqli_result *result = NULL;
     uint32_t row_index = 0U;
@@ -2128,13 +2177,14 @@ PHP_FUNCTION(mysqli_fetch_lengths)
     for (uint32_t column = 0; column < result->column_count; column++) {
         zval *value = &result->values[row_index * result->column_count + column];
 
-        add_next_index_long(return_value,
-                            Z_TYPE_P(value) == IS_STRING ? (zend_long)Z_STRLEN_P(value) : 0);
+        add_next_index_long(
+            return_value,
+            Z_TYPE_P(value) == IS_STRING ? (zend_long)Z_STRLEN_P(value) : 0
+        );
     }
 }
 
-PHP_FUNCTION(mysqli_data_seek)
-{
+PHP_FUNCTION(mysqli_data_seek) {
     zval *result_zval = NULL;
     zend_long offset = 0;
     mylite_mysqli_result *result = NULL;
@@ -2152,8 +2202,7 @@ PHP_FUNCTION(mysqli_data_seek)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_field_seek)
-{
+PHP_FUNCTION(mysqli_field_seek) {
     zval *result_zval = NULL;
     zend_long index = 0;
     mylite_mysqli_result *result = NULL;
@@ -2172,8 +2221,7 @@ PHP_FUNCTION(mysqli_field_seek)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_field_tell)
-{
+PHP_FUNCTION(mysqli_field_tell) {
     zval *result_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2183,8 +2231,7 @@ PHP_FUNCTION(mysqli_field_tell)
     RETURN_LONG(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval))->field_cursor);
 }
 
-PHP_FUNCTION(mysqli_free_result)
-{
+PHP_FUNCTION(mysqli_free_result) {
     zval *result_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2192,8 +2239,7 @@ PHP_FUNCTION(mysqli_free_result)
     ZEND_PARSE_PARAMETERS_END();
 }
 
-PHP_FUNCTION(mysqli_num_fields)
-{
+PHP_FUNCTION(mysqli_num_fields) {
     zval *result_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2203,8 +2249,7 @@ PHP_FUNCTION(mysqli_num_fields)
     RETURN_LONG(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval))->column_count);
 }
 
-PHP_FUNCTION(mysqli_num_rows)
-{
+PHP_FUNCTION(mysqli_num_rows) {
     zval *result_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2214,8 +2259,7 @@ PHP_FUNCTION(mysqli_num_rows)
     RETURN_LONG(mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval))->row_count);
 }
 
-PHP_FUNCTION(mysqli_stmt_prepare)
-{
+PHP_FUNCTION(mysqli_stmt_prepare) {
     zval *stmt_zval = NULL;
     char *query = NULL;
     size_t query_length = 0U;
@@ -2225,12 +2269,14 @@ PHP_FUNCTION(mysqli_stmt_prepare)
     Z_PARAM_STRING(query, query_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_stmt_prepare_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)),
-                                                    query, query_length));
+    RETURN_BOOL(mylite_mysqli_stmt_prepare_internal(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)),
+        query,
+        query_length
+    ));
 }
 
-PHP_FUNCTION(mysqli_stmt_execute)
-{
+PHP_FUNCTION(mysqli_stmt_execute) {
     zval *stmt_zval = NULL;
     zval *params = NULL;
 
@@ -2240,12 +2286,12 @@ PHP_FUNCTION(mysqli_stmt_execute)
     Z_PARAM_ARRAY_OR_NULL(params)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)),
-                                                    params));
+    RETURN_BOOL(
+        mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)), params)
+    );
 }
 
-PHP_FUNCTION(mysqli_stmt_bind_param)
-{
+PHP_FUNCTION(mysqli_stmt_bind_param) {
     zval *stmt_zval = NULL;
     char *types = NULL;
     size_t types_length = 0U;
@@ -2261,8 +2307,12 @@ PHP_FUNCTION(mysqli_stmt_bind_param)
 
     stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
     if (types_length != vars_count || vars_count != stmt->param_count) {
-        mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                     "parameter count mismatch");
+        mylite_mysqli_set_stmt_error(
+            stmt,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "parameter count mismatch"
+        );
         mylite_mysqli_report_stmt_error(stmt);
         RETURN_FALSE;
     }
@@ -2285,8 +2335,7 @@ PHP_FUNCTION(mysqli_stmt_bind_param)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_bind_result)
-{
+PHP_FUNCTION(mysqli_stmt_bind_result) {
     zval *stmt_zval = NULL;
     zval *vars = NULL;
     uint32_t vars_count = 0U;
@@ -2312,8 +2361,7 @@ PHP_FUNCTION(mysqli_stmt_bind_result)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_fetch)
-{
+PHP_FUNCTION(mysqli_stmt_fetch) {
     zval *stmt_zval = NULL;
     mylite_mysqli_stmt *stmt = NULL;
     mylite_mysqli_result *result = NULL;
@@ -2331,8 +2379,12 @@ PHP_FUNCTION(mysqli_stmt_fetch)
         RETURN_NULL();
     }
     if (stmt->bound_result_count != result->column_count) {
-        mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                     "result variable count mismatch");
+        mylite_mysqli_set_stmt_error(
+            stmt,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "result variable count mismatch"
+        );
         mylite_mysqli_report_stmt_error(stmt);
         RETURN_FALSE;
     }
@@ -2352,8 +2404,7 @@ PHP_FUNCTION(mysqli_stmt_fetch)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_get_result)
-{
+PHP_FUNCTION(mysqli_stmt_get_result) {
     zval *stmt_zval = NULL;
     mylite_mysqli_stmt *stmt = NULL;
 
@@ -2368,13 +2419,11 @@ PHP_FUNCTION(mysqli_stmt_get_result)
     ZVAL_COPY(return_value, &stmt->result);
 }
 
-PHP_FUNCTION(mysqli_stmt_result_metadata)
-{
+PHP_FUNCTION(mysqli_stmt_result_metadata) {
     ZEND_MN(mysqli_stmt_get_result)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
-PHP_FUNCTION(mysqli_stmt_store_result)
-{
+PHP_FUNCTION(mysqli_stmt_store_result) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2384,8 +2433,7 @@ PHP_FUNCTION(mysqli_stmt_store_result)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_free_result)
-{
+PHP_FUNCTION(mysqli_stmt_free_result) {
     zval *stmt_zval = NULL;
     mylite_mysqli_stmt *stmt = NULL;
 
@@ -2400,8 +2448,7 @@ PHP_FUNCTION(mysqli_stmt_free_result)
     }
 }
 
-PHP_FUNCTION(mysqli_stmt_close)
-{
+PHP_FUNCTION(mysqli_stmt_close) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2411,8 +2458,7 @@ PHP_FUNCTION(mysqli_stmt_close)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_data_seek)
-{
+PHP_FUNCTION(mysqli_stmt_data_seek) {
     zval *stmt_zval = NULL;
     zend_long offset = 0;
     mylite_mysqli_stmt *stmt = NULL;
@@ -2432,8 +2478,7 @@ PHP_FUNCTION(mysqli_stmt_data_seek)
     }
 }
 
-PHP_FUNCTION(mysqli_stmt_reset)
-{
+PHP_FUNCTION(mysqli_stmt_reset) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2443,8 +2488,7 @@ PHP_FUNCTION(mysqli_stmt_reset)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_attr_get)
-{
+PHP_FUNCTION(mysqli_stmt_attr_get) {
     zval *stmt_zval = NULL;
     zend_long attribute = 0;
 
@@ -2457,8 +2501,7 @@ PHP_FUNCTION(mysqli_stmt_attr_get)
     RETURN_LONG(0);
 }
 
-PHP_FUNCTION(mysqli_stmt_attr_set)
-{
+PHP_FUNCTION(mysqli_stmt_attr_set) {
     zval *stmt_zval = NULL;
     zend_long attribute = 0;
     zend_long value = 0;
@@ -2474,8 +2517,7 @@ PHP_FUNCTION(mysqli_stmt_attr_set)
     RETURN_TRUE;
 }
 
-PHP_FUNCTION(mysqli_stmt_send_long_data)
-{
+PHP_FUNCTION(mysqli_stmt_send_long_data) {
     zval *stmt_zval = NULL;
     char *data = NULL;
     size_t data_length = 0U;
@@ -2493,8 +2535,7 @@ PHP_FUNCTION(mysqli_stmt_send_long_data)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_stmt_errno)
-{
+PHP_FUNCTION(mysqli_stmt_errno) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2504,8 +2545,7 @@ PHP_FUNCTION(mysqli_stmt_errno)
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->error_code);
 }
 
-PHP_FUNCTION(mysqli_stmt_error)
-{
+PHP_FUNCTION(mysqli_stmt_error) {
     zval *stmt_zval = NULL;
     mylite_mysqli_stmt *stmt = NULL;
 
@@ -2517,8 +2557,7 @@ PHP_FUNCTION(mysqli_stmt_error)
     RETURN_STR_COPY(stmt->error);
 }
 
-PHP_FUNCTION(mysqli_stmt_error_list)
-{
+PHP_FUNCTION(mysqli_stmt_error_list) {
     zval *stmt_zval = NULL;
     mylite_mysqli_stmt *stmt = NULL;
     zval entry;
@@ -2540,8 +2579,7 @@ PHP_FUNCTION(mysqli_stmt_error_list)
     add_next_index_zval(return_value, &entry);
 }
 
-PHP_FUNCTION(mysqli_stmt_sqlstate)
-{
+PHP_FUNCTION(mysqli_stmt_sqlstate) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2551,8 +2589,7 @@ PHP_FUNCTION(mysqli_stmt_sqlstate)
     RETURN_STRING(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->sqlstate);
 }
 
-PHP_FUNCTION(mysqli_stmt_field_count)
-{
+PHP_FUNCTION(mysqli_stmt_field_count) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2562,8 +2599,7 @@ PHP_FUNCTION(mysqli_stmt_field_count)
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->field_count);
 }
 
-PHP_FUNCTION(mysqli_stmt_affected_rows)
-{
+PHP_FUNCTION(mysqli_stmt_affected_rows) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2573,8 +2609,7 @@ PHP_FUNCTION(mysqli_stmt_affected_rows)
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->affected_rows);
 }
 
-PHP_FUNCTION(mysqli_stmt_insert_id)
-{
+PHP_FUNCTION(mysqli_stmt_insert_id) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2584,8 +2619,7 @@ PHP_FUNCTION(mysqli_stmt_insert_id)
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->insert_id);
 }
 
-PHP_FUNCTION(mysqli_stmt_num_rows)
-{
+PHP_FUNCTION(mysqli_stmt_num_rows) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2595,8 +2629,7 @@ PHP_FUNCTION(mysqli_stmt_num_rows)
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->num_rows);
 }
 
-PHP_FUNCTION(mysqli_stmt_param_count)
-{
+PHP_FUNCTION(mysqli_stmt_param_count) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2606,8 +2639,7 @@ PHP_FUNCTION(mysqli_stmt_param_count)
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))->param_count);
 }
 
-PHP_FUNCTION(mysqli_stmt_get_warnings)
-{
+PHP_FUNCTION(mysqli_stmt_get_warnings) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2617,8 +2649,7 @@ PHP_FUNCTION(mysqli_stmt_get_warnings)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_stmt_more_results)
-{
+PHP_FUNCTION(mysqli_stmt_more_results) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2628,8 +2659,7 @@ PHP_FUNCTION(mysqli_stmt_more_results)
     RETURN_FALSE;
 }
 
-PHP_FUNCTION(mysqli_stmt_next_result)
-{
+PHP_FUNCTION(mysqli_stmt_next_result) {
     zval *stmt_zval = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2639,8 +2669,7 @@ PHP_FUNCTION(mysqli_stmt_next_result)
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, __construct)
-{
+PHP_METHOD(mysqli, __construct) {
     if (ZEND_NUM_ARGS() > 0) {
         zval *object = getThis();
         char *host = NULL;
@@ -2677,14 +2706,19 @@ PHP_METHOD(mysqli, __construct)
         (void)port;
         (void)port_is_null;
 
-        (void)mylite_mysqli_connect_link(mylite_mysqli_link_from_obj(Z_OBJ_P(object)), host,
-                                         host_length, database, database_length, socket,
-                                         socket_length);
+        (void)mylite_mysqli_connect_link(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
+            host,
+            host_length,
+            database,
+            database_length,
+            socket,
+            socket_length
+        );
     }
 }
 
-PHP_METHOD(mysqli, connect)
-{
+PHP_METHOD(mysqli, connect) {
     zval *object = getThis();
     char *host = NULL;
     char *username = NULL;
@@ -2720,13 +2754,18 @@ PHP_METHOD(mysqli, connect)
     (void)port;
     (void)port_is_null;
 
-    RETURN_BOOL(mylite_mysqli_connect_link(mylite_mysqli_link_from_obj(Z_OBJ_P(object)), host,
-                                           host_length, database, database_length, socket,
-                                           socket_length));
+    RETURN_BOOL(mylite_mysqli_connect_link(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
+        host,
+        host_length,
+        database,
+        database_length,
+        socket,
+        socket_length
+    ));
 }
 
-PHP_METHOD(mysqli, real_connect)
-{
+PHP_METHOD(mysqli, real_connect) {
     zval *object = getThis();
     char *host = NULL;
     char *username = NULL;
@@ -2764,13 +2803,18 @@ PHP_METHOD(mysqli, real_connect)
     (void)port;
     (void)port_is_null;
     (void)flags;
-    RETURN_BOOL(mylite_mysqli_connect_link(mylite_mysqli_link_from_obj(Z_OBJ_P(object)), host,
-                                           host_length, database, database_length, socket,
-                                           socket_length));
+    RETURN_BOOL(mylite_mysqli_connect_link(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
+        host,
+        host_length,
+        database,
+        database_length,
+        socket,
+        socket_length
+    ));
 }
 
-PHP_METHOD(mysqli, query)
-{
+PHP_METHOD(mysqli, query) {
     char *query = NULL;
     size_t query_length = 0U;
     zend_long result_mode = MYLITE_MYSQLI_STORE_RESULT;
@@ -2782,14 +2826,17 @@ PHP_METHOD(mysqli, query)
     ZEND_PARSE_PARAMETERS_END();
 
     (void)result_mode;
-    if (!mylite_mysqli_link_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())), query,
-                                  query_length, return_value)) {
+    if (!mylite_mysqli_link_query(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+            query,
+            query_length,
+            return_value
+        )) {
         RETURN_FALSE;
     }
 }
 
-PHP_METHOD(mysqli, execute_query)
-{
+PHP_METHOD(mysqli, execute_query) {
     char *query = NULL;
     size_t query_length = 0U;
     zval *params = NULL;
@@ -2806,7 +2853,10 @@ PHP_METHOD(mysqli, execute_query)
     query_string = zend_string_init(query, query_length, false);
     sql = params == NULL ? query_string
                          : mylite_mysqli_interpolate_query(
-                               query_string, params, zend_hash_num_elements(Z_ARRVAL_P(params)));
+                               query_string,
+                               params,
+                               zend_hash_num_elements(Z_ARRVAL_P(params))
+                           );
     if (sql == NULL) {
         RETURN_FALSE;
     }
@@ -2814,16 +2864,19 @@ PHP_METHOD(mysqli, execute_query)
         zend_string_release(sql);
         RETURN_FALSE;
     }
-    if (!mylite_mysqli_link_query(mylite_mysqli_link_from_obj(Z_OBJ_P(object)), ZSTR_VAL(sql),
-                                  ZSTR_LEN(sql), return_value)) {
+    if (!mylite_mysqli_link_query(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
+            ZSTR_VAL(sql),
+            ZSTR_LEN(sql),
+            return_value
+        )) {
         zend_string_release(sql);
         RETURN_FALSE;
     }
     zend_string_release(sql);
 }
 
-PHP_METHOD(mysqli, real_query)
-{
+PHP_METHOD(mysqli, real_query) {
     char *query = NULL;
     size_t query_length = 0U;
 
@@ -2831,12 +2884,14 @@ PHP_METHOD(mysqli, real_query)
     Z_PARAM_STRING(query, query_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                              query, query_length));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        query,
+        query_length
+    ));
 }
 
-PHP_METHOD(mysqli, store_result)
-{
+PHP_METHOD(mysqli, store_result) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -2847,8 +2902,7 @@ PHP_METHOD(mysqli, store_result)
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, use_result)
-{
+PHP_METHOD(mysqli, use_result) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -2859,8 +2913,7 @@ PHP_METHOD(mysqli, use_result)
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, close)
-{
+PHP_METHOD(mysqli, close) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -2873,8 +2926,7 @@ PHP_METHOD(mysqli, close)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, prepare)
-{
+PHP_METHOD(mysqli, prepare) {
     char *query = NULL;
     size_t query_length = 0U;
     mylite_mysqli_stmt *stmt = NULL;
@@ -2893,8 +2945,7 @@ PHP_METHOD(mysqli, prepare)
     }
 }
 
-PHP_METHOD(mysqli, stmt_init)
-{
+PHP_METHOD(mysqli, stmt_init) {
     mylite_mysqli_stmt *stmt = NULL;
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -2905,8 +2956,7 @@ PHP_METHOD(mysqli, stmt_init)
     mylite_mysqli_update_stmt_properties(stmt);
 }
 
-PHP_METHOD(mysqli, autocommit)
-{
+PHP_METHOD(mysqli, autocommit) {
     bool enable = false;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2917,8 +2967,7 @@ PHP_METHOD(mysqli, autocommit)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, begin_transaction)
-{
+PHP_METHOD(mysqli, begin_transaction) {
     zend_long flags = 0;
     char *name = NULL;
     size_t name_length = 0U;
@@ -2932,12 +2981,14 @@ PHP_METHOD(mysqli, begin_transaction)
     (void)flags;
     (void)name;
     (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                              "START TRANSACTION", strlen("START TRANSACTION")));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "START TRANSACTION",
+        strlen("START TRANSACTION")
+    ));
 }
 
-PHP_METHOD(mysqli, commit)
-{
+PHP_METHOD(mysqli, commit) {
     zend_long flags = 0;
     char *name = NULL;
     size_t name_length = 0U;
@@ -2951,12 +3002,14 @@ PHP_METHOD(mysqli, commit)
     (void)flags;
     (void)name;
     (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                              "COMMIT", strlen("COMMIT")));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "COMMIT",
+        strlen("COMMIT")
+    ));
 }
 
-PHP_METHOD(mysqli, rollback)
-{
+PHP_METHOD(mysqli, rollback) {
     zend_long flags = 0;
     char *name = NULL;
     size_t name_length = 0U;
@@ -2970,12 +3023,14 @@ PHP_METHOD(mysqli, rollback)
     (void)flags;
     (void)name;
     (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                              "ROLLBACK", strlen("ROLLBACK")));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "ROLLBACK",
+        strlen("ROLLBACK")
+    ));
 }
 
-PHP_METHOD(mysqli, savepoint)
-{
+PHP_METHOD(mysqli, savepoint) {
     char *name = NULL;
     size_t name_length = 0U;
     zend_string *quoted = NULL;
@@ -2988,15 +3043,17 @@ PHP_METHOD(mysqli, savepoint)
 
     quoted = mylite_mysqli_quote_identifier(name, name_length);
     sql = zend_strpprintf(0, "SAVEPOINT %s", ZSTR_VAL(quoted));
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                       ZSTR_VAL(sql), ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_METHOD(mysqli, release_savepoint)
-{
+PHP_METHOD(mysqli, release_savepoint) {
     char *name = NULL;
     size_t name_length = 0U;
     zend_string *quoted = NULL;
@@ -3009,15 +3066,17 @@ PHP_METHOD(mysqli, release_savepoint)
 
     quoted = mylite_mysqli_quote_identifier(name, name_length);
     sql = zend_strpprintf(0, "RELEASE SAVEPOINT %s", ZSTR_VAL(quoted));
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                       ZSTR_VAL(sql), ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_METHOD(mysqli, change_user)
-{
+PHP_METHOD(mysqli, change_user) {
     zval *object = getThis();
     char *username = NULL;
     char *password = NULL;
@@ -3046,22 +3105,23 @@ PHP_METHOD(mysqli, change_user)
 
     zend_string *quoted = mylite_mysqli_quote_identifier(database, database_length);
     zend_string *sql = zend_strpprintf(0, "USE %s", ZSTR_VAL(quoted));
-    bool ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
-                                            ZSTR_VAL(sql), ZSTR_LEN(sql));
+    bool ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
 
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_METHOD(mysqli, character_set_name)
-{
+PHP_METHOD(mysqli, character_set_name) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_STRING("utf8mb4");
 }
 
-PHP_METHOD(mysqli, get_charset)
-{
+PHP_METHOD(mysqli, get_charset) {
     ZEND_PARSE_PARAMETERS_NONE();
     object_init(return_value);
     add_property_string(return_value, "charset", "utf8mb4");
@@ -3069,26 +3129,22 @@ PHP_METHOD(mysqli, get_charset)
     add_property_long(return_value, "number", 255);
 }
 
-PHP_METHOD(mysqli, get_client_info)
-{
+PHP_METHOD(mysqli, get_client_info) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_STRING("mylite mysqli " PHP_MYLITE_MYSQLI_VERSION);
 }
 
-PHP_METHOD(mysqli, get_connection_stats)
-{
+PHP_METHOD(mysqli, get_connection_stats) {
     ZEND_PARSE_PARAMETERS_NONE();
     array_init(return_value);
 }
 
-PHP_METHOD(mysqli, get_server_info)
-{
+PHP_METHOD(mysqli, get_server_info) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_STRING(MYLITE_MYSQLI_SERVER_INFO);
 }
 
-PHP_METHOD(mysqli, get_warnings)
-{
+PHP_METHOD(mysqli, get_warnings) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
     const char *message = NULL;
 
@@ -3098,21 +3154,34 @@ PHP_METHOD(mysqli, get_warnings)
     }
     object_init_ex(return_value, mylite_mysqli_warning_ce);
     message = "MyLite warning";
-    zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "message",
-                                strlen("message"), message == NULL ? "" : message);
-    zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "sqlstate",
-                                strlen("sqlstate"), "HY000");
-    zend_update_property_long(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "errno",
-                              strlen("errno"), 0);
+    zend_update_property_string(
+        mylite_mysqli_warning_ce,
+        Z_OBJ_P(return_value),
+        "message",
+        strlen("message"),
+        message == NULL ? "" : message
+    );
+    zend_update_property_string(
+        mylite_mysqli_warning_ce,
+        Z_OBJ_P(return_value),
+        "sqlstate",
+        strlen("sqlstate"),
+        "HY000"
+    );
+    zend_update_property_long(
+        mylite_mysqli_warning_ce,
+        Z_OBJ_P(return_value),
+        "errno",
+        strlen("errno"),
+        0
+    );
 }
 
-PHP_METHOD(mysqli, init)
-{
+PHP_METHOD(mysqli, init) {
     ZEND_PARSE_PARAMETERS_NONE();
 }
 
-PHP_METHOD(mysqli, kill)
-{
+PHP_METHOD(mysqli, kill) {
     zend_long process_id = 0;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -3123,8 +3192,7 @@ PHP_METHOD(mysqli, kill)
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, multi_query)
-{
+PHP_METHOD(mysqli, multi_query) {
     char *query = NULL;
     size_t query_length = 0U;
 
@@ -3132,35 +3200,33 @@ PHP_METHOD(mysqli, multi_query)
     Z_PARAM_STRING(query, query_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                              query, query_length));
+    RETURN_BOOL(mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        query,
+        query_length
+    ));
 }
 
-PHP_METHOD(mysqli, more_results)
-{
+PHP_METHOD(mysqli, more_results) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, next_result)
-{
+PHP_METHOD(mysqli, next_result) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, ping)
-{
+PHP_METHOD(mysqli, ping) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_BOOL(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()))->connected);
 }
 
-PHP_METHOD(mysqli, poll)
-{
+PHP_METHOD(mysqli, poll) {
     zif_mysqli_poll(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
-PHP_METHOD(mysqli, real_escape_string)
-{
+PHP_METHOD(mysqli, real_escape_string) {
     char *value = NULL;
     size_t value_length = 0U;
 
@@ -3171,14 +3237,12 @@ PHP_METHOD(mysqli, real_escape_string)
     RETURN_STR(mylite_mysqli_escape_string(value, value_length));
 }
 
-PHP_METHOD(mysqli, reap_async_query)
-{
+PHP_METHOD(mysqli, reap_async_query) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli, escape_string)
-{
+PHP_METHOD(mysqli, escape_string) {
     char *value = NULL;
     size_t value_length = 0U;
 
@@ -3189,8 +3253,7 @@ PHP_METHOD(mysqli, escape_string)
     RETURN_STR(mylite_mysqli_escape_string(value, value_length));
 }
 
-PHP_METHOD(mysqli, select_db)
-{
+PHP_METHOD(mysqli, select_db) {
     char *value = NULL;
     size_t value_length = 0U;
     zend_string *quoted = NULL;
@@ -3203,15 +3266,17 @@ PHP_METHOD(mysqli, select_db)
 
     quoted = mylite_mysqli_quote_identifier(value, value_length);
     sql = zend_strpprintf(0, "USE %s", ZSTR_VAL(quoted));
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                       ZSTR_VAL(sql), ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     zend_string_release(quoted);
     RETURN_BOOL(ok);
 }
 
-PHP_METHOD(mysqli, set_charset)
-{
+PHP_METHOD(mysqli, set_charset) {
     char *value = NULL;
     size_t value_length = 0U;
     zend_string *sql = NULL;
@@ -3222,14 +3287,16 @@ PHP_METHOD(mysqli, set_charset)
     ZEND_PARSE_PARAMETERS_END();
 
     sql = zend_strpprintf(0, "SET NAMES %.*s", (int)value_length, value);
-    ok = mylite_mysqli_link_real_query(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-                                       ZSTR_VAL(sql), ZSTR_LEN(sql));
+    ok = mylite_mysqli_link_real_query(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        ZSTR_VAL(sql),
+        ZSTR_LEN(sql)
+    );
     zend_string_release(sql);
     RETURN_BOOL(ok);
 }
 
-PHP_METHOD(mysqli, options)
-{
+PHP_METHOD(mysqli, options) {
     zend_long option = 0;
     zval *value = NULL;
 
@@ -3243,8 +3310,7 @@ PHP_METHOD(mysqli, options)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, set_opt)
-{
+PHP_METHOD(mysqli, set_opt) {
     zend_long option = 0;
     zval *value = NULL;
 
@@ -3258,8 +3324,7 @@ PHP_METHOD(mysqli, set_opt)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, ssl_set)
-{
+PHP_METHOD(mysqli, ssl_set) {
     char *key = NULL;
     char *certificate = NULL;
     char *ca_certificate = NULL;
@@ -3292,26 +3357,22 @@ PHP_METHOD(mysqli, ssl_set)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, stat)
-{
+PHP_METHOD(mysqli, stat) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_STRING("MyLite embedded mysqli connection");
 }
 
-PHP_METHOD(mysqli, thread_safe)
-{
+PHP_METHOD(mysqli, thread_safe) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, dump_debug_info)
-{
+PHP_METHOD(mysqli, dump_debug_info) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, debug)
-{
+PHP_METHOD(mysqli, debug) {
     char *options = NULL;
     size_t options_length = 0U;
 
@@ -3324,8 +3385,7 @@ PHP_METHOD(mysqli, debug)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli, refresh)
-{
+PHP_METHOD(mysqli, refresh) {
     zend_long flags = 0;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -3336,28 +3396,23 @@ PHP_METHOD(mysqli, refresh)
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli_result, __construct)
-{
+PHP_METHOD(mysqli_result, __construct) {
     zend_throw_error(NULL, "mysqli_result objects are created by query execution");
 }
 
-PHP_METHOD(mysqli_result, close)
-{
+PHP_METHOD(mysqli_result, close) {
     ZEND_PARSE_PARAMETERS_NONE();
 }
 
-PHP_METHOD(mysqli_result, free)
-{
+PHP_METHOD(mysqli_result, free) {
     ZEND_PARSE_PARAMETERS_NONE();
 }
 
-PHP_METHOD(mysqli_result, free_result)
-{
+PHP_METHOD(mysqli_result, free_result) {
     ZEND_PARSE_PARAMETERS_NONE();
 }
 
-PHP_METHOD(mysqli_result, data_seek)
-{
+PHP_METHOD(mysqli_result, data_seek) {
     zend_long offset = 0;
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
@@ -3372,22 +3427,25 @@ PHP_METHOD(mysqli_result, data_seek)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_result, fetch_assoc)
-{
+PHP_METHOD(mysqli_result, fetch_assoc) {
     ZEND_PARSE_PARAMETERS_NONE();
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
-                               MYLITE_MYSQLI_ASSOC, return_value);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
+        MYLITE_MYSQLI_ASSOC,
+        return_value
+    );
 }
 
-PHP_METHOD(mysqli_result, fetch_row)
-{
+PHP_METHOD(mysqli_result, fetch_row) {
     ZEND_PARSE_PARAMETERS_NONE();
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())), MYLITE_MYSQLI_NUM,
-                               return_value);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
+        MYLITE_MYSQLI_NUM,
+        return_value
+    );
 }
 
-PHP_METHOD(mysqli_result, fetch_array)
-{
+PHP_METHOD(mysqli_result, fetch_array) {
     zend_long mode = MYLITE_MYSQLI_BOTH;
 
     ZEND_PARSE_PARAMETERS_START(0, 1)
@@ -3395,12 +3453,14 @@ PHP_METHOD(mysqli_result, fetch_array)
     Z_PARAM_LONG(mode)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())), (int)mode,
-                               return_value);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
+        (int)mode,
+        return_value
+    );
 }
 
-PHP_METHOD(mysqli_result, fetch_all)
-{
+PHP_METHOD(mysqli_result, fetch_all) {
     zend_long mode = MYLITE_MYSQLI_NUM;
     mylite_mysqli_result *result = NULL;
 
@@ -3419,8 +3479,7 @@ PHP_METHOD(mysqli_result, fetch_all)
     }
 }
 
-PHP_METHOD(mysqli_result, fetch_object)
-{
+PHP_METHOD(mysqli_result, fetch_object) {
     char *class_name = NULL;
     size_t class_name_length = 0U;
     zval *constructor_args = NULL;
@@ -3434,8 +3493,11 @@ PHP_METHOD(mysqli_result, fetch_object)
     ZEND_PARSE_PARAMETERS_END();
 
     (void)constructor_args;
-    mylite_mysqli_result_fetch(mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
-                               MYLITE_MYSQLI_ASSOC, &row);
+    mylite_mysqli_result_fetch(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
+        MYLITE_MYSQLI_ASSOC,
+        &row
+    );
     if (Z_TYPE(row) != IS_ARRAY) {
         ZVAL_COPY_VALUE(return_value, &row);
         return;
@@ -3458,8 +3520,7 @@ PHP_METHOD(mysqli_result, fetch_object)
     zval_ptr_dtor(&row);
 }
 
-PHP_METHOD(mysqli_result, fetch_column)
-{
+PHP_METHOD(mysqli_result, fetch_column) {
     zend_long column = 0;
 
     ZEND_PARSE_PARAMETERS_START(0, 1)
@@ -3467,12 +3528,14 @@ PHP_METHOD(mysqli_result, fetch_column)
     Z_PARAM_LONG(column)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_result_fetch_column(mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())), column,
-                                      return_value);
+    mylite_mysqli_result_fetch_column(
+        mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
+        column,
+        return_value
+    );
 }
 
-PHP_METHOD(mysqli_result, fetch_field)
-{
+PHP_METHOD(mysqli_result, fetch_field) {
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -3484,8 +3547,7 @@ PHP_METHOD(mysqli_result, fetch_field)
     mylite_mysqli_update_result_properties(result);
 }
 
-PHP_METHOD(mysqli_result, fetch_fields)
-{
+PHP_METHOD(mysqli_result, fetch_fields) {
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -3498,8 +3560,7 @@ PHP_METHOD(mysqli_result, fetch_fields)
     }
 }
 
-PHP_METHOD(mysqli_result, fetch_field_direct)
-{
+PHP_METHOD(mysqli_result, fetch_field_direct) {
     zend_long index = 0;
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
@@ -3513,8 +3574,7 @@ PHP_METHOD(mysqli_result, fetch_field_direct)
     mylite_mysqli_result_fetch_field(result, (uint32_t)index, return_value);
 }
 
-PHP_METHOD(mysqli_result, field_seek)
-{
+PHP_METHOD(mysqli_result, field_seek) {
     zend_long index = 0;
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
@@ -3530,8 +3590,7 @@ PHP_METHOD(mysqli_result, field_seek)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_result, getIterator)
-{
+PHP_METHOD(mysqli_result, getIterator) {
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -3546,8 +3605,7 @@ PHP_METHOD(mysqli_result, getIterator)
     zend_create_internal_iterator_zval(return_value, return_value);
 }
 
-PHP_METHOD(mysqli_stmt, __construct)
-{
+PHP_METHOD(mysqli_stmt, __construct) {
     zval *mysql = NULL;
     char *query = NULL;
     size_t query_length = 0U;
@@ -3565,8 +3623,7 @@ PHP_METHOD(mysqli_stmt, __construct)
     }
 }
 
-PHP_METHOD(mysqli_stmt, prepare)
-{
+PHP_METHOD(mysqli_stmt, prepare) {
     char *query = NULL;
     size_t query_length = 0U;
 
@@ -3574,12 +3631,14 @@ PHP_METHOD(mysqli_stmt, prepare)
     Z_PARAM_STRING(query, query_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_stmt_prepare_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())),
-                                                    query, query_length));
+    RETURN_BOOL(mylite_mysqli_stmt_prepare_internal(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())),
+        query,
+        query_length
+    ));
 }
 
-PHP_METHOD(mysqli_stmt, execute)
-{
+PHP_METHOD(mysqli_stmt, execute) {
     zval *params = NULL;
 
     ZEND_PARSE_PARAMETERS_START(0, 1)
@@ -3587,12 +3646,12 @@ PHP_METHOD(mysqli_stmt, execute)
     Z_PARAM_ARRAY_OR_NULL(params)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())),
-                                                    params));
+    RETURN_BOOL(
+        mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())), params)
+    );
 }
 
-PHP_METHOD(mysqli_stmt, bind_param)
-{
+PHP_METHOD(mysqli_stmt, bind_param) {
     char *types = NULL;
     size_t types_length = 0U;
     zval *vars = NULL;
@@ -3605,8 +3664,12 @@ PHP_METHOD(mysqli_stmt, bind_param)
     ZEND_PARSE_PARAMETERS_END();
 
     if (types_length != vars_count || vars_count != stmt->param_count) {
-        mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                     "parameter count mismatch");
+        mylite_mysqli_set_stmt_error(
+            stmt,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "parameter count mismatch"
+        );
         mylite_mysqli_report_stmt_error(stmt);
         RETURN_FALSE;
     }
@@ -3628,8 +3691,7 @@ PHP_METHOD(mysqli_stmt, bind_param)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, bind_result)
-{
+PHP_METHOD(mysqli_stmt, bind_result) {
     zval *vars = NULL;
     uint32_t vars_count = 0U;
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
@@ -3652,8 +3714,7 @@ PHP_METHOD(mysqli_stmt, bind_result)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, fetch)
-{
+PHP_METHOD(mysqli_stmt, fetch) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
     mylite_mysqli_result *result = NULL;
 
@@ -3666,8 +3727,12 @@ PHP_METHOD(mysqli_stmt, fetch)
         RETURN_NULL();
     }
     if (stmt->bound_result_count != result->column_count) {
-        mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                     "result variable count mismatch");
+        mylite_mysqli_set_stmt_error(
+            stmt,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "result variable count mismatch"
+        );
         mylite_mysqli_report_stmt_error(stmt);
         RETURN_FALSE;
     }
@@ -3686,8 +3751,7 @@ PHP_METHOD(mysqli_stmt, fetch)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, get_result)
-{
+PHP_METHOD(mysqli_stmt, get_result) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -3697,8 +3761,7 @@ PHP_METHOD(mysqli_stmt, get_result)
     ZVAL_COPY(return_value, &stmt->result);
 }
 
-PHP_METHOD(mysqli_stmt, result_metadata)
-{
+PHP_METHOD(mysqli_stmt, result_metadata) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -3708,14 +3771,12 @@ PHP_METHOD(mysqli_stmt, result_metadata)
     ZVAL_COPY(return_value, &stmt->result);
 }
 
-PHP_METHOD(mysqli_stmt, store_result)
-{
+PHP_METHOD(mysqli_stmt, store_result) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, free_result)
-{
+PHP_METHOD(mysqli_stmt, free_result) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
@@ -3725,14 +3786,12 @@ PHP_METHOD(mysqli_stmt, free_result)
     }
 }
 
-PHP_METHOD(mysqli_stmt, close)
-{
+PHP_METHOD(mysqli_stmt, close) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, data_seek)
-{
+PHP_METHOD(mysqli_stmt, data_seek) {
     zend_long offset = 0;
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
@@ -3749,14 +3808,12 @@ PHP_METHOD(mysqli_stmt, data_seek)
     }
 }
 
-PHP_METHOD(mysqli_stmt, reset)
-{
+PHP_METHOD(mysqli_stmt, reset) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, attr_get)
-{
+PHP_METHOD(mysqli_stmt, attr_get) {
     zend_long attribute = 0;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -3767,8 +3824,7 @@ PHP_METHOD(mysqli_stmt, attr_get)
     RETURN_LONG(0);
 }
 
-PHP_METHOD(mysqli_stmt, attr_set)
-{
+PHP_METHOD(mysqli_stmt, attr_set) {
     zend_long attribute = 0;
     zend_long value = 0;
 
@@ -3782,8 +3838,7 @@ PHP_METHOD(mysqli_stmt, attr_set)
     RETURN_TRUE;
 }
 
-PHP_METHOD(mysqli_stmt, send_long_data)
-{
+PHP_METHOD(mysqli_stmt, send_long_data) {
     zend_long param_num = 0;
     char *data = NULL;
     size_t data_length = 0U;
@@ -3799,52 +3854,50 @@ PHP_METHOD(mysqli_stmt, send_long_data)
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli_stmt, get_warnings)
-{
+PHP_METHOD(mysqli_stmt, get_warnings) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli_stmt, more_results)
-{
+PHP_METHOD(mysqli_stmt, more_results) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli_stmt, next_result)
-{
+PHP_METHOD(mysqli_stmt, next_result) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli_stmt, num_rows)
-{
+PHP_METHOD(mysqli_stmt, num_rows) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()))->num_rows);
 }
 
-PHP_METHOD(mysqli_warning, __construct)
-{
+PHP_METHOD(mysqli_warning, __construct) {
     ZEND_PARSE_PARAMETERS_NONE();
 }
 
-PHP_METHOD(mysqli_warning, next)
-{
+PHP_METHOD(mysqli_warning, next) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_FALSE;
 }
 
-PHP_METHOD(mysqli_sql_exception, getSqlState)
-{
-    zval *property = zend_read_property(mylite_mysqli_exception_ce, Z_OBJ_P(getThis()), "sqlstate",
-                                        strlen("sqlstate"), true, NULL);
+PHP_METHOD(mysqli_sql_exception, getSqlState) {
+    zval *property = zend_read_property(
+        mylite_mysqli_exception_ce,
+        Z_OBJ_P(getThis()),
+        "sqlstate",
+        strlen("sqlstate"),
+        true,
+        NULL
+    );
 
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_ZVAL(property, true, false);
 }
 
-static zend_object *mylite_mysqli_link_create(zend_class_entry *class_entry)
-{
+static zend_object *mylite_mysqli_link_create(zend_class_entry *class_entry) {
     mylite_mysqli_link *link = zend_object_alloc(sizeof(*link), class_entry);
 
     zend_object_std_init(&link->std, class_entry);
@@ -3859,8 +3912,7 @@ static zend_object *mylite_mysqli_link_create(zend_class_entry *class_entry)
     return &link->std;
 }
 
-static void mylite_mysqli_link_free(zend_object *object)
-{
+static void mylite_mysqli_link_free(zend_object *object) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(object);
 
     if (link->database != NULL) {
@@ -3876,8 +3928,7 @@ static void mylite_mysqli_link_free(zend_object *object)
     zend_object_std_dtor(&link->std);
 }
 
-static zend_object *mylite_mysqli_result_create(zend_class_entry *class_entry)
-{
+static zend_object *mylite_mysqli_result_create(zend_class_entry *class_entry) {
     mylite_mysqli_result *result = zend_object_alloc(sizeof(*result), class_entry);
 
     zend_object_std_init(&result->std, class_entry);
@@ -3887,8 +3938,7 @@ static zend_object *mylite_mysqli_result_create(zend_class_entry *class_entry)
     return &result->std;
 }
 
-static void mylite_mysqli_result_free(zend_object *object)
-{
+static void mylite_mysqli_result_free(zend_object *object) {
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(object);
 
     for (uint32_t column = 0; column < result->column_count; column++) {
@@ -3927,8 +3977,7 @@ static void mylite_mysqli_result_free(zend_object *object)
     zend_object_std_dtor(&result->std);
 }
 
-static zend_object *mylite_mysqli_stmt_create(zend_class_entry *class_entry)
-{
+static zend_object *mylite_mysqli_stmt_create(zend_class_entry *class_entry) {
     mylite_mysqli_stmt *stmt = zend_object_alloc(sizeof(*stmt), class_entry);
 
     zend_object_std_init(&stmt->std, class_entry);
@@ -3944,8 +3993,7 @@ static zend_object *mylite_mysqli_stmt_create(zend_class_entry *class_entry)
     return &stmt->std;
 }
 
-static void mylite_mysqli_stmt_free(zend_object *object)
-{
+static void mylite_mysqli_stmt_free(zend_object *object) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(object);
 
     if (!Z_ISUNDEF(stmt->link)) {
@@ -3976,8 +4024,7 @@ static void mylite_mysqli_stmt_free(zend_object *object)
     zend_object_std_dtor(&stmt->std);
 }
 
-static zend_object *mylite_mysqli_warning_create(zend_class_entry *class_entry)
-{
+static zend_object *mylite_mysqli_warning_create(zend_class_entry *class_entry) {
     mylite_mysqli_warning *warning = zend_object_alloc(sizeof(*warning), class_entry);
 
     zend_object_std_init(&warning->std, class_entry);
@@ -3986,35 +4033,43 @@ static zend_object *mylite_mysqli_warning_create(zend_class_entry *class_entry)
     return &warning->std;
 }
 
-static void mylite_mysqli_warning_free(zend_object *object)
-{
+static void mylite_mysqli_warning_free(zend_object *object) {
     zend_object_std_dtor(object);
 }
 
-static mylite_mysqli_link *mylite_mysqli_link_from_obj(zend_object *object)
-{
+static mylite_mysqli_link *mylite_mysqli_link_from_obj(zend_object *object) {
     return (mylite_mysqli_link *)((char *)object - XtOffsetOf(mylite_mysqli_link, std));
 }
 
-static mylite_mysqli_result *mylite_mysqli_result_from_obj(zend_object *object)
-{
+static mylite_mysqli_result *mylite_mysqli_result_from_obj(zend_object *object) {
     return (mylite_mysqli_result *)((char *)object - XtOffsetOf(mylite_mysqli_result, std));
 }
 
-static mylite_mysqli_stmt *mylite_mysqli_stmt_from_obj(zend_object *object)
-{
+static mylite_mysqli_stmt *mylite_mysqli_stmt_from_obj(zend_object *object) {
     return (mylite_mysqli_stmt *)((char *)object - XtOffsetOf(mylite_mysqli_stmt, std));
 }
 
-static bool mylite_mysqli_connect_link(mylite_mysqli_link *link, const char *host,
-                                       size_t host_length, const char *database,
-                                       size_t database_length, const char *socket,
-                                       size_t socket_length)
-{
+static bool mylite_mysqli_connect_link(
+    mylite_mysqli_link *link,
+    const char *host,
+    size_t host_length,
+    const char *database,
+    size_t database_length,
+    const char *socket,
+    size_t socket_length
+) {
     bool memory = false;
     bool use_database = false;
-    zend_string *path = mylite_mysqli_resolve_path(host, host_length, database, database_length,
-                                                   socket, socket_length, &memory, &use_database);
+    zend_string *path = mylite_mysqli_resolve_path(
+        host,
+        host_length,
+        database,
+        database_length,
+        socket,
+        socket_length,
+        &memory,
+        &use_database
+    );
     int status = MYLITE_OK;
 
     mylite_mysqli_clear_error(link);
@@ -4039,8 +4094,12 @@ static bool mylite_mysqli_connect_link(mylite_mysqli_link *link, const char *hos
         memory ? mylite_open_memory(&link->database) : mylite_open(ZSTR_VAL(path), &link->database);
     zend_string_release(path);
     if (status != MYLITE_OK) {
-        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CONNECTION, "HY000",
-                                "failed to open MyLite database");
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_CONNECTION,
+            "HY000",
+            "failed to open MyLite database"
+        );
         mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
         mylite_mysqli_report_link_error(link);
         mylite_mysqli_update_link_properties(link);
@@ -4070,9 +4129,12 @@ static bool mylite_mysqli_connect_link(mylite_mysqli_link *link, const char *hos
     return true;
 }
 
-static bool mylite_mysqli_link_query(mylite_mysqli_link *link, const char *sql, size_t sql_length,
-                                     zval *out_result)
-{
+static bool mylite_mysqli_link_query(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *out_result
+) {
     if (!mylite_mysqli_execute_sql(link, sql, sql_length, out_result)) {
         return false;
     }
@@ -4086,9 +4148,11 @@ static bool mylite_mysqli_link_query(mylite_mysqli_link *link, const char *sql, 
     return true;
 }
 
-static bool mylite_mysqli_link_real_query(mylite_mysqli_link *link, const char *sql,
-                                          size_t sql_length)
-{
+static bool mylite_mysqli_link_real_query(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length
+) {
     zval result;
     bool ok = mylite_mysqli_execute_sql(link, sql, sql_length, &result);
 
@@ -4107,9 +4171,11 @@ static bool mylite_mysqli_link_real_query(mylite_mysqli_link *link, const char *
     return true;
 }
 
-static bool mylite_mysqli_stmt_prepare_internal(mylite_mysqli_stmt *stmt, const char *sql,
-                                                size_t sql_length)
-{
+static bool mylite_mysqli_stmt_prepare_internal(
+    mylite_mysqli_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+) {
     if (stmt->query != NULL) {
         zend_string_release(stmt->query);
     }
@@ -4120,23 +4186,29 @@ static bool mylite_mysqli_stmt_prepare_internal(mylite_mysqli_stmt *stmt, const 
     return true;
 }
 
-static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params)
-{
+static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params) {
     mylite_mysqli_link *link = NULL;
     zend_string *sql = NULL;
     zval result;
 
     if (Z_ISUNDEF(stmt->link) || Z_TYPE(stmt->link) != IS_OBJECT || stmt->query == NULL) {
-        mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                     "statement is not prepared");
+        mylite_mysqli_set_stmt_error(
+            stmt,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "statement is not prepared"
+        );
         mylite_mysqli_report_stmt_error(stmt);
         return false;
     }
 
     link = mylite_mysqli_link_from_obj(Z_OBJ(stmt->link));
     if (params != NULL) {
-        sql = mylite_mysqli_interpolate_query(zend_string_copy(stmt->query), params,
-                                              zend_hash_num_elements(Z_ARRVAL_P(params)));
+        sql = mylite_mysqli_interpolate_query(
+            zend_string_copy(stmt->query),
+            params,
+            zend_hash_num_elements(Z_ARRVAL_P(params))
+        );
     } else if (stmt->bound_param_count > 0U) {
         zval params_array;
 
@@ -4147,16 +4219,23 @@ static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *
             ZVAL_COPY(&value, &stmt->bound_params[index]);
             add_next_index_zval(&params_array, &value);
         }
-        sql = mylite_mysqli_interpolate_query(zend_string_copy(stmt->query), &params_array,
-                                              stmt->bound_param_count);
+        sql = mylite_mysqli_interpolate_query(
+            zend_string_copy(stmt->query),
+            &params_array,
+            stmt->bound_param_count
+        );
         zval_ptr_dtor(&params_array);
     } else {
         sql = zend_string_copy(stmt->query);
     }
 
     if (sql == NULL) {
-        mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                     "parameter count mismatch");
+        mylite_mysqli_set_stmt_error(
+            stmt,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "parameter count mismatch"
+        );
         mylite_mysqli_report_stmt_error(stmt);
         return false;
     }
@@ -4191,17 +4270,24 @@ static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *
     return true;
 }
 
-static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql, size_t sql_length,
-                                      zval *out_result)
-{
+static bool mylite_mysqli_execute_sql(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *out_result
+) {
     mylite_result *source = NULL;
     const char *sqlstate = "HY000";
     int status = MYLITE_OK;
 
     ZVAL_UNDEF(out_result);
     if (link->database == NULL) {
-        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CONNECTION, "HY000",
-                                "mysqli object is not connected");
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_CONNECTION,
+            "HY000",
+            "mysqli object is not connected"
+        );
         mylite_mysqli_report_link_error(link);
         return false;
     }
@@ -4230,16 +4316,22 @@ static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql,
     return true;
 }
 
-static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_result *source,
-                                        zval *out_result)
-{
+static bool mylite_mysqli_buffer_result(
+    mylite_mysqli_link *link,
+    const mylite_result *source,
+    zval *out_result
+) {
     size_t column_count = mylite_result_column_count(source);
     size_t row_count = mylite_result_row_count(source);
 
     if (column_count > (size_t)UINT32_MAX || row_count > (size_t)UINT32_MAX ||
         (column_count != 0U && row_count > SIZE_MAX / column_count)) {
-        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
-                                "result set is too large");
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "result set is too large"
+        );
         mylite_mysqli_report_link_error(link);
         return false;
     }
@@ -4287,7 +4379,8 @@ static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_r
         result->tables[column] = mylite_mysqli_column_string(table);
         result->origin_tables[column] = mylite_mysqli_column_string(origin_table);
         result->origin_names[column] = mylite_mysqli_column_string(origin_name);
-        result->types[column] = mylite_mysqli_column_type(mylite_result_column_type(source, column));
+        result->types[column] =
+            mylite_mysqli_column_type(mylite_result_column_type(source, column));
         result->flags[column] = mylite_result_column_flags(source, column);
         result->lengths[column] = mylite_result_column_display_length(source, column);
         result->decimals[column] = mylite_result_column_decimals(source, column);
@@ -4318,21 +4411,18 @@ static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_r
     return true;
 }
 
-static zend_string *mylite_mysqli_column_string(const char *value)
-{
+static zend_string *mylite_mysqli_column_string(const char *value) {
     return zend_string_init(value == NULL ? "" : value, value == NULL ? 0U : strlen(value), false);
 }
 
-static int mylite_mysqli_column_type(enum mylite_result_column_type type)
-{
+static int mylite_mysqli_column_type(enum mylite_result_column_type type) {
     if (type == MYLITE_RESULT_COLUMN_TYPE_UNKNOWN) {
         return MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING;
     }
     return (int)type;
 }
 
-static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value)
-{
+static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value) {
     if (result->cursor >= result->row_count) {
         RETURN_NULL();
     }
@@ -4348,16 +4438,22 @@ static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, z
         }
         if ((mode & MYLITE_MYSQLI_ASSOC) != 0) {
             ZVAL_COPY(&value, source);
-            add_assoc_zval_ex(return_value, ZSTR_VAL(result->names[column]),
-                              ZSTR_LEN(result->names[column]), &value);
+            add_assoc_zval_ex(
+                return_value,
+                ZSTR_VAL(result->names[column]),
+                ZSTR_LEN(result->names[column]),
+                &value
+            );
         }
     }
     result->cursor++;
 }
 
-static void mylite_mysqli_result_fetch_column(mylite_mysqli_result *result, zend_long column,
-                                              zval *return_value)
-{
+static void mylite_mysqli_result_fetch_column(
+    mylite_mysqli_result *result,
+    zend_long column,
+    zval *return_value
+) {
     if (column < 0 || (uint32_t)column >= result->column_count) {
         RETURN_FALSE;
     }
@@ -4365,30 +4461,43 @@ static void mylite_mysqli_result_fetch_column(mylite_mysqli_result *result, zend
         RETURN_NULL();
     }
 
-    ZVAL_COPY(return_value,
-              &result->values[result->cursor * result->column_count + (uint32_t)column]);
+    ZVAL_COPY(
+        return_value,
+        &result->values[result->cursor * result->column_count + (uint32_t)column]
+    );
     result->cursor++;
 }
 
-static void mylite_mysqli_result_fetch_field(mylite_mysqli_result *result, uint32_t index,
-                                             zval *return_value)
-{
+static void mylite_mysqli_result_fetch_field(
+    mylite_mysqli_result *result,
+    uint32_t index,
+    zval *return_value
+) {
     object_init(return_value);
     add_property_str(return_value, "name", zend_string_copy(result->names[index]));
-    add_property_str(return_value, "orgname",
-                     result->origin_names[index] == NULL
-                         ? ZSTR_EMPTY_ALLOC()
-                         : zend_string_copy(result->origin_names[index]));
-    add_property_str(return_value, "table",
-                     result->tables[index] == NULL ? ZSTR_EMPTY_ALLOC()
-                                                   : zend_string_copy(result->tables[index]));
-    add_property_str(return_value, "orgtable",
-                     result->origin_tables[index] == NULL
-                         ? ZSTR_EMPTY_ALLOC()
-                         : zend_string_copy(result->origin_tables[index]));
-    add_property_str(return_value, "db",
-                     result->schemas[index] == NULL ? ZSTR_EMPTY_ALLOC()
-                                                    : zend_string_copy(result->schemas[index]));
+    add_property_str(
+        return_value,
+        "orgname",
+        result->origin_names[index] == NULL ? ZSTR_EMPTY_ALLOC()
+                                            : zend_string_copy(result->origin_names[index])
+    );
+    add_property_str(
+        return_value,
+        "table",
+        result->tables[index] == NULL ? ZSTR_EMPTY_ALLOC() : zend_string_copy(result->tables[index])
+    );
+    add_property_str(
+        return_value,
+        "orgtable",
+        result->origin_tables[index] == NULL ? ZSTR_EMPTY_ALLOC()
+                                             : zend_string_copy(result->origin_tables[index])
+    );
+    add_property_str(
+        return_value,
+        "db",
+        result->schemas[index] == NULL ? ZSTR_EMPTY_ALLOC()
+                                       : zend_string_copy(result->schemas[index])
+    );
     add_property_string(return_value, "catalog", "def");
     add_property_string(return_value, "def", "");
     add_property_long(return_value, "flags", (zend_long)result->flags[index]);
@@ -4399,9 +4508,11 @@ static void mylite_mysqli_result_fetch_field(mylite_mysqli_result *result, uint3
     add_property_long(return_value, "charsetnr", (zend_long)result->charsets[index]);
 }
 
-static zend_string *mylite_mysqli_interpolate_query(zend_string *query, zval *params,
-                                                    uint32_t param_count)
-{
+static zend_string *mylite_mysqli_interpolate_query(
+    zend_string *query,
+    zval *params,
+    uint32_t param_count
+) {
     smart_str sql = {0};
     uint32_t param_index = 0U;
     const char *text = ZSTR_VAL(query);
@@ -4489,8 +4600,7 @@ static zend_string *mylite_mysqli_interpolate_query(zend_string *query, zval *pa
     return sql.s;
 }
 
-static zend_string *mylite_mysqli_param_to_sql(zval *value)
-{
+static zend_string *mylite_mysqli_param_to_sql(zval *value) {
     zval copy;
     zval *copy_value = &copy;
 
@@ -4531,8 +4641,7 @@ static zend_string *mylite_mysqli_param_to_sql(zval *value)
     }
 }
 
-static uint32_t mylite_mysqli_count_markers(const char *sql, size_t sql_length)
-{
+static uint32_t mylite_mysqli_count_markers(const char *sql, size_t sql_length) {
     uint32_t count = 0U;
     char quote = '\0';
     bool line_comment = false;
@@ -4579,13 +4688,11 @@ static uint32_t mylite_mysqli_count_markers(const char *sql, size_t sql_length)
     return count;
 }
 
-static bool mylite_mysqli_is_line_comment_terminator(char ch)
-{
+static bool mylite_mysqli_is_line_comment_terminator(char ch) {
     return ch == '\n' || ch == '\r';
 }
 
-static bool mylite_mysqli_is_dash_comment_start(const char *sql, size_t sql_length, size_t index)
-{
+static bool mylite_mysqli_is_dash_comment_start(const char *sql, size_t sql_length, size_t index) {
     if (index + 2U >= sql_length || sql[index] != '-' || sql[index + 1U] != '-') {
         return false;
     }
@@ -4594,16 +4701,20 @@ static bool mylite_mysqli_is_dash_comment_start(const char *sql, size_t sql_leng
     return following <= (unsigned char)' ';
 }
 
-static bool mylite_mysqli_is_local_path(const char *value, size_t length)
-{
+static bool mylite_mysqli_is_local_path(const char *value, size_t length) {
     return length == strlen(":memory:") && memcmp(value, ":memory:", length) == 0;
 }
 
-static zend_string *mylite_mysqli_resolve_path(const char *host, size_t host_length,
-                                               const char *database, size_t database_length,
-                                               const char *socket, size_t socket_length,
-                                               bool *out_memory, bool *out_use_database)
-{
+static zend_string *mylite_mysqli_resolve_path(
+    const char *host,
+    size_t host_length,
+    const char *database,
+    size_t database_length,
+    const char *socket,
+    size_t socket_length,
+    bool *out_memory,
+    bool *out_use_database
+) {
     static const char prefix[] = "mylite:";
 
     *out_memory = true;
@@ -4617,8 +4728,11 @@ static zend_string *mylite_mysqli_resolve_path(const char *host, size_t host_len
             path_length == strlen(":memory:") && memcmp(path, ":memory:", path_length) == 0;
         *out_use_database =
             database != NULL && !mylite_mysqli_is_local_path(database, database_length);
-        return zend_string_init(path_length == 0U ? ":memory:" : path,
-                                path_length == 0U ? strlen(":memory:") : path_length, false);
+        return zend_string_init(
+            path_length == 0U ? ":memory:" : path,
+            path_length == 0U ? strlen(":memory:") : path_length,
+            false
+        );
     }
     if (socket != NULL && socket_length > 0U) {
         *out_memory = mylite_mysqli_is_local_path(socket, socket_length);
@@ -4626,11 +4740,12 @@ static zend_string *mylite_mysqli_resolve_path(const char *host, size_t host_len
             database != NULL && !mylite_mysqli_is_local_path(database, database_length);
         return zend_string_init(socket, socket_length, false);
     }
-    if (database != NULL && (mylite_mysqli_is_local_path(database, database_length) ||
-                             memchr(database, '/', database_length) != NULL ||
-                             (database_length > strlen(".mylite") &&
-                              memcmp(database + database_length - strlen(".mylite"), ".mylite",
-                                     strlen(".mylite")) == 0))) {
+    if (database != NULL &&
+        (mylite_mysqli_is_local_path(database, database_length) ||
+         memchr(database, '/', database_length) != NULL ||
+         (database_length > strlen(".mylite") &&
+          memcmp(database + database_length - strlen(".mylite"), ".mylite", strlen(".mylite")) ==
+              0))) {
         *out_memory = mylite_mysqli_is_local_path(database, database_length);
         return zend_string_init(database, database_length, false);
     }
@@ -4638,8 +4753,7 @@ static zend_string *mylite_mysqli_resolve_path(const char *host, size_t host_len
     return zend_string_init(":memory:", strlen(":memory:"), false);
 }
 
-static zend_string *mylite_mysqli_quote_identifier(const char *value, size_t length)
-{
+static zend_string *mylite_mysqli_quote_identifier(const char *value, size_t length) {
     smart_str quoted = {0};
 
     smart_str_appendc(&quoted, '`');
@@ -4654,8 +4768,7 @@ static zend_string *mylite_mysqli_quote_identifier(const char *value, size_t len
     return quoted.s;
 }
 
-static zend_string *mylite_mysqli_escape_string(const char *value, size_t length)
-{
+static zend_string *mylite_mysqli_escape_string(const char *value, size_t length) {
     smart_str escaped = {0};
 
     for (size_t index = 0U; index < length; index++) {
@@ -4687,9 +4800,12 @@ static zend_string *mylite_mysqli_escape_string(const char *value, size_t length
     return escaped.s == NULL ? zend_string_init("", 0, false) : escaped.s;
 }
 
-static void mylite_mysqli_set_error(mylite_mysqli_link *link, int error_code, const char *sqlstate,
-                                    const char *message)
-{
+static void mylite_mysqli_set_error(
+    mylite_mysqli_link *link,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+) {
     if (message == NULL || message[0] == '\0') {
         message = "MyLite mysqli error";
     }
@@ -4701,9 +4817,12 @@ static void mylite_mysqli_set_error(mylite_mysqli_link *link, int error_code, co
     mylite_mysqli_update_link_properties(link);
 }
 
-static void mylite_mysqli_set_stmt_error(mylite_mysqli_stmt *stmt, int error_code,
-                                         const char *sqlstate, const char *message)
-{
+static void mylite_mysqli_set_stmt_error(
+    mylite_mysqli_stmt *stmt,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+) {
     if (message == NULL || message[0] == '\0') {
         message = "MyLite mysqli statement error";
     }
@@ -4715,8 +4834,7 @@ static void mylite_mysqli_set_stmt_error(mylite_mysqli_stmt *stmt, int error_cod
     mylite_mysqli_update_stmt_properties(stmt);
 }
 
-static void mylite_mysqli_clear_error(mylite_mysqli_link *link)
-{
+static void mylite_mysqli_clear_error(mylite_mysqli_link *link) {
     zend_string_release(link->error);
     link->error = zend_empty_string;
     zend_string_addref(link->error);
@@ -4725,8 +4843,7 @@ static void mylite_mysqli_clear_error(mylite_mysqli_link *link)
     mylite_mysqli_update_link_properties(link);
 }
 
-static void mylite_mysqli_clear_stmt_error(mylite_mysqli_stmt *stmt)
-{
+static void mylite_mysqli_clear_stmt_error(mylite_mysqli_stmt *stmt) {
     zend_string_release(stmt->error);
     stmt->error = zend_empty_string;
     zend_string_addref(stmt->error);
@@ -4735,38 +4852,51 @@ static void mylite_mysqli_clear_stmt_error(mylite_mysqli_stmt *stmt)
     mylite_mysqli_update_stmt_properties(stmt);
 }
 
-static void mylite_mysqli_report_link_error(mylite_mysqli_link *link)
-{
+static void mylite_mysqli_report_link_error(mylite_mysqli_link *link) {
     if ((MYLITE_MYSQLI_G(report_mode) & MYLITE_MYSQLI_REPORT_STRICT) != 0) {
-        zend_object *exception = zend_throw_exception(mylite_mysqli_exception_ce,
-                                                      ZSTR_VAL(link->error), link->error_code);
+        zend_object *exception = zend_throw_exception(
+            mylite_mysqli_exception_ce,
+            ZSTR_VAL(link->error),
+            link->error_code
+        );
 
         if (exception != NULL) {
-            zend_update_property_string(mylite_mysqli_exception_ce, exception, "sqlstate",
-                                        strlen("sqlstate"), link->sqlstate);
+            zend_update_property_string(
+                mylite_mysqli_exception_ce,
+                exception,
+                "sqlstate",
+                strlen("sqlstate"),
+                link->sqlstate
+            );
         }
     } else if ((MYLITE_MYSQLI_G(report_mode) & MYLITE_MYSQLI_REPORT_ERROR) != 0) {
         php_error_docref(NULL, E_WARNING, "%s", ZSTR_VAL(link->error));
     }
 }
 
-static void mylite_mysqli_report_stmt_error(mylite_mysqli_stmt *stmt)
-{
+static void mylite_mysqli_report_stmt_error(mylite_mysqli_stmt *stmt) {
     if ((MYLITE_MYSQLI_G(report_mode) & MYLITE_MYSQLI_REPORT_STRICT) != 0) {
-        zend_object *exception = zend_throw_exception(mylite_mysqli_exception_ce,
-                                                      ZSTR_VAL(stmt->error), stmt->error_code);
+        zend_object *exception = zend_throw_exception(
+            mylite_mysqli_exception_ce,
+            ZSTR_VAL(stmt->error),
+            stmt->error_code
+        );
 
         if (exception != NULL) {
-            zend_update_property_string(mylite_mysqli_exception_ce, exception, "sqlstate",
-                                        strlen("sqlstate"), stmt->sqlstate);
+            zend_update_property_string(
+                mylite_mysqli_exception_ce,
+                exception,
+                "sqlstate",
+                strlen("sqlstate"),
+                stmt->sqlstate
+            );
         }
     } else if ((MYLITE_MYSQLI_G(report_mode) & MYLITE_MYSQLI_REPORT_ERROR) != 0) {
         php_error_docref(NULL, E_WARNING, "%s", ZSTR_VAL(stmt->error));
     }
 }
 
-static int mylite_mysqli_error_from_status(int status, const char **out_sqlstate)
-{
+static int mylite_mysqli_error_from_status(int status, const char **out_sqlstate) {
     switch (status) {
     case MYLITE_NOMEM:
         *out_sqlstate = "HY000";
@@ -4783,93 +4913,231 @@ static int mylite_mysqli_error_from_status(int status, const char **out_sqlstate
     }
 }
 
-static void mylite_mysqli_update_link_properties(mylite_mysqli_link *link)
-{
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "affected_rows",
-                              strlen("affected_rows"), link->affected_rows);
-    zend_update_property_string(mylite_mysqli_link_ce, &link->std, "client_info",
-                                strlen("client_info"), "mylite mysqli " PHP_MYLITE_MYSQLI_VERSION);
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "client_version",
-                              strlen("client_version"), 100);
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "connect_errno",
-                              strlen("connect_errno"), MYLITE_MYSQLI_G(connect_errno));
-    zend_update_property_string(mylite_mysqli_link_ce, &link->std, "connect_error",
-                                strlen("connect_error"), MYLITE_MYSQLI_G(connect_error));
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "errno", strlen("errno"),
-                              link->error_code);
-    zend_update_property_str(mylite_mysqli_link_ce, &link->std, "error", strlen("error"),
-                             zend_string_copy(link->error));
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "field_count",
-                              strlen("field_count"), link->field_count);
-    zend_update_property_string(mylite_mysqli_link_ce, &link->std, "host_info", strlen("host_info"),
-                                "MyLite embedded");
+static void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "affected_rows",
+        strlen("affected_rows"),
+        link->affected_rows
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "client_info",
+        strlen("client_info"),
+        "mylite mysqli " PHP_MYLITE_MYSQLI_VERSION
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "client_version",
+        strlen("client_version"),
+        100
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "connect_errno",
+        strlen("connect_errno"),
+        MYLITE_MYSQLI_G(connect_errno)
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "connect_error",
+        strlen("connect_error"),
+        MYLITE_MYSQLI_G(connect_error)
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "errno",
+        strlen("errno"),
+        link->error_code
+    );
+    zend_update_property_str(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "error",
+        strlen("error"),
+        zend_string_copy(link->error)
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "field_count",
+        strlen("field_count"),
+        link->field_count
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "host_info",
+        strlen("host_info"),
+        "MyLite embedded"
+    );
     zend_update_property_null(mylite_mysqli_link_ce, &link->std, "info", strlen("info"));
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "insert_id", strlen("insert_id"),
-                              link->insert_id);
-    zend_update_property_string(mylite_mysqli_link_ce, &link->std, "server_info",
-                                strlen("server_info"), MYLITE_MYSQLI_SERVER_INFO);
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "server_version",
-                              strlen("server_version"), MYLITE_MYSQLI_SERVER_VERSION);
-    zend_update_property_string(mylite_mysqli_link_ce, &link->std, "sqlstate", strlen("sqlstate"),
-                                link->sqlstate);
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "protocol_version",
-                              strlen("protocol_version"), 10);
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "thread_id", strlen("thread_id"),
-                              1);
-    zend_update_property_long(mylite_mysqli_link_ce, &link->std, "warning_count",
-                              strlen("warning_count"), link->warning_count);
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "insert_id",
+        strlen("insert_id"),
+        link->insert_id
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "server_info",
+        strlen("server_info"),
+        MYLITE_MYSQLI_SERVER_INFO
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "server_version",
+        strlen("server_version"),
+        MYLITE_MYSQLI_SERVER_VERSION
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "sqlstate",
+        strlen("sqlstate"),
+        link->sqlstate
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "protocol_version",
+        strlen("protocol_version"),
+        10
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "thread_id",
+        strlen("thread_id"),
+        1
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "warning_count",
+        strlen("warning_count"),
+        link->warning_count
+    );
 }
 
-static void mylite_mysqli_update_result_properties(mylite_mysqli_result *result)
-{
-    zend_update_property_long(mylite_mysqli_result_ce, &result->std, "current_field",
-                              strlen("current_field"), result->field_cursor);
-    zend_update_property_long(mylite_mysqli_result_ce, &result->std, "field_count",
-                              strlen("field_count"), result->column_count);
+static void mylite_mysqli_update_result_properties(mylite_mysqli_result *result) {
+    zend_update_property_long(
+        mylite_mysqli_result_ce,
+        &result->std,
+        "current_field",
+        strlen("current_field"),
+        result->field_cursor
+    );
+    zend_update_property_long(
+        mylite_mysqli_result_ce,
+        &result->std,
+        "field_count",
+        strlen("field_count"),
+        result->column_count
+    );
     zend_update_property_null(mylite_mysqli_result_ce, &result->std, "lengths", strlen("lengths"));
-    zend_update_property_long(mylite_mysqli_result_ce, &result->std, "num_rows", strlen("num_rows"),
-                              result->row_count);
-    zend_update_property_long(mylite_mysqli_result_ce, &result->std, "type", strlen("type"),
-                              MYLITE_MYSQLI_STORE_RESULT);
+    zend_update_property_long(
+        mylite_mysqli_result_ce,
+        &result->std,
+        "num_rows",
+        strlen("num_rows"),
+        result->row_count
+    );
+    zend_update_property_long(
+        mylite_mysqli_result_ce,
+        &result->std,
+        "type",
+        strlen("type"),
+        MYLITE_MYSQLI_STORE_RESULT
+    );
 }
 
-static void mylite_mysqli_update_stmt_properties(mylite_mysqli_stmt *stmt)
-{
-    zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "affected_rows",
-                              strlen("affected_rows"), stmt->affected_rows);
-    zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "insert_id", strlen("insert_id"),
-                              stmt->insert_id);
-    zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "num_rows", strlen("num_rows"),
-                              stmt->num_rows);
-    zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "param_count",
-                              strlen("param_count"), stmt->param_count);
-    zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "field_count",
-                              strlen("field_count"), stmt->field_count);
-    zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "errno", strlen("errno"),
-                              stmt->error_code);
-    zend_update_property_str(mylite_mysqli_stmt_ce, &stmt->std, "error", strlen("error"),
-                             zend_string_copy(stmt->error));
-    zend_update_property_string(mylite_mysqli_stmt_ce, &stmt->std, "sqlstate", strlen("sqlstate"),
-                                stmt->sqlstate);
+static void mylite_mysqli_update_stmt_properties(mylite_mysqli_stmt *stmt) {
+    zend_update_property_long(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "affected_rows",
+        strlen("affected_rows"),
+        stmt->affected_rows
+    );
+    zend_update_property_long(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "insert_id",
+        strlen("insert_id"),
+        stmt->insert_id
+    );
+    zend_update_property_long(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "num_rows",
+        strlen("num_rows"),
+        stmt->num_rows
+    );
+    zend_update_property_long(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "param_count",
+        strlen("param_count"),
+        stmt->param_count
+    );
+    zend_update_property_long(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "field_count",
+        strlen("field_count"),
+        stmt->field_count
+    );
+    zend_update_property_long(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "errno",
+        strlen("errno"),
+        stmt->error_code
+    );
+    zend_update_property_str(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "error",
+        strlen("error"),
+        zend_string_copy(stmt->error)
+    );
+    zend_update_property_string(
+        mylite_mysqli_stmt_ce,
+        &stmt->std,
+        "sqlstate",
+        strlen("sqlstate"),
+        stmt->sqlstate
+    );
     zend_update_property_long(mylite_mysqli_stmt_ce, &stmt->std, "id", strlen("id"), 0);
 }
 
-static void mylite_mysqli_set_global_connect_error(int error_code, const char *message)
-{
+static void mylite_mysqli_set_global_connect_error(int error_code, const char *message) {
     MYLITE_MYSQLI_G(connect_errno) = error_code;
-    snprintf(MYLITE_MYSQLI_G(connect_error), sizeof(MYLITE_MYSQLI_G(connect_error)), "%s",
-             message == NULL ? "" : message);
+    snprintf(
+        MYLITE_MYSQLI_G(connect_error),
+        sizeof(MYLITE_MYSQLI_G(connect_error)),
+        "%s",
+        message == NULL ? "" : message
+    );
 }
 
-static void mylite_mysqli_init_globals(zend_mylite_mysqli_globals *globals)
-{
+static void mylite_mysqli_init_globals(zend_mylite_mysqli_globals *globals) {
     globals->report_mode = MYLITE_MYSQLI_REPORT_ERROR | MYLITE_MYSQLI_REPORT_STRICT;
     globals->connect_errno = 0;
     globals->connect_error[0] = '\0';
 }
 
-static void mylite_mysqli_register_constants(int module_number)
-{
+static void mylite_mysqli_register_constants(int module_number) {
     REGISTER_LONG_CONSTANT("MYSQLI_READ_DEFAULT_GROUP", 5, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_READ_DEFAULT_FILE", 4, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_OPT_CONNECT_TIMEOUT", 0, CONST_PERSISTENT);
@@ -4903,15 +5171,37 @@ static void mylite_mysqli_register_constants(int module_number)
     REGISTER_LONG_CONSTANT("MYSQLI_STMT_ATTR_CURSOR_TYPE", 1, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_CURSOR_TYPE_NO_CURSOR", 0, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_CURSOR_TYPE_READ_ONLY", 1, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_NOT_NULL_FLAG", MYLITE_MYSQLI_FIELD_FLAG_NOT_NULL, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_PRI_KEY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_PRI_KEY, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_UNIQUE_KEY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_UNIQUE_KEY,
-                           CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_MULTIPLE_KEY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_MULTIPLE_KEY,
-                           CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_NOT_NULL_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_NOT_NULL,
+        CONST_PERSISTENT
+    );
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_PRI_KEY_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_PRI_KEY,
+        CONST_PERSISTENT
+    );
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_UNIQUE_KEY_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_UNIQUE_KEY,
+        CONST_PERSISTENT
+    );
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_MULTIPLE_KEY_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_MULTIPLE_KEY,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_BLOB_FLAG", MYLITE_MYSQLI_FIELD_FLAG_BLOB, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_UNSIGNED_FLAG", MYLITE_MYSQLI_FIELD_FLAG_UNSIGNED, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_ZEROFILL_FLAG", MYLITE_MYSQLI_FIELD_FLAG_ZEROFILL, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_UNSIGNED_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_UNSIGNED,
+        CONST_PERSISTENT
+    );
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_ZEROFILL_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_ZEROFILL,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_BINARY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_BINARY, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TIMESTAMP_FLAG", 1024, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_SET_FLAG", 2048, CONST_PERSISTENT);
@@ -4920,37 +5210,66 @@ static void mylite_mysqli_register_constants(int module_number)
     REGISTER_LONG_CONSTANT("MYSQLI_ENUM_FLAG", 256, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_NO_DEFAULT_VALUE_FLAG", 4096, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_ON_UPDATE_NOW_FLAG", 8192, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_AUTO_INCREMENT_FLAG", MYLITE_MYSQLI_FIELD_FLAG_AUTO_INCREMENT,
-                           CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_AUTO_INCREMENT_FLAG",
+        MYLITE_MYSQLI_FIELD_FLAG_AUTO_INCREMENT,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_NUM_FLAG", MYLITE_MYSQLI_FIELD_FLAG_NUM, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DECIMAL", MYLITE_MYSQLI_FIELD_TYPE_DECIMAL, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_DECIMAL",
+        MYLITE_MYSQLI_FIELD_TYPE_DECIMAL,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TINY", MYLITE_MYSQLI_FIELD_TYPE_TINY, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_SHORT", MYLITE_MYSQLI_FIELD_TYPE_SHORT, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONG", MYLITE_MYSQLI_FIELD_TYPE_LONG, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_FLOAT", MYLITE_MYSQLI_FIELD_TYPE_FLOAT, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DOUBLE", MYLITE_MYSQLI_FIELD_TYPE_DOUBLE, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NULL", MYLITE_MYSQLI_FIELD_TYPE_NULL, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TIMESTAMP", MYLITE_MYSQLI_FIELD_TYPE_TIMESTAMP, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONGLONG", MYLITE_MYSQLI_FIELD_TYPE_LONGLONG, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_TIMESTAMP",
+        MYLITE_MYSQLI_FIELD_TYPE_TIMESTAMP,
+        CONST_PERSISTENT
+    );
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_LONGLONG",
+        MYLITE_MYSQLI_FIELD_TYPE_LONGLONG,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_INT24", MYLITE_MYSQLI_FIELD_TYPE_INT24, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DATE", MYLITE_MYSQLI_FIELD_TYPE_DATE, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TIME", MYLITE_MYSQLI_FIELD_TYPE_TIME, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DATETIME", MYLITE_MYSQLI_FIELD_TYPE_DATETIME, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_DATETIME",
+        MYLITE_MYSQLI_FIELD_TYPE_DATETIME,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_YEAR", MYLITE_MYSQLI_FIELD_TYPE_YEAR, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NEWDATE", MYLITE_MYSQLI_FIELD_TYPE_NEWDATE, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_NEWDATE",
+        MYLITE_MYSQLI_FIELD_TYPE_NEWDATE,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_CHAR", MYLITE_MYSQLI_FIELD_TYPE_TINY, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TINY_BLOB", 249, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_MEDIUM_BLOB", 250, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONG_BLOB", 251, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NEWDECIMAL", MYLITE_MYSQLI_FIELD_TYPE_NEWDECIMAL,
-                           CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_NEWDECIMAL",
+        MYLITE_MYSQLI_FIELD_TYPE_NEWDECIMAL,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_JSON", 245, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_VECTOR", 242, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_ENUM", MYLITE_MYSQLI_FIELD_TYPE_ENUM, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_SET", MYLITE_MYSQLI_FIELD_TYPE_SET, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_BLOB", MYLITE_MYSQLI_FIELD_TYPE_BLOB, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_VAR_STRING", MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING,
-                           CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT(
+        "MYSQLI_TYPE_VAR_STRING",
+        MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING,
+        CONST_PERSISTENT
+    );
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_STRING", MYLITE_MYSQLI_FIELD_TYPE_STRING, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_GEOMETRY", 255, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_BIT", MYLITE_MYSQLI_FIELD_TYPE_BIT, CONST_PERSISTENT);
@@ -4988,139 +5307,324 @@ static void mylite_mysqli_register_constants(int module_number)
     (void)module_number;
 }
 
-static void mylite_mysqli_register_classes(void)
-{
+static void mylite_mysqli_register_classes(void) {
     zend_class_entry class_entry;
 
     INIT_CLASS_ENTRY(class_entry, "mysqli", mylite_mysqli_link_methods);
     mylite_mysqli_link_ce = zend_register_internal_class(&class_entry);
     mylite_mysqli_link_ce->create_object = mylite_mysqli_link_create;
-    memcpy(&mylite_mysqli_link_handlers, zend_get_std_object_handlers(),
-           sizeof(mylite_mysqli_link_handlers));
+    memcpy(
+        &mylite_mysqli_link_handlers,
+        zend_get_std_object_handlers(),
+        sizeof(mylite_mysqli_link_handlers)
+    );
     mylite_mysqli_link_handlers.offset = XtOffsetOf(mylite_mysqli_link, std);
     mylite_mysqli_link_handlers.free_obj = mylite_mysqli_link_free;
 
-    zend_declare_property_long(mylite_mysqli_link_ce, "affected_rows", strlen("affected_rows"), -1,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_link_ce, "client_info", strlen("client_info"), "",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "client_version", strlen("client_version"),
-                               100, ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "connect_errno", strlen("connect_errno"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_link_ce, "connect_error", strlen("connect_error"),
-                                 "", ZEND_ACC_PUBLIC);
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "affected_rows",
+        strlen("affected_rows"),
+        -1,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_link_ce,
+        "client_info",
+        strlen("client_info"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "client_version",
+        strlen("client_version"),
+        100,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "connect_errno",
+        strlen("connect_errno"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_link_ce,
+        "connect_error",
+        strlen("connect_error"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
     zend_declare_property_long(mylite_mysqli_link_ce, "errno", strlen("errno"), 0, ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_link_ce, "error", strlen("error"), "",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_null(mylite_mysqli_link_ce, "error_list", strlen("error_list"),
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "field_count", strlen("field_count"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_link_ce, "host_info", strlen("host_info"), "",
-                                 ZEND_ACC_PUBLIC);
+    zend_declare_property_string(
+        mylite_mysqli_link_ce,
+        "error",
+        strlen("error"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_null(
+        mylite_mysqli_link_ce,
+        "error_list",
+        strlen("error_list"),
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "field_count",
+        strlen("field_count"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_link_ce,
+        "host_info",
+        strlen("host_info"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
     zend_declare_property_null(mylite_mysqli_link_ce, "info", strlen("info"), ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "insert_id", strlen("insert_id"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_link_ce, "server_info", strlen("server_info"), "",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "server_version", strlen("server_version"),
-                               MYLITE_MYSQLI_SERVER_VERSION, ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_link_ce, "sqlstate", strlen("sqlstate"), "00000",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "protocol_version",
-                               strlen("protocol_version"), 10, ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "thread_id", strlen("thread_id"), 1,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_link_ce, "warning_count", strlen("warning_count"), 0,
-                               ZEND_ACC_PUBLIC);
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "insert_id",
+        strlen("insert_id"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_link_ce,
+        "server_info",
+        strlen("server_info"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "server_version",
+        strlen("server_version"),
+        MYLITE_MYSQLI_SERVER_VERSION,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_link_ce,
+        "sqlstate",
+        strlen("sqlstate"),
+        "00000",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "protocol_version",
+        strlen("protocol_version"),
+        10,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "thread_id",
+        strlen("thread_id"),
+        1,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_link_ce,
+        "warning_count",
+        strlen("warning_count"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
 
     INIT_CLASS_ENTRY(class_entry, "mysqli_result", mylite_mysqli_result_methods);
     mylite_mysqli_result_ce = zend_register_internal_class(&class_entry);
     mylite_mysqli_result_ce->create_object = mylite_mysqli_result_create;
-    memcpy(&mylite_mysqli_result_handlers, zend_get_std_object_handlers(),
-           sizeof(mylite_mysqli_result_handlers));
+    memcpy(
+        &mylite_mysqli_result_handlers,
+        zend_get_std_object_handlers(),
+        sizeof(mylite_mysqli_result_handlers)
+    );
     mylite_mysqli_result_handlers.offset = XtOffsetOf(mylite_mysqli_result, std);
     mylite_mysqli_result_handlers.free_obj = mylite_mysqli_result_free;
-    zend_declare_property_long(mylite_mysqli_result_ce, "current_field", strlen("current_field"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_result_ce, "field_count", strlen("field_count"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_null(mylite_mysqli_result_ce, "lengths", strlen("lengths"),
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_result_ce, "num_rows", strlen("num_rows"), 0,
-                               ZEND_ACC_PUBLIC);
+    zend_declare_property_long(
+        mylite_mysqli_result_ce,
+        "current_field",
+        strlen("current_field"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_result_ce,
+        "field_count",
+        strlen("field_count"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_null(
+        mylite_mysqli_result_ce,
+        "lengths",
+        strlen("lengths"),
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_result_ce,
+        "num_rows",
+        strlen("num_rows"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
     zend_declare_property_long(mylite_mysqli_result_ce, "type", strlen("type"), 0, ZEND_ACC_PUBLIC);
     zend_class_implements(mylite_mysqli_result_ce, 1, zend_ce_aggregate);
 
     INIT_CLASS_ENTRY(class_entry, "mysqli_stmt", mylite_mysqli_stmt_methods);
     mylite_mysqli_stmt_ce = zend_register_internal_class(&class_entry);
     mylite_mysqli_stmt_ce->create_object = mylite_mysqli_stmt_create;
-    memcpy(&mylite_mysqli_stmt_handlers, zend_get_std_object_handlers(),
-           sizeof(mylite_mysqli_stmt_handlers));
+    memcpy(
+        &mylite_mysqli_stmt_handlers,
+        zend_get_std_object_handlers(),
+        sizeof(mylite_mysqli_stmt_handlers)
+    );
     mylite_mysqli_stmt_handlers.offset = XtOffsetOf(mylite_mysqli_stmt, std);
     mylite_mysqli_stmt_handlers.free_obj = mylite_mysqli_stmt_free;
-    zend_declare_property_long(mylite_mysqli_stmt_ce, "affected_rows", strlen("affected_rows"), -1,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_stmt_ce, "insert_id", strlen("insert_id"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_stmt_ce, "num_rows", strlen("num_rows"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_stmt_ce, "param_count", strlen("param_count"), 0,
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_stmt_ce, "field_count", strlen("field_count"), 0,
-                               ZEND_ACC_PUBLIC);
+    zend_declare_property_long(
+        mylite_mysqli_stmt_ce,
+        "affected_rows",
+        strlen("affected_rows"),
+        -1,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_stmt_ce,
+        "insert_id",
+        strlen("insert_id"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_stmt_ce,
+        "num_rows",
+        strlen("num_rows"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_stmt_ce,
+        "param_count",
+        strlen("param_count"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_stmt_ce,
+        "field_count",
+        strlen("field_count"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
     zend_declare_property_long(mylite_mysqli_stmt_ce, "errno", strlen("errno"), 0, ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_stmt_ce, "error", strlen("error"), "",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_null(mylite_mysqli_stmt_ce, "error_list", strlen("error_list"),
-                               ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_stmt_ce, "sqlstate", strlen("sqlstate"), "00000",
-                                 ZEND_ACC_PUBLIC);
+    zend_declare_property_string(
+        mylite_mysqli_stmt_ce,
+        "error",
+        strlen("error"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_null(
+        mylite_mysqli_stmt_ce,
+        "error_list",
+        strlen("error_list"),
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_stmt_ce,
+        "sqlstate",
+        strlen("sqlstate"),
+        "00000",
+        ZEND_ACC_PUBLIC
+    );
     zend_declare_property_long(mylite_mysqli_stmt_ce, "id", strlen("id"), 0, ZEND_ACC_PUBLIC);
 
     INIT_CLASS_ENTRY(class_entry, "mysqli_driver", NULL);
     mylite_mysqli_driver_ce = zend_register_internal_class(&class_entry);
-    zend_declare_property_string(mylite_mysqli_driver_ce, "client_info", strlen("client_info"),
-                                 "mylite mysqli " PHP_MYLITE_MYSQLI_VERSION, ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_driver_ce, "client_version", strlen("client_version"),
-                               100, ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_driver_ce, "driver_version", strlen("driver_version"),
-                               100, ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_driver_ce, "report_mode", strlen("report_mode"),
-                               MYLITE_MYSQLI_REPORT_ERROR | MYLITE_MYSQLI_REPORT_STRICT,
-                               ZEND_ACC_PUBLIC);
+    zend_declare_property_string(
+        mylite_mysqli_driver_ce,
+        "client_info",
+        strlen("client_info"),
+        "mylite mysqli " PHP_MYLITE_MYSQLI_VERSION,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_driver_ce,
+        "client_version",
+        strlen("client_version"),
+        100,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_driver_ce,
+        "driver_version",
+        strlen("driver_version"),
+        100,
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_driver_ce,
+        "report_mode",
+        strlen("report_mode"),
+        MYLITE_MYSQLI_REPORT_ERROR | MYLITE_MYSQLI_REPORT_STRICT,
+        ZEND_ACC_PUBLIC
+    );
 
     INIT_CLASS_ENTRY(class_entry, "mysqli_warning", mylite_mysqli_warning_methods);
     mylite_mysqli_warning_ce = zend_register_internal_class(&class_entry);
     mylite_mysqli_warning_ce->create_object = mylite_mysqli_warning_create;
-    memcpy(&mylite_mysqli_warning_handlers, zend_get_std_object_handlers(),
-           sizeof(mylite_mysqli_warning_handlers));
+    memcpy(
+        &mylite_mysqli_warning_handlers,
+        zend_get_std_object_handlers(),
+        sizeof(mylite_mysqli_warning_handlers)
+    );
     mylite_mysqli_warning_handlers.offset = XtOffsetOf(mylite_mysqli_warning, std);
     mylite_mysqli_warning_handlers.free_obj = mylite_mysqli_warning_free;
-    zend_declare_property_string(mylite_mysqli_warning_ce, "message", strlen("message"), "",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_string(mylite_mysqli_warning_ce, "sqlstate", strlen("sqlstate"), "HY000",
-                                 ZEND_ACC_PUBLIC);
-    zend_declare_property_long(mylite_mysqli_warning_ce, "errno", strlen("errno"), 0,
-                               ZEND_ACC_PUBLIC);
+    zend_declare_property_string(
+        mylite_mysqli_warning_ce,
+        "message",
+        strlen("message"),
+        "",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_string(
+        mylite_mysqli_warning_ce,
+        "sqlstate",
+        strlen("sqlstate"),
+        "HY000",
+        ZEND_ACC_PUBLIC
+    );
+    zend_declare_property_long(
+        mylite_mysqli_warning_ce,
+        "errno",
+        strlen("errno"),
+        0,
+        ZEND_ACC_PUBLIC
+    );
 
     INIT_CLASS_ENTRY(class_entry, "mysqli_sql_exception", mylite_mysqli_exception_methods);
     mylite_mysqli_exception_ce =
         zend_register_internal_class_ex(&class_entry, spl_ce_RuntimeException);
-    zend_declare_property_string(mylite_mysqli_exception_ce, "sqlstate", strlen("sqlstate"),
-                                 "HY000", ZEND_ACC_PROTECTED);
+    zend_declare_property_string(
+        mylite_mysqli_exception_ce,
+        "sqlstate",
+        strlen("sqlstate"),
+        "HY000",
+        ZEND_ACC_PROTECTED
+    );
 }
 
-PHP_MINIT_FUNCTION(mysqli)
-{
+PHP_MINIT_FUNCTION(mysqli) {
     mylite_mysqli_register_classes();
     mylite_mysqli_register_constants(module_number);
     return SUCCESS;
 }
 
-PHP_MINFO_FUNCTION(mysqli)
-{
+PHP_MINFO_FUNCTION(mysqli) {
     php_info_print_table_start();
     php_info_print_table_header(2, "MyLite mysqli support", "enabled");
     php_info_print_table_row(2, "MyLite version", mylite_version());
@@ -5131,8 +5635,7 @@ PHP_MINFO_FUNCTION(mysqli)
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Wshadow"
 #endif
-PHP_GINIT_FUNCTION(mylite_mysqli)
-{
+PHP_GINIT_FUNCTION(mylite_mysqli) {
 #if defined(COMPILE_DL_MYSQLI) && defined(ZTS)
     ZEND_TSRMLS_CACHE_UPDATE();
 #endif

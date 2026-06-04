@@ -9,8 +9,7 @@ static int run_query(const char *path, bool memory, const char *sql);
 static int print_result(const mylite_result *result);
 static void print_usage(const char *program);
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     const char *path = NULL;
     const char *sql = NULL;
     bool memory = false;
@@ -34,8 +33,7 @@ int main(int argc, char **argv)
     return run_query(path, memory, sql);
 }
 
-static int run_query(const char *path, bool memory, const char *sql)
-{
+static int run_query(const char *path, bool memory, const char *sql) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int status = MYLITE_OK;
@@ -64,8 +62,7 @@ static int run_query(const char *path, bool memory, const char *sql)
     return exit_code;
 }
 
-static int print_result(const mylite_result *result)
-{
+static int print_result(const mylite_result *result) {
     size_t column_count = mylite_result_column_count(result);
     size_t row_count = mylite_result_row_count(result);
 
@@ -94,8 +91,7 @@ static int print_result(const mylite_result *result)
     return 0;
 }
 
-static void print_usage(const char *program)
-{
+static void print_usage(const char *program) {
     fprintf(stderr, "usage: %s --version\n", program);
     fprintf(stderr, "usage: %s --memory SQL\n", program);
     fprintf(stderr, "usage: %s FILE.mylite SQL\n", program);

@@ -300,7 +300,9 @@ Public result metadata:
 - Descriptor-backed direct table columns use the effective column collation ID
   for `charset_id` and `collation_id` when the collation is an admitted
   `utf8mb4` collation.
-- National aliases keep the existing `utf8mb3_general_ci` ID.
+- Selected national aliases keep `SHOW` and `INFORMATION_SCHEMA` utf8mb3
+  descriptor metadata, but public result metadata follows the session result
+  collation and byte width observed from MySQL 8.4.9 mysqli.
 - Binary strings and non-character descriptors keep existing binary metadata.
 - This does not add complete expression-result or protocol metadata fidelity.
 

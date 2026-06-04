@@ -21885,6 +21885,9 @@ static bool column_effective_collation_is_binary(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column
 );
+static uint64_t character_set_max_bytes_per_character(const char *character_set_name);
+static uint64_t result_metadata_collation_max_bytes_per_character(const char *collation_name);
+static uint64_t result_metadata_display_length_cap(uint64_t display_length);
 static uint32_t result_metadata_collation_id(const char *collation_name);
 static bool result_metadata_integer_descriptor(
     const char *logical_type,

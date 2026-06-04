@@ -274,8 +274,10 @@ Add focused coverage, preferably by extending
   `CREATE TABLE ... LIKE`;
 - `SHOW COLUMNS`, `SHOW FULL COLUMNS`, `SHOW CREATE TABLE`, and
   `INFORMATION_SCHEMA.COLUMNS` utf8mb3 metadata;
-- public result metadata collation/display length for descriptor-backed
-  national columns;
+- public result metadata for descriptor-backed national columns, including the
+  MySQL 8.4.9 mysqli behavior where selected `NCHAR` / `NVARCHAR` columns use
+  the session result collation and byte width even though stored descriptor
+  metadata remains `utf8mb3`;
 - string defaults, nullable/not-null behavior, `INSERT`, `UPDATE`, readback,
   affected rows, and warning counts;
 - `ALTER TABLE ... ADD COLUMN`, `MODIFY COLUMN`, and `CHANGE COLUMN` national

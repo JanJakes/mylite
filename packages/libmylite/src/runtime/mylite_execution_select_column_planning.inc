@@ -784,6 +784,7 @@ static int populate_string_result_column_descriptor(
     const struct text_family_type_info *text_info = NULL;
     size_t length = 0U;
     bool is_national = column_descriptor_is_national_char_or_varchar(column);
+    uint64_t max_bytes_per_character = 0U;
     int rc = MYLITE_OK;
 
     *out_matched = false;
@@ -792,12 +793,16 @@ static int populate_string_result_column_descriptor(
     }
 
     if (is_national) {
-        descriptor->charset_id = mysql_collation_utf8mb3_general_ci_id;
-        descriptor->collation_id = mysql_collation_utf8mb3_general_ci_id;
+        descriptor->charset_id =
+            result_metadata_collation_id(database->session.collation_connection);
+        descriptor->collation_id = descriptor->charset_id;
+        max_bytes_per_character =
+            result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
     } else {
         descriptor->charset_id =
             result_metadata_collation_id(column_effective_collation_name(table, column));
         descriptor->collation_id = descriptor->charset_id;
+        max_bytes_per_character = column_effective_max_bytes_per_character(table, column);
     }
     if (!is_national && column_effective_collation_is_binary(table, column)) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
@@ -813,8 +818,7 @@ static int populate_string_result_column_descriptor(
             return rc;
         }
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
-        descriptor->display_length =
-            (uint64_t)length * column_effective_max_bytes_per_character(table, column);
+        descriptor->display_length = (uint64_t)length * max_bytes_per_character;
         *out_matched = true;
         return MYLITE_OK;
     }
@@ -829,8 +833,7 @@ static int populate_string_result_column_descriptor(
             return rc;
         }
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
-        descriptor->display_length =
-            (uint64_t)length * column_effective_max_bytes_per_character(table, column);
+        descriptor->display_length = (uint64_t)length * max_bytes_per_character;
         *out_matched = true;
         return MYLITE_OK;
     }
@@ -842,7 +845,7 @@ static int populate_string_result_column_descriptor(
     }
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
     descriptor->display_length =
-        text_info->maximum_length * column_effective_max_bytes_per_character(table, column);
+        result_metadata_display_length_cap(text_info->maximum_length * max_bytes_per_character);
     descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB;
     *out_matched = true;
     return MYLITE_OK;
@@ -1175,6 +1178,14 @@ static uint64_t column_effective_max_bytes_per_character(
     const struct mylite_catalog_column_descriptor *column
 ) {
     const char *character_set_name = column_effective_character_set_name(table, column);
+    uint64_t max_bytes = character_set_max_bytes_per_character(character_set_name);
+
+    return max_bytes != 0U
+               ? max_bytes
+               : logical_type_max_bytes_per_character(column == NULL ? NULL : column->logical_type);
+}
+
+static uint64_t character_set_max_bytes_per_character(const char *character_set_name) {
     const struct mylite_execution_catalog_character_set *character_set =
         character_set_by_name(character_set_name);
     struct mylite_sql_source_span maxlen_span = {0};
@@ -1189,7 +1200,36 @@ static uint64_t column_effective_max_bytes_per_character(
             return maxlen;
         }
     }
-    return logical_type_max_bytes_per_character(column == NULL ? NULL : column->logical_type);
+    return 0U;
+}
+
+static uint64_t result_metadata_collation_max_bytes_per_character(const char *collation_name) {
+    const struct mylite_execution_catalog_scalar_collation *scalar_collation = NULL;
+    const struct mylite_execution_catalog_collation *collation = NULL;
+    uint64_t max_bytes = 0U;
+
+    scalar_collation = mylite_execution_scalar_collation_info_by_name(collation_name);
+    if (scalar_collation != NULL) {
+        max_bytes = character_set_max_bytes_per_character(scalar_collation->charset);
+        if (max_bytes != 0U) {
+            return max_bytes;
+        }
+    }
+
+    collation = collation_by_name(collation_name);
+    if (collation != NULL) {
+        max_bytes = character_set_max_bytes_per_character(collation->character_set);
+        if (max_bytes != 0U) {
+            return max_bytes;
+        }
+    }
+
+    max_bytes = character_set_max_bytes_per_character(MYLITE_CATALOG_DEFAULT_TABLE_CHARSET);
+    return max_bytes == 0U ? 4U : max_bytes;
+}
+
+static uint64_t result_metadata_display_length_cap(uint64_t display_length) {
+    return display_length > UINT32_MAX ? UINT32_MAX : display_length;
 }
 
 static uint32_t result_metadata_collation_id(const char *collation_name) {

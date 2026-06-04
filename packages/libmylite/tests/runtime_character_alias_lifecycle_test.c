@@ -28,11 +28,11 @@ enum {
     clone_column_row_count = 8,
     national_clone_column_row_count = 10,
     altered_national_information_schema_field_count = 6,
-    national_nvarchar_metadata_display_length = 15,
+    national_nvarchar_metadata_display_length = 20,
     mysql_error_duplicate_key = 1062,
     mysql_error_parse = 1064,
     mysql_error_column_length_too_big = 1074,
-    mysql_collation_utf8mb3_general_ci_id = 33,
+    mysql_collation_utf8mb4_0900_ai_ci_id = 255,
 };
 
 struct expected_sql_error {
@@ -614,12 +614,12 @@ static int test_national_character_alias_success_persistence_and_introspection(v
     failures += expect_statement_result(
         database,
         "ALTER TABLE aliases MODIFY COLUMN e NCHAR VARCHAR(12)",
-        (struct expected_statement){.affected_rows = 1, .warning_count = 1U}
+        (struct expected_statement){.affected_rows = 0, .warning_count = 1U}
     );
     failures += expect_statement_result(
         database,
         "ALTER TABLE aliases CHANGE COLUMN f ff NATIONAL CHARACTER VARYING(13)",
-        (struct expected_statement){.affected_rows = 1, .warning_count = 1U}
+        (struct expected_statement){.affected_rows = 0, .warning_count = 1U}
     );
     failures += expect_query_values(
         database,
@@ -971,27 +971,27 @@ static int expect_national_result_metadata(mylite_db *database) {
         );
         failures += expect_int(
             (int)mylite_result_column_charset_id(result, 0U),
-            mysql_collation_utf8mb3_general_ci_id,
+            mysql_collation_utf8mb4_0900_ai_ci_id,
             "national NCHAR charset"
         );
         failures += expect_int(
             (int)mylite_result_column_collation_id(result, 0U),
-            mysql_collation_utf8mb3_general_ci_id,
+            mysql_collation_utf8mb4_0900_ai_ci_id,
             "national NCHAR collation"
         );
         failures += expect_int(
             (int)mylite_result_column_charset_id(result, 1U),
-            mysql_collation_utf8mb3_general_ci_id,
+            mysql_collation_utf8mb4_0900_ai_ci_id,
             "national NVARCHAR charset"
         );
         failures += expect_int(
             (int)mylite_result_column_collation_id(result, 1U),
-            mysql_collation_utf8mb3_general_ci_id,
+            mysql_collation_utf8mb4_0900_ai_ci_id,
             "national NVARCHAR collation"
         );
         failures += expect_int64(
             (int64_t)mylite_result_column_display_length(result, 0U),
-            3,
+            4,
             "national NCHAR display length"
         );
         failures += expect_int64(

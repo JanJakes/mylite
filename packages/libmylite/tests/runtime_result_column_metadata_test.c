@@ -58,6 +58,7 @@ enum {
     mysql_row_json_document_first_column_index = 8,
 };
 
+static const uint64_t mysql_longtext_display_length = 4294967295ULL;
 static const uint64_t mysql_json_document_display_length = 4294967292ULL;
 
 struct expected_column_metadata {
@@ -417,6 +418,21 @@ static int test_descriptor_result_column_metadata(void) {
             .nullable = 1,
         },
         {
+            .label = "ltxt",
+            .schema_name = "app",
+            .table_name = "m",
+            .origin_schema_name = "app",
+            .origin_table_name = "meta",
+            .origin_column_name = "ltxt",
+            .type = MYLITE_RESULT_COLUMN_TYPE_BLOB,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BLOB,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = mysql_longtext_display_length,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
             .label = "b",
             .schema_name = "app",
             .table_name = "m",
@@ -495,7 +511,7 @@ static int test_descriptor_result_column_metadata(void) {
     failures += execute_ok(
         database,
         "SELECT id AS ident, i, v AS label_v, ti, tiu, si, mi, biu, d, du, f, x, y, "
-        "dt, tm, ts, dttm, c, txt, b, vb, blob_col, bitcol FROM meta AS m LIMIT 0",
+        "dt, tm, ts, dttm, c, txt, ltxt, b, vb, blob_col, bitcol FROM meta AS m LIMIT 0",
         &result
     );
     if (failures == 0) {
@@ -1781,6 +1797,7 @@ static int setup_metadata_schema(mylite_db *database) {
         "c CHAR(5), "
         "v VARCHAR(20) NOT NULL, "
         "txt TEXT, "
+        "ltxt LONGTEXT, "
         "b BINARY(3), "
         "vb VARBINARY(4), "
         "blob_col BLOB, "

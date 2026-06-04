@@ -37,21 +37,8 @@ static int plan_alter_table_add_column(
             "ALTER TABLE ADD COLUMN does not support AUTO_INCREMENT"
         );
     }
-    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
-        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
-        set_unsupported_error(
-            database,
-            "ALTER TABLE ADD COLUMN supports only persistent base tables or temporary tables"
-        );
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && out_plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY &&
-        (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key)) {
-        set_unsupported_error(
-            database,
-            "ALTER TABLE ADD COLUMN on temporary tables does not yet support inline keys"
-        );
-        rc = MYLITE_ERROR;
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_add_column_target(database, out_plan);
     }
     if (rc == MYLITE_OK) {
         rc = normalize_text_length_argument_for_default_charset(
@@ -126,6 +113,29 @@ static int plan_alter_table_add_column(
     mylite_execution_primary_key_info_deinit(&existing_primary_key);
 
     return rc;
+}
+
+static int validate_alter_table_add_column_target(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+) {
+    if (plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD COLUMN supports only persistent base tables or temporary tables"
+        );
+        return MYLITE_ERROR;
+    }
+    if (plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY &&
+        (plan->adds_inline_primary_key || plan->adds_inline_unique_key)) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD COLUMN on temporary tables does not yet support inline keys"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int reject_unsupported_alter_add_column_planned_column(
@@ -818,10 +828,12 @@ static int make_inline_key_column_descriptors(
 
     return add_inline_key_descriptor(
         database,
-        source_columns,
-        source_column_count,
-        target_column_index,
-        target_column,
+        (struct add_inline_key_descriptor_request){
+            .source_columns = source_columns,
+            .source_column_count = source_column_count,
+            .target_column_index = target_column_index,
+            .target_column = target_column,
+        },
         out_columns,
         out_column_count
     );
@@ -829,10 +841,7 @@ static int make_inline_key_column_descriptors(
 
 static int add_inline_key_descriptor(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *source_columns,
-    size_t source_column_count,
-    size_t target_column_index,
-    const struct mylite_catalog_column_descriptor *target_column,
+    struct add_inline_key_descriptor_request request,
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
 ) {
@@ -840,14 +849,14 @@ static int add_inline_key_descriptor(
     size_t column_count = 0U;
     size_t source_index = 0U;
 
-    if (out_columns == NULL || out_column_count == NULL || target_column == NULL ||
-        source_column_count == SIZE_MAX) {
+    if (out_columns == NULL || out_column_count == NULL || request.target_column == NULL ||
+        request.source_column_count == SIZE_MAX) {
         return MYLITE_MISUSE;
     }
     *out_columns = NULL;
     *out_column_count = 0U;
-    column_count = source_column_count + 1U;
-    if (target_column_index >= column_count || column_count > SIZE_MAX / sizeof(*columns)) {
+    column_count = request.source_column_count + 1U;
+    if (request.target_column_index >= column_count || column_count > SIZE_MAX / sizeof(*columns)) {
         set_runtime_error(database, "invalid inline add-column key descriptor");
         return MYLITE_ERROR;
     }
@@ -858,16 +867,16 @@ static int add_inline_key_descriptor(
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < column_count; ++index) {
-        if (index == target_column_index) {
-            columns[index] = *target_column;
+        if (index == request.target_column_index) {
+            columns[index] = *request.target_column;
             continue;
         }
-        if (source_index >= source_column_count) {
+        if (source_index >= request.source_column_count) {
             free(columns);
             set_runtime_error(database, "failed to build inline add-column key descriptor");
             return MYLITE_ERROR;
         }
-        columns[index] = source_columns[source_index];
+        columns[index] = request.source_columns[source_index];
         ++source_index;
     }
 

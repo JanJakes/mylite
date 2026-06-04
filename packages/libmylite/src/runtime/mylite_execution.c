@@ -1307,6 +1307,13 @@ struct planned_alter_table_add_column {
     char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+struct add_inline_key_descriptor_request {
+    const struct mylite_catalog_column_descriptor *source_columns;
+    size_t source_column_count;
+    size_t target_column_index;
+    const struct mylite_catalog_column_descriptor *target_column;
+};
+
 struct alter_table_action_statement_view {
     struct mylite_sql_ast_node table_proxy;
     struct mylite_sql_ast_node statement;
@@ -8602,6 +8609,10 @@ static int plan_alter_table_add_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_column *out_plan
 );
+static int validate_alter_table_add_column_target(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_column *plan
+);
 static int reject_unsupported_alter_add_column_planned_column(
     struct mylite_db *database,
     const struct planned_column *column
@@ -8718,10 +8729,7 @@ static int make_inline_key_column_descriptors(
 );
 static int add_inline_key_descriptor(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *source_columns,
-    size_t source_column_count,
-    size_t target_column_index,
-    const struct mylite_catalog_column_descriptor *target_column,
+    struct add_inline_key_descriptor_request request,
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
 );
@@ -9851,6 +9859,36 @@ static void planned_column_from_catalog_descriptor(
 );
 static int resolve_alter_table_column_replacement_plan(
     struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int resolve_alter_table_modify_target_table(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int finalize_alter_table_modify_column_definition(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int reject_alter_table_modify_restricted_tables(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan
+);
+static int resolve_alter_table_modify_original_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int load_alter_table_modify_indexes(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int complete_alter_table_modify_inline_key_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
     struct planned_alter_table_modify_column *out_plan
 );
 static int apply_alter_table_modify_primary_key_nullability(

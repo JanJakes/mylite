@@ -67,7 +67,50 @@ static int resolve_alter_table_column_replacement_plan(
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     size_t column_count = 0U;
-    size_t column_index = 0U;
+    int rc = resolve_alter_table_modify_target_table(database, out_plan);
+
+    if (rc == MYLITE_OK) {
+        rc = finalize_alter_table_modify_column_definition(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_alter_table_modify_restricted_tables(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_alter_table_modify_original_column(database, columns, column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_alter_table_modify_indexes(database, columns, column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_alter_table_modify_primary_key_nullability(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_modify_indexes(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
+    }
+    if (rc == MYLITE_OK && out_plan->is_noop &&
+        (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key)) {
+        out_plan->is_noop = false;
+        out_plan->is_metadata_only = true;
+    }
+    if (rc == MYLITE_OK) {
+        rc = complete_alter_table_modify_inline_key_columns(database, columns, column_count, out_plan);
+    }
+
+    free(columns);
+
+    return rc;
+}
+
+static int resolve_alter_table_modify_target_table(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+) {
     int rc = mylite_catalog_read_table_by_name(
         database,
         out_plan->target.schema.schema_id,
@@ -87,11 +130,19 @@ static int resolve_alter_table_column_replacement_plan(
         set_unsupported_error(database, out_plan->unsupported_object_message);
         return MYLITE_ERROR;
     }
-    rc = normalize_text_length_argument_for_default_charset(
+    return MYLITE_OK;
+}
+
+static int finalize_alter_table_modify_column_definition(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    int rc = normalize_text_length_argument_for_default_charset(
         database,
         &out_plan->column,
         out_plan->table.default_charset
     );
+
     if (rc == MYLITE_OK) {
         rc = apply_default_binary_charset_to_column(
             database,
@@ -105,54 +156,61 @@ static int resolve_alter_table_column_replacement_plan(
     if (rc == MYLITE_OK) {
         rc = finalize_planned_column_default(database, &out_plan->column);
     }
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = mylite_execution_reject_check_constraint_table_alter(
+    return rc;
+}
+
+static int reject_alter_table_modify_restricted_tables(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan
+) {
+    int rc = mylite_execution_reject_check_constraint_table_alter(
         database,
-        out_plan->table.table_id,
+        plan->table.table_id,
         "ALTER TABLE column replacement does not yet support CHECK-constrained tables"
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = reject_foreign_key_table_alter(
-        database,
-        out_plan->table.table_id,
-        "ALTER TABLE column replacement does not yet support foreign-key constrained tables"
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
 
-    rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = find_column_index(columns, column_count, out_plan->lookup_column_name, &column_index);
-        if (rc != MYLITE_OK) {
-            set_unknown_column_in_table_error(
-                database,
-                out_plan->lookup_column_name,
-                out_plan->table.name
-            );
-            rc = MYLITE_ERROR;
-        }
+        rc = reject_foreign_key_table_alter(
+            database,
+            plan->table.table_id,
+            "ALTER TABLE column replacement does not yet support foreign-key constrained tables"
+        );
     }
-    if (rc == MYLITE_OK && out_plan->checks_duplicate_replacement) {
+    return rc;
+}
+
+static int resolve_alter_table_modify_original_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    size_t column_index = 0U;
+    int rc = find_column_index(columns, column_count, out_plan->lookup_column_name, &column_index);
+
+    if (rc != MYLITE_OK) {
+        set_unknown_column_in_table_error(
+            database,
+            out_plan->lookup_column_name,
+            out_plan->table.name
+        );
+        return MYLITE_ERROR;
+    }
+    if (out_plan->checks_duplicate_replacement) {
         size_t replacement_index = 0U;
 
         if (find_column_index(columns, column_count, out_plan->column.name, &replacement_index) ==
                 MYLITE_OK &&
             replacement_index != column_index) {
             set_duplicate_column_error(database, columns[replacement_index].name);
-            rc = MYLITE_ERROR;
+            return MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK) {
-        out_plan->original_column = columns[column_index];
-        out_plan->column_index = column_index;
-        out_plan->column_count = column_count;
-        rc = resolve_alter_table_modify_column_position(database, columns, column_count, out_plan);
-    }
+
+    out_plan->original_column = columns[column_index];
+    out_plan->column_index = column_index;
+    out_plan->column_count = column_count;
+    rc = resolve_alter_table_modify_column_position(database, columns, column_count, out_plan);
     if (rc == MYLITE_OK) {
         rc = collect_no_zero_date_default_warnings(
             database,
@@ -164,63 +222,66 @@ static int resolve_alter_table_column_replacement_plan(
             &out_plan->zero_temporal_default_warnings
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
-            database,
-            out_plan->table.table_id,
-            columns,
-            column_count,
-            &out_plan->indexes,
-            &out_plan->index_count
-        );
+    return rc;
+}
+
+static int load_alter_table_modify_indexes(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    int rc = mylite_execution_load_table_index_infos(
+        database,
+        out_plan->table.table_id,
+        columns,
+        column_count,
+        &out_plan->indexes,
+        &out_plan->index_count
+    );
+
+    if (rc != MYLITE_OK || !out_plan->adds_inline_primary_key) {
+        return rc;
     }
-    if (rc == MYLITE_OK && out_plan->adds_inline_primary_key) {
-        for (size_t index = 0U; index < out_plan->index_count; ++index) {
-            if (out_plan->indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
-                set_multiple_primary_key_error(database);
-                rc = MYLITE_ERROR;
-                break;
-            }
+    for (size_t index = 0U; index < out_plan->index_count; ++index) {
+        if (out_plan->indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+            set_multiple_primary_key_error(database);
+            return MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK) {
-        rc = apply_alter_table_modify_primary_key_nullability(database, out_plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = validate_alter_table_modify_indexes(database, out_plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
-    }
-    if (rc == MYLITE_OK && out_plan->is_noop &&
-        (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key)) {
-        out_plan->is_noop = false;
-        out_plan->is_metadata_only = true;
-    }
-    if (rc == MYLITE_OK && (out_plan->adds_inline_primary_key || out_plan->adds_inline_unique_key) &&
-        out_plan->columns == NULL) {
-        struct mylite_catalog_column_descriptor target_column = {0};
-        size_t planned_column_count = 0U;
+    return MYLITE_OK;
+}
 
-        make_modify_target_descriptor(out_plan, &target_column);
-        rc = make_inline_key_column_descriptors(
-            database,
-            columns,
-            column_count,
-            out_plan->column_index,
-            &target_column,
-            true,
-            &out_plan->columns,
-            &planned_column_count
-        );
-        if (rc == MYLITE_OK) {
-            out_plan->column_count = planned_column_count;
-            out_plan->target_column_index = out_plan->column_index;
-        }
+static int complete_alter_table_modify_inline_key_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    struct mylite_catalog_column_descriptor target_column = {0};
+    size_t planned_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if ((!out_plan->adds_inline_primary_key && !out_plan->adds_inline_unique_key) ||
+        out_plan->columns != NULL) {
+        return MYLITE_OK;
     }
 
-    free(columns);
-
+    make_modify_target_descriptor(out_plan, &target_column);
+    rc = make_inline_key_column_descriptors(
+        database,
+        columns,
+        column_count,
+        out_plan->column_index,
+        &target_column,
+        true,
+        &out_plan->columns,
+        &planned_column_count
+    );
+    if (rc == MYLITE_OK) {
+        out_plan->column_count = planned_column_count;
+        out_plan->target_column_index = out_plan->column_index;
+    }
     return rc;
 }
 
@@ -653,10 +714,11 @@ static bool parse_char_varchar_descriptor_length_literal(
             *out_length = (size_t)value;
             return logical_type[index + 1U] == '\0';
         }
-        if (byte < '0' || byte > '9' || value > (UINT64_MAX - (uint64_t)(byte - '0')) / 10U) {
+        if (byte < '0' || byte > '9' ||
+            value > (UINT64_MAX - (uint64_t)(byte - '0')) / (uint64_t)decimal_base) {
             return false;
         }
-        value = (value * 10U) + (uint64_t)(byte - '0');
+        value = (value * (uint64_t)decimal_base) + (uint64_t)(byte - '0');
     }
 
     return false;

@@ -2008,6 +2008,55 @@ static bool scalar_logical_projection_node_is_admitted(
     return is_scalar_arithmetic_projection_expression(expression);
 }
 
+static bool is_scalar_numeric_comparison_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool result = true;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && result) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+        if (current == NULL) {
+            result = false;
+        } else if (current->kind == MYLITE_SQL_AST_LITERAL) {
+            literal_kind = mylite_sql_ast_node_literal_kind(current);
+            result = literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                     literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+                     literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT ||
+                     literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                     literal_kind == MYLITE_SQL_AST_LITERAL_NULL ||
+                     literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                     literal_kind == MYLITE_SQL_AST_LITERAL_FALSE;
+        } else if (current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(current);
+
+            result = operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+                     operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+            if (result) {
+                result = scalar_arithmetic_node_stack_push(&stack, child_at(current, 0U));
+            }
+        } else if (current->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+            result = is_scalar_arithmetic_projection_expression(current);
+        } else if (current->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+            result = is_scalar_arithmetic_operator(mylite_sql_ast_node_operator(current));
+            if (result) {
+                result = scalar_arithmetic_node_stack_push(&stack, child_at(current, 1U)) &&
+                         scalar_arithmetic_node_stack_push(&stack, child_at(current, 0U));
+            }
+        } else {
+            result = is_scalar_value_projection_expression(current);
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return result;
+}
+
 static bool scalar_comparison_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
@@ -2017,10 +2066,10 @@ static bool scalar_comparison_projection_node_is_admitted(
         return false;
     }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        return is_scalar_arithmetic_projection_expression(expression);
+        return is_scalar_numeric_comparison_projection_expression(expression);
     }
     if (!is_scalar_comparison_operator(mylite_sql_ast_node_operator(expression))) {
-        return is_scalar_arithmetic_projection_expression(expression);
+        return is_scalar_numeric_comparison_projection_expression(expression);
     }
     if (expression_is_unparenthesized_scalar_is(child_at(expression, 0U)) ||
         expression_is_unparenthesized_scalar_is(child_at(expression, 1U))) {

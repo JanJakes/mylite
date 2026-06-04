@@ -19,6 +19,7 @@ enum {
     core_column_count = 12,
     null_column_count = 8,
     precedence_column_count = 10,
+    numeric_string_column_count = 6,
     boundary_column_count = 4,
     warning_column_count = 6,
     comparison_warning_count = 2,
@@ -151,6 +152,15 @@ static int test_scalar_comparison_values_and_file_safety(void) {
     };
     static const char *const function_columns[] = {"a", "b", "c", "d"};
     static const char *const function_values[] = {"1", "1", "1", "1"};
+    static const char *const numeric_string_columns[] = {
+        "'00.42'=0.4200",
+        "0+'00.42'=0.4200",
+        "0+'1234abcd'=1234",
+        "'3.5'>3",
+        "0+'-2.5'<-2",
+        "1.0<=>1",
+    };
+    static const char *const numeric_string_values[] = {"1", "1", "1", "1", "1", "1"};
     static const char *const boundary_columns[] = {
         "9223372036854775807=9223372036854775807",
         "-9223372036854775807<0",
@@ -235,6 +245,20 @@ static int test_scalar_comparison_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "comparison scalar function operands",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT '00.42'=0.4200, 0+'00.42'=0.4200, "
+                   "0+'1234abcd'=1234, '3.5'>3, 0+'-2.5'<-2, 1.0<=>1",
+            .columns = numeric_string_columns,
+            .column_count = numeric_string_column_count,
+            .values = numeric_string_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "comparison numeric string coercion",
         }
     );
     failures += expect_query(
@@ -390,24 +414,6 @@ static int test_scalar_comparison_overflow_and_unsupported_forms(void) {
             .code = mysql_error_bigint_out_of_range,
             .sqlstate = "22003",
             .message_part = "BIGINT value is out of range",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT '1'=1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "scalar comparison",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT 1.0=1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "scalar comparison",
         }
     );
     failures += execute_error(

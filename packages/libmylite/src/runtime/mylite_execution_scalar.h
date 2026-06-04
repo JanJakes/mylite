@@ -80,7 +80,9 @@ struct session_scalar_cell {
 
 struct scalar_arithmetic_value {
     bool is_null;
+    bool has_numeric_real;
     int64_t integer;
+    double numeric_real;
     size_t division_by_zero_warning_count;
 };
 

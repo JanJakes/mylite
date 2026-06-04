@@ -115,6 +115,13 @@ expect_output_with_headers \
     "$DATABASE"
 
 expect_output_with_headers \
+    "numeric string coercion comparisons" \
+    "'00.42'=0.4200	0+'00.42'=0.4200	0+'1234abcd'=1234	'3.5'>3	0+'-2.5'<-2	1.0<=>1
+1	1	1	1	1	1" \
+    "SELECT '00.42'=0.4200, 0+'00.42'=0.4200, 0+'1234abcd'=1234, '3.5'>3, 0+'-2.5'<-2, 1.0<=>1;" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "child div warning comparisons" \
     "NULL=5 DIV 0	5 DIV 0<=>NULL	NULL DIV (5 DIV 0)<=>NULL	@@warning_count	ROW_COUNT()
 NULL	1	1	0	0
@@ -165,15 +172,15 @@ expect_error \
     "$DATABASE"
 
 accepted_but_deferred=$(run_mysql_with_headers \
-    "SELECT '1'=1, 1='1', 1.0=1, 0x31=49, b'1'=1, 1.5>1;
+    "SELECT 0x31=49, b'1'=1;
      SELECT id=1 FROM t ORDER BY id IS NULL, id;
      SELECT (1,2)=(1,2), (1,2)=(1,3), (1,NULL)<=>(1,NULL);" \
     "$DATABASE"
 )
 expect_value \
     "mysql accepted forms deferred by this slice" \
-    "'1'=1	1='1'	1.0=1	0x31=49	b'1'=1	1.5>1
-1	1	1	1	1	1
+    "0x31=49	b'1'=1
+1	1
 id=1
 1
 0

@@ -11,16 +11,19 @@ SELECT ALL comparison_scalar[, comparison_scalar ...] FROM DUAL
 ```
 
 The admitted comparison operators are `=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`,
-and `>=`. Operands use the current MyLite-owned scalar arithmetic domain:
-signed-64 decimal integer/boolean/`NULL` values, supported scalar
-`IF()`/`IFNULL()`/`COALESCE()`/`NULLIF()`/`ISNULL()` calls, parenthesized
-admitted values, unary `+`/`-`, binary `+`, binary `-`, `*`, `%`, infix `MOD`,
-`MOD(left, right)`, and infix `DIV`.
+and `>=`. Operands use the current MyLite-owned scalar arithmetic domain plus
+the narrow numeric-string/decimal projection forms needed by WordPress:
+signed-64 decimal integer/boolean/`NULL` values, decimal and float literals,
+ordinary string literals coerced through MySQL-like leading numeric prefixes,
+supported scalar `IF()`/`IFNULL()`/`COALESCE()`/`NULLIF()`/`ISNULL()` calls,
+parenthesized admitted values, unary `+`/`-`, binary `+`, binary `-`, `*`, `%`,
+infix `MOD`, `MOD(left, right)`, and infix `DIV`. Arithmetic over decimal,
+float, or numeric-string operands is limited to unary signs, `+`, `-`, and `*`.
 
 This is still not a general expression engine. This phase does not admit
-table-backed expression projection, row comparisons, string/decimal/float/hex/
-bit/temporal operands, comparison type coercion outside the signed-64 integer
-envelope, `IS`, `LIKE`, `REGEXP`, `IN`, `BETWEEN`, logical scalar operators,
+table-backed expression projection, row comparisons, hex/bit/temporal operands,
+full comparison type coercion outside the documented numeric-string/decimal
+subset, `IS`, `LIKE`, `REGEXP`, `IN`, `BETWEEN`, logical scalar operators,
 bitwise operators, `/`, predicates around no-source scalar projection, DML
 assignment expressions, parameters, subqueries, CTEs, expression metadata, or
 arbitrary SQLite pass-through.
@@ -60,6 +63,11 @@ Runtime probes against MySQL 8.4.9 establish these expectations for this slice:
   a value;
 - warning-producing child arithmetic, such as `5 DIV 0`, produces `NULL`
   operand values and stages one warning per evaluated child expression;
+- string literals in scalar comparison projection use MySQL-like numeric
+  conversion of leading numeric prefixes, so `'00.42' = 0.4200` and
+  `0 + '1234abcd' = 1234` return `1` in this subset;
+- decimal and float literals compare as approximate numeric values in this
+  no-source scalar projection lane;
 - comparison expressions in a scalar `SELECT` do not affect `@@warning_count`
   or `ROW_COUNT()` values evaluated inside the same select list; those reads use
   the previous statement snapshot;
@@ -68,9 +76,9 @@ Runtime probes against MySQL 8.4.9 establish these expectations for this slice:
   those warnings;
 - comparison operators bind looser than arithmetic, and comparison operators at
   the same precedence associate left to right; and
-- MySQL accepts broader forms such as string/decimal/hex/bit coercions,
-  table-backed expression projection, and row comparisons. Those forms remain
-  outside this phase.
+- MySQL accepts broader forms such as hex/bit coercions, table-backed
+  expression projection, row comparisons, and warning-complete string
+  conversion diagnostics. Those forms remain outside this phase.
 
 ## Ownership Boundaries
 
@@ -85,9 +93,9 @@ Runtime probes against MySQL 8.4.9 establish these expectations for this slice:
   existing `MYLITE_SQL_AST_BINARY_EXPRESSION` node and operator enum values.
   No MySQL grammar text is copied.
 - Analyzer/runtime: scalar projection admission accepts comparison expressions
-  only when both operands are admitted by this feature's scalar arithmetic
-  domain, or are nested admitted comparison expressions produced by the same
-  subset. Runtime evaluation is MyLite-owned and checked for signed-64 operand
+  only when both operands are admitted by this feature's scalar numeric domain,
+  or are nested admitted comparison expressions produced by the same subset.
+  Runtime evaluation is MyLite-owned and checked for signed-64 operand
   conversion hazards.
 - Diagnostics: comparison itself is warning-free for the admitted in-range
   subset. Warnings staged by child arithmetic are preserved and appended at the
@@ -128,14 +136,16 @@ comparison_scalar:
   | ( comparison_scalar )
 
 comparison_operand:
-    scalar_arithmetic_operand
+    scalar_numeric_operand
 ```
 
 `comparison_operand` is the current scalar arithmetic expression domain from
-the arithmetic, modulo, and `DIV` slices. Comparison results themselves are
-integer scalar values (`1` or `0`) or `NULL`, so admitted comparisons may appear
-as operands of later same-slice comparisons where MySQL's left-to-right
-precedence makes that visible, for example `1 < 2 = 1`.
+the arithmetic, modulo, and `DIV` slices plus direct decimal/float/string
+numeric operands and `+`, `-`, and `*` arithmetic over those approximate
+numeric operands. Comparison results themselves are integer scalar values (`1`
+or `0`) or `NULL`, so admitted comparisons may appear as operands of later
+same-slice comparisons where MySQL's left-to-right precedence makes that
+visible, for example `1 < 2 = 1`.
 
 ## MyLite Lemon Snippet
 
@@ -196,16 +206,20 @@ scalar arithmetic evaluator.
    `NULL` with only the left operand's staged warnings. `<=>` evaluates both
    operands because it needs to distinguish one-`NULL` and two-`NULL` cases.
    Evaluated child arithmetic overflow wins over comparison result evaluation.
-4. Convert supported non-`NULL` operands to signed 64-bit integer values.
-   `TRUE` and `FALSE` become `1` and `0` through the existing scalar arithmetic
-   operand conversion path.
+4. Convert supported non-`NULL` operands to numeric values. Integer-domain
+   operands remain signed 64-bit values. Decimal/float literals and string
+   literals admitted by this slice are evaluated as approximate numeric values;
+   string literals use the leading numeric prefix and fall back to `0` when no
+   prefix is present. `TRUE` and `FALSE` become `1` and `0` through the
+   existing scalar arithmetic operand conversion path.
 5. Accumulate staged division-by-zero warnings from evaluated operands.
 6. For `=`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`, return `NULL` if either
    operand is `NULL`.
 7. For `<=>`, return `1` if both operands are `NULL`, `0` if exactly one
    operand is `NULL`, and otherwise return the equality result.
-8. For non-`NULL` operands, compare signed integer values and return `1` or
-   `0`.
+8. For non-`NULL` operands, compare signed integer values unless either side is
+   an approximate numeric value; mixed or approximate operands compare as
+   approximate numeric values and return `1` or `0`.
 9. Format non-`NULL` comparison results as `1` or `0`.
 10. Append staged division-by-zero warnings only after all scalar select-item
     values have been evaluated, before completing the result.
@@ -228,9 +242,9 @@ current scalar projection style:
 
 - unsupported scalar comparison shape: MyLite unsupported-feature parse-class
   diagnostic describing the admitted scalar arithmetic and comparison subset;
-- non-decimal, string, decimal, float, hex, bit, temporal, parameter, user
-  variable, subquery, CTE, system-variable arithmetic operand, or table-backed
-  comparison expression: same unsupported scalar comparison diagnostic;
+- hex, bit, temporal, parameter, subquery, CTE, system-variable arithmetic
+  operand, unsupported string literal form, or table-backed comparison
+  expression: same unsupported scalar comparison diagnostic;
 - row comparisons: unsupported scalar comparison diagnostic or syntax error,
   depending on parser acceptance;
 - signed-64 operand literal outside the admitted envelope: existing
@@ -247,8 +261,9 @@ current scalar projection style:
 
 - table-backed comparison projection, including `SELECT id = 1 FROM t`;
 - row comparisons, including `(1, 2) = (1, 2)`;
-- string, decimal, float, hex, bit, temporal, JSON, and binary operands;
-- MySQL's broader comparison coercion rules;
+- hex, bit, temporal, JSON, and binary operands;
+- MySQL's broader comparison coercion rules and warning-complete string
+  conversion diagnostics;
 - `IS`, `IS NOT`, `LIKE`, `REGEXP`, `RLIKE`, `IN`, `BETWEEN`, `CASE`, and
   logical scalar operators;
 - comparison expressions in predicates, ordering, grouping, aggregate
@@ -280,6 +295,8 @@ Add or extend fast plain C runtime and parser tests under
 - precedence with arithmetic and left-to-right same-precedence comparisons;
 - aliases and generated column labels;
 - `FROM DUAL` comparison expressions and scalar-function operands;
+- numeric string, decimal, and float scalar comparison operands, including
+  leading-zero decimal strings and leading-prefix string coercion;
 - child `DIV` by zero warnings, result values, `SHOW WARNINGS`, in-select
   diagnostics-count snapshot behavior, result warning counts, and following
   diagnostics snapshot visibility;
@@ -295,7 +312,7 @@ Implementation tests should also cover:
 - `.mylite` preamble is unchanged;
 - independent handles keep diagnostics independent;
 - unsupported table-backed comparison projection is rejected deterministically;
-- unsupported strings/decimals/hex/bit/row comparisons are rejected
+- unsupported hex/bit/row comparisons are rejected
   deterministically; and
 - no regressions in existing parser, scalar value, scalar arithmetic, modulo,
   `DIV`, session scalar, diagnostics, result, storage, runtime lifecycle, and
@@ -306,7 +323,6 @@ Implementation tests should also cover:
 Update `COMPATIBILITY.md`, `docs/compatibility/operators.md`, and
 `docs/compatibility/sql-query-expressions.md` for only the limited no-source
 and `FROM DUAL` scalar comparison subset. Do not overclaim table-backed
-expression projection, general comparison coercion, row comparisons, strings,
-decimals, collations, `IS`, `LIKE`, `IN`, `BETWEEN`, logical scalar
-expressions, expression metadata, subqueries, or arbitrary SQLite expression
-execution.
+expression projection, general comparison coercion, row comparisons, collations,
+`IS`, `LIKE`, `IN`, `BETWEEN`, logical scalar expressions, expression metadata,
+subqueries, or arbitrary SQLite expression execution.

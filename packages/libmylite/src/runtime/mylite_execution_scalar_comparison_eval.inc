@@ -9,15 +9,27 @@ static int evaluate_scalar_comparison_like_expression(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_value *out_value
 );
-static int evaluate_scalar_comparison_numeric_unary_expression(
+static int evaluate_scalar_comparison_numeric_frame(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
+    struct scalar_comparison_numeric_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct scalar_comparison_numeric_eval_frame *frame
 );
-static int evaluate_scalar_comparison_numeric_binary_expression(
+static int evaluate_scalar_comparison_numeric_apply_frame(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int evaluate_scalar_comparison_numeric_apply_unary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int evaluate_scalar_comparison_numeric_enter_frame(
+    struct mylite_db *database,
+    struct scalar_comparison_numeric_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
 );
 static int evaluate_scalar_comparison_numeric_literal(
     struct mylite_db *database,
@@ -56,6 +68,16 @@ static bool scalar_comparison_numeric_result_is_true(
     const struct scalar_arithmetic_value *right
 );
 static double scalar_comparison_numeric_real(const struct scalar_arithmetic_value *value);
+static int scalar_comparison_numeric_eval_stack_push(
+    struct mylite_db *database,
+    struct scalar_comparison_numeric_eval_stack *stack,
+    enum scalar_comparison_numeric_eval_frame_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_operator operator_kind
+);
+static void scalar_comparison_numeric_eval_stack_deinit(
+    struct scalar_comparison_numeric_eval_stack *stack
+);
 
 static int scalar_comparison_value(
     struct mylite_db *database,
@@ -400,102 +422,216 @@ static int evaluate_scalar_comparison_numeric_expression(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_value *out_value
 ) {
-    expression = unwrap_parenthesized_expression(expression);
+    struct scalar_comparison_numeric_eval_stack expression_stack = {0};
+    struct scalar_arithmetic_value_stack value_stack = {0};
+    int rc = MYLITE_OK;
+
     if (out_value == NULL) {
         return MYLITE_MISUSE;
     }
     *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
-    if (expression == NULL) {
-        set_scalar_comparison_unsupported_error(database);
-        return MYLITE_ERROR;
-    }
-    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        return evaluate_scalar_comparison_numeric_unary_expression(
+    rc = scalar_comparison_numeric_eval_stack_push(
+        database,
+        &expression_stack,
+        SCALAR_COMPARISON_NUMERIC_EVAL_ENTER,
+        expression,
+        MYLITE_SQL_AST_OPERATOR_NONE
+    );
+    while (rc == MYLITE_OK && expression_stack.count != 0U) {
+        struct scalar_comparison_numeric_eval_frame frame =
+            expression_stack.items[--expression_stack.count];
+
+        rc = evaluate_scalar_comparison_numeric_frame(
             database,
-            expression,
-            out_value
+            &expression_stack,
+            &value_stack,
+            &frame
         );
     }
-    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        return evaluate_scalar_comparison_numeric_binary_expression(
-            database,
-            expression,
-            out_value
-        );
+    if (rc == MYLITE_OK) {
+        rc = finish_scalar_arithmetic_result(database, &value_stack, out_value);
     }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return evaluate_scalar_comparison_numeric_literal(database, expression, out_value);
-    }
-    return evaluate_scalar_arithmetic_expression(database, expression, out_value);
+    scalar_comparison_numeric_eval_stack_deinit(&expression_stack);
+    scalar_arithmetic_value_stack_deinit(&value_stack);
+    return rc;
 }
 
-static int evaluate_scalar_comparison_numeric_unary_expression(
+static int evaluate_scalar_comparison_numeric_frame(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
+    struct scalar_comparison_numeric_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct scalar_comparison_numeric_eval_frame *frame
 ) {
-    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
-    int64_t integer = 0;
-    int rc = MYLITE_OK;
-
-    if (expression == NULL || out_value == NULL) {
+    if (frame == NULL) {
         return MYLITE_MISUSE;
     }
-    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (frame->kind == SCALAR_COMPARISON_NUMERIC_EVAL_APPLY) {
+        return evaluate_scalar_comparison_numeric_apply_frame(
+            database,
+            value_stack,
+            frame->operator_kind
+        );
+    }
+    if (frame->kind == SCALAR_COMPARISON_NUMERIC_EVAL_APPLY_UNARY) {
+        return evaluate_scalar_comparison_numeric_apply_unary_frame(
+            database,
+            value_stack,
+            frame->operator_kind
+        );
+    }
+    return evaluate_scalar_comparison_numeric_enter_frame(
+        database,
+        expression_stack,
+        value_stack,
+        frame->expression
+    );
+}
+
+static int evaluate_scalar_comparison_numeric_apply_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    struct scalar_arithmetic_value left = {.is_null = false, .integer = 0};
+    struct scalar_arithmetic_value right = {.is_null = false, .integer = 0};
+    struct scalar_arithmetic_value result = {.is_null = false, .integer = 0};
+    int rc = MYLITE_OK;
+
+    if (!scalar_arithmetic_value_stack_pop(value_stack, &right) ||
+        !scalar_arithmetic_value_stack_pop(value_stack, &left)) {
+        set_runtime_error(database, "invalid scalar comparison numeric evaluation stack");
+        return MYLITE_ERROR;
+    }
+    rc = apply_scalar_comparison_numeric_operator(
+        database,
+        operator_kind,
+        &left,
+        &right,
+        &result
+    );
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_value_stack_push(database, value_stack, result);
+    }
+    return rc;
+}
+
+static int evaluate_scalar_comparison_numeric_apply_unary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int64_t integer = 0;
+
+    if (!scalar_arithmetic_value_stack_pop(value_stack, &value)) {
+        set_runtime_error(database, "invalid scalar comparison numeric evaluation stack");
+        return MYLITE_ERROR;
+    }
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
         operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
         set_scalar_comparison_unsupported_error(database);
         return MYLITE_ERROR;
     }
-
-    rc = evaluate_scalar_comparison_numeric_expression(database, child_at(expression, 0U), out_value);
-    if (rc != MYLITE_OK || out_value->is_null || operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-        return rc;
+    if (value.is_null || operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        return scalar_arithmetic_value_stack_push(database, value_stack, value);
     }
-    if (out_value->has_numeric_real) {
-        out_value->numeric_real = -out_value->numeric_real;
-        return MYLITE_OK;
+    if (value.has_numeric_real) {
+        value.numeric_real = -value.numeric_real;
+        return scalar_arithmetic_value_stack_push(database, value_stack, value);
     }
-    if (checked_int64_negate(out_value->integer, &integer)) {
+    if (checked_int64_negate(value.integer, &integer)) {
         set_scalar_arithmetic_overflow_error(database);
         return MYLITE_ERROR;
     }
-    out_value->integer = integer;
-    return MYLITE_OK;
+    value.integer = integer;
+    return scalar_arithmetic_value_stack_push(database, value_stack, value);
 }
 
-static int evaluate_scalar_comparison_numeric_binary_expression(
+static int evaluate_scalar_comparison_numeric_enter_frame(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct scalar_arithmetic_value *out_value
+    struct scalar_comparison_numeric_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
 ) {
     enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
-    struct scalar_arithmetic_value left = {.is_null = false, .integer = 0};
-    struct scalar_arithmetic_value right = {.is_null = false, .integer = 0};
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
     int rc = MYLITE_OK;
 
-    if (expression == NULL || out_value == NULL) {
-        return MYLITE_MISUSE;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_scalar_comparison_unsupported_error(database);
+        return MYLITE_ERROR;
     }
-    operator_kind = mylite_sql_ast_node_operator(expression);
-    if (!is_scalar_arithmetic_operator(operator_kind)) {
-        return evaluate_scalar_arithmetic_expression(database, expression, out_value);
-    }
-
-    rc = evaluate_scalar_comparison_numeric_expression(database, child_at(expression, 0U), &left);
-    if (rc == MYLITE_OK) {
-        rc = evaluate_scalar_comparison_numeric_expression(database, child_at(expression, 1U), &right);
-    }
-    if (rc != MYLITE_OK) {
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            set_scalar_comparison_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = scalar_comparison_numeric_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_COMPARISON_NUMERIC_EVAL_APPLY_UNARY,
+            NULL,
+            operator_kind
+        );
+        if (rc == MYLITE_OK) {
+            rc = scalar_comparison_numeric_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_COMPARISON_NUMERIC_EVAL_ENTER,
+                child_at(expression, 0U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
         return rc;
     }
-    return apply_scalar_comparison_numeric_operator(
-        database,
-        operator_kind,
-        &left,
-        &right,
-        out_value
-    );
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (!is_scalar_arithmetic_operator(operator_kind)) {
+            rc = evaluate_scalar_arithmetic_expression(database, expression, &value);
+            if (rc == MYLITE_OK) {
+                rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+            }
+            return rc;
+        }
+        rc = scalar_comparison_numeric_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_COMPARISON_NUMERIC_EVAL_APPLY,
+            NULL,
+            operator_kind
+        );
+        if (rc == MYLITE_OK) {
+            rc = scalar_comparison_numeric_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_COMPARISON_NUMERIC_EVAL_ENTER,
+                child_at(expression, 1U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = scalar_comparison_numeric_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_COMPARISON_NUMERIC_EVAL_ENTER,
+                child_at(expression, 0U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        rc = evaluate_scalar_comparison_numeric_literal(database, expression, &value);
+    } else {
+        rc = evaluate_scalar_arithmetic_expression(database, expression, &value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
+    return rc;
 }
 
 static int evaluate_scalar_comparison_numeric_literal(
@@ -746,6 +882,55 @@ static bool scalar_comparison_result_is_true(const struct scalar_comparison_oper
     default:
         return false;
     }
+}
+
+static int scalar_comparison_numeric_eval_stack_push(
+    struct mylite_db *database,
+    struct scalar_comparison_numeric_eval_stack *stack,
+    enum scalar_comparison_numeric_eval_frame_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    struct scalar_comparison_numeric_eval_frame *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = (struct scalar_comparison_numeric_eval_frame *)
+            realloc((void *)stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+
+    stack->items[stack->count] = (struct scalar_comparison_numeric_eval_frame){
+        .kind = kind,
+        .expression = expression,
+        .operator_kind = operator_kind,
+    };
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static void scalar_comparison_numeric_eval_stack_deinit(
+    struct scalar_comparison_numeric_eval_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+
+    free((void *)stack->items);
+    *stack = (struct scalar_comparison_numeric_eval_stack){0};
 }
 
 static int scalar_comparison_eval_stack_push(

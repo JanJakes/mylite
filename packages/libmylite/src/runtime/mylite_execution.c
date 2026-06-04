@@ -3638,6 +3638,24 @@ struct scalar_comparison_eval_stack {
     size_t capacity;
 };
 
+enum scalar_comparison_numeric_eval_frame_kind {
+    SCALAR_COMPARISON_NUMERIC_EVAL_ENTER = 1,
+    SCALAR_COMPARISON_NUMERIC_EVAL_APPLY = 2,
+    SCALAR_COMPARISON_NUMERIC_EVAL_APPLY_UNARY = 3,
+};
+
+struct scalar_comparison_numeric_eval_frame {
+    enum scalar_comparison_numeric_eval_frame_kind kind;
+    const struct mylite_sql_ast_node *expression;
+    enum mylite_sql_ast_operator operator_kind;
+};
+
+struct scalar_comparison_numeric_eval_stack {
+    struct scalar_comparison_numeric_eval_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
 enum scalar_logical_eval_frame_kind {
     SCALAR_LOGICAL_EVAL_ENTER = 1,
     SCALAR_LOGICAL_EVAL_APPLY_NOT = 2,

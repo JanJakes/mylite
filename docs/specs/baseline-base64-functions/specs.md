@@ -67,6 +67,9 @@ MyLite supports:
   supported session scalar values, supported system variables, and existing
   binary cast/convert forms where the current scalar runtime already exposes
   byte-safe values;
+- scalar `TO_BASE64(FROM_BASE64(value))` and `FROM_BASE64(TO_BASE64(value))`
+  nesting when each nested argument is otherwise admitted by this same scalar
+  Base64 envelope;
 - descriptor-backed row arguments from integer-family, nonbinary string,
   baseline `TEXT`, binary string, and baseline BLOB-family columns;
 - `TO_BASE64()` result text through existing public result APIs;
@@ -84,8 +87,7 @@ This slice does not support:
   existing row-scalar envelope, CTEs, views, stored programs, or arbitrary
   expression parents;
 - nested `TO_BASE64()` / `FROM_BASE64()` inside broader functions or arithmetic
-  expressions, except where an existing top-level scalar path already admits a
-  scalar value that is then passed as this function's single argument;
+  expressions beyond the explicit same-family scalar nesting listed above;
 - decimal, approximate, `BIT`, `ENUM`, `SET`, JSON, spatial, temporal, or other
   descriptor domains as row-backed arguments;
 - full MySQL string conversion for every expression type;
@@ -215,6 +217,8 @@ Fast C tests must cover:
   the first wrapped line;
 - scalar `FROM_BASE64()` for padded and unpadded invalid forms, whitespace
   removal, `NULL`, empty input, and embedded-`NUL` output;
+- scalar same-family nesting for `TO_BASE64(FROM_BASE64(value))` and
+  `FROM_BASE64(TO_BASE64(value))`;
 - `DO` status and warning-count behavior;
 - row-scalar projection over descriptor integer, `VARCHAR`, `TEXT`,
   `VARBINARY`, and BLOB-family columns;

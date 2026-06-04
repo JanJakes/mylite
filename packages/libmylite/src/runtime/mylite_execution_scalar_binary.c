@@ -273,6 +273,14 @@ static int base64_scalar_argument_value(
     struct session_scalar_cell *out_cell,
     bool *out_handled
 );
+static int base64_copy_scalar_argument_bytes(
+    struct mylite_db *database,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
 static int unhex_argument_bytes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2401,14 +2409,15 @@ static int base64_argument_bytes(
 
     rc = base64_scalar_argument_value(database, expression, cell, &handled_scalar);
     if (rc != MYLITE_OK || handled_scalar) {
-        if (rc == MYLITE_OK && cell->value == NULL) {
-            *out_is_null = true;
-        } else if (rc == MYLITE_OK) {
-            *out_bytes = (const unsigned char *)cell->value;
-            *out_byte_count = strlen(cell->value);
-            if (cell->has_value_size) {
-                *out_byte_count = cell->value_size;
-            }
+        if (rc == MYLITE_OK) {
+            rc = base64_copy_scalar_argument_bytes(
+                database,
+                cell,
+                out_bytes,
+                out_byte_count,
+                out_owned_bytes,
+                out_is_null
+            );
         }
         return rc;
     }
@@ -2609,7 +2618,64 @@ static int base64_scalar_argument_value(
     struct session_scalar_cell *out_cell,
     bool *out_handled
 ) {
-    return hex_scalar_argument_value(database, expression, out_cell, out_handled);
+    int rc = hex_scalar_argument_value(database, expression, out_cell, out_handled);
+
+    if (rc != MYLITE_OK || out_handled == NULL || *out_handled) {
+        return rc;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+        *out_handled = true;
+        return mylite_execution_scalar_to_base64_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+        *out_handled = true;
+        return mylite_execution_scalar_from_base64_function_value(database, expression, out_cell);
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int base64_copy_scalar_argument_bytes(
+    struct mylite_db *database,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    size_t byte_count = 0U;
+    char *bytes = NULL;
+
+    if (cell == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (cell->value == NULL) {
+        mylite_execution_session_scalar_cell_deinit(cell);
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    byte_count = cell->has_value_size ? cell->value_size : strlen(cell->value);
+    if (byte_count == SIZE_MAX) {
+        mylite_execution_session_scalar_cell_deinit(cell);
+        mylite_execution_set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    bytes = (char *)malloc(byte_count + 1U);
+    if (bytes == NULL) {
+        mylite_execution_session_scalar_cell_deinit(cell);
+        mylite_execution_set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(bytes, cell->value, byte_count);
+    bytes[byte_count] = '\0';
+    mylite_execution_session_scalar_cell_deinit(cell);
+
+    *out_owned_bytes = bytes;
+    *out_bytes = (const unsigned char *)bytes;
+    *out_byte_count = byte_count;
+    return MYLITE_OK;
 }
 
 void mylite_execution_scalar_set_base64_argument_unsupported_error(

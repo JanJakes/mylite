@@ -118,6 +118,13 @@ abc	xyz" \
     "$DATABASE"
 
 expect_output_with_headers \
+    "binary literal projection" \
+    "0x417a	X'417a'	x'417a'	b'0100000101111010'	B'0100000101111010'	0b0100000101111010	0b1	0b01	0b001	0b00000001	0b000000001
+0x417A	0x417A	0x417A	0x417A	0x417A	0x417A	0x01	0x01	0x01	0x01	0x0001" \
+    "SELECT 0x417a, X'417a', x'417a', b'0100000101111010', B'0100000101111010', 0b0100000101111010, 0b1, 0b01, 0b001, 0b00000001, 0b000000001;" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "parenthesized top-level and nested values" \
     "1	NULL	(TRUE)	2	(-3)	(IF(1,4,5))	IFNULL((NULL),(6))	COALESCE((NULL),(7))	NULLIF((8),(8))	ISNULL((NULL))
 1	NULL	1	2	-3	4	6	7	NULL	1" \

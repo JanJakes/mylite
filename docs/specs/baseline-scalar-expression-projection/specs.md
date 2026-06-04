@@ -18,6 +18,7 @@ functions:
 
 - top-level decimal integer literals with optional unary `+` or `-` in the
   current literal-projection envelope;
+- top-level hexadecimal and bit literals as byte-safe binary scalar values;
 - `TRUE`, `FALSE`, and `NULL`;
 - parentheses around admitted scalar values; and
 - nested supported `IF()`, `IFNULL()`, `COALESCE()`, `NULLIF()`, and
@@ -31,7 +32,8 @@ so new scalar functions do not require another homogeneous projection lane.
 
 This is still not a general expression engine. It does not add table-backed
 expression projection, arithmetic, comparison or logical operators as scalar
-values, string/decimal/float/hex/bit/temporal operands, user or system
+values, string/decimal/float/temporal operands, hex or bit literals as numeric
+operands, user or system
 variables inside scalar value functions, subqueries, CTEs, aliases in
 expressions, query clauses around no-source scalar value projection, predicates,
 DML assignment expressions, expression metadata, or arbitrary SQLite

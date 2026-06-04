@@ -37,7 +37,9 @@ static bool is_scalar_projection_select_item_expression(
         return false;
     }
     if (expression->kind == MYLITE_SQL_AST_LITERAL &&
-        mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_STRING) {
+        (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_STRING ||
+         mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_HEX ||
+         mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_BIT)) {
         return true;
     }
     return is_scalar_projection_expression(expression);

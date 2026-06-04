@@ -1,4 +1,15 @@
 
+static int literal_projection_bit_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct session_scalar_cell *out_cell
+);
+static bool literal_projection_bit_span_bounds(
+    const struct mylite_sql_source_span *span,
+    size_t *out_bit_start,
+    size_t *out_bit_end
+);
+
 static int literal_projection_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -79,6 +90,23 @@ static int literal_projection_value(
         }
         return rc;
     }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        int rc = decode_binary_hex_literal(
+            database,
+            literal,
+            &out_cell->owned_text,
+            &out_cell->value_size
+        );
+
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->owned_text;
+            out_cell->has_value_size = true;
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        return literal_projection_bit_value(database, literal, out_cell);
+    }
     if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
         set_unsupported_error(
             database,
@@ -99,6 +127,80 @@ static int literal_projection_value(
         out_cell->value = out_cell->literal_text;
     }
     return rc;
+}
+
+static int literal_projection_bit_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct session_scalar_cell *out_cell
+) {
+    size_t bit_start = 0U;
+    size_t bit_end = 0U;
+    size_t bit_count = 0U;
+    size_t byte_count = 0U;
+    char *bytes = NULL;
+
+    if (literal == NULL || out_cell == NULL ||
+        !literal_projection_bit_span_bounds(&literal->span, &bit_start, &bit_end)) {
+        set_unsupported_error(database, "SELECT literal projection supports only valid bit literals");
+        return MYLITE_ERROR;
+    }
+
+    bit_count = bit_end - bit_start;
+    byte_count = (bit_count + (size_t)CHAR_BIT - 1U) / (size_t)CHAR_BIT;
+    bytes = (char *)calloc(byte_count + 1U, sizeof(*bytes));
+    if (bytes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t bit_index = 0U; bit_index < bit_count; ++bit_index) {
+        size_t padded_bit_index = (byte_count * (size_t)CHAR_BIT) - bit_count + bit_index;
+        size_t byte_index = padded_bit_index / (size_t)CHAR_BIT;
+        unsigned int bit_in_byte = (unsigned int)((size_t)(CHAR_BIT - 1) -
+                                                  (padded_bit_index % (size_t)CHAR_BIT));
+        char bit = literal->span.text[bit_start + bit_index];
+
+        if (bit != '0' && bit != '1') {
+            free(bytes);
+            set_unsupported_error(
+                database,
+                "SELECT literal projection supports only valid bit literals"
+            );
+            return MYLITE_ERROR;
+        }
+        if (bit == '1') {
+            bytes[byte_index] = (char)((unsigned char)bytes[byte_index] | (1U << bit_in_byte));
+        }
+    }
+
+    out_cell->owned_text = bytes;
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = byte_count;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
+}
+
+static bool literal_projection_bit_span_bounds(
+    const struct mylite_sql_source_span *span,
+    size_t *out_bit_start,
+    size_t *out_bit_end
+) {
+    if (span == NULL || span->text == NULL || out_bit_start == NULL || out_bit_end == NULL) {
+        return false;
+    }
+    if (span->length >= 3U && (span->text[0] == 'b' || span->text[0] == 'B') &&
+        span->text[1] == '\'' && span->text[span->length - 1U] == '\'') {
+        *out_bit_start = 2U;
+        *out_bit_end = span->length - 1U;
+        return *out_bit_start < *out_bit_end;
+    }
+    if (span->length >= 3U && span->text[0] == '0' &&
+        (span->text[1] == 'b' || span->text[1] == 'B')) {
+        *out_bit_start = 2U;
+        *out_bit_end = span->length;
+        return *out_bit_start < *out_bit_end;
+    }
+    return false;
 }
 
 static int normalize_decimal_integer_literal(

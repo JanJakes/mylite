@@ -72,6 +72,7 @@ struct expected_query {
 };
 
 static int test_scalar_expression_projection_values_and_file_safety(void);
+static int test_scalar_binary_literal_projection(void);
 static int test_scalar_expression_projection_unsupported_forms(void);
 static int test_scalar_expression_projection_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -82,6 +83,14 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    const char *context
+);
+static int expect_result_bytes(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const void *expected,
+    size_t expected_size,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -106,6 +115,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_scalar_expression_projection_values_and_file_safety();
+    failures += test_scalar_binary_literal_projection();
     failures += test_scalar_expression_projection_unsupported_forms();
     failures += test_scalar_expression_projection_independent_handles();
 
@@ -938,6 +948,63 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     return failures;
 }
 
+static int test_scalar_binary_literal_projection(void) {
+    static const unsigned char az_bytes[] = {0x41U, 0x7aU};
+    static const unsigned char one_byte[] = {0x01U};
+    static const unsigned char padded_one_bytes[] = {0x00U, 0x01U};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "binary-literals") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary literal file");
+    failures += execute_ok(
+        database,
+        "SELECT 0x417a, X'417a', x'417a', b'0100000101111010', B'0100000101111010', "
+        "0b0100000101111010, 0b1, 0b01, 0b001, 0b00000001, 0b000000001",
+        &result
+    );
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 11U, "binary literal columns");
+        failures += expect_size(mylite_result_row_count(result), 1U, "binary literal rows");
+        failures += expect_result_bytes(result, 0U, 0U, az_bytes, sizeof(az_bytes), "0x literal");
+        failures += expect_result_bytes(result, 0U, 1U, az_bytes, sizeof(az_bytes), "X literal");
+        failures += expect_result_bytes(result, 0U, 2U, az_bytes, sizeof(az_bytes), "x literal");
+        failures += expect_result_bytes(result, 0U, 3U, az_bytes, sizeof(az_bytes), "b literal");
+        failures += expect_result_bytes(result, 0U, 4U, az_bytes, sizeof(az_bytes), "B literal");
+        failures += expect_result_bytes(result, 0U, 5U, az_bytes, sizeof(az_bytes), "0b literal");
+        failures += expect_result_bytes(result, 0U, 6U, one_byte, sizeof(one_byte), "0b1 literal");
+        failures += expect_result_bytes(result, 0U, 7U, one_byte, sizeof(one_byte), "0b01 literal");
+        failures += expect_result_bytes(result, 0U, 8U, one_byte, sizeof(one_byte), "0b001 literal");
+        failures += expect_result_bytes(
+            result,
+            0U,
+            9U,
+            one_byte,
+            sizeof(one_byte),
+            "0b00000001 literal"
+        );
+        failures += expect_result_bytes(
+            result,
+            0U,
+            10U,
+            padded_one_bytes,
+            sizeof(padded_one_bytes),
+            "0b000000001 literal"
+        );
+    }
+
+    mylite_result_free(result);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_scalar_expression_projection_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -1484,6 +1551,29 @@ static int expect_result_value(
     const char *actual = mylite_result_value_text(result, row, column);
 
     return expect_text(actual, expected, context);
+}
+
+static int expect_result_bytes(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const void *expected,
+    size_t expected_size,
+    const char *context
+) {
+    const unsigned char *actual = mylite_result_value_bytes(result, row, column);
+    size_t actual_size = mylite_result_value_size(result, row, column);
+    int failures = 0;
+
+    if (actual == NULL) {
+        fprintf(stderr, "%s: expected bytes, got NULL\n", context);
+        return 1;
+    }
+    failures += expect_size(actual_size, expected_size, context);
+    if (failures == 0) {
+        failures += expect_bytes(actual, expected, expected_size, context);
+    }
+    return failures;
 }
 
 static int make_test_path(char *path, size_t path_size, const char *name) {

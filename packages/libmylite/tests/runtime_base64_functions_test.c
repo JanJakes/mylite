@@ -118,6 +118,8 @@ static int test_no_source_dual_and_do_base64(void) {
         {NULL, 0U, true},
         {NULL, 0U, true},
         {(const unsigned char *)"0", 1U, false},
+        {(const unsigned char *)"dGVzdA==", 8U, false},
+        {(const unsigned char *)"test", 4U, false},
     };
     static const struct expected_cell exact_76_value[] = {
         {(const unsigned char *)exact_76_expected, sizeof(exact_76_expected) - 1U, false},
@@ -142,7 +144,8 @@ static int test_no_source_dual_and_do_base64(void) {
                    "TO_BASE64(+1), TO_BASE64(- 1), FROM_BASE64('Y W J j'), "
                    "FROM_BASE64('Y\\tW\\rJ\\nj'), "
                    "FROM_BASE64(''), FROM_BASE64('bad!'), "
-                   "FROM_BASE64('Y'), FROM_BASE64('Y==='), @@warning_count",
+                   "FROM_BASE64('Y'), FROM_BASE64('Y==='), @@warning_count, "
+                   "TO_BASE64(FROM_BASE64('dGVzdA==')), FROM_BASE64(TO_BASE64('test'))",
             .column_count = sizeof(scalar_values) / sizeof(scalar_values[0]),
             .values = scalar_values,
             .row_count = 1U,

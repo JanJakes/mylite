@@ -1,4 +1,15 @@
 
+static int populate_scalar_binary_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int scalar_binary_literal_byte_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    size_t *out_byte_count
+);
+
 static int make_scalar_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -107,6 +118,14 @@ static int populate_scalar_literal_result_column_descriptor(
     }
     if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
         return populate_scalar_string_literal_result_column_descriptor(
+            database,
+            literal,
+            descriptor
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        return populate_scalar_binary_literal_result_column_descriptor(
             database,
             literal,
             descriptor
@@ -429,6 +448,74 @@ static int populate_scalar_string_literal_result_column_descriptor(
             .nullable = false,
         }
     );
+    return MYLITE_OK;
+}
+
+static int populate_scalar_binary_literal_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    size_t byte_count = 0U;
+    int rc = scalar_binary_literal_byte_count(database, literal, &byte_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = (uint64_t)byte_count;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
+    descriptor->nullable = false;
+    return MYLITE_OK;
+}
+
+static int scalar_binary_literal_byte_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    size_t *out_byte_count
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    const struct mylite_sql_source_span *span = NULL;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL || out_byte_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_byte_count = 0U;
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    span = &literal->span;
+    if (span->text == NULL || span->length < 3U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        if (span->text[0] == '0' && (span->text[1] == 'x' || span->text[1] == 'X')) {
+            *out_byte_count = (span->length - 1U) / 2U;
+            return MYLITE_OK;
+        }
+        *out_byte_count = (span->length - 3U) / 2U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        size_t bit_count = 0U;
+
+        if ((span->text[0] == 'b' || span->text[0] == 'B') && span->text[1] == '\'' &&
+            span->text[span->length - 1U] == '\'') {
+            bit_count = span->length - 3U;
+        } else if (
+            span->text[0] == '0' && (span->text[1] == 'b' || span->text[1] == 'B')
+        ) {
+            bit_count = span->length - 2U;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        *out_byte_count = (bit_count + (size_t)CHAR_BIT - 1U) / (size_t)CHAR_BIT;
+        return MYLITE_OK;
+    }
+
     return MYLITE_OK;
 }
 

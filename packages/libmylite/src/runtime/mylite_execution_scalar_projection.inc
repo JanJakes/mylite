@@ -674,6 +674,9 @@ static bool is_base64_projection_expression(const struct mylite_sql_ast_node *ex
     }
 
     switch (argument->kind) {
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+        return is_base64_projection_expression(argument);
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:

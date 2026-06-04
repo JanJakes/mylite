@@ -69,7 +69,7 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; USE ${DATABASE}; SET NAMES utf8mb4; SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';" >/dev/null
 
 scalar_expected=$(cat <<EXPECTED
-YQ==	YWI=	YWJj	YWJjZA==	YWJjZGVm		1	MTIz	MQ==	MA==	LTE=	MQ==	LTE=	616263	616263		1	1	1	0
+YQ==	YWI=	YWJj	YWJjZA==	YWJjZGVm		1	MTIz	MQ==	MA==	LTE=	MQ==	LTE=	616263	616263		1	1	1	0	dGVzdA==	74657374
 EXPECTED
 )
 expect_output \
@@ -81,7 +81,7 @@ expect_output \
 "HEX(FROM_BASE64('Y W J j')), HEX(FROM_BASE64('Y\\tW\\rJ\\nj')), "\
 "HEX(FROM_BASE64('')), "\
 "FROM_BASE64('bad!') IS NULL, FROM_BASE64('Y') IS NULL, FROM_BASE64('Y===') IS NULL, "\
-"@@warning_count;" \
+"@@warning_count, TO_BASE64(FROM_BASE64('dGVzdA==')), HEX(FROM_BASE64(TO_BASE64('test')));" \
     "$DATABASE"
 
 exact_76_expected=$(cat <<EXPECTED

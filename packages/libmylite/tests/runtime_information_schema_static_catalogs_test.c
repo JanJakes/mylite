@@ -35,6 +35,11 @@ struct expected_sql_error {
     const char *message_part;
 };
 
+struct expected_contains {
+    const char *needle;
+    const char *context;
+};
+
 static int test_information_schema_static_catalogs(void);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -47,7 +52,7 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
+static int expect_contains(const char *actual, struct expected_contains expected);
 
 int main(void) {
     return test_information_schema_static_catalogs() == 0 ? 0 : 1;
@@ -975,7 +980,10 @@ static int expect_error(mylite_db *database, struct expected_sql_error expected)
     }
     failures += expect_int(mylite_errcode(database), expected.code, expected.sql);
     failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, expected.sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, expected.sql);
+    failures += expect_contains(
+        mylite_errmsg(database),
+        (struct expected_contains){.needle = expected.message_part, .context = expected.sql}
+    );
     failures += expect_size(mylite_result_column_count(result), 0U, expected.sql);
     mylite_result_free(result);
     return failures;
@@ -1079,12 +1087,18 @@ static int expect_text_or_null(const char *actual, const char *expected, const c
     return 0;
 }
 
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+static int expect_contains(const char *actual, struct expected_contains expected) {
+    if (actual == NULL || expected.needle == NULL || strstr(actual, expected.needle) == NULL) {
         const char *actual_text = actual == NULL ? "(null)" : actual;
-        const char *needle_text = needle == NULL ? "(null)" : needle;
+        const char *needle_text = expected.needle == NULL ? "(null)" : expected.needle;
 
-        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context, actual_text, needle_text);
+        fprintf(
+            stderr,
+            "%s: expected '%s' to contain '%s'\n",
+            expected.context,
+            actual_text,
+            needle_text
+        );
         return 1;
     }
     return 0;

@@ -16,6 +16,7 @@ enum {
     rand_seed_first_addend = 55555555,
     rand_seed_step_multiplier = 3,
     rand_seed_step_addend = 33,
+    rand_decimal_base = 10,
 };
 
 static void rand_unseeded_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -252,7 +253,7 @@ static bool rand_seed_from_decimal_text(
             sqlite3_result_error(context, "invalid MyLite seeded RAND argument", -1);
             return false;
         }
-        magnitude = (magnitude * 10U) + (uint32_t)(text[offset] - '0');
+        magnitude = (magnitude * rand_decimal_base) + (uint32_t)(text[offset] - '0');
     }
 
     *out_seed = is_negative ? (uint32_t)(0U - magnitude) : magnitude;

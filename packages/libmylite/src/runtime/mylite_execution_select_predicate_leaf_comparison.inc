@@ -693,9 +693,67 @@ static int plan_row_scalar_function_comparison_predicate(
             out_node_index
         );
     }
+    if (row_scalar_expression_is_rand_function(left_node)) {
+        return plan_row_scalar_expression_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
 
     *out_handled = false;
     return MYLITE_OK;
+}
+
+static int plan_row_scalar_expression_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
+    if (node.row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        child_at(predicate_node, 0U),
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node.row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(database, child_at(predicate_node, 1U), &node.value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
 }
 
 static int plan_scalar_literal_truth_predicate(
@@ -1108,7 +1166,8 @@ static bool predicate_node_is_string_length_expression(
     const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
-    return (predicate_node != NULL && mylite_execution_is_string_length_function_kind(predicate_node->kind)) != 0;
+    return (predicate_node != NULL &&
+            mylite_execution_is_string_length_function_kind(predicate_node->kind)) != 0;
 }
 
 static bool predicate_node_is_substring_expression(

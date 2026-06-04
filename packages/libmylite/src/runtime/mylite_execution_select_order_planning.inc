@@ -398,7 +398,7 @@ static int plan_select_order_rand_expression(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_rand_expression(database, order_key, expression);
+    rc = plan_row_scalar_rand_expression(database, order_key, false, NULL, NULL, 0U, expression);
     if (rc != MYLITE_OK) {
         planned_row_scalar_expression_deinit(expression);
         free(expression);

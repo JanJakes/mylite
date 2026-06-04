@@ -4842,6 +4842,27 @@ static int test_rand_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT COUNT(*) AS c FROM t WHERE RAND() < 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE t SET option_value = RAND(1) WHERE option_name = 'a';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "INSERT INTO t (option_name, option_value) VALUES ('b', RAND(1));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("CREATE TABLE rand (rand INT);", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);

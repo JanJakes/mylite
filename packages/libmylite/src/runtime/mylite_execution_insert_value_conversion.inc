@@ -12,6 +12,104 @@ static bool dml_allows_string_truncation_adjustment(
     return dml_allows_missing_default_adjustment(database, ignore_errors);
 }
 
+static bool dml_value_is_rand_function(const struct mylite_sql_ast_node *value_node) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL) {
+        return false;
+    }
+    return value_node->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+           value_node->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION ||
+           value_node->kind == MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR;
+}
+
+static int convert_dml_rand_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    bool *out_handled,
+    struct planned_value *out_value
+) {
+    struct session_scalar_cell cell = {0};
+    struct char_text_conversion conversion = {0};
+    char *text = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (!dml_value_is_rand_function(value_node)) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+    if (!column_descriptor_is_char(column) && !column_descriptor_is_varchar(column) &&
+        !column_descriptor_is_text_family(column)) {
+        set_unsupported_error(database, "DML RAND() values support only nonbinary string targets");
+        return MYLITE_ERROR;
+    }
+
+    rc = rand_function_value(database, value_node, &cell);
+    if (rc == MYLITE_OK) {
+        rc = append_session_scalar_cell_warnings(database, &cell);
+    }
+    if (rc == MYLITE_OK && cell.value == NULL) {
+        set_runtime_error(database, "invalid RAND() DML value");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = duplicate_text(database, cell.value, &text);
+    }
+    if (rc == MYLITE_OK) {
+        conversion = (struct char_text_conversion){
+            .text = text,
+            .text_length = strlen(text),
+            .row_number = row_number,
+        };
+        if (column_descriptor_is_char(column)) {
+            rc = convert_char_text(
+                database,
+                column,
+                &conversion,
+                allow_string_truncation_adjustment
+            );
+        } else if (column_descriptor_is_varchar(column)) {
+            rc = convert_varchar_text(
+                database,
+                column,
+                &conversion,
+                allow_string_truncation_adjustment
+            );
+        } else {
+            rc = convert_text_family_text(
+                database,
+                column,
+                &conversion,
+                allow_string_truncation_adjustment,
+                warn_on_trailing_space_truncation
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_value->is_null = false;
+        out_value->is_text = true;
+        out_value->is_blob = false;
+        out_value->is_real = false;
+        out_value->integer = 0;
+        out_value->real = 0.0;
+        out_value->text = text;
+        out_value->text_length = conversion.text_length;
+        text = NULL;
+    }
+
+    free(text);
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -68,6 +166,19 @@ static int convert_insert_value(
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         return convert_null_insert_value(database, column, ignore_errors, out_value);
+    }
+    rc = convert_dml_rand_value(
+        database,
+        value_node,
+        column,
+        row_number,
+        allow_string_truncation_adjustment,
+        false,
+        &handled,
+        out_value
+    );
+    if (handled) {
+        return rc;
     }
 
     return convert_insert_value_by_descriptor(
@@ -603,7 +714,13 @@ static int convert_insert_value_by_descriptor(
     if (column_descriptor_is_json(column)) {
         (void)row_number;
         (void)ignore_errors;
-        return convert_json_literal(database, value_node, column, diagnostic_column_name, out_value);
+        return convert_json_literal(
+            database,
+            value_node,
+            column,
+            diagnostic_column_name,
+            out_value
+        );
     }
     if (column_descriptor_is_enum(column)) {
         (void)ignore_errors;

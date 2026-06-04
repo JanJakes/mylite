@@ -3,6 +3,7 @@
 #include "mylite_sqlite_registration.h"
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 
 enum {
@@ -19,6 +20,22 @@ enum {
 
 static void rand_unseeded_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void rand_seeded_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void rand_seeded_once_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
+static bool rand_seed_from_sqlite_value(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    uint32_t *out_seed
+);
+static bool rand_seed_from_decimal_text(
+    sqlite3_context *context,
+    const unsigned char *text,
+    int text_length,
+    uint32_t *out_seed
+);
 static struct mylite_rand_state *rand_seeded_sqlite_state(
     sqlite3_context *context,
     sqlite3_value *seed_value
@@ -48,6 +65,19 @@ int mylite_sqlite_register_rand_functions(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = rand_seeded_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_rand_seeded_once",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = rand_seeded_once_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -138,6 +168,95 @@ static void rand_seeded_sqlite_callback(sqlite3_context *context, int argc, sqli
     }
 
     sqlite3_result_double(context, mylite_rand_state_next_unit_double(state));
+}
+
+static void rand_seeded_once_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    uint32_t seed = 0U;
+
+    if (context == NULL) {
+        return;
+    }
+    if (argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite seeded RAND callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_double(context, mylite_rand_seeded_unit_double(seed));
+        return;
+    }
+    if (!rand_seed_from_sqlite_value(context, argv[0], &seed)) {
+        return;
+    }
+
+    sqlite3_result_double(context, mylite_rand_seeded_unit_double(seed));
+}
+
+static bool rand_seed_from_sqlite_value(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    uint32_t *out_seed
+) {
+    const unsigned char *text = NULL;
+    int text_length = 0;
+
+    if (value == NULL || out_seed == NULL) {
+        sqlite3_result_error(context, "invalid MyLite seeded RAND argument", -1);
+        return false;
+    }
+    if (sqlite3_value_type(value) == SQLITE_INTEGER) {
+        *out_seed = (uint32_t)sqlite3_value_int64(value);
+        return true;
+    }
+    if (sqlite3_value_type(value) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "invalid MyLite seeded RAND argument", -1);
+        return false;
+    }
+
+    text = sqlite3_value_text(value);
+    text_length = sqlite3_value_bytes(value);
+    if (text == NULL || text_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+    return rand_seed_from_decimal_text(context, text, text_length, out_seed);
+}
+
+static bool rand_seed_from_decimal_text(
+    sqlite3_context *context,
+    const unsigned char *text,
+    int text_length,
+    uint32_t *out_seed
+) {
+    bool is_negative = false;
+    uint32_t magnitude = 0U;
+    int offset = 0;
+
+    if (text == NULL || text_length <= 0 || out_seed == NULL) {
+        sqlite3_result_error(context, "invalid MyLite seeded RAND argument", -1);
+        return false;
+    }
+    if (text[offset] == '-') {
+        is_negative = true;
+        ++offset;
+        if (offset == text_length) {
+            sqlite3_result_error(context, "invalid MyLite seeded RAND argument", -1);
+            return false;
+        }
+    }
+    for (; offset < text_length; ++offset) {
+        if (text[offset] < '0' || text[offset] > '9') {
+            sqlite3_result_error(context, "invalid MyLite seeded RAND argument", -1);
+            return false;
+        }
+        magnitude = (magnitude * 10U) + (uint32_t)(text[offset] - '0');
+    }
+
+    *out_seed = is_negative ? (uint32_t)(0U - magnitude) : magnitude;
+    return true;
 }
 
 static struct mylite_rand_state *rand_seeded_sqlite_state(

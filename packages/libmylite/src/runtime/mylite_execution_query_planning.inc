@@ -267,7 +267,15 @@ static int plan_row_scalar_special_expression(
         );
     }
     if (row_scalar_expression_is_rand_function(expression)) {
-        return plan_row_scalar_rand_expression(database, expression, out_expression);
+        return plan_row_scalar_rand_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     *out_handled = false;
     return MYLITE_OK;
@@ -325,6 +333,10 @@ static bool row_scalar_expression_is_rand_function(const struct mylite_sql_ast_n
 static int plan_row_scalar_rand_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
     size_t child_count = 0U;
@@ -349,21 +361,110 @@ static int plan_row_scalar_rand_expression(
     if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION && child_count == 0U) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_RAND;
         out_expression->has_rand_seed = false;
+        out_expression->rand_seed_is_expression = false;
         return MYLITE_OK;
     }
     if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION && child_count == 1U) {
-        rc = rand_seed_value(database, child_at(expression, 0U), &seed);
+        const struct mylite_sql_ast_node *seed_expression = child_at(expression, 0U);
+
+        if (row_scalar_rand_seed_is_descriptor_expression(seed_expression)) {
+            return plan_row_scalar_rand_seed_expression(
+                database,
+                seed_expression,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_expression
+            );
+        }
+
+        rc = rand_seed_value(database, seed_expression, &seed);
         if (rc != MYLITE_OK) {
             return rc;
         }
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_RAND;
         out_expression->has_rand_seed = true;
+        out_expression->rand_seed_is_expression = false;
         out_expression->rand_seed = seed;
         return MYLITE_OK;
     }
 
     set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
     return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_rand_seed_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *seed_expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    if (!has_source) {
+        set_unsupported_error(
+            database,
+            "RAND(seed) table seed expressions require a descriptor source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_RAND;
+    out_expression->has_rand_seed = true;
+    out_expression->rand_seed_is_expression = true;
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_conversion_expression(
+        database,
+        seed_expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static bool row_scalar_rand_seed_is_descriptor_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (row_scalar_conversion_kind_from_expression(expression) ==
+        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+        return false;
+    }
+    return ast_subtree_has_column_reference(expression);
+}
+
+static bool ast_subtree_has_column_reference(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return true;
+    }
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        if (ast_subtree_has_column_reference(child)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool row_scalar_expression_is_window_function(const struct mylite_sql_ast_node *expression) {

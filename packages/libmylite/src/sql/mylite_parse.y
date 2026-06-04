@@ -2879,6 +2879,9 @@ insert_value(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
 }
+insert_value(A) ::= rand_expression(B). {
+    A = B;
+}
 insert_value(A) ::= insert_unix_timestamp_value(B). {
     A = B;
 }
@@ -2998,6 +3001,9 @@ update_value(A) ::= sysdate_value(T). {
     A = T;
 }
 update_value(A) ::= insert_unix_timestamp_value(B). {
+    A = B;
+}
+update_value(A) ::= rand_expression(B). {
     A = B;
 }
 update_value(A) ::=
@@ -4016,6 +4022,11 @@ predicate_atom(A) ::= string_length_expression(C) IS(I) NULL(N). {
 predicate_atom(A) ::= string_length_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+predicate_atom(A) ::= rand_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
 }
 predicate_atom(A) ::= substring_expression(C) predicate_comparison_operator(O)
         substring_expression(V). {
@@ -5778,14 +5789,18 @@ expression(A) ::= PI(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR, B, R);
 }
-expression(A) ::= RAND(T) LPAREN RPAREN(R). {
+expression(A) ::= rand_expression(B). {
+    A = B;
+}
+
+rand_expression(A) ::= RAND(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(state, T, MYLITE_SQL_AST_RAND_FUNCTION, R);
 }
-expression(A) ::= RAND(T) LPAREN expression(B) RPAREN(R). {
+rand_expression(A) ::= RAND(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_RAND_SEED_FUNCTION, B, R);
 }
-expression(A) ::= RAND(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+rand_expression(A) ::= RAND(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR, C, R);

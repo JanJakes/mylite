@@ -215,13 +215,18 @@ static int plan_update_date_interval_assignment(
         return MYLITE_MISUSE;
     }
     value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
-    if (value_node == NULL || !mylite_execution_is_date_interval_second_function_kind(value_node->kind) ||
+    if (value_node == NULL ||
+        !mylite_execution_is_date_interval_second_function_kind(value_node->kind) ||
         value_node->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
         return MYLITE_OK;
     }
 
     function_name = mylite_execution_date_interval_second_function_name(value_node->kind);
-    rc = mylite_execution_validate_date_interval_second_function_shape(database, value_node, function_name);
+    rc = mylite_execution_validate_date_interval_second_function_shape(
+        database,
+        value_node,
+        function_name
+    );
     if (rc == MYLITE_OK) {
         rc = plan_update_date_interval_source_column(
             database,
@@ -1074,6 +1079,19 @@ static int convert_update_value_for_column(
             return convert_null_insert_value(database, column, true, out_value);
         }
         return MYLITE_OK;
+    }
+    rc = convert_dml_rand_value(
+        database,
+        value_node,
+        column,
+        row_number,
+        dml_allows_string_truncation_adjustment(database, ignore_errors),
+        true,
+        &handled,
+        out_value
+    );
+    if (handled) {
+        return rc;
     }
     if (insert_value_is_unix_timestamp_arithmetic(value_node)) {
         return convert_update_unix_timestamp_arithmetic_value(

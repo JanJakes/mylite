@@ -203,6 +203,28 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "descriptor seeded table-backed RAND exact values" \
+    "1	0.15522042769493574
+2	0.6555866465490187
+3	0.6555866465490187
+4	0.15595286540310166
+5	0.15522042769493574" \
+    "SELECT id, RAND(CAST(k AS SIGNED)) FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "RAND WHERE less than count" \
+    "5" \
+    "SELECT COUNT(*) AS c FROM t WHERE RAND() < 2;" \
+    "$DATABASE"
+
+expect_output \
+    "RAND WHERE greater than count" \
+    "0" \
+    "SELECT COUNT(*) AS c FROM t WHERE RAND() > 2;" \
+    "$DATABASE"
+
+expect_output \
     "seeded ORDER BY RAND exact order" \
     "5
 4
@@ -242,6 +264,25 @@ expect_output \
 4
 3" \
     "SELECT id FROM t ORDER BY RAND(+1) LIMIT 3;" \
+    "$DATABASE"
+
+run_mysql \
+    "DROP TABLE IF EXISTS d; CREATE TABLE d(option_name VARCHAR(20), option_value TEXT); "\
+"INSERT INTO d VALUES ('a', '0'); "\
+"UPDATE d SET option_value = RAND(1) WHERE option_name = 'a'; "\
+"INSERT INTO d VALUES ('b', RAND(1));" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "RAND update text value" \
+    "0.40540353712197724" \
+    "SELECT option_value FROM d WHERE option_name = 'a';" \
+    "$DATABASE"
+
+expect_output \
+    "RAND insert text value" \
+    "0.40540353712197724" \
+    "SELECT option_value FROM d WHERE option_name = 'b';" \
     "$DATABASE"
 
 expect_error \

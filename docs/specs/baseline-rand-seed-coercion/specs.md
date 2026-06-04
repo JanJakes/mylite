@@ -10,10 +10,11 @@ SELECT RAND(3.9), RAND('5'), RAND('3.9'), RAND(NULLIF(1, 1));
 ```
 
 This phase intentionally does not add general expression evaluation for random
-predicates or table-backed nonconstant seeds. The table-backed `RAND(seed)`
-baseline keeps its current constant integer/boolean/`NULL` seed domain until
-MyLite has a row-expression warning path that can report per-row conversion
-warnings correctly.
+predicates or broad table-backed nonconstant seeds. A later table-backed RAND
+slice admits warning-free integer descriptor `CAST()` / `CONVERT()` seed
+expressions for WordPress-style queries, but warning-producing table-backed seed
+coercion remains deferred until MyLite has a row-expression warning path that
+can report per-row conversion warnings correctly.
 
 ## Sources
 
@@ -105,12 +106,15 @@ statement diagnostics like MySQL, while the final result object and later
 
 This phase does not support:
 
-- table-backed nonconstant seeds such as `RAND(CAST(column AS SIGNED))`;
-- table-backed string, decimal, or approximate constant seed coercion, because
-  those forms need statement-level warning staging in the row-scalar planner;
-- `WHERE RAND()`, `WHERE RAND(seed)`, random DML assignments, random defaults,
-  generated columns, constraints, indexes, joins, grouped queries, compound
-  queries, or scalar subqueries;
+- table-backed nonconstant seeds beyond the later warning-free integer
+  descriptor `CAST()` / `CONVERT()` subset;
+- table-backed string, decimal, approximate, or warning-producing seed coercion,
+  because those forms need statement-level warning staging in the row-scalar
+  planner;
+- broad random predicates, random DML assignments beyond the later
+  WordPress-style nonbinary string-target `RAND()` / `RAND(seed)` value subset,
+  random defaults, generated columns, constraints, indexes, joins, grouped
+  queries, compound queries, or scalar subqueries;
 - arithmetic seed expressions such as `RAND(1 + 0)`;
 - hexadecimal or bit seed literals;
 - broad expression metadata, optimizer, replication, or binlog warning
@@ -152,8 +156,8 @@ The no-source scalar `RAND(seed)` path uses a MyLite-owned coercion helper:
    double through the existing scalar double formatter.
 
 Table-backed constant `RAND(seed)` planning deliberately continues to use the
-existing literal-only converter so this phase cannot silently accept forms whose
-warnings would be lost in row-scalar execution.
+existing literal-only converter in this seed-coercion phase so it cannot silently
+accept forms whose warnings would be lost in row-scalar execution.
 
 ## Diagnostics
 
@@ -206,5 +210,6 @@ seed forms.
 
 Update `COMPATIBILITY.md` and
 `docs/compatibility/functions-numeric-math.md` with limited wording. Do not
-claim table-backed nonconstant seeds, random predicates, random DML assignments,
-general expression seeds, hexadecimal/bit seeds, or full expression metadata.
+claim table-backed warning-producing seed conversion, broad random predicates,
+broad random DML assignments, general expression seeds, hexadecimal/bit seeds,
+or full expression metadata.

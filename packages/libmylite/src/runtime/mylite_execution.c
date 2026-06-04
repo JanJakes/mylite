@@ -2380,6 +2380,7 @@ struct planned_row_scalar_expression {
     bool like_uses_escape;
     bool case_has_else;
     bool has_rand_seed;
+    bool rand_seed_is_expression;
     uint32_t rand_seed;
     bool window_has_partition;
     bool window_has_order;
@@ -17811,6 +17812,15 @@ static int plan_row_scalar_function_comparison_predicate(
     size_t *out_node_index,
     bool *out_handled
 );
+static int plan_row_scalar_expression_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_scalar_literal_truth_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -19107,8 +19117,25 @@ static bool row_scalar_expression_is_rand_function(const struct mylite_sql_ast_n
 static int plan_row_scalar_rand_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_rand_seed_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *seed_expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool row_scalar_rand_seed_is_descriptor_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool ast_subtree_has_column_reference(const struct mylite_sql_ast_node *node);
 static bool row_scalar_expression_is_window_function(const struct mylite_sql_ast_node *expression);
 static int plan_row_scalar_window_function_expression(
     struct mylite_db *database,

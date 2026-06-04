@@ -483,6 +483,20 @@ static int append_row_scalar_rand_expression_sql(
     if (!expression->has_rand_seed) {
         return mylite_dynamic_string_append(string, "_mylite_rand()");
     }
+    if (expression->rand_seed_is_expression) {
+        if (expression->arguments == NULL || expression->argument_count != 1U) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, "_mylite_rand_seeded_once(");
+        if (rc == MYLITE_OK) {
+            rc =
+                append_row_scalar_expression_sql(string, &expression->arguments[0], next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
 
     rc = mylite_dynamic_string_append(string, "_mylite_rand_seeded(");
     if (rc == MYLITE_OK) {

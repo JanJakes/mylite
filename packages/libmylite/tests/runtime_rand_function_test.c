@@ -567,12 +567,33 @@ static int test_rand_table_backed_selects(void) {
         "0.04671454713373868",
         "0.04671454713373868",
     };
+    static const char *const table_descriptor_seed_columns[] = {
+        "id",
+        "RAND(CAST(k AS SIGNED))",
+    };
+    static const char *const table_descriptor_seed_values[] = {
+        "1",
+        "0.15522042769493574",
+        "2",
+        "0.6555866465490187",
+        "3",
+        "0.6555866465490187",
+        "4",
+        "0.15595286540310166",
+        "5",
+        "0.15522042769493574",
+    };
     static const char *const id_column[] = {"id"};
+    static const char *const count_column[] = {"c"};
     static const char *const seeded_order_values[] = {"5", "4", "3", "1", "2"};
     static const char *const seeded_limit_values[] = {"5", "4", "3"};
     static const char *const seeded_asc_limit_values[] = {"5", "4", "3"};
     static const char *const seeded_desc_limit_values[] = {"2", "1", "3"};
     static const char *const seeded_signed_limit_values[] = {"5", "4", "3"};
+    static const char *const rand_where_lt_values[] = {"5"};
+    static const char *const rand_where_gt_values[] = {"0"};
+    static const char *const option_value_column[] = {"option_value"};
+    static const char *const seeded_dml_values[] = {"0.40540353712197724"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -618,6 +639,48 @@ static int test_rand_table_backed_selects(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "duplicate seeded table-backed rand projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,RAND(CAST(k AS SIGNED)) FROM t ORDER BY id",
+            .columns = table_descriptor_seed_columns,
+            .column_count = 2U,
+            .values = table_descriptor_seed_values,
+            .range_columns = NULL,
+            .row_count = rand_table_row_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "descriptor seeded table-backed rand projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) AS c FROM t WHERE RAND() < 2",
+            .columns = count_column,
+            .column_count = 1U,
+            .values = rand_where_lt_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "rand where less than",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) AS c FROM t WHERE RAND() > 2",
+            .columns = count_column,
+            .column_count = 1U,
+            .values = rand_where_gt_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "rand where greater than",
         }
     );
     failures += expect_query(
@@ -695,6 +758,40 @@ static int test_rand_table_backed_selects(void) {
         (struct rand_order_id_set_query){
             .sql = "SELECT id FROM t ORDER BY RAND() LIMIT 5",
             .context = "unseeded rand order rowset",
+        }
+    );
+    failures +=
+        execute_ok(database, "CREATE TABLE d(option_name VARCHAR(20), option_value TEXT)", NULL);
+    failures += execute_ok(database, "INSERT INTO d VALUES ('a', '0')", NULL);
+    failures +=
+        execute_ok(database, "UPDATE d SET option_value = RAND(1) WHERE option_name = 'a'", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT option_value FROM d WHERE option_name = 'a'",
+            .columns = option_value_column,
+            .column_count = 1U,
+            .values = seeded_dml_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand update text value",
+        }
+    );
+    failures += execute_ok(database, "INSERT INTO d VALUES ('b', RAND(1))", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT option_value FROM d WHERE option_name = 'b'",
+            .columns = option_value_column,
+            .column_count = 1U,
+            .values = seeded_dml_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand insert text value",
         }
     );
 

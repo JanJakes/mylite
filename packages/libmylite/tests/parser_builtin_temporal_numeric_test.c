@@ -87,6 +87,7 @@ static int test_cast_binary_expression(void) {
         cast_basic_unsigned_item = 4,
         cast_basic_unsigned_integer_item = 5,
         cast_basic_unsigned_int_item = 6,
+        cast_basic_date_item = 7,
         convert_basic_char_item = 0,
         convert_basic_signed_item = 1,
         convert_basic_signed_integer_item = 2,
@@ -165,7 +166,7 @@ static int test_cast_binary_expression(void) {
         "SELECT CAST('ABC' AS CHAR), CAST('1' AS SIGNED), "
         "CAST('1' AS SIGNED INTEGER), CAST('1' AS SIGNED INT), "
         "CAST('1' AS UNSIGNED), CAST('1' AS UNSIGNED INTEGER), "
-        "CAST('1' AS UNSIGNED INT);",
+        "CAST('1' AS UNSIGNED INT), CAST('2024-01-01' AS DATE);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -208,6 +209,11 @@ static int test_cast_binary_expression(void) {
         parser_test_child_at(parser_test_child_at(select_list, cast_basic_unsigned_int_item), 0U),
         MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION,
         "cast unsigned int expression"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, cast_basic_date_item), 0U),
+        MYLITE_SQL_AST_CAST_CHAR_EXPRESSION,
+        "cast date compatibility expression"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(

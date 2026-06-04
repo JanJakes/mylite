@@ -568,6 +568,12 @@ static int make_row_scalar_result_column_descriptor(
         );
     }
 
+    int rc = populate_row_scalar_source_result_column_descriptor(database, item, out_descriptor);
+
+    if (rc != MYLITE_OK || row_scalar_descriptor_has_known_type(out_descriptor)) {
+        return rc;
+    }
+
     return populate_row_scalar_expression_result_column_descriptor(
         database,
         &item->expression,
@@ -613,6 +619,765 @@ static int make_row_scalar_column_result_column_descriptor(
     );
 }
 
+static int populate_row_scalar_source_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select_item *item,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *expression = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || item == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    expression = unwrap_parenthesized_expression(item->source_expression);
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = make_scalar_result_column_descriptor(database, expression, descriptor->label, descriptor);
+    if (rc != MYLITE_OK || row_scalar_descriptor_has_known_type(descriptor)) {
+        return rc;
+    }
+
+    return populate_row_scalar_special_source_result_column_descriptor(
+        database,
+        expression,
+        descriptor
+    );
+}
+
+static int populate_row_scalar_special_source_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return populate_row_scalar_integer_expression_result_column_descriptor(
+            expression,
+            descriptor
+        );
+    case MYLITE_SQL_AST_ABS_FUNCTION:
+        return populate_row_scalar_abs_result_column_descriptor(database, expression, descriptor);
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+        return populate_row_scalar_scalar_subquery_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+        return populate_row_scalar_concat_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    case MYLITE_SQL_AST_YEAR_FUNCTION:
+        populate_row_scalar_year_result_column_descriptor(descriptor);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+        return populate_row_scalar_conversion_source_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+        return populate_row_scalar_coalesce_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+        return populate_row_scalar_searched_case_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int populate_row_scalar_integer_expression_result_column_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    uint64_t width = 0U;
+    bool matched = false;
+    int rc = row_scalar_integer_expression_token_width(expression, &matched, &width);
+
+    if (rc != MYLITE_OK || !matched) {
+        return rc;
+    }
+
+    populate_scalar_binary_numeric_result_column_descriptor(
+        descriptor,
+        (struct scalar_binary_numeric_result_column_shape){
+            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+            .display_length = width > mysql_scalar_bigint_display_length
+                                  ? mysql_scalar_bigint_display_length
+                                  : width,
+            .decimals = 0U,
+            .extra_flags = 0U,
+            .nullable = false,
+        }
+    );
+    return MYLITE_OK;
+}
+
+static int populate_row_scalar_abs_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct session_scalar_cell cell = {0};
+    uint64_t display_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        return MYLITE_OK;
+    }
+
+    rc = session_scalar_value(database, expression, &cell);
+    if (rc != MYLITE_OK) {
+        session_scalar_cell_deinit(&cell);
+        return MYLITE_OK;
+    }
+    if (cell.value == NULL ||
+        !row_scalar_metadata_text_is_integer(cell.value, strlen(cell.value))) {
+        session_scalar_cell_deinit(&cell);
+        return MYLITE_OK;
+    }
+    display_length = (uint64_t)strlen(cell.value) + 1U;
+    populate_scalar_binary_numeric_result_column_descriptor(
+        descriptor,
+        (struct scalar_binary_numeric_result_column_shape){
+            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+            .display_length = display_length,
+            .decimals = 0U,
+            .extra_flags = 0U,
+            .nullable = false,
+        }
+    );
+    session_scalar_cell_deinit(&cell);
+    return MYLITE_OK;
+}
+
+static int populate_row_scalar_scalar_subquery_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct session_scalar_cell cell = {0};
+    uint64_t display_length = 0U;
+    int rc = session_scalar_value(database, expression, &cell);
+
+    if (rc != MYLITE_OK) {
+        session_scalar_cell_deinit(&cell);
+        return MYLITE_OK;
+    }
+    if (cell.value != NULL && row_scalar_metadata_text_is_integer(cell.value, strlen(cell.value))) {
+        display_length = (uint64_t)strlen(cell.value) + 1U;
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+    }
+    session_scalar_cell_deinit(&cell);
+    return MYLITE_OK;
+}
+
+static int populate_row_scalar_concat_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    uint64_t display_length = 0U;
+
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        return MYLITE_OK;
+    }
+
+    argument = child_at(arguments, 0U);
+    while (argument != NULL) {
+        bool matched = false;
+        uint64_t argument_display_length = 0U;
+        int rc = row_scalar_source_string_display_length(
+            database,
+            argument,
+            &matched,
+            &argument_display_length
+        );
+
+        if (rc != MYLITE_OK || !matched) {
+            return rc;
+        }
+        if (argument_display_length > UINT64_MAX - display_length) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        display_length += argument_display_length;
+        argument = argument->next_sibling;
+    }
+
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = false,
+        }
+    );
+    return MYLITE_OK;
+}
+
+static void populate_row_scalar_year_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_YEAR;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = year_text_length;
+    descriptor->decimals = 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM |
+                        MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_ZEROFILL;
+    descriptor->nullable = true;
+}
+
+static int populate_row_scalar_conversion_source_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *argument = child_at(expression, 0U);
+    bool matched = false;
+    uint64_t display_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (row_scalar_expression_is_date_target_conversion(expression)) {
+        populate_scalar_date_result_column_descriptor(descriptor);
+        return MYLITE_OK;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_CAST_BINARY_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION) {
+        rc = row_scalar_source_binary_display_length(database, argument, &matched, &display_length);
+        if (rc != MYLITE_OK || !matched) {
+            return rc;
+        }
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    }
+
+    rc = row_scalar_source_string_display_length(database, argument, &matched, &display_length);
+    if (rc != MYLITE_OK || !matched) {
+        return rc;
+    }
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
+    return MYLITE_OK;
+}
+
+static int populate_row_scalar_coalesce_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    bool has_string_argument = false;
+    uint64_t display_length = 0U;
+
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        return MYLITE_OK;
+    }
+
+    argument = child_at(arguments, 0U);
+    while (argument != NULL) {
+        bool matched = false;
+        bool argument_is_string = row_scalar_source_expression_is_string_literal(argument);
+        uint64_t argument_display_length = 0U;
+        int rc = row_scalar_source_string_display_length(
+            database,
+            argument,
+            &matched,
+            &argument_display_length
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (matched) {
+            if (argument_is_string) {
+                has_string_argument = true;
+            }
+            if (argument_display_length > display_length) {
+                display_length = argument_display_length;
+            }
+        }
+        argument = argument->next_sibling;
+    }
+    if (!has_string_argument) {
+        return MYLITE_OK;
+    }
+
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
+    return MYLITE_OK;
+}
+
+static int populate_row_scalar_searched_case_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *when_list = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *else_clause = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *when_clause = NULL;
+    bool has_string_result = false;
+    uint64_t display_length = 0U;
+
+    if (when_list == NULL || when_list->kind != MYLITE_SQL_AST_CASE_WHEN_LIST) {
+        return MYLITE_OK;
+    }
+
+    when_clause = child_at(when_list, 0U);
+    while (when_clause != NULL) {
+        const struct mylite_sql_ast_node *result_expression = child_at(when_clause, 1U);
+        bool matched = false;
+        bool result_is_string = row_scalar_source_expression_is_string_literal(result_expression);
+        uint64_t result_display_length = 0U;
+        int rc = row_scalar_source_string_display_length(
+            database,
+            result_expression,
+            &matched,
+            &result_display_length
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (matched) {
+            if (result_is_string) {
+                has_string_result = true;
+            }
+            if (result_display_length > display_length) {
+                display_length = result_display_length;
+            }
+        }
+        when_clause = when_clause->next_sibling;
+    }
+    if (else_clause != NULL) {
+        const struct mylite_sql_ast_node *else_expression = child_at(else_clause, 0U);
+        bool matched = false;
+        bool else_is_string = row_scalar_source_expression_is_string_literal(else_expression);
+        uint64_t else_display_length = 0U;
+        int rc = row_scalar_source_string_display_length(
+            database,
+            else_expression,
+            &matched,
+            &else_display_length
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (matched) {
+            if (else_is_string) {
+                has_string_result = true;
+            }
+            if (else_display_length > display_length) {
+                display_length = else_display_length;
+            }
+        }
+    }
+    if (!has_string_result) {
+        return MYLITE_OK;
+    }
+
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
+    return MYLITE_OK;
+}
+
+static int row_scalar_source_string_display_length(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matched,
+    uint64_t *out_display_length
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t max_bytes_per_character = scalar_connection_max_bytes_per_character(database);
+
+    if (out_matched == NULL || out_display_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matched = false;
+    *out_display_length = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    } else {
+        literal = expression;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *text = NULL;
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal_with_policy(
+            database,
+            literal,
+            "row-scalar metadata supports only ordinary string literals",
+            "row-scalar metadata does not support NUL bytes in string literals",
+            true,
+            &text,
+            &text_length
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        free(text);
+        if (text_length > UINT64_MAX / max_bytes_per_character) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        *out_display_length = (uint64_t)text_length * max_bytes_per_character;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        uint64_t width = 0U;
+        bool matched = false;
+        int rc = row_scalar_integer_expression_token_width(expression, &matched, &width);
+
+        if (rc != MYLITE_OK || !matched) {
+            return rc;
+        }
+        if (width > UINT64_MAX / max_bytes_per_character) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        *out_display_length = width * max_bytes_per_character;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool row_scalar_source_expression_is_string_literal(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    } else {
+        literal = expression;
+    }
+    return literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+           mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING;
+}
+
+static int row_scalar_source_binary_display_length(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matched,
+    uint64_t *out_display_length
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_matched == NULL || out_display_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matched = false;
+    *out_display_length = 0U;
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX || literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        size_t byte_count = 0U;
+        int rc = scalar_binary_literal_byte_count(database, literal, &byte_count);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_display_length = (uint64_t)byte_count;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *text = NULL;
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal_with_policy(
+            database,
+            literal,
+            "row-scalar metadata supports only ordinary string literals",
+            "row-scalar metadata does not support NUL bytes in string literals",
+            true,
+            &text,
+            &text_length
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        free(text);
+        *out_display_length = (uint64_t)text_length;
+        *out_matched = true;
+    }
+    return MYLITE_OK;
+}
+
+static int row_scalar_integer_expression_token_width(
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matched,
+    uint64_t *out_width
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
+    if (out_matched == NULL || out_width == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matched = false;
+    *out_width = 0U;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+            *out_width = 1U;
+            *out_matched = true;
+            return MYLITE_OK;
+        }
+        if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        *out_width = (uint64_t)expression->span.length;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        bool operand_matched = false;
+        uint64_t operand_width = 0U;
+        int rc = row_scalar_integer_expression_token_width(
+            child_at(expression, 0U),
+            &operand_matched,
+            &operand_width
+        );
+
+        if (rc != MYLITE_OK || !operand_matched) {
+            return rc;
+        }
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return MYLITE_OK;
+        }
+        *out_width = operand_width + 1U;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        bool left_matched = false;
+        bool right_matched = false;
+        uint64_t left_width = 0U;
+        uint64_t right_width = 0U;
+        int rc = MYLITE_OK;
+
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_MULTIPLY) {
+            return MYLITE_OK;
+        }
+        rc = row_scalar_integer_expression_token_width(
+            child_at(expression, 0U),
+            &left_matched,
+            &left_width
+        );
+        if (rc == MYLITE_OK) {
+            rc = row_scalar_integer_expression_token_width(
+                child_at(expression, 1U),
+                &right_matched,
+                &right_width
+            );
+        }
+        if (rc != MYLITE_OK || !left_matched || !right_matched) {
+            return rc;
+        }
+        if (left_width > UINT64_MAX - right_width) {
+            return MYLITE_NOMEM;
+        }
+        left_width += right_width;
+        if (left_width == UINT64_MAX) {
+            return MYLITE_NOMEM;
+        }
+        *out_width = left_width + 1U;
+        *out_matched = true;
+    }
+    return MYLITE_OK;
+}
+
+static bool row_scalar_expression_is_date_target_conversion(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_source_span *span = NULL;
+    const char *text = NULL;
+    size_t target_start = 0U;
+    size_t target_end = 0U;
+    size_t before_target = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_CAST_CHAR_EXPRESSION &&
+                               expression->kind != MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION)) {
+        return false;
+    }
+    span = &expression->span;
+    if (span->text == NULL || span->length == 0U) {
+        return false;
+    }
+    text = span->text;
+    target_end = span->length;
+    while (target_end > 0U && isspace((unsigned char)text[target_end - 1U])) {
+        --target_end;
+    }
+    if (target_end > 0U && text[target_end - 1U] == ')') {
+        --target_end;
+    }
+    while (target_end > 0U && isspace((unsigned char)text[target_end - 1U])) {
+        --target_end;
+    }
+    target_start = target_end;
+    while (target_start > 0U && row_scalar_metadata_byte_is_identifier(text[target_start - 1U])) {
+        --target_start;
+    }
+    if (target_end - target_start != 4U || toupper((unsigned char)text[target_start]) != 'D' ||
+        toupper((unsigned char)text[target_start + 1U]) != 'A' ||
+        toupper((unsigned char)text[target_start + 2U]) != 'T' ||
+        toupper((unsigned char)text[target_start + 3U]) != 'E') {
+        return false;
+    }
+
+    before_target = target_start;
+    while (before_target > 0U && isspace((unsigned char)text[before_target - 1U])) {
+        --before_target;
+    }
+    if (before_target > 0U && text[before_target - 1U] == ',') {
+        return true;
+    }
+    if (before_target < 2U || toupper((unsigned char)text[before_target - 2U]) != 'A' ||
+        toupper((unsigned char)text[before_target - 1U]) != 'S') {
+        return false;
+    }
+    return before_target == 2U || !row_scalar_metadata_byte_is_identifier(text[before_target - 3U]);
+}
+
+static bool row_scalar_metadata_byte_is_identifier(char byte) {
+    return isalnum((unsigned char)byte) || byte == '_' || byte == '$';
+}
+
+static bool row_scalar_metadata_text_is_integer(const char *text, size_t text_length) {
+    size_t index = 0U;
+
+    if (text == NULL || text_length == 0U) {
+        return false;
+    }
+    if (text[0] == '-' || text[0] == '+') {
+        if (text_length == 1U) {
+            return false;
+        }
+        index = 1U;
+    }
+    for (; index < text_length; ++index) {
+        if (!isdigit((unsigned char)text[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool row_scalar_descriptor_has_known_type(
+    const struct mylite_result_column_descriptor *descriptor
+) {
+    return descriptor != NULL && descriptor->logical_type != MYLITE_RESULT_LOGICAL_TYPE_UNKNOWN;
+}
+
 static int populate_row_scalar_expression_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
@@ -625,6 +1390,30 @@ static int populate_row_scalar_expression_result_column_descriptor(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return populate_window_function_result_column_descriptor(database, expression, descriptor);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
+                .display_length = mysql_sum_integer_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
@@ -907,6 +1696,8 @@ static int populate_window_value_function_result_column_descriptor(
             descriptor
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:

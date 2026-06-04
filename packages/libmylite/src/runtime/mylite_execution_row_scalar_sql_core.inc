@@ -14,6 +14,10 @@ static int append_row_scalar_expression_sql(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+        return mylite_dynamic_string_append(string, "COUNT(*)");
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+        return append_row_scalar_sum_column_expression_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return append_row_scalar_window_function_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -235,6 +239,32 @@ static int append_row_scalar_expression_sql(
     return MYLITE_ERROR;
 }
 
+static int append_row_scalar_sum_column_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+) {
+    struct planned_row_scalar_expression column_expression = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN) {
+        return MYLITE_ERROR;
+    }
+
+    column_expression.kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    column_expression.column = expression->column;
+    column_expression.column_has_source_index = expression->column_has_source_index;
+    column_expression.column_source_index = expression->column_source_index;
+
+    rc = mylite_dynamic_string_append(string, "SUM(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_column_sql(string, &column_expression);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_column_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression
@@ -353,6 +383,8 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_descriptor_value_sql_for_source(string, &argument->column, 0U, false);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -579,6 +611,8 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -825,6 +859,8 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
         break;
     }
 
@@ -920,6 +956,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
         return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:

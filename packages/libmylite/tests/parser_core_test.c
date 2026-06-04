@@ -944,6 +944,23 @@ static int test_literal_categories(void) {
     );
 
     mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT *, COUNT(*) AS c FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    failures += parser_test_expect_child_count(select_list, 2U, "mixed wildcard select list");
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "mixed wildcard item"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "mixed aggregate item"
+    );
+
+    mylite_sql_parse_result_deinit(&result);
     return failures;
 }
 

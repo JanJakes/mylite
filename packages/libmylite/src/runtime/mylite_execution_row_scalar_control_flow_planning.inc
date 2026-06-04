@@ -337,6 +337,7 @@ static int plan_row_scalar_like_predicate_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
     out_expression->argument_count = 2U;
+    out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_LIKE;
     out_expression->like_uses_escape = (bool)!session_sql_mode_has(
         &database->session,
         MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
@@ -363,6 +364,217 @@ static int plan_row_scalar_like_predicate_expression(
         );
     }
     return rc;
+}
+
+static bool row_scalar_control_flow_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
+static int plan_row_scalar_control_flow_comparison_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+
+static int plan_row_scalar_integer_comparison_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(
+            database,
+            "row-scalar CASE WHEN supports only integer comparison predicates"
+        );
+        return MYLITE_ERROR;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (!row_scalar_control_flow_comparison_operator_is_supported(operator_kind)) {
+        set_unsupported_error(
+            database,
+            "row-scalar CASE WHEN integer comparisons support only equality and ordering "
+            "operators"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
+    out_expression->argument_count = 2U;
+    out_expression->arithmetic_operator = operator_kind;
+    out_expression->like_uses_escape = false;
+
+    rc = plan_row_scalar_control_flow_comparison_operand(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_control_flow_comparison_operand(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
+static bool row_scalar_control_flow_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+        break;
+    }
+    return false;
+}
+
+static int plan_row_scalar_control_flow_comparison_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "row-scalar CASE WHEN integer comparisons support only integer, boolean, NULL, "
+            "and descriptor integer operands"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            return plan_row_scalar_literal_value(database, expression, out_expression);
+        }
+        set_unsupported_error(
+            database,
+            "row-scalar CASE WHEN integer comparisons support only integer, boolean, NULL, "
+            "and descriptor integer operands"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_control_flow_condition_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "row-scalar CASE WHEN integer comparisons support only integer, boolean, NULL, "
+        "and descriptor integer operands"
+    );
+    return MYLITE_ERROR;
 }
 
 static int plan_row_scalar_if_expression(
@@ -1033,6 +1245,17 @@ static int plan_row_scalar_control_flow_condition_argument(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return plan_row_scalar_integer_comparison_predicate_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -1069,7 +1292,7 @@ static int plan_row_scalar_control_flow_condition_argument(
     set_unsupported_error(
         database,
         "IF() row conditions support only integer, boolean, NULL, descriptor integer column, "
-        "and ISNULL() values"
+        "ISNULL(), LIKE, and integer comparison values"
     );
     return MYLITE_ERROR;
 }
@@ -1203,6 +1426,17 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return plan_row_scalar_integer_comparison_predicate_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -1238,8 +1472,8 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
 
     set_unsupported_error(
         database,
-        "nested IF() row conditions support only integer, boolean, NULL, and descriptor "
-        "integer column values"
+        "nested IF() row conditions support only integer, boolean, NULL, descriptor integer "
+        "column, LIKE, and integer comparison values"
     );
     return MYLITE_ERROR;
 }
@@ -1411,6 +1645,8 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:

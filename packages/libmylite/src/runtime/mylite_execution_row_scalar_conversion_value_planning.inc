@@ -97,6 +97,10 @@ static int plan_row_scalar_non_concat_expression(
             out_expression
         );
     }
+    if (!ast_subtree_has_column_reference(expression) &&
+        is_scalar_projection_expression(expression)) {
+        return plan_row_scalar_session_value(database, expression, out_expression);
+    }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -474,15 +478,51 @@ static int plan_row_scalar_literal_value(
     case MYLITE_SQL_AST_LITERAL_NULL:
         out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
         return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_HEX:
+    case MYLITE_SQL_AST_LITERAL_BIT:
+        return plan_row_scalar_binary_literal_value(database, literal, out_expression);
     default:
         break;
     }
 
     set_unsupported_error(
         database,
-        "row-scalar SELECT supports only string, integer, boolean, and NULL literals"
+        "row-scalar SELECT supports only string, integer, boolean, NULL, hex, and bit literals"
     );
     return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_binary_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, "row-scalar SELECT supports only binary literals");
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        rc = decode_binary_hex_literal(database, literal, &bytes, &byte_count);
+    } else if (literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        rc = decode_binary_bit_literal(database, &literal->span, &bytes, &byte_count);
+    } else {
+        set_unsupported_error(database, "row-scalar SELECT supports only binary literals");
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        free(bytes);
+        return rc;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    return assign_blob_value(database, bytes, byte_count, &out_expression->value);
 }
 
 static int plan_row_scalar_integer_value(

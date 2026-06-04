@@ -15,8 +15,10 @@ SELECT alias.*, other_alias.column_name FROM left_table AS alias JOIN right_tabl
 Qualified wildcards expand to the visible descriptor columns of the named
 source in descriptor ordinal order. They may appear with other select-list
 items. The feature does not add new source shapes, expression projection,
-derived tables, CTEs, subqueries, view expansion, protocol-grade metadata, or
-unqualified `*` inside mixed select lists.
+derived tables, CTEs, subqueries, view expansion, or protocol-grade metadata.
+For WordPress column-metadata compatibility, bare unqualified `*` is also
+admitted inside mixed select lists and expands through the existing
+unqualified-wildcard descriptor path.
 
 ## Compatibility Authority
 
@@ -101,19 +103,25 @@ qualified_wildcard:
 
 select_item:
     existing_supported_select_item
+  | "*"
   | qualified_wildcard
 ```
 
-`qualified_wildcard` may be one item in a comma-separated select list. It does
-not admit `AS alias` or a bare alias. Unqualified `*` remains supported by the
-existing whole-select `SELECT *` grammar; mixed forms such as `SELECT *, t.*`
-are deferred in this slice.
+`qualified_wildcard` and bare `*` may be items in a comma-separated select
+list. Wildcard items do not admit `AS alias` or a bare alias.
 
 ### MyLite Lemon-Syntax Snippet
 
 The intended grammar shape is:
 
 ```lemon
+select_item(A) ::= STAR(S). {
+    A = mylite_sql_parser_make_select_item(
+        state,
+        mylite_sql_parser_make_wildcard(state, S),
+        NULL);
+}
+
 select_item(A) ::= qualified_wildcard(B). {
     A = mylite_sql_parser_make_select_item(state, B, NULL);
 }
@@ -180,7 +188,7 @@ Expected diagnostics for this slice:
 | Unknown qualified wildcard source | `1051` / `42S02`, `Unknown table '<qualifier>'` |
 | Unsupported source kind | existing unsupported diagnostic |
 | Qualified wildcard in `DISTINCT` projection | existing `SELECT DISTINCT` single-column unsupported diagnostic |
-| Unsupported mixed unqualified `*` select lists | existing parse or unsupported diagnostic |
+| Wildcard item with `AS alias` or a bare alias | existing parse error `1064` / `42000` |
 | Physical SQLite failure | existing SQLite runtime diagnostic |
 | Allocation failure | existing allocation diagnostic |
 
@@ -192,6 +200,7 @@ Successful supported statements return result rows, `affected_rows == 0`,
 Add MySQL-runtime-verified expectations for:
 
 - `table.*`, `schema.table.*`, and `alias.*`;
+- mixed bare `*` select lists such as `SELECT *, COUNT(*) FROM t`;
 - visible-only wildcard expansion with an invisible source column;
 - result labels and duplicate labels for `SELECT id, t.*`;
 - qualified wildcard mixed with ordinary selected columns;

@@ -3229,58 +3229,6 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, CT, W, G, H, O, L, K);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        NULL, NULL, NULL, NULL, NULL, NULL, K);
-}
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
-    where_clause_opt(W) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL, NULL, NULL, K);
-}
-select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
-    table_index_hints_opt(IH) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
-    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O, L, K);
-}
-select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM derived_table_source(D)
-    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) select_order_clause_opt(O)
-    limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        D, W, G, H, O, L, K);
-}
-select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM inner_join_table_source(JT)
-    where_clause_opt(W) group_clause_opt(G)
-    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        JT, W, G, H, O, L, K);
-}
-select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) outer_join_operator(JO)
-    table_source(RT) ON join_condition(J) where_clause_opt(W) group_clause_opt(G)
-    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
-}
-select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM comma_table_sources(CT)
-    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) select_order_clause_opt(O)
-    limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        CT, W, G, H, O, L, K);
-}
-
 compound_select_statement(A) ::= select_statement(S) union_term_list(T). {
     A = mylite_sql_parser_make_compound_select_statement(state, S, T);
 }
@@ -4708,6 +4656,12 @@ select_item(A) ::= expression(B) AS select_alias(C). {
 select_item(A) ::= expression(B) select_alias(C). {
     A = mylite_sql_parser_make_select_item(state, B, C);
 }
+select_item(A) ::= STAR(S). {
+    A = mylite_sql_parser_make_select_item(
+        state,
+        mylite_sql_parser_make_wildcard(state, S),
+        NULL);
+}
 select_item(A) ::= qualified_wildcard(B). {
     A = mylite_sql_parser_make_select_item(state, B, NULL);
 }
@@ -4946,6 +4900,9 @@ window_order_clause(A) ::= ORDER(T) BY qualified_identifier(C) order_direction_o
 }
 
 cast_basic_target(A) ::= CHAR. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= DATE. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
 }
 cast_basic_target(A) ::= SIGNED. {

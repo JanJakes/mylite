@@ -44,7 +44,7 @@ static int plan_row_scalar_expression(
         );
     }
 
-    if (has_source) {
+    if (has_source && expression->kind != MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         allow_scalar_subquery = false;
     }
     return plan_row_scalar_non_concat_expression(
@@ -87,6 +87,25 @@ static int plan_row_scalar_special_expression(
     }
     if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
         return plan_row_scalar_concat_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+        return plan_row_scalar_count_star_expression(
+            database,
+            expression,
+            has_source,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION) {
+        return plan_row_scalar_sum_column_expression(
             database,
             expression,
             has_source,
@@ -278,6 +297,83 @@ static int plan_row_scalar_special_expression(
         );
     }
     *out_handled = false;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_count_star_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    struct planned_row_scalar_expression *out_expression
+) {
+    if (!has_source) {
+        set_no_tables_used_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 0U) {
+        set_unsupported_error(database, "row-scalar SELECT supports only COUNT(*) aggregates");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_sum_column_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *column_node = NULL;
+    struct integer_column_range range;
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (!has_source) {
+        set_no_tables_used_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "row-scalar SELECT supports only SUM(column) aggregates");
+        return MYLITE_ERROR;
+    }
+
+    column_node = child_at(expression, 0U);
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "SUM(column) supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = integer_range_for_column(
+        database,
+        &column,
+        "SUM(column) supports only integer descriptor columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN;
+    out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 

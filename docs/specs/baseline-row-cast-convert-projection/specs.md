@@ -39,6 +39,7 @@ supported by the row-scalar path:
 ```sql
 CAST(value AS BINARY)
 CAST(value AS CHAR)
+CAST(value AS DATE)
 CAST(value AS SIGNED)
 CAST(value AS SIGNED INTEGER)
 CAST(value AS SIGNED INT)
@@ -47,6 +48,7 @@ CAST(value AS UNSIGNED INTEGER)
 CAST(value AS UNSIGNED INT)
 CONVERT(value, BINARY)
 CONVERT(value, CHAR)
+CONVERT(value, DATE)
 CONVERT(value, SIGNED)
 CONVERT(value, SIGNED INTEGER)
 CONVERT(value, SIGNED INT)
@@ -98,8 +100,10 @@ expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R)
 ```
 
 This phase does not add `CHAR(N)`, `BINARY(N)`, explicit cast charset clauses,
-bare `INT`/`INTEGER` target names, temporal targets, decimal/approximate
-targets, JSON/spatial targets, or postfix row `COLLATE`.
+bare `INT`/`INTEGER` target names, full temporal target semantics,
+decimal/approximate targets, JSON/spatial targets, or postfix row `COLLATE`.
+The `DATE` target is accepted as a compatibility placeholder and uses the
+current character-conversion path.
 
 ## Runtime Semantics
 
@@ -111,7 +115,8 @@ diagnostics.
 `CAST(... AS BINARY)`, `CONVERT(..., BINARY)`, and `CONVERT(... USING BINARY)`
 return the operand's MySQL text representation as binary string bytes.
 
-`CAST(... AS CHAR)`, `CONVERT(..., CHAR)`, and
+`CAST(... AS CHAR)`, `CONVERT(..., CHAR)`, `CAST(... AS DATE)`,
+`CONVERT(..., DATE)`, and
 `CONVERT(... USING utf8mb4|utf8|utf8mb3|latin1)` return the operand's MySQL
 text representation as a nonbinary string with the target metadata. For this
 slice, `latin1` conversion remains ASCII-only like the scalar charset baseline;
@@ -150,6 +155,8 @@ Result-column metadata follows the conversion target:
 - character conversions: `VAR_STRING` with the connection collation for
   `CHAR`, `utf8mb4_0900_ai_ci` for `utf8mb4`, `utf8mb3_general_ci` for `utf8`
   and `utf8mb3`, and `latin1_swedish_ci` for `latin1`;
+- the `DATE` placeholder uses character-conversion values but exposes
+  MySQL-shaped `DATE` result metadata for source-backed row-scalar projections;
 - signed conversions: signed `LONGLONG`, binary charset/collation id `63`,
   numeric and binary flags, nullable;
 - unsigned conversions: unsigned `LONGLONG`, binary charset/collation id `63`,

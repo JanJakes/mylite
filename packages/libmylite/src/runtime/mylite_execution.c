@@ -541,6 +541,7 @@ enum {
     mysql_database_function_display_length = 256,
     mysql_user_function_display_length = 1152,
     mysql_version_function_display_length = 20,
+    mysql_sum_integer_display_length = 33,
     mysql_json_value_display_character_length = 512,
     mysql_json_type_display_length = 68,
     mysql_temporal_string_function_display_length = 29,
@@ -2299,6 +2300,8 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY = 81,
     PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE = 82,
     PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE = 83,
+    PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR = 84,
+    PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 85,
 };
 
 enum {
@@ -10864,6 +10867,86 @@ static int populate_row_scalar_expression_result_column_descriptor(
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static int populate_row_scalar_source_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select_item *item,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_special_source_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_integer_expression_result_column_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_abs_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_scalar_subquery_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_concat_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_row_scalar_year_result_column_descriptor(
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_conversion_source_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_coalesce_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_row_scalar_searched_case_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int row_scalar_source_string_display_length(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matched,
+    uint64_t *out_display_length
+);
+static int row_scalar_source_binary_display_length(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matched,
+    uint64_t *out_display_length
+);
+static int scalar_binary_literal_byte_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    size_t *out_byte_count
+);
+static bool row_scalar_source_expression_is_string_literal(
+    const struct mylite_sql_ast_node *expression
+);
+static int row_scalar_integer_expression_token_width(
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matched,
+    uint64_t *out_width
+);
+static bool row_scalar_expression_is_date_target_conversion(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_metadata_byte_is_identifier(char byte);
+static bool row_scalar_metadata_text_is_integer(const char *text, size_t text_length);
+static bool row_scalar_descriptor_has_known_type(
+    const struct mylite_result_column_descriptor *descriptor
+);
 static int populate_window_function_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
@@ -19170,6 +19253,24 @@ static int append_row_scalar_select_item(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count
 );
+static int append_row_scalar_wildcard_select_items(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int append_row_scalar_column_select_item(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index
+);
+static int append_planned_row_scalar_select_item(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    struct planned_row_scalar_select_item *item
+);
 static int plan_row_scalar_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -19190,6 +19291,21 @@ static int plan_row_scalar_special_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression,
     bool *out_handled
+);
+static int plan_row_scalar_count_star_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_sum_column_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
 );
 static int normalize_row_scalar_expression(
     struct mylite_db *database,
@@ -20960,6 +21076,11 @@ static bool row_scalar_conversion_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column
 );
 static int plan_row_scalar_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_binary_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     struct planned_row_scalar_expression *out_expression
@@ -23009,6 +23130,10 @@ static int append_row_scalar_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
+);
+static int append_row_scalar_sum_column_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
 );
 static int append_row_scalar_column_sql(
     struct mylite_dynamic_string *string,

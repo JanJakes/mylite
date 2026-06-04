@@ -38,6 +38,8 @@ static int test_no_source_and_dual_concat(void);
 static int test_table_backed_concat(void);
 static int test_table_backed_control_flow(void);
 static int test_table_backed_signed_integer_arithmetic(void);
+static int test_table_backed_wildcard_aggregates_and_constants(void);
+static int test_table_backed_literal_expression_metadata(void);
 static int test_concat_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -62,6 +64,8 @@ static int expect_result_value(
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
 
@@ -72,6 +76,8 @@ int main(void) {
     failures += test_table_backed_concat();
     failures += test_table_backed_control_flow();
     failures += test_table_backed_signed_integer_arithmetic();
+    failures += test_table_backed_wildcard_aggregates_and_constants();
+    failures += test_table_backed_literal_expression_metadata();
     failures += test_concat_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -367,6 +373,18 @@ static int test_table_backed_control_flow(void) {
     static const char *const values_qualified[] = {"2", "x"};
     static const char *const columns_nested[] = {"id", "nested"};
     static const char *const values_nested[] = {"1", "a", "2", "fallback", "3", "a"};
+    static const char *const columns_comparisons[] = {"id", "cmp_gt", "cmp_lt"};
+    static const char *const values_comparisons[] = {
+        "1",
+        "no",
+        "string",
+        "2",
+        "no",
+        "123",
+        "3",
+        "no",
+        "123",
+    };
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_status[] = {"-1", "0"};
     char path[test_path_capacity];
@@ -478,6 +496,18 @@ static int test_table_backed_control_flow(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id, CASE WHEN id > 5 THEN 'yes' ELSE 'no' END AS cmp_gt, "
+                   "CASE WHEN id < 2 THEN 'string' ELSE 123 END AS cmp_lt FROM t ORDER BY id",
+            .columns = columns_comparisons,
+            .column_count = sizeof(columns_comparisons) / sizeof(columns_comparisons[0]),
+            .values = values_comparisons,
+            .row_count = 3U,
+            .context = "control-flow searched CASE integer comparisons",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ROW_COUNT(), @@warning_count",
             .columns = columns_status,
             .column_count = sizeof(columns_status) / sizeof(columns_status[0]),
@@ -534,6 +564,8 @@ static int test_table_backed_signed_integer_arithmetic(void) {
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_status[] = {"-1", "0"};
     static const char *const columns_no_match[] = {"b+2"};
+    static const char *const columns_string_arithmetic[] = {"v+1"};
+    static const char *const values_string_arithmetic[] = {"1", "1", "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -674,13 +706,16 @@ static int test_table_backed_signed_integer_arithmetic(void) {
             .message_part = "signed integer arithmetic projection does not support unsigned",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT v+1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed integer arithmetic projection supports only signed integer",
+        (struct expected_query){
+            .sql = "SELECT v+1 FROM t ORDER BY id",
+            .columns = columns_string_arithmetic,
+            .column_count =
+                sizeof(columns_string_arithmetic) / sizeof(columns_string_arithmetic[0]),
+            .values = values_string_arithmetic,
+            .row_count = 3U,
+            .context = "string column integer arithmetic projection",
         }
     );
     failures += execute_error(
@@ -708,7 +743,282 @@ static int test_table_backed_signed_integer_arithmetic(void) {
     return failures;
 }
 
+static int test_table_backed_wildcard_aggregates_and_constants(void) {
+    static const char *const columns[] = {
+        "id",
+        "label",
+        "row_count",
+        "id_total",
+        "payload",
+        "scalar_one",
+        "cmp_gt",
+        "cmp_lt",
+    };
+    static const char *const values[] = {NULL, NULL, "0", NULL, "hello", "1", "no", "123"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "wildcard-aggregates", path, sizeof(path));
+    failures += execute_ok(database, "CREATE TABLE t(id INT, label VARCHAR(20))", NULL);
+    failures += execute_ok(
+        database,
+        "SELECT *, COUNT(*) AS row_count, SUM(id) AS id_total, "
+        "CAST(X'68656C6C6F' AS BINARY) AS payload, (SELECT 1) AS scalar_one, "
+        "CASE WHEN id > 5 THEN 'yes' ELSE 'no' END AS cmp_gt, "
+        "CASE WHEN id < 5 THEN 'string' ELSE 123 END AS cmp_lt FROM t",
+        &result
+    );
+
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            sizeof(columns) / sizeof(columns[0]),
+            "wildcard aggregate column count"
+        );
+        failures +=
+            expect_size(mylite_result_row_count(result), 1U, "wildcard aggregate row count");
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "wildcard aggregate affected rows"
+        );
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "wildcard aggregate warnings");
+
+        for (size_t column = 0U; column < sizeof(columns) / sizeof(columns[0]); ++column) {
+            failures += expect_text(
+                mylite_result_column_name(result, column),
+                columns[column],
+                "wildcard aggregate column name"
+            );
+            failures +=
+                expect_result_value(result, 0U, column, values[column], "wildcard aggregate value");
+        }
+
+        failures += expect_int(
+            (int)mylite_result_column_type(result, 2U),
+            (int)MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            "COUNT(*) metadata type"
+        );
+        failures += expect_uint64(
+            mylite_result_column_display_length(result, 2U),
+            21U,
+            "COUNT(*) metadata display length"
+        );
+        failures += expect_uint32(
+            mylite_result_column_flags(result, 2U) & MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+            MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+            "COUNT(*) metadata flags"
+        );
+        failures +=
+            expect_int(mylite_result_column_nullable(result, 2U), 0, "COUNT(*) metadata nullable");
+        failures += expect_int(
+            (int)mylite_result_column_type(result, 3U),
+            (int)MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            "SUM(id) metadata type"
+        );
+        failures += expect_uint64(
+            mylite_result_column_display_length(result, 3U),
+            33U,
+            "SUM(id) metadata display length"
+        );
+        failures += expect_uint32(
+            mylite_result_column_flags(result, 3U) & MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+            0U,
+            "SUM(id) metadata flags"
+        );
+        failures +=
+            expect_int(mylite_result_column_nullable(result, 3U), 1, "SUM(id) metadata nullable");
+        failures += expect_int(
+            (int)mylite_result_column_type(result, 4U),
+            (int)MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            "CAST hex binary metadata type"
+        );
+        failures += expect_uint64(
+            mylite_result_column_display_length(result, 4U),
+            5U,
+            "CAST hex binary metadata display length"
+        );
+        failures += expect_uint32(
+            mylite_result_column_flags(result, 4U) & MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            "CAST hex binary metadata flags"
+        );
+        failures += expect_uint64(
+            mylite_result_column_display_length(result, 5U),
+            2U,
+            "scalar subquery metadata display length"
+        );
+        failures += expect_uint64(
+            mylite_result_column_display_length(result, 6U),
+            12U,
+            "string CASE metadata display length"
+        );
+        failures += expect_uint64(
+            mylite_result_column_display_length(result, 7U),
+            24U,
+            "mixed CASE metadata display length"
+        );
+    }
+
+    mylite_result_free(result);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_table_backed_literal_expression_metadata(void) {
+    static const char *const columns[] = {
+        "true_value",
+        "false_value",
+        "one_value",
+        "plus_value",
+        "text_value",
+        "joined_value",
+        "year_value",
+        "date_value",
+        "binary_value",
+        "char_value",
+        "char_not_date",
+        "fallback_value",
+        "case_text",
+        "case_mixed",
+        "abs_value",
+        "scalar_one",
+    };
+    static const char *const values[] = {
+        "1",
+        "0",
+        "1",
+        "2",
+        "abc",
+        "ab",
+        "2025",
+        "2025-01-01",
+        "hello",
+        "123",
+        "AS DATE",
+        "fallback",
+        "no",
+        "string",
+        "7",
+        "1",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "literal-expression-metadata", path, sizeof(path));
+    failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO t VALUES (1)", NULL);
+    failures += execute_ok(
+        database,
+        "SELECT TRUE AS true_value, FALSE AS false_value, 1 AS one_value, "
+        "(1+1) AS plus_value, 'abc' AS text_value, CONCAT('a','b') AS joined_value, "
+        "YEAR('2025-01-01') AS year_value, CAST('2025-01-01' AS DATE) AS date_value, "
+        "CAST(X'68656C6C6F' AS BINARY) AS binary_value, CAST('123' AS CHAR) AS char_value, "
+        "CAST('AS DATE' AS CHAR) AS char_not_date, "
+        "COALESCE(NULL,'fallback') AS fallback_value, "
+        "CASE WHEN id > 5 THEN 'yes' ELSE 'no' END AS case_text, "
+        "CASE WHEN id < 5 THEN 'string' ELSE 123 END AS case_mixed, "
+        "ABS(-7) AS abs_value, (SELECT 1) AS scalar_one FROM t",
+        &result
+    );
+
+    if (failures == 0) {
+        static const enum mylite_result_column_type types[] = {
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_YEAR,
+            MYLITE_RESULT_COLUMN_TYPE_DATE,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+        };
+
+        static const uint64_t display_lengths[] = {
+            1U,
+            1U,
+            2U,
+            3U,
+            12U,
+            8U,
+            4U,
+            10U,
+            5U,
+            12U,
+            28U,
+            32U,
+            12U,
+            24U,
+            2U,
+            2U,
+        };
+
+        failures += expect_size(
+            mylite_result_column_count(result),
+            sizeof(columns) / sizeof(columns[0]),
+            "literal expression metadata column count"
+        );
+        failures += expect_size(
+            mylite_result_row_count(result),
+            1U,
+            "literal expression metadata row count"
+        );
+        for (size_t column = 0U; column < sizeof(columns) / sizeof(columns[0]); ++column) {
+            failures += expect_text(
+                mylite_result_column_name(result, column),
+                columns[column],
+                "literal expression metadata column name"
+            );
+            failures += expect_result_value(
+                result,
+                0U,
+                column,
+                values[column],
+                "literal expression metadata value"
+            );
+            failures += expect_int(
+                (int)mylite_result_column_type(result, column),
+                (int)types[column],
+                "literal expression metadata type"
+            );
+            failures += expect_uint64(
+                mylite_result_column_display_length(result, column),
+                display_lengths[column],
+                "literal expression metadata display length"
+            );
+        }
+        failures += expect_uint32(
+            mylite_result_column_flags(result, 8U) & MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            "literal expression binary CAST flags"
+        );
+    }
+
+    mylite_result_free(result);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_concat_diagnostics(void) {
+    static const char *const arithmetic_columns[] = {"v+1"};
+    static const char *const arithmetic_values[] = {"1"};
+    static const char *const control_flow_columns[] = {"IFNULL(1 + 2, 3)"};
+    static const char *const control_flow_values[] = {"3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -743,13 +1053,15 @@ static int test_concat_diagnostics(void) {
             .message_part = "row-scalar SELECT CONCAT() does not support nested CONCAT()",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CONCAT(v + 1) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT supports only CONCAT()",
+        (struct expected_query){
+            .sql = "SELECT v+1 FROM t",
+            .columns = arithmetic_columns,
+            .column_count = sizeof(arithmetic_columns) / sizeof(arithmetic_columns[0]),
+            .values = arithmetic_values,
+            .row_count = 1U,
+            .context = "string integer arithmetic projection",
         }
     );
     failures += execute_error(
@@ -770,13 +1082,15 @@ static int test_concat_diagnostics(void) {
             .message_part = "IF() row conditions support only integer descriptor columns",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT IFNULL(1 + 2, 3) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT supports only CONCAT()",
+        (struct expected_query){
+            .sql = "SELECT IFNULL(1 + 2, 3) FROM t",
+            .columns = control_flow_columns,
+            .column_count = sizeof(control_flow_columns) / sizeof(control_flow_columns[0]),
+            .values = control_flow_values,
+            .row_count = 1U,
+            .context = "constant control-flow arithmetic projection",
         }
     );
     failures += execute_error(
@@ -971,6 +1285,28 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context) {
 static int expect_size(size_t actual, size_t expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %u, got %u\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %llu, got %llu\n",
+            context,
+            (unsigned long long)expected,
+            (unsigned long long)actual
+        );
         return 1;
     }
     return 0;

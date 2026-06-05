@@ -2097,6 +2097,7 @@ static int append_row_scalar_left_right_expression_sql(
 ) {
     const struct planned_row_scalar_expression *value = NULL;
     const struct planned_row_scalar_expression *length = NULL;
+    bool use_big5_left = false;
     bool use_right = false;
     int rc = MYLITE_OK;
 
@@ -2111,6 +2112,10 @@ static int append_row_scalar_left_right_expression_sql(
     value = &expression->arguments[0];
     length = &expression->arguments[1];
     use_right = expression->string_slice_kind == PLANNED_STRING_SLICE_FUNCTION_RIGHT;
+    use_big5_left =
+        !use_right && value->kind == PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION &&
+        value->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET &&
+        value->conversion_charset != NULL && strcmp(value->conversion_charset, "big5") == 0;
 
     rc = mylite_dynamic_string_append(string, "(CASE WHEN ");
     if (rc == MYLITE_OK) {
@@ -2129,17 +2134,31 @@ static int append_row_scalar_left_right_expression_sql(
         rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, false);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " <= 0 THEN '' ELSE substr(");
+        rc = mylite_dynamic_string_append(string, " <= 0 THEN '' ELSE ");
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && use_big5_left) {
+        rc = mylite_dynamic_string_append(string, "_mylite_left_big5(");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_string_slice_operand_sql(string, value, next_parameter, false);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, false);
+        }
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, "substr(");
+    }
+    if (rc == MYLITE_OK && !use_big5_left) {
         rc = append_row_scalar_string_slice_operand_sql(string, value, next_parameter, false);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !use_big5_left) {
         rc = mylite_dynamic_string_append(string, ", ");
     }
     if (rc == MYLITE_OK && use_right) {
         rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, true);
-    } else if (rc == MYLITE_OK) {
+    } else if (rc == MYLITE_OK && !use_big5_left) {
         rc = mylite_dynamic_string_append(string, "1, ");
         if (rc == MYLITE_OK) {
             rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, false);

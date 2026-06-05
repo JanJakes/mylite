@@ -16,8 +16,10 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    mysql_collation_big5_chinese_ci_id = 1,
     mysql_collation_binary_id = 63,
     mysql_collation_utf8mb3_general_ci_id = 33,
+    mysql_collation_cp1251_general_ci_id = 51,
     mysql_collation_latin1_swedish_ci_id = 8,
     mysql_collation_utf8mb4_0900_ai_ci_id = 255,
     mysql_error_unknown_column = 1054,
@@ -62,6 +64,14 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    const char *context
+);
+static int expect_result_bytes(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const void *expected,
+    size_t expected_size,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -243,6 +253,30 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
     };
     static const char *const nested_columns[] = {"nested"};
     static const char *const nested_values[] = {"ABC", "3.9", NULL};
+    static const char *const nested_charset_columns[] = {"cp", "u4", "b5"};
+    static const char *const nested_charset_values[] = {
+        "abcd",
+        "safe",
+        "abc",
+        "abcd",
+        "safe",
+        "abc",
+        "abcd",
+        "safe",
+        "abc",
+    };
+
+    static const enum mylite_result_column_type nested_charset_types[] = {
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+    };
+
+    static const uint32_t nested_charset_collations[] = {
+        mysql_collation_cp1251_general_ci_id,
+        mysql_collation_utf8mb4_0900_ai_ci_id,
+        mysql_collation_big5_chinese_ci_id,
+    };
     static const char *const predicate_order_columns[] = {"v1", "v2"};
     static const char *const predicate_order_values[] = {"alpha", "alpha", "hello", "hello"};
 
@@ -262,6 +296,7 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
     uint64_t catalog_generation = 0U;
     uint64_t sqlite_schema_generation = 0U;
     mylite_db *database = NULL;
+    mylite_result *byte_result = NULL;
     int failures = 0;
 
     failures += open_populated_database(&database, "values", path, sizeof(path));
@@ -367,6 +402,135 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
             .context = "nested row conversion",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT(LEFT(CONVERT('abcdef' USING cp1251), 4) USING cp1251) AS cp, "
+                   "CONVERT(CONVERT('safe' USING cp1251) USING utf8mb4) AS u4, "
+                   "CONVERT(LEFT(CONVERT('abcdef' USING BINARY), 3) USING big5) AS b5 "
+                   "FROM t ORDER BY id",
+            .columns = nested_charset_columns,
+            .column_count = sizeof(nested_charset_columns) / sizeof(nested_charset_columns[0]),
+            .values = nested_charset_values,
+            .types = nested_charset_types,
+            .collation_ids = nested_charset_collations,
+            .row_count = 3U,
+            .context = "nested row charset conversion with string slice",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('\375ord\362ress' USING koi8r), 4) USING koi8r) AS k "
+        "FROM t WHERE id = 1",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_koi8r_bytes[] = {0xfd, 'o', 'r', 'd'};
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_koi8r_bytes,
+            sizeof(expected_koi8r_bytes),
+            "nested row charset conversion preserves invalid single-byte text"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(CONVERT('\330ord\320ress' USING cp1251) USING cp1251) AS cp",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_cp1251_bytes[] = {
+            0xd8,
+            'o',
+            'r',
+            'd',
+            0xd0,
+            'r',
+            'e',
+            's',
+            's',
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_cp1251_bytes,
+            sizeof(expected_cp1251_bytes),
+            "nested scalar charset conversion preserves invalid single-byte text"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('a\252@ba\252@ba\252@ba\252@b' USING big5), 10) "
+        "USING big5) AS b FROM t WHERE id = 1",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_big5_char_bytes[] = {
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_big5_char_bytes,
+            sizeof(expected_big5_char_bytes),
+            "nested row Big5 charset conversion truncates by characters"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('a\252@ba\252@ba\252@ba\252@b' USING binary), 10) "
+        "USING big5) AS b FROM t WHERE id = 1",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_big5_byte_bytes[] = {
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_big5_byte_bytes,
+            sizeof(expected_big5_byte_bytes),
+            "nested row Big5 charset conversion trims partial byte character"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
     failures += expect_query(
         database,
         (struct expected_query){
@@ -789,6 +953,24 @@ static int expect_result_value(
     const char *actual = mylite_result_value_text(result, row, column);
 
     return expect_text(actual, expected, context);
+}
+
+static int expect_result_bytes(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const void *expected,
+    size_t expected_size,
+    const char *context
+) {
+    const void *actual = mylite_result_value_bytes(result, row, column);
+    int failures = 0;
+
+    failures += expect_size(mylite_result_value_size(result, row, column), expected_size, context);
+    if (failures == 0) {
+        failures += expect_bytes(actual, expected, expected_size, context);
+    }
+    return failures;
 }
 
 static int make_test_path(char *path, size_t path_size, const char *name) {

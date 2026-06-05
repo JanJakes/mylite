@@ -3982,6 +3982,7 @@ static int validate_set_names_collation_target(
 );
 static int set_session_connection_character_set(
     struct mylite_db *database,
+    const char *charset_name,
     const char *collation_name
 );
 static int apply_set_statement(
@@ -8788,7 +8789,6 @@ static int decode_table_option_string_literal(
     size_t *out_name_length,
     struct table_option_name_policy policy
 );
-static const struct mylite_execution_catalog_collation *utf8mb4_collation_by_name(const char *name);
 static const struct mylite_execution_catalog_character_set *character_set_by_name(const char *name);
 static const struct mylite_execution_catalog_collation *collation_by_name(const char *name);
 static bool charset_name_is_binary(const char *name);

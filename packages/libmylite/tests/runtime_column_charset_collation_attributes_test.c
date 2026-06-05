@@ -32,9 +32,13 @@ enum {
     mysql_error_unknown_character_set = 1115,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
+    mysql_collation_big5_chinese_ci_id = 1,
+    mysql_collation_cp1251_general_ci_id = 51,
     mysql_collation_binary_id = 63,
     mysql_collation_ascii_general_ci_id = 11,
     mysql_collation_ascii_bin_id = 65,
+    mysql_collation_utf8mb3_bin_id = 83,
+    mysql_collation_utf8mb3_unicode_ci_id = 192,
     mysql_collation_utf8mb4_bin_id = 46,
     mysql_collation_utf8mb4_unicode_ci_id = 224,
     mysql_collation_utf8mb4_unicode_520_ci_id = 246,
@@ -59,6 +63,7 @@ struct expected_query {
 static int test_column_charset_collation_metadata_lifecycle(void);
 static int test_binary_column_charset_collation_normalization(void);
 static int test_ascii_column_charset_collation_metadata(void);
+static int test_wordpress_legacy_charset_metadata(void);
 static int test_column_charset_collation_diagnostics(void);
 static int expect_column_character_metadata(
     mylite_db *database,
@@ -101,6 +106,7 @@ int main(void) {
     failures += test_column_charset_collation_metadata_lifecycle();
     failures += test_binary_column_charset_collation_normalization();
     failures += test_ascii_column_charset_collation_metadata();
+    failures += test_wordpress_legacy_charset_metadata();
     failures += test_column_charset_collation_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -636,6 +642,123 @@ static int test_ascii_column_charset_collation_metadata(void) {
         ascii_metadata,
         ascii_attrs_column_count,
         "reopened ascii column charset metadata"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_wordpress_legacy_charset_metadata(void) {
+    static const char *const legacy_metadata[] = {
+        "a", "big5",    "big5_chinese_ci",
+        "b", "latin1",  "latin1_swedish_ci",
+        "c", "koi8r",   "koi8r_general_ci",
+        "d", "utf8mb3", "utf8mb3_bin",
+        "e", "utf8mb3", "utf8mb3_unicode_ci",
+    };
+    static const char *const table_default_metadata[] = {
+        "a",
+        "cp1251",
+        "cp1251_general_ci",
+    };
+    static const char *const set_utf8_values[] = {
+        "utf8mb3",
+        "utf8mb3",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+    };
+    static const char *const set_cp1251_values[] = {
+        "cp1251",
+        "cp1251",
+        "cp1251",
+        "cp1251_general_ci",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "wordpress-legacy") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open wordpress charset file");
+    failures += execute_affected_ok(database, "CREATE DATABASE app", 1);
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE wp_legacy("
+        "a VARCHAR(50) CHARACTER SET big5, "
+        "b TEXT CHARACTER SET latin1, "
+        "c VARCHAR(50) CHARACTER SET koi8r, "
+        "d VARCHAR(50) COLLATE utf8_bin, "
+        "e VARCHAR(50) COLLATE utf8_unicode_ci"
+        ")"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "wp_legacy",
+        legacy_metadata,
+        5U,
+        "wordpress legacy column charset metadata"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE wp_legacy",
+        "`d` varchar(50) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE wp_legacy",
+        "`e` varchar(50) CHARACTER SET utf8mb3 COLLATE utf8mb3_unicode_ci"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE wp_cp1251_default(a VARCHAR(50)) DEFAULT CHARSET 'cp1251'"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "wp_cp1251_default",
+        table_default_metadata,
+        1U,
+        "wordpress cp1251 default column metadata"
+    );
+    failures += execute_statement_ok(database, "SET NAMES utf8 COLLATE utf8_general_ci");
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@character_set_connection, "
+                   "@@character_set_results, @@collation_connection",
+            .values = set_utf8_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "set names utf8 alias metadata",
+        }
+    );
+    failures += execute_statement_ok(database, "SET NAMES cp1251");
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@character_set_connection, "
+                   "@@character_set_results, @@collation_connection",
+            .values = set_cp1251_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "set names cp1251 metadata",
+        }
+    );
+    failures += execute_statement_ok(database, "SET NAMES utf8mb4");
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('safe' USING cp1251), CONVERT('safe' USING big5), "
+                   "CONVERT('safe' USING ujis)",
+            .values = (const char *const[]){"safe", "safe", "safe"},
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "wordpress legacy scalar charset conversion passthrough",
+        }
     );
 
     mylite_close(database);

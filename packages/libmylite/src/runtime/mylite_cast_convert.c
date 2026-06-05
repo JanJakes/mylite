@@ -28,6 +28,13 @@ enum mylite_cast_integer_target {
     MYLITE_CAST_INTEGER_UNSIGNED = 1,
 };
 
+enum mylite_cast_text_conversion_mode {
+    MYLITE_CAST_TEXT_CONVERSION_TEXT = 0,
+    MYLITE_CAST_TEXT_CONVERSION_TEXT_ASCII = 1,
+    MYLITE_CAST_TEXT_CONVERSION_BYTES = 2,
+    MYLITE_CAST_TEXT_CONVERSION_BYTES_BIG5 = 3,
+};
+
 struct row_integer_cast_parse {
     bool is_negative;
     bool saw_digits;
@@ -54,8 +61,14 @@ struct row_integer_cast_digit_scan {
     uint64_t limit;
 };
 
-static const bool text_conversion_all_bytes = false;
-static const bool text_conversion_ascii_only = true;
+static const enum mylite_cast_text_conversion_mode text_conversion_text =
+    MYLITE_CAST_TEXT_CONVERSION_TEXT;
+static const enum mylite_cast_text_conversion_mode text_conversion_text_ascii =
+    MYLITE_CAST_TEXT_CONVERSION_TEXT_ASCII;
+static const enum mylite_cast_text_conversion_mode text_conversion_bytes =
+    MYLITE_CAST_TEXT_CONVERSION_BYTES;
+static const enum mylite_cast_text_conversion_mode text_conversion_bytes_big5 =
+    MYLITE_CAST_TEXT_CONVERSION_BYTES_BIG5;
 static const enum mylite_cast_integer_target signed_integer_target = MYLITE_CAST_INTEGER_SIGNED;
 static const enum mylite_cast_integer_target unsigned_integer_target = MYLITE_CAST_INTEGER_UNSIGNED;
 
@@ -64,8 +77,18 @@ static void text_conversion_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void left_big5_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void integer_cast_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
-static void text_conversion_value(sqlite3_context *context, sqlite3_value *value, bool ascii_only);
+static void text_conversion_value(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    enum mylite_cast_text_conversion_mode mode
+);
+static void left_big5_value(sqlite3_context *context, sqlite3_value *value, sqlite3_value *length);
+static int big5_left_byte_count(const unsigned char *text, int text_length, int64_t char_length);
+static int big5_complete_prefix_byte_count(const unsigned char *text, int text_length);
+static bool big5_byte_is_lead(unsigned char byte);
+static int big5_trim_trailing_partial_character(const unsigned char *text, int text_length);
 static void integer_cast_value(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -118,7 +141,7 @@ int mylite_sqlite_register_cast_convert_functions(sqlite3 *sqlite) {
             .name = "_mylite_cast_convert_text",
             .argument_count = 1,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
-            .application_data = (void *)&text_conversion_all_bytes,
+            .application_data = (void *)&text_conversion_text,
             .scalar_callback = text_conversion_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
@@ -131,8 +154,47 @@ int mylite_sqlite_register_cast_convert_functions(sqlite3 *sqlite) {
             .name = "_mylite_cast_convert_text_ascii",
             .argument_count = 1,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
-            .application_data = (void *)&text_conversion_ascii_only,
+            .application_data = (void *)&text_conversion_text_ascii,
             .scalar_callback = text_conversion_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_cast_convert_bytes",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = (void *)&text_conversion_bytes,
+            .scalar_callback = text_conversion_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_cast_convert_bytes_big5",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = (void *)&text_conversion_bytes_big5,
+            .scalar_callback = text_conversion_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_left_big5",
+            .argument_count = 2,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = left_big5_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -179,19 +241,27 @@ static void text_conversion_sqlite_callback(
     int argc,
     sqlite3_value **argv
 ) {
-    const bool *ascii_only = NULL;
+    const enum mylite_cast_text_conversion_mode *mode = NULL;
 
     if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
         sqlite3_result_error(context, "invalid MyLite CAST/CONVERT text callback", -1);
         return;
     }
 
-    ascii_only = (const bool *)sqlite3_user_data(context);
-    if (ascii_only == NULL) {
+    mode = (const enum mylite_cast_text_conversion_mode *)sqlite3_user_data(context);
+    if (mode == NULL) {
         sqlite3_result_error(context, "invalid MyLite CAST/CONVERT text configuration", -1);
         return;
     }
-    text_conversion_value(context, argv[0], *ascii_only);
+    text_conversion_value(context, argv[0], *mode);
+}
+
+static void left_big5_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (context == NULL || argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite Big5 LEFT callback", -1);
+        return;
+    }
+    left_big5_value(context, argv[0], argv[1]);
 }
 
 static void integer_cast_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -210,7 +280,11 @@ static void integer_cast_sqlite_callback(sqlite3_context *context, int argc, sql
     integer_cast_value(context, argv[0], *target);
 }
 
-static void text_conversion_value(sqlite3_context *context, sqlite3_value *value, bool ascii_only) {
+static void text_conversion_value(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    enum mylite_cast_text_conversion_mode mode
+) {
     const unsigned char *text = NULL;
     int text_length = 0;
 
@@ -219,13 +293,13 @@ static void text_conversion_value(sqlite3_context *context, sqlite3_value *value
         return;
     }
 
-    text = sqlite3_value_text(value);
+    text = sqlite3_value_blob(value);
     text_length = sqlite3_value_bytes(value);
-    if (text == NULL || text_length < 0) {
+    if ((text == NULL && text_length != 0) || text_length < 0) {
         sqlite3_result_error_nomem(context);
         return;
     }
-    if (ascii_only) {
+    if (mode == MYLITE_CAST_TEXT_CONVERSION_TEXT_ASCII) {
         for (int index = 0; index < text_length; ++index) {
             if (text[index] > utf8_ascii_max) {
                 sqlite3_result_error(
@@ -238,7 +312,97 @@ static void text_conversion_value(sqlite3_context *context, sqlite3_value *value
         }
     }
 
-    sqlite3_result_text(context, (const char *)text, text_length, SQLITE_TRANSIENT);
+    if (mode == MYLITE_CAST_TEXT_CONVERSION_BYTES ||
+        mode == MYLITE_CAST_TEXT_CONVERSION_BYTES_BIG5) {
+        const unsigned char *result = text == NULL ? (const unsigned char *)"" : text;
+        int result_length = text_length;
+
+        if (mode == MYLITE_CAST_TEXT_CONVERSION_BYTES_BIG5) {
+            result_length = big5_trim_trailing_partial_character(text, text_length);
+        }
+        sqlite3_result_blob(context, result, result_length, SQLITE_TRANSIENT);
+        return;
+    }
+    sqlite3_result_text(
+        context,
+        text == NULL ? "" : (const char *)text,
+        text_length,
+        SQLITE_TRANSIENT
+    );
+}
+
+static void left_big5_value(sqlite3_context *context, sqlite3_value *value, sqlite3_value *length) {
+    const unsigned char *text = NULL;
+    int text_length = 0;
+    sqlite3_int64 char_length = 0;
+    int result_length = 0;
+
+    if (sqlite3_value_type(value) == SQLITE_NULL || sqlite3_value_type(length) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    text = sqlite3_value_blob(value);
+    text_length = sqlite3_value_bytes(value);
+    if ((text == NULL && text_length != 0) || text_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    char_length = sqlite3_value_int64(length);
+    if (char_length <= 0) {
+        sqlite3_result_blob(context, "", 0, SQLITE_STATIC);
+        return;
+    }
+    result_length = big5_left_byte_count(text, text_length, char_length);
+    sqlite3_result_blob(
+        context,
+        text == NULL ? "" : (const char *)text,
+        result_length,
+        SQLITE_TRANSIENT
+    );
+}
+
+static int big5_left_byte_count(const unsigned char *text, int text_length, int64_t char_length) {
+    int offset = 0;
+    int64_t characters = 0;
+
+    while (offset < text_length && characters < char_length) {
+        if (big5_byte_is_lead(text[offset]) && offset + 1 < text_length) {
+            offset += 2;
+        } else {
+            ++offset;
+        }
+        ++characters;
+    }
+    return offset;
+}
+
+static bool big5_byte_is_lead(unsigned char byte) {
+    return byte >= 0x81U && byte <= 0xfeU;
+}
+
+static int big5_complete_prefix_byte_count(const unsigned char *text, int text_length) {
+    int offset = 0;
+
+    while (offset < text_length) {
+        if (big5_byte_is_lead(text[offset])) {
+            if (offset + 1 >= text_length) {
+                return offset;
+            }
+            offset += 2;
+        } else {
+            ++offset;
+        }
+    }
+    return offset;
+}
+
+static int big5_trim_trailing_partial_character(const unsigned char *text, int text_length) {
+    if (text == NULL || text_length <= 0) {
+        return text_length;
+    }
+    return big5_complete_prefix_byte_count(text, text_length);
 }
 
 static void integer_cast_value(

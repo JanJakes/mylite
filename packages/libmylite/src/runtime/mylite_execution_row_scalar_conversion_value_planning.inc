@@ -415,6 +415,31 @@ static int plan_row_scalar_conversion_argument(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
+    if (row_scalar_conversion_kind_from_expression(expression) !=
+        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+        return plan_row_scalar_conversion_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (mylite_execution_string_slice_function_kind(expression->kind) !=
+        PLANNED_STRING_SLICE_FUNCTION_NONE) {
+        return plan_row_scalar_string_slice_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE ||

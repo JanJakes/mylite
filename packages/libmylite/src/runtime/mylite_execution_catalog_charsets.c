@@ -5,20 +5,42 @@
 #include <string.h>
 
 enum {
+    mysql_collation_big5_chinese_ci_id = 1,
+    mysql_collation_koi8r_general_ci_id = 7,
     mysql_collation_binary_id = 63,
-    mysql_collation_utf8mb3_general_ci_id = 33,
-    mysql_collation_utf8mb3_bin_id = 83,
     mysql_collation_latin1_swedish_ci_id = 8,
+    mysql_collation_ujis_japanese_ci_id = 12,
+    mysql_collation_hebrew_general_ci_id = 16,
+    mysql_collation_tis620_thai_ci_id = 18,
+    mysql_collation_utf8mb3_general_ci_id = 33,
     mysql_collation_latin1_bin_id = 47,
+    mysql_collation_cp1251_general_ci_id = 51,
+    mysql_collation_utf8mb3_bin_id = 83,
+    mysql_collation_utf8mb3_unicode_ci_id = 192,
     mysql_collation_utf8mb4_0900_ai_ci_id = 255,
+};
+
+struct mylite_catalog_name_alias {
+    const char *alias;
+    const char *canonical;
 };
 
 static bool catalog_text_equals_ascii_case_insensitive(const char *left, const char *right);
 static char catalog_ascii_lower(char byte);
+static const char *canonical_character_set_name_for_lookup(const char *name);
+static const char *canonical_collation_name_for_lookup(const char *name);
 
 static const struct mylite_execution_catalog_character_set supported_character_sets[] = {
     {"binary", "binary", "Binary pseudo charset", "1"},
     {"ascii", "ascii_general_ci", "US ASCII", "1"},
+    {"big5", "big5_chinese_ci", "Big5 Traditional Chinese", "2"},
+    {"cp1251", "cp1251_general_ci", "Windows Cyrillic", "1"},
+    {"hebrew", "hebrew_general_ci", "ISO 8859-8 Hebrew", "1"},
+    {"koi8r", "koi8r_general_ci", "KOI8-R Relcom Russian", "1"},
+    {"latin1", "latin1_swedish_ci", "cp1252 West European", "1"},
+    {"tis620", "tis620_thai_ci", "TIS620 Thai", "1"},
+    {"ujis", "ujis_japanese_ci", "EUC-JP Japanese", "3"},
+    {"utf8mb3", "utf8mb3_general_ci", "UTF-8 Unicode", "3"},
     {"utf8mb4", "utf8mb4_0900_ai_ci", "UTF-8 Unicode", "4"},
 };
 
@@ -70,6 +92,17 @@ static const struct mylite_execution_catalog_collation supported_collations[] = 
     {"binary", "binary", "63", "Yes", "Yes", "1", "NO PAD"},
     {"ascii_bin", "ascii", "65", "", "Yes", "1", "PAD SPACE"},
     {"ascii_general_ci", "ascii", "11", "Yes", "Yes", "1", "PAD SPACE"},
+    {"big5_chinese_ci", "big5", "1", "Yes", "Yes", "1", "PAD SPACE"},
+    {"cp1251_general_ci", "cp1251", "51", "Yes", "Yes", "1", "PAD SPACE"},
+    {"hebrew_general_ci", "hebrew", "16", "Yes", "Yes", "1", "PAD SPACE"},
+    {"koi8r_general_ci", "koi8r", "7", "Yes", "Yes", "1", "PAD SPACE"},
+    {"latin1_swedish_ci", "latin1", "8", "Yes", "Yes", "1", "PAD SPACE"},
+    {"latin1_bin", "latin1", "47", "", "Yes", "1", "PAD SPACE"},
+    {"tis620_thai_ci", "tis620", "18", "Yes", "Yes", "4", "PAD SPACE"},
+    {"ujis_japanese_ci", "ujis", "12", "Yes", "Yes", "1", "PAD SPACE"},
+    {"utf8mb3_general_ci", "utf8mb3", "33", "Yes", "Yes", "1", "PAD SPACE"},
+    {"utf8mb3_bin", "utf8mb3", "83", "", "Yes", "1", "PAD SPACE"},
+    {"utf8mb3_unicode_ci", "utf8mb3", "192", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_general_ci", "utf8mb4", "45", "", "Yes", "1", "PAD SPACE"},
     {"utf8mb4_bin", "utf8mb4", "46", "", "Yes", "1", "PAD SPACE"},
     {"utf8mb4_unicode_ci", "utf8mb4", "224", "", "Yes", "8", "PAD SPACE"},
@@ -371,16 +404,33 @@ static const struct mylite_execution_catalog_scalar_collation scalar_supported_c
     {"binary", "binary", mysql_collation_binary_id},
     {"ascii_bin", "ascii", 65},
     {"ascii_general_ci", "ascii", 11},
+    {"big5_chinese_ci", "big5", mysql_collation_big5_chinese_ci_id},
+    {"cp1251_general_ci", "cp1251", mysql_collation_cp1251_general_ci_id},
+    {"hebrew_general_ci", "hebrew", mysql_collation_hebrew_general_ci_id},
+    {"koi8r_general_ci", "koi8r", mysql_collation_koi8r_general_ci_id},
+    {"latin1_swedish_ci", "latin1", mysql_collation_latin1_swedish_ci_id},
+    {"latin1_bin", "latin1", mysql_collation_latin1_bin_id},
+    {"tis620_thai_ci", "tis620", mysql_collation_tis620_thai_ci_id},
+    {"ujis_japanese_ci", "ujis", mysql_collation_ujis_japanese_ci_id},
+    {"utf8mb3_general_ci", "utf8mb3", mysql_collation_utf8mb3_general_ci_id},
+    {"utf8mb3_bin", "utf8mb3", mysql_collation_utf8mb3_bin_id},
+    {"utf8mb3_unicode_ci", "utf8mb3", mysql_collation_utf8mb3_unicode_ci_id},
     {"utf8mb4_general_ci", "utf8mb4", 45},
     {"utf8mb4_bin", "utf8mb4", 46},
     {"utf8mb4_unicode_ci", "utf8mb4", 224},
     {"utf8mb4_unicode_520_ci", "utf8mb4", 246},
     {"utf8mb4_0900_ai_ci", "utf8mb4", mysql_collation_utf8mb4_0900_ai_ci_id},
     {"utf8mb4_0900_bin", "utf8mb4", 309},
-    {"utf8mb3_general_ci", "utf8mb3", mysql_collation_utf8mb3_general_ci_id},
-    {"utf8mb3_bin", "utf8mb3", mysql_collation_utf8mb3_bin_id},
-    {"latin1_swedish_ci", "latin1", mysql_collation_latin1_swedish_ci_id},
-    {"latin1_bin", "latin1", mysql_collation_latin1_bin_id},
+};
+
+static const struct mylite_catalog_name_alias character_set_aliases[] = {
+    {"utf8", "utf8mb3"},
+};
+
+static const struct mylite_catalog_name_alias collation_aliases[] = {
+    {"utf8_bin", "utf8mb3_bin"},
+    {"utf8_general_ci", "utf8mb3_general_ci"},
+    {"utf8_unicode_ci", "utf8mb3_unicode_ci"},
 };
 
 static bool catalog_text_equals_ascii_case_insensitive(const char *left, const char *right) {
@@ -404,9 +454,32 @@ static char catalog_ascii_lower(char byte) {
     return byte;
 }
 
+static const char *canonical_character_set_name_for_lookup(const char *name) {
+    for (size_t index = 0U;
+         index < sizeof(character_set_aliases) / sizeof(character_set_aliases[0]);
+         ++index) {
+        if (catalog_text_equals_ascii_case_insensitive(name, character_set_aliases[index].alias)) {
+            return character_set_aliases[index].canonical;
+        }
+    }
+    return name;
+}
+
+static const char *canonical_collation_name_for_lookup(const char *name) {
+    for (size_t index = 0U; index < sizeof(collation_aliases) / sizeof(collation_aliases[0]);
+         ++index) {
+        if (catalog_text_equals_ascii_case_insensitive(name, collation_aliases[index].alias)) {
+            return collation_aliases[index].canonical;
+        }
+    }
+    return name;
+}
+
 const struct mylite_execution_catalog_character_set *mylite_execution_catalog_character_set_by_name(
     const char *name
 ) {
+    const char *lookup_name = canonical_character_set_name_for_lookup(name);
+
     if (name == NULL) {
         return NULL;
     }
@@ -414,7 +487,7 @@ const struct mylite_execution_catalog_character_set *mylite_execution_catalog_ch
          index < sizeof(supported_character_sets) / sizeof(supported_character_sets[0]);
          ++index) {
         if (catalog_text_equals_ascii_case_insensitive(
-                name,
+                lookup_name,
                 supported_character_sets[index].name
             )) {
             return &supported_character_sets[index];
@@ -426,12 +499,17 @@ const struct mylite_execution_catalog_character_set *mylite_execution_catalog_ch
 const struct mylite_execution_catalog_collation *mylite_execution_catalog_collation_by_name(
     const char *name
 ) {
+    const char *lookup_name = canonical_collation_name_for_lookup(name);
+
     if (name == NULL) {
         return NULL;
     }
     for (size_t index = 0U; index < sizeof(supported_collations) / sizeof(supported_collations[0]);
          ++index) {
-        if (catalog_text_equals_ascii_case_insensitive(name, supported_collations[index].name)) {
+        if (catalog_text_equals_ascii_case_insensitive(
+                lookup_name,
+                supported_collations[index].name
+            )) {
             return &supported_collations[index];
         }
     }
@@ -457,6 +535,8 @@ const struct mylite_execution_catalog_collation *mylite_execution_catalog_utf8mb
 const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog_scalar_collation_info_by_name(
     const char *collation_name
 ) {
+    const char *lookup_name = canonical_collation_name_for_lookup(collation_name);
+
     if (collation_name == NULL) {
         return NULL;
     }
@@ -464,7 +544,7 @@ const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog
          index < sizeof(scalar_supported_collations) / sizeof(scalar_supported_collations[0]);
          ++index) {
         if (catalog_text_equals_ascii_case_insensitive(
-                collation_name,
+                lookup_name,
                 scalar_supported_collations[index].collation
             )) {
             return &scalar_supported_collations[index];

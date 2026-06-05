@@ -1777,12 +1777,6 @@ static int append_decoded_table_option_name_escape(
     }
 }
 
-static const struct mylite_execution_catalog_collation *utf8mb4_collation_by_name(
-    const char *name
-) {
-    return mylite_execution_catalog_utf8mb4_collation_by_name(name);
-}
-
 static const struct mylite_execution_catalog_character_set *character_set_by_name(
     const char *name
 ) {

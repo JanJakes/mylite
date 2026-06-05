@@ -1171,6 +1171,7 @@ static bool column_effective_collation_is_binary(
     return (collation_name != NULL &&
             (text_equals_ascii_case_insensitive(collation_name, "utf8mb4_bin") ||
              text_equals_ascii_case_insensitive(collation_name, "utf8mb4_0900_bin") ||
+             text_equals_ascii_case_insensitive(collation_name, "utf8mb3_bin") ||
              text_equals_ascii_case_insensitive(collation_name, "ascii_bin"))) != 0;
 }
 

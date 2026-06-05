@@ -792,11 +792,11 @@ static int test_charset_collation_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unsupported_charset (id INT) DEFAULT CHARSET=latin1",
+        "CREATE TABLE unsupported_charset (id INT) DEFAULT CHARSET=latin2",
         (struct expected_sql_error){
             .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
-            .message_part = "Unknown character set: 'latin1'",
+            .message_part = "Unknown character set: 'latin2'",
         }
     );
     failures += execute_error(

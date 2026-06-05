@@ -612,6 +612,9 @@ static int append_row_scalar_conversion_base_expression_sql(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
@@ -649,7 +652,6 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
     case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -686,7 +688,6 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -719,10 +720,20 @@ static const char *row_scalar_conversion_sql_function_name(
         if (step->ascii_only) {
             return "_mylite_cast_convert_text_ascii";
         }
-        return "_mylite_cast_convert_text";
+        if (step->charset != NULL && (strcmp(step->charset, "ascii") == 0 ||
+                                      strcmp(step->charset, "ujis") == 0 ||
+                                      strcmp(step->charset, "utf8mb3") == 0 ||
+                                      strcmp(step->charset, "utf8mb4") == 0)) {
+            return "_mylite_cast_convert_text";
+        }
+        if (step->charset != NULL && strcmp(step->charset, "big5") == 0) {
+            return "_mylite_cast_convert_bytes_big5";
+        }
+        return "_mylite_cast_convert_bytes";
     case PLANNED_ROW_SCALAR_CONVERSION_BINARY:
-    case PLANNED_ROW_SCALAR_CONVERSION_CHAR:
     case PLANNED_ROW_SCALAR_CONVERSION_USING_BINARY:
+        return "_mylite_cast_convert_bytes";
+    case PLANNED_ROW_SCALAR_CONVERSION_CHAR:
         return "_mylite_cast_convert_text";
     case PLANNED_ROW_SCALAR_CONVERSION_NONE:
         break;

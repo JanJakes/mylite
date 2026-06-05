@@ -367,6 +367,18 @@ static int plan_row_scalar_string_slice_value_argument(
         );
         return MYLITE_ERROR;
     }
+    if (row_scalar_conversion_kind_from_expression(expression) !=
+        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+        return plan_row_scalar_conversion_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,

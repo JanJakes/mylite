@@ -53,6 +53,7 @@ static bool information_schema_column_uses_case_insensitive_collation(
     }
     if (text_equals_ascii_case_insensitive(collation, "utf8mb3_general_ci") ||
         text_equals_ascii_case_insensitive(collation, "utf8mb3_tolower_ci") ||
+        text_equals_ascii_case_insensitive(collation, "utf8mb3_unicode_ci") ||
         text_equals_ascii_case_insensitive(collation, "utf8mb4_0900_ai_ci") ||
         text_equals_ascii_case_insensitive(collation, "utf8mb4_general_ci") ||
         text_equals_ascii_case_insensitive(collation, "utf8mb4_unicode_ci") ||

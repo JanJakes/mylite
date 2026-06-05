@@ -389,7 +389,7 @@ static int convert_using_charset_value(
         return rc;
     }
 
-    value_length = strlen(out_cell->value);
+    value_length = scalar_cell_text_length(out_cell);
     for (size_t index = 0U; index < value_length; ++index) {
         if (((const unsigned char *)out_cell->value)[index] > utf8_ascii_max) {
             session_scalar_cell_deinit(out_cell);
@@ -545,6 +545,60 @@ static int scalar_convert_charset_info_by_name(
             .charset = "latin1",
             .collation = "latin1_swedish_ci",
             .ascii_only_value = true,
+            .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
+        };
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(charset_name, "big5")) {
+        *out_info = (struct scalar_convert_charset_info){
+            .charset = "big5",
+            .collation = "big5_chinese_ci",
+            .ascii_only_value = false,
+            .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
+        };
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(charset_name, "cp1251")) {
+        *out_info = (struct scalar_convert_charset_info){
+            .charset = "cp1251",
+            .collation = "cp1251_general_ci",
+            .ascii_only_value = false,
+            .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
+        };
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(charset_name, "hebrew")) {
+        *out_info = (struct scalar_convert_charset_info){
+            .charset = "hebrew",
+            .collation = "hebrew_general_ci",
+            .ascii_only_value = false,
+            .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
+        };
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(charset_name, "koi8r")) {
+        *out_info = (struct scalar_convert_charset_info){
+            .charset = "koi8r",
+            .collation = "koi8r_general_ci",
+            .ascii_only_value = false,
+            .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
+        };
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(charset_name, "tis620")) {
+        *out_info = (struct scalar_convert_charset_info){
+            .charset = "tis620",
+            .collation = "tis620_thai_ci",
+            .ascii_only_value = false,
+            .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
+        };
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(charset_name, "ujis")) {
+        *out_info = (struct scalar_convert_charset_info){
+            .charset = "ujis",
+            .collation = "ujis_japanese_ci",
+            .ascii_only_value = false,
             .warning = SCALAR_CONVERT_CHARSET_WARNING_NONE,
         };
         return MYLITE_OK;
@@ -1182,6 +1236,22 @@ static int scalar_text_conversion_input_value(
         set_unsupported_error(database, messages->unsupported);
         return MYLITE_ERROR;
     }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+        return cast_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+        return cast_char_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+        return convert_binary_type_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+        return convert_char_type_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        return convert_using_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        return convert_using_charset_value(database, expression, out_cell);
+    default:
+        break;
+    }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
 
@@ -1218,6 +1288,8 @@ static int scalar_text_conversion_input_value(
         (void)text_length;
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->owned_text;
+            out_cell->value_size = text_length;
+            out_cell->has_value_size = true;
         }
         return rc;
     }

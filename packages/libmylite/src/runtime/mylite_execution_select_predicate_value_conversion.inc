@@ -118,6 +118,12 @@ static int convert_predicate_exact_integer_string_literal(
         &magnitude,
         &is_negative
     );
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID &&
+        value_start == value_end) {
+        parse_result = MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK;
+        magnitude = 0U;
+        is_negative = false;
+    }
     if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK) {
         set_unsupported_error(
             database,

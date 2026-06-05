@@ -52,7 +52,9 @@ column_reference IS NOT NULL
 `integer_or_boolean_value` is an unsigned decimal integer literal in the
 current descriptor range, optionally prefixed by unary `+` or `-`, an exact
 quoted signed integer string with optional leading and trailing ASCII
-whitespace, or `TRUE` / `FALSE`. Boolean literals convert to `1` and `0`.
+whitespace, an empty or ASCII-whitespace-only quoted string that MySQL treats as
+integer zero for descriptor integer comparisons, or `TRUE` / `FALSE`. Boolean
+literals convert to `1` and `0`.
 
 The feature applies to the existing statement families that already call the
 shared descriptor-backed `WHERE` planner:
@@ -211,6 +213,8 @@ Each comparison atom reuses the existing MyLite-owned predicate conversion:
   range, limited by the current signed-64 SQLite physical storage envelope
   where applicable;
 - `TRUE` and `FALSE` convert to `1` and `0`;
+- empty or ASCII-whitespace-only quoted strings convert to `0` without a
+  warning in descriptor integer predicates, matching MySQL's observed behavior;
 - out-of-range predicate literals produce the current MyLite predicate range
   diagnostic for the referenced descriptor column;
 - `IS NULL` and `IS NOT NULL` require no bound literal.

@@ -230,6 +230,18 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "empty quoted integer in predicate" \
+    "4" \
+    "SELECT id FROM numbers WHERE i IN ('') ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "empty quoted integer grouped predicate" \
+    "2	1" \
+    "SELECT tie, COUNT(*) FROM numbers WHERE i IN ('') GROUP BY tie ORDER BY tie;" \
+    "$DATABASE"
+
+expect_output \
     "create table select source conjunction" \
     "2:1:9" \
     "DROP TABLE IF EXISTS copy_numbers; "\

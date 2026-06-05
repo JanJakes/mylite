@@ -9,8 +9,8 @@ descriptor-driven predicate tree, including comparisons, `IS NULL`, keyword
 
 The implementation is intentionally narrow. It supports one descriptor column
 on the left side and a nonempty list of supported integer, exact quoted integer
-string, boolean, or `NULL` literal values. It does not introduce general
-expression evaluation or subqueries.
+string, empty quoted string, boolean, or `NULL` literal values. It does not
+introduce general expression evaluation or subqueries.
 
 ## Sources
 
@@ -63,6 +63,7 @@ integer_literal
 + integer_literal
 - integer_literal
 exact_integer_string_literal
+empty_or_ascii_whitespace_only_string_literal
 TRUE
 FALSE
 NULL
@@ -132,6 +133,8 @@ admitted surface:
   predicate, and later `AND` / `OR` tokens compose predicates.
 - `TRUE` and `FALSE` list values behave as integer `1` and `0` for this integer
   descriptor subset.
+- Empty or ASCII-whitespace-only quoted string list values behave as integer `0`
+  and record no warnings for this integer descriptor subset.
 - Supported `IN` statements record no warnings.
 - `WHERE` filtering happens before grouping, aggregate calculation, DML row
   mutation, ordering, and limiting.
@@ -275,6 +278,7 @@ conversion:
   range, limited by the current signed-64 SQLite physical storage envelope where
   applicable;
 - `TRUE` and `FALSE` convert to `1` and `0`;
+- empty or ASCII-whitespace-only quoted string list values convert to `0`;
 - out-of-range list literals produce the current MyLite predicate range
   diagnostic for the referenced descriptor column.
 

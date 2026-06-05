@@ -159,6 +159,18 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "empty quoted integer in rows" \
+    "4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i IN ('');" \
+    "$DATABASE"
+
+expect_output \
+    "empty quoted integer grouped rows" \
+    "2	1" \
+    "SELECT tie, COUNT(*) FROM numbers WHERE i IN ('') GROUP BY tie ORDER BY tie;" \
+    "$DATABASE"
+
+expect_output \
     "not in matching rows" \
     "3" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i NOT IN (-2, 1, 0);" \

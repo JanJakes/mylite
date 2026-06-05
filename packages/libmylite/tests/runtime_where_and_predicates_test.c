@@ -208,6 +208,7 @@ static int test_where_and_predicates(void) {
     static const char *const between_count_row[] = {"3"};
     static const char *const between_max_row[] = {"1"};
     static const char *const between_grouped_rows[] = {"1", "2", "2", "1"};
+    static const char *const in_empty_string_grouped_rows[] = {"2", "1"};
     static const char *const between_copy_rows[] = {
         "1",
         "-2",
@@ -237,6 +238,7 @@ static int test_where_and_predicates(void) {
     static const char *const between_warning_rows[] = {"1"};
     static const char *const between_persisted_rows[] = {"7", "7", "7"};
     static const char *const in_duplicate_rows[] = {"2", "4"};
+    static const char *const in_empty_string_rows[] = {"4"};
     static const char *const in_not_rows[] = {"3"};
     static const char *const in_nullable_rows[] = {"2", "4"};
     static const char *const in_precedence_rows[] = {"1", "3"};
@@ -739,6 +741,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "exact quoted integer in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN ('') ORDER BY id",
+            .values = in_empty_string_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "empty quoted integer in predicate",
         }
     );
     failures += expect_result(
@@ -1363,6 +1377,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "grouped aggregate source in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE i IN ('') GROUP BY tie ORDER BY tie",
+            .values = in_empty_string_grouped_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped aggregate empty quoted integer in predicate",
         }
     );
 

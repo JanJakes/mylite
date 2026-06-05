@@ -1146,6 +1146,7 @@ static int convert_update_constant_arithmetic_value(
     uint64_t magnitude = 0U;
     bool is_constant_arithmetic = false;
     bool adjust_missing_default = dml_allows_missing_default_adjustment(database, ignore_errors);
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
     int rc = MYLITE_OK;
 
     rc = update_value_is_constant_arithmetic_expression(
@@ -1214,7 +1215,7 @@ static int convert_update_constant_arithmetic_value(
         is_negative,
         column,
         row_number,
-        ignore_errors,
+        adjust_errors,
         &out_value->integer
     );
 }
@@ -2208,6 +2209,7 @@ static int convert_update_integer_literal(
 ) {
     const struct mylite_sql_ast_node *literal = value_node;
     bool is_negative = false;
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
     uint64_t magnitude = 0U;
     int rc = MYLITE_OK;
 
@@ -2260,8 +2262,18 @@ static int convert_update_integer_literal(
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
         if (rc != MYLITE_OK) {
-            set_out_of_range_error(database, column->name, row_number);
-            return MYLITE_ERROR;
+            if (!adjust_errors) {
+                set_out_of_range_error(database, column->name, row_number);
+                return MYLITE_ERROR;
+            }
+            out_value->is_null = false;
+            return clip_integer_for_column(
+                database,
+                is_negative,
+                column,
+                row_number,
+                &out_value->integer
+            );
         }
     }
 
@@ -2272,7 +2284,7 @@ static int convert_update_integer_literal(
         is_negative,
         column,
         row_number,
-        ignore_errors,
+        adjust_errors,
         &out_value->integer
     );
     if (rc != MYLITE_OK) {

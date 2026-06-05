@@ -8,6 +8,7 @@ static int convert_integer_literal(
 ) {
     const struct mylite_sql_ast_node *literal = value_node;
     bool is_negative = false;
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
     uint64_t magnitude = 0U;
     int rc = MYLITE_OK;
 
@@ -60,7 +61,7 @@ static int convert_integer_literal(
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
         if (rc != MYLITE_OK) {
-            if (!ignore_errors) {
+            if (!adjust_errors) {
                 set_out_of_range_error(database, column->name, row_number);
                 return MYLITE_ERROR;
             }
@@ -82,7 +83,7 @@ static int convert_integer_literal(
         is_negative,
         column,
         row_number,
-        ignore_errors,
+        adjust_errors,
         &out_value->integer
     );
     if (rc != MYLITE_OK) {

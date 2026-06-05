@@ -748,6 +748,12 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
         NULL,
         "-3",
     };
+    static const char *const nonstrict_unsigned_literal_warnings[] = {
+        "Warning",
+        "1264",
+        "Out of range value for column 'u' at row 1",
+    };
+    static const char *const nonstrict_unsigned_literal_row[] = {"32", "0"};
     static const char *const ignore_warnings[] = {
         "Warning",
         "1265",
@@ -1056,6 +1062,36 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
             .column_count = 4U,
             .row_count = 2U,
             .context = "non-strict integer string rows",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, u) VALUES (32, 5)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET u = -1 WHERE id = 32",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = nonstrict_unsigned_literal_warnings,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "non-strict unsigned numeric literal update warning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, u FROM nums WHERE id = 32",
+            .values = nonstrict_unsigned_literal_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "non-strict unsigned numeric literal update row",
         }
     );
 

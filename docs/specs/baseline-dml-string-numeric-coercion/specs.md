@@ -108,7 +108,9 @@ Runtime probes establish these expectations for this slice:
 - Non-strict invalid text-to-number and range conversion are broader in MySQL
   than this phase. MyLite still rejects unsupported string forms and does not
   add ordinary non-strict range clipping unless this spec explicitly admits the
-  behavior.
+  behavior. This phase admits non-strict clipping for already-parsed integer
+  numeric literals assigned to integer-family targets, including negative
+  literals assigned to unsigned columns.
 - Successful supported `UPDATE` statements use MySQL changed-row affected-row
   behavior and do not return result rows.
 
@@ -228,8 +230,9 @@ authoritative:
   `9223372036854775807` remain outside this slice.
 
 Strict out-of-range values fail with the existing MySQL-compatible
-out-of-range diagnostic. Existing `INSERT IGNORE` row-value paths may clip and
-warn where they already do for unquoted integer literals.
+out-of-range diagnostic. Existing `INSERT IGNORE` row-value paths and
+non-strict already-parsed integer numeric literal assignments may clip and warn
+where they already do for unquoted integer literals.
 
 ### DECIMAL Targets
 
@@ -335,8 +338,8 @@ Fast C tests cover:
 - strict invalid integer strings with `1366`;
 - strict integer out-of-range strings with `1264`;
 - current deterministic rejection of unsupported string forms;
-- `INSERT IGNORE` clipping where the existing unquoted paths already support
-  clipping;
+- `INSERT IGNORE` and non-strict integer numeric-literal clipping where the
+  existing unquoted paths already support clipping;
 - affected rows, warning counts, absence of row result sets, persistence after
   close/reopen, and `.mylite` preamble preservation.
 

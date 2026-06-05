@@ -182,6 +182,28 @@ Warning	1264	Out of range value for column 'd' at row 1" \
 "SHOW WARNINGS;" \
     "$DATABASE"
 
+expect_output \
+    "non-strict numeric literal update clipping" \
+    "nonstrict_update	1	1	0
+nonstrict_row	6	0" \
+    "SET sql_mode=''; "\
+"TRUNCATE nums; "\
+"INSERT INTO nums(id,u) VALUES (6,5); "\
+"UPDATE nums SET u=-1 WHERE id=6; "\
+"SELECT 'nonstrict_update', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'nonstrict_row', id, u FROM nums;" \
+    "$DATABASE"
+
+expect_output \
+    "non-strict numeric literal update warning rows" \
+    "Warning	1264	Out of range value for column 'u' at row 1" \
+    "SET sql_mode=''; "\
+"TRUNCATE nums; "\
+"INSERT INTO nums(id,u) VALUES (6,5); "\
+"UPDATE nums SET u=-1 WHERE id=6; "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
 expect_upstream_accepts \
     "mysql accepts deferred leading-space integer string" \
     "SET sql_mode='STRICT_TRANS_TABLES'; TRUNCATE nums; INSERT INTO nums(id,i) VALUES (4,' 123');" \

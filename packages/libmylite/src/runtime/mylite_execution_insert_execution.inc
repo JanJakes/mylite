@@ -64,6 +64,10 @@ static int execute_insert_from_plan(
 
     mylite_result_set_affected_rows(result, counters.affected_rows);
     if (counters.inserted_generated_auto_increment) {
+        mylite_result_set_insert_id(
+            result,
+            (uint64_t)counters.first_inserted_generated_auto_increment
+        );
         database->session.last_insert_id =
             (uint64_t)counters.first_inserted_generated_auto_increment;
     }
@@ -153,6 +157,10 @@ static int execute_load_data_infile_from_plan(
 
     mylite_result_set_affected_rows(result, counters.affected_rows);
     if (counters.inserted_generated_auto_increment) {
+        mylite_result_set_insert_id(
+            result,
+            (uint64_t)counters.first_inserted_generated_auto_increment
+        );
         database->session.last_insert_id =
             (uint64_t)counters.first_inserted_generated_auto_increment;
     }

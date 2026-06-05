@@ -186,7 +186,9 @@ and is deferred for a later state-mutating expression slice.
 ## Runtime Semantics
 
 `LAST_INSERT_ID()` returns the connection-local MySQL-style last insert id as
-unsigned decimal text. In this baseline the value is always `0`.
+unsigned decimal text. The current generated auto-increment insert subset stores
+the first generated id for the statement; literal `LAST_INSERT_ID(expr)` scalar
+and `DO` forms store the admitted unsigned value.
 
 Initial state:
 
@@ -211,6 +213,7 @@ Successful scalar last-insert-id selects:
 - return one result column per select item;
 - use the source expression text as the column name;
 - use `affected_rows == 0` under the existing MyLite row-result convention;
+- expose result insert id `0`;
 - use `warning_count == 0` for supported forms;
 - do not mutate catalog state, physical SQLite schema, storage, or the
   `.mylite` file format.
@@ -218,6 +221,12 @@ Successful scalar last-insert-id selects:
 `LAST_INSERT_ID()` in a mixed scalar select observes the value from before the
 current select begins. Other supported expressions in the same scalar select
 do not change the last-insert-id value.
+
+Successful generated auto-increment write results expose the first generated id
+through `mylite_result_insert_id()`. The mysqli compatibility extension copies
+that result metadata to the link and statement `insert_id` properties. Results
+for statements that do not generate an auto-increment value expose insert id
+`0`.
 
 ## Diagnostics
 
@@ -292,9 +301,9 @@ The MySQL expectation artifact must verify:
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and `docs/compatibility/functions-system.md` to mark
-only zero-argument `LAST_INSERT_ID()` as limited support. Do not claim
-auto-increment, `LAST_INSERT_ID(expr)`, protocol insert-id metadata, C API
-state, sequence emulation, or generated id behavior.
+`LAST_INSERT_ID()` and generated auto-increment result insert-id metadata as
+limited support. Do not claim wire-protocol insert-id packets, sequence
+emulation, mixed-mode allocation parity, or stored-program behavior.
 
 ## Verification
 

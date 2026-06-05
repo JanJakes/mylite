@@ -195,6 +195,10 @@ static int finish_insert_select_table_result(
 ) {
     mylite_result_set_affected_rows(result, execution->counters.affected_rows);
     if (execution->counters.inserted_generated_auto_increment) {
+        mylite_result_set_insert_id(
+            result,
+            (uint64_t)execution->counters.first_inserted_generated_auto_increment
+        );
         database->session.last_insert_id =
             (uint64_t)execution->counters.first_inserted_generated_auto_increment;
     }

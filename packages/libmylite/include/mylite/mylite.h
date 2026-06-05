@@ -138,6 +138,7 @@ MYLITE_API const void *mylite_result_value_bytes(
 MYLITE_API size_t
 mylite_result_value_size(const mylite_result *result, size_t row_index, size_t column_index);
 MYLITE_API int64_t mylite_result_affected_rows(const mylite_result *result);
+MYLITE_API uint64_t mylite_result_insert_id(const mylite_result *result);
 MYLITE_API size_t mylite_result_warning_count(const mylite_result *result);
 
 MYLITE_API int mylite_errcode(const mylite_db *database);

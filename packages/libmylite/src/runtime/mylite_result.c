@@ -190,6 +190,14 @@ void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_row
     result->affected_rows = affected_rows;
 }
 
+void mylite_result_set_insert_id(mylite_result *result, uint64_t insert_id) {
+    if (result == NULL) {
+        return;
+    }
+
+    result->insert_id = insert_id;
+}
+
 void mylite_result_set_warning_count(mylite_result *result, size_t warning_count) {
     if (result == NULL) {
         return;
@@ -383,6 +391,14 @@ int64_t mylite_result_affected_rows(const mylite_result *result) {
     }
 
     return result->affected_rows;
+}
+
+uint64_t mylite_result_insert_id(const mylite_result *result) {
+    if (result == NULL) {
+        return 0U;
+    }
+
+    return result->insert_id;
 }
 
 size_t mylite_result_warning_count(const mylite_result *result) {

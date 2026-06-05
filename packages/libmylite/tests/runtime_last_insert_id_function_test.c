@@ -61,6 +61,12 @@ static int expect_non_query_result(
     int64_t affected_rows,
     const char *context
 );
+static int expect_non_query_result_with_insert_id(
+    const mylite_result *result,
+    int64_t affected_rows,
+    uint64_t insert_id,
+    const char *context
+);
 static int expect_last_insert_id_value(
     mylite_db *database,
     struct expected_last_insert_id expected
@@ -530,7 +536,10 @@ static int test_last_insert_id_expression_values(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += execute_statement_ok(database, "INSERT INTO ai (v) VALUES (20), (30)");
+    failures += execute_ok(database, "INSERT INTO ai (v) VALUES (20), (30)", &result);
+    failures += expect_non_query_result_with_insert_id(result, 2, 11U, "generated insert result");
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
     failures += expect_scalar_result(
         result,
@@ -968,11 +977,21 @@ static int expect_non_query_result(
     int64_t affected_rows,
     const char *context
 ) {
+    return expect_non_query_result_with_insert_id(result, affected_rows, 0U, context);
+}
+
+static int expect_non_query_result_with_insert_id(
+    const mylite_result *result,
+    int64_t affected_rows,
+    uint64_t insert_id,
+    const char *context
+) {
     int failures = 0;
 
     failures += expect_size(mylite_result_column_count(result), 0U, context);
     failures += expect_size(mylite_result_row_count(result), 0U, context);
     failures += expect_int64(mylite_result_affected_rows(result), affected_rows, context);
+    failures += expect_uint64(mylite_result_insert_id(result), insert_id, context);
     failures += expect_size(mylite_result_warning_count(result), 0U, context);
 
     return failures;

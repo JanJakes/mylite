@@ -23,9 +23,10 @@ The feature is intentionally not a general expression engine. It admits signed
 64-bit decimal integer literals, `TRUE`, `FALSE`, and `NULL` in the new
 scalar-literal positions. Descriptor-column integer predicates also admit exact
 quoted signed integer strings with optional leading and trailing ASCII
-whitespace. Descriptor-column predicates continue to resolve through MyLite
-catalog descriptors. SQLite still executes the final physical filter from
-generated SQL with bound parameters.
+whitespace, and existing row-scalar comparison predicates admit the same exact
+quoted integer strings on the comparison right-hand side. Descriptor-column
+predicates continue to resolve through MyLite catalog descriptors. SQLite still
+executes the final physical filter from generated SQL with bound parameters.
 
 ## Sources And Evidence
 
@@ -80,6 +81,7 @@ scalar_literal comparison_operator scalar_literal
 scalar_literal comparison_operator column_reference
 column_reference comparison_operator NULL
 column_reference comparison_operator exact_integer_string_literal
+row_scalar_expression comparison_operator exact_integer_string_literal
 ```
 
 `scalar_literal` is one of:
@@ -260,6 +262,11 @@ WHERE (?1 = ?2)
 WHERE (?1 IS ?2)       -- for <=>
 ```
 
+Existing admitted row-scalar comparison predicates, such as
+`CAST(column_name AS SIGNED) > '5'`, use the same planned row-scalar comparison
+node. Exact quoted integer strings are decoded, trimmed of ASCII whitespace,
+converted to signed 64-bit integers, and bound as SQLite integer parameters.
+
 Literal-left descriptor comparisons normalize to existing descriptor-column
 predicate nodes. Equality and inequality operators keep their operator; ordered
 operators are flipped:
@@ -302,12 +309,12 @@ continues to do the physical scan/filter/update/delete.
   literals.
 - Descriptor comparison literal values outside the target descriptor range keep
   the existing descriptor predicate range diagnostics.
-- Unsupported literal kinds such as strings, decimals, floats, hex, bit, and
-  parameters are rejected deterministically.
-- Unsupported expression shapes such as `column + 1`, `ABS(column)`, casts,
-  variables, subqueries, row constructors, and arbitrary functions remain
-  deterministic unsupported syntax or runtime diagnostics according to the
-  existing parser surface.
+- Unsupported literal kinds such as non-exact strings, decimals, floats, hex,
+  bit, and parameters are rejected deterministically.
+- Unsupported expression shapes such as `column + 1`, `ABS(column)`, variables,
+  subqueries, row constructors, and arbitrary functions remain deterministic
+  unsupported syntax or runtime diagnostics according to the existing parser
+  surface.
 - Allocation failures report existing out-of-memory diagnostics.
 - Physical SQLite failures report existing physical SQLite diagnostics.
 
@@ -326,6 +333,7 @@ Coverage must include:
   source filtering where existing source-select paths admit the predicate;
 - `NULL`, `TRUE`, `FALSE`, `0`, nonzero, signed boundary, and out-of-range
   scalar literals;
+- exact quoted integer right-hand values for admitted row-scalar comparisons;
 - literal-left comparison operator flipping;
 - `NULL` comparison behavior for ordinary comparisons and `<=>`;
 - warning count remains zero for supported forms;

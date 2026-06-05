@@ -1146,12 +1146,22 @@ static int plan_where_scalar_literal_value(
     const struct mylite_sql_ast_node *expression,
     struct planned_value *out_value
 ) {
+    const struct mylite_sql_ast_node *literal =
+        mylite_execution_unwrap_parenthesized_expression(expression);
     int64_t value = 0;
     bool is_null = false;
-    int rc = mylite_execution_string_slice_signed_integer_value(
+    int rc = MYLITE_OK;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return plan_where_scalar_exact_integer_string_literal_value(database, literal, out_value);
+    }
+
+    rc = mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
-        "WHERE scalar literal predicates support only integer, boolean, and NULL literals",
+        "WHERE scalar literal predicates support only integer, boolean, NULL, and exact quoted "
+        "integer literals",
         "WHERE scalar literal integer literals must fit the signed 64-bit range",
         &value,
         &is_null
@@ -1165,6 +1175,89 @@ static int plan_where_scalar_literal_value(
     *out_value = (struct planned_value){.is_null = is_null, .is_text = false, .integer = value};
     if (is_null) {
         out_value->integer = 0;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_where_scalar_exact_integer_string_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_value *out_value
+) {
+    const uint64_t signed_positive_max = 9223372036854775807ULL;
+    const uint64_t signed_negative_abs_max = 9223372036854775808ULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t value_start = 0U;
+    size_t value_end = 0U;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "WHERE scalar literal predicates support only integer, boolean, NULL, and exact quoted "
+        "integer literals",
+        "invalid integer string literal",
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    while (value_start < text_length &&
+           predicate_integer_string_ascii_whitespace((unsigned char)text[value_start])) {
+        ++value_start;
+    }
+    value_end = text_length;
+    while (value_end > value_start &&
+           predicate_integer_string_ascii_whitespace((unsigned char)text[value_end - 1U])) {
+        --value_end;
+    }
+
+    parse_result = mylite_execution_parse_signed_integer_text(
+        text + value_start,
+        value_end - value_start,
+        &magnitude,
+        &is_negative
+    );
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID &&
+        value_start == value_end) {
+        parse_result = MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK;
+        magnitude = 0U;
+        is_negative = false;
+    }
+    free(text);
+
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
+        set_unsupported_error(
+            database,
+            "WHERE scalar literal predicates support only integer, boolean, NULL, and exact "
+            "quoted integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK ||
+        (!is_negative && magnitude > signed_positive_max) ||
+        (is_negative && magnitude > signed_negative_abs_max)) {
+        set_unsupported_error(
+            database,
+            "WHERE scalar literal integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
+    if (is_negative && magnitude == signed_negative_abs_max) {
+        out_value->integer = INT64_MIN;
+    } else if (is_negative) {
+        out_value->integer = -(int64_t)magnitude;
+    } else {
+        out_value->integer = (int64_t)magnitude;
     }
     return MYLITE_OK;
 }

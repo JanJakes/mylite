@@ -18952,6 +18952,11 @@ static int plan_where_scalar_literal_value(
     const struct mylite_sql_ast_node *expression,
     struct planned_value *out_value
 );
+static int plan_where_scalar_exact_integer_string_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_value *out_value
+);
 static bool predicate_node_is_scalar_literal_expression(
     const struct mylite_sql_ast_node *predicate_node
 );

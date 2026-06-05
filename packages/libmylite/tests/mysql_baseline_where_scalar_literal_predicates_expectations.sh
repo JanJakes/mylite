@@ -198,6 +198,11 @@ expect_output \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE TRUE AND 1 = i OR FALSE;"
 
 expect_output \
+    "row scalar cast quoted integer comparison" \
+    "1,2" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE CAST(i AS SIGNED) > '0';"
+
+expect_output \
     "quoted integer BETWEEN bounds" \
     "1,2,4" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i BETWEEN '-1' AND '2';"

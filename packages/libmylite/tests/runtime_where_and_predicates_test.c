@@ -3458,6 +3458,8 @@ static int test_where_scalar_literal_predicates(void) {
     static const char *const id_two_row[] = {"2"};
     static const char *const positive_i_ids[] = {"2", "3"};
     static const char *const null_n_ids[] = {"1", "3"};
+    static const char *const row_scalar_cast_ids[] = {"2", "3"};
+    static const char *const string_row_scalar_cast_ids[] = {"2"};
     static const char *const update_rows[] = {"1", NULL, "2", "11", "3", NULL, "4", "9"};
     static const char *const delete_rows[] = {"2", "4"};
     static const char *const copy_rows[] = {"2", "1"};
@@ -3693,6 +3695,56 @@ static int test_where_scalar_literal_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "scalar logical predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE CAST(i AS SIGNED) > '0' ORDER BY id",
+            .values = row_scalar_cast_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar cast quoted integer comparison",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE meta_values (id INT NOT NULL, value VARCHAR(16) NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO meta_values VALUES (1, '4'), (2, '9'), (3, NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_values WHERE CAST(value AS SIGNED) > '5' ORDER BY id",
+            .values = string_row_scalar_cast_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "string row scalar cast quoted integer comparison",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE CAST(i AS SIGNED) > '5x'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "WHERE scalar literal predicates support only integer, boolean, NULL, and exact "
+                "quoted integer literals",
         }
     );
 

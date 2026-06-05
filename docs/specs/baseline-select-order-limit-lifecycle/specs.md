@@ -11,8 +11,9 @@ values, and baseline descriptor-driven `WHERE`.
 
 The feature is intentionally not full MySQL ordering or limiting support. It
 supports one persistent base table, descriptor-backed projections, the existing
-optional single-column predicate subset, one unqualified descriptor order key,
-and decimal integer limit literals in a signed 64-bit physical binding range.
+optional single-column predicate subset, documented descriptor-backed order
+keys, and decimal integer limit literals in a signed 64-bit physical binding
+range.
 
 ## Sources
 
@@ -67,7 +68,9 @@ The implementation must add:
   persistent base table;
 - the existing unqualified and schema-qualified source-table resolution policy;
 - the existing optional baseline `WHERE` predicate subset;
-- one `ORDER BY` key resolved from MyLite column descriptors;
+- descriptor-column `ORDER BY` keys resolved from MyLite column descriptors;
+- the WordPress-shaped boolean order expression
+  `descriptor_string_column LIKE string_literal`;
 - optional `ASC` and `DESC`, with omitted direction meaning ascending;
 - MySQL-compatible `NULL` placement for supported integer order keys:
   `NULL` values first for ascending order and last for descending order;
@@ -88,8 +91,10 @@ The implementation must add:
 
 This feature must not implement:
 
-- expression `ORDER BY`, ordinal `ORDER BY`, aliases, table-qualified order
-  columns, multiple sort keys, collations, `RAND()`, or order-by expressions;
+- arbitrary expression `ORDER BY`, ordinal `ORDER BY`, aliases,
+  table-qualified order columns, collations, or order-by expressions beyond
+  the documented descriptor, `FIELD()`, `RAND()`, cast/convert, and narrow
+  `column LIKE string_literal` subsets;
 - signed limit literals, parameters, local variables, stored-program limit
   expressions, string/decimal/float/hex/bit limit literals, or unsigned 64-bit
   limit values above the signed 64-bit SQLite binding range;
@@ -155,6 +160,7 @@ Supported ordering subset:
 ```sql
 order_key:
     column_name
+  | column_name LIKE string_literal
 ```
 
 The parser may admit a qualified identifier as an order key so the analyzer can
@@ -194,7 +200,10 @@ where_clause_opt ::= .
 where_clause_opt ::= WHERE predicate.
 
 order_clause_opt ::= .
-order_clause_opt ::= ORDER BY qualified_identifier order_direction_opt.
+order_clause_opt ::= ORDER BY select_order_key order_direction_opt.
+
+select_order_key ::= qualified_identifier.
+select_order_key ::= qualified_identifier LIKE string_literal.
 
 order_direction_opt ::= .
 order_direction_opt ::= ASC.
@@ -254,14 +263,16 @@ Projection and predicate column resolution preserve the
 
 Ordering column resolution uses the same descriptor list:
 
-- the supported order key is one unqualified descriptor column name;
+- supported descriptor order keys use unqualified descriptor column names;
 - the order column does not need to be projected;
+- `column LIKE string_literal` order keys resolve the left operand as an
+  unqualified descriptor string-family column and use a literal pattern;
 - unknown ordering names fail with MySQL error `1054`, SQLSTATE `42S22`, and
   message `Unknown column '<column>' in 'order clause'`;
 - table-qualified order columns are rejected with a deterministic unsupported
   diagnostic before SQLite SQL is generated;
-- multiple order keys, aliases, ordinals, expressions, and collation modifiers
-  are rejected in this phase.
+- aliases, ordinals, unsupported expressions, and collation modifiers are
+  rejected unless they match a later documented order-key slice.
 
 The current catalog stores `(table_id, name)` with SQLite binary uniqueness.
 MyLite analysis compares the supported identifier subset with ASCII
@@ -280,6 +291,10 @@ For supported `ORDER BY`:
   after non-`NULL` values for descending order;
 - duplicate sort-key values are ties. Without a second sort key, MyLite does
   not claim any compatibility contract for the relative order of tied rows;
+- `column LIKE string_literal` produces MySQL-compatible boolean order keys
+  for the supported string-family descriptor subset, with nonmatching rows
+  ordering as `0`, matching rows ordering as `1`, and `NULL` inputs producing
+  `NULL`;
 - queries without `ORDER BY` have no general row-order compatibility contract.
 
 SQLite's native ordering for `INTEGER` and `NULL` matches the supported MySQL
@@ -331,7 +346,7 @@ The generated query shape is:
 SELECT "<projection_col1>", "<projection_col2>", ...
 FROM "<physical_name>"
 [WHERE "<predicate_col>" <op> ?1 | WHERE "<predicate_col>" IS [NOT] NULL]
-[ORDER BY "<order_col>" ASC|DESC]
+[ORDER BY "<order_col>" ASC|DESC | ORDER BY ("<order_col>" LIKE ?n ESCAPE '\') ASC|DESC]
 [LIMIT ?n [OFFSET ?n]]
 ```
 
@@ -417,6 +432,7 @@ Observed behavior used by this feature:
 | `SELECT id FROM numbers ORDER BY id LIMIT 1, 0` | Returns no rows. |
 | `SELECT id FROM numbers ORDER BY id LIMIT 0, 1` | Returns the first ordered row. |
 | `SELECT id FROM numbers WHERE n IS NULL ORDER BY id DESC LIMIT 1` | `WHERE`, `ORDER BY`, and `LIMIT` compose in that clause order. |
+| `SELECT id FROM numbers ORDER BY title LIKE '%foo%' DESC, nn DESC` | Matching rows sort before nonmatching rows, then the second descriptor key breaks ties. |
 | `SELECT id FROM numbers ORDER BY id LIMIT +1` | Error `1064`, SQLSTATE `42000`. |
 | `SELECT id FROM numbers ORDER BY id LIMIT -1` | Error `1064`, SQLSTATE `42000`. |
 | `SELECT id FROM numbers ORDER BY id LIMIT 1.0` | Error `1064`, SQLSTATE `42000`. |
@@ -437,10 +453,10 @@ This feature moves only the exact supported subset to partial support after
 implementation:
 
 - `SELECT`: descriptor-driven single persistent base-table `SELECT *` and
-  unqualified projection reads with optional baseline `WHERE`, one supported
-  `ORDER BY` key, and limited `LIMIT`;
-- `ORDER BY`: one unqualified descriptor integer/`NULL` column only, with
-  optional `ASC` or `DESC`;
+  unqualified projection reads with optional baseline `WHERE`, documented
+  `ORDER BY` keys, and limited `LIMIT`;
+- `ORDER BY`: descriptor columns, multiple descriptor keys, and the narrow
+  `column LIKE string_literal` boolean key, with optional `ASC` or `DESC`;
 - `LIMIT` / `OFFSET`: decimal unsigned integer literals only, in the signed
   64-bit SQLite binding range, for `LIMIT row_count`,
   `LIMIT row_count OFFSET offset`, and `LIMIT offset, row_count`;
@@ -468,6 +484,8 @@ Coverage must include:
 - default ascending order, explicit `ASC`, explicit `DESC`, nullable integer
   columns, `NULL` ordering, duplicate sort-key ties without overclaiming tie
   order, and duplicate projected columns;
+- multiple descriptor sort keys and the narrow `column LIKE string_literal`
+  boolean sort key;
 - `WHERE` combined with `ORDER BY` and `LIMIT`;
 - `LIMIT 0`, exact row counts, row counts larger than the result set, offset
   forms, and offset beyond the result set;
@@ -479,10 +497,10 @@ Coverage must include:
 - unknown ordering columns, unknown predicate columns, and unknown projected
   columns;
 - unsupported order/limit syntax rejected deterministically: table-qualified
-  order columns, expression order keys, ordinal order keys, aliases, multiple
-  sort keys, string/decimal/float/hex/bit limit literals, parameters,
-  functions, joins, grouping, `HAVING`, subqueries, locking clauses, and query
-  modifiers;
+  order columns, expression order keys outside documented narrow subsets,
+  ordinal order keys, aliases, string/decimal/float/hex/bit limit literals,
+  parameters, functions, joins, grouping, `HAVING`, subqueries, locking clauses,
+  and query modifiers;
 - reopen persistence, table rename visibility, and drop behavior;
 - physical SQLite payload behavior without touching the MyLite preamble;
 - independent file-backed handles with independent sorted/limited row state;

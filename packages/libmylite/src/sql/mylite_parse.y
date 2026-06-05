@@ -4553,6 +4553,10 @@ select_order_key(A) ::= qualified_identifier(K). {
 select_order_key(A) ::= cast_convert_expression(K). {
     A = K;
 }
+select_order_key(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+}
 select_order_key(A) ::= select_field_order_expression(K). {
     A = K;
 }

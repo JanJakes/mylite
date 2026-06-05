@@ -19721,6 +19721,7 @@ static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast
 static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items);
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key);
+static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key);
 static int plan_select_order_field_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,

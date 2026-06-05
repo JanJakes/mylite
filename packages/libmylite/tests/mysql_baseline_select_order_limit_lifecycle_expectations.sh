@@ -89,18 +89,22 @@ esac
 
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
-run_mysql \
-    "CREATE TABLE numbers ("\
-"id INT NOT NULL, i INT, iu INT UNSIGNED, b BIGINT, bu BIGINT UNSIGNED, n INT NULL, nn INT NOT NULL); "\
-"INSERT INTO numbers VALUES "\
-"(1, -2, 0, -9223372036854775808, 0, NULL, 5), "\
-"(2, 1, 2, 3, 4, 9, 6), "\
-"(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7), "\
-"(4, 0, 8, 8, 8, 9, 8); "\
-"CREATE TABLE integer_aliases ("\
-"id INT NOT NULL, ii INTEGER, intu INT UNSIGNED, integeru INTEGER UNSIGNED); "\
-"INSERT INTO integer_aliases VALUES (1, -3, 4294967295, 7), (2, 5, 0, 8);" \
-    "$DATABASE" >/dev/null
+setup_sql=$(cat <<'SQL'
+CREATE TABLE numbers (
+id INT NOT NULL, i INT, iu INT UNSIGNED, b BIGINT, bu BIGINT UNSIGNED,
+n INT NULL, nn INT NOT NULL, title VARCHAR(64));
+INSERT INTO numbers VALUES
+(1, -2, 0, -9223372036854775808, 0, NULL, 5, 'foo old'),
+(2, 1, 2, 3, 4, 9, 6, 'bar'),
+(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807,
+NULL, 7, 'food new'),
+(4, 0, 8, 8, 8, 9, 8, 'qux');
+CREATE TABLE integer_aliases (
+id INT NOT NULL, ii INTEGER, intu INT UNSIGNED, integeru INTEGER UNSIGNED);
+INSERT INTO integer_aliases VALUES (1, -3, 4294967295, 7), (2, 5, 0, 8);
+SQL
+)
+run_mysql "$setup_sql" "$DATABASE" >/dev/null
 
 expect_error \
     "ordered select without selected schema" \
@@ -260,6 +264,15 @@ expect_output \
     "schema-qualified ordered limited select" \
     "3" \
     "SELECT id FROM ${DATABASE}.numbers WHERE nn >= 6 ORDER BY i DESC LIMIT 1;" \
+    "$DATABASE"
+
+expect_output \
+    "like predicate order key" \
+    "3
+1
+4
+2" \
+    "SELECT id FROM numbers ORDER BY title LIKE '%foo%' DESC, nn DESC;" \
     "$DATABASE"
 
 expect_output \

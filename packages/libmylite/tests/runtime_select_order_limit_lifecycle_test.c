@@ -18,7 +18,7 @@
 enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
-    ordered_numbers_column_count = 9,
+    ordered_numbers_column_count = 10,
     ordered_numbers_nullable_column_index = 5,
     ordered_numbers_not_null_column_index = 6,
     mysql_error_parse = 1064,
@@ -130,6 +130,7 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     static const char *const multi_n_desc_id_desc[] = {"4", "2", "3", "1"};
     static const char *const multi_n_id_desc_limit[] = {"3", "1", "4"};
     static const char *const multi_bool_id[] = {"4", "2", "3", "1"};
+    static const char *const like_title_nn_desc[] = {"3", "1", "4", "2"};
     static const char *const multi_copy_ids[] = {"1", "3", "4"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -523,6 +524,16 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .values = multi_bool_id,
             .value_count = sizeof(multi_bool_id) / sizeof(multi_bool_id[0]),
             .context = "multi-key boolean ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers "
+                   "ORDER BY title LIKE '%foo%' DESC, nn DESC",
+            .values = like_title_nn_desc,
+            .value_count = sizeof(like_title_nn_desc) / sizeof(like_title_nn_desc[0]),
+            .context = "like predicate order key",
         }
     );
 
@@ -1836,7 +1847,8 @@ static int create_order_tables(mylite_db *database) {
         "n INT NULL, "
         "nn INT NOT NULL, "
         "ii INTEGER, "
-        "bool_col BOOL)",
+        "bool_col BOOL, "
+        "title VARCHAR(64))",
         &result
     );
 
@@ -1856,11 +1868,11 @@ static int create_order_tables(mylite_db *database) {
     failures += execute_ok(
         database,
         "INSERT INTO ordered_numbers VALUES "
-        "(1, -2, 0, -9223372036854775808, 0, NULL, 5, -2147483648, 1), "
-        "(2, 1, 2, 3, 4, 9, 6, 0, 0), "
+        "(1, -2, 0, -9223372036854775808, 0, NULL, 5, -2147483648, 1, 'foo old'), "
+        "(2, 1, 2, 3, 4, 9, 6, 0, 0, 'bar'), "
         "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, "
-        "NULL, 7, 2147483647, 0), "
-        "(4, 0, 8, 8, 8, 9, 8, 0, NULL)",
+        "NULL, 7, 2147483647, 0, 'food new'), "
+        "(4, 0, 8, 8, 8, 9, 8, 0, NULL, 'qux')",
         &result
     );
     mylite_result_free(result);

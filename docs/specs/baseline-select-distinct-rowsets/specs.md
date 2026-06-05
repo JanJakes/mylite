@@ -10,9 +10,10 @@ SELECT DISTINCT user_id, meta_key FROM wp_usermeta ORDER BY user_id, meta_key;
 SELECT DISTINCT * FROM wp_options;
 ```
 
-This phase keeps `DISTINCT` on the existing single-table descriptor `SELECT`
-path. It does not add joined distinct, grouped distinct, scalar/tableless
-distinct, expression distinct, or arbitrary SQLite pass-through.
+This phase keeps `DISTINCT` on the existing descriptor `SELECT` paths and
+extends it to the current joined descriptor-source envelope. It does not add
+grouped distinct, scalar/tableless distinct, expression distinct, or arbitrary
+SQLite pass-through.
 
 ## Sources
 
@@ -44,7 +45,9 @@ Runtime probes establish the behavior used by this baseline:
   subset, `'Alpha'` and `'alpha'` collapse to one distinct value.
 - `ORDER BY` runs after duplicate elimination for the visible output rows.
   MySQL 8.4.9 rejects `DISTINCT` queries whose `ORDER BY` expressions are not
-  present in the select list with error 3065 / `HY000`.
+  present in the select list with error 3065 / `HY000` when
+  `ONLY_FULL_GROUP_BY` is enabled, and accepts descriptor-column ordering when
+  that SQL mode is cleared.
 - `LIMIT` applies to the unique rows returned by the distinct operation.
 - Successful supported `SELECT DISTINCT` statements set `ROW_COUNT()` to `-1`
   and produce zero warnings.
@@ -58,6 +61,9 @@ MyLite supports:
 
 - `SELECT DISTINCT ... FROM table_name`;
 - `SELECT DISTINCTROW ... FROM table_name`;
+- `SELECT DISTINCT ... FROM descriptor join source` within the current
+  inner/cartesian/comma/no-op `STRAIGHT_JOIN` and supported outer-join source
+  envelope;
 - unqualified and schema-qualified persistent base-table names, and the current
   shadowing session temporary table behavior already used by descriptor
   `SELECT`;
@@ -69,7 +75,9 @@ MyLite supports:
   qualified wildcard policy;
 - optional existing `WHERE` predicate subset;
 - optional existing `ORDER BY` descriptor-column subset, limited to selected
-  columns or selected-column aliases;
+  columns or selected-column aliases while `ONLY_FULL_GROUP_BY` is enabled,
+  and admitting descriptor order keys from the source envelope when that mode
+  is cleared;
 - optional existing `LIMIT` and `OFFSET` forms;
 - the current no-op select modifiers already admitted beside `DISTINCT`, except
   `SQL_CALC_FOUND_ROWS`;
@@ -88,7 +96,6 @@ descriptor planner and result builder, not from SQLite column-name inference.
 
 This slice intentionally does not support:
 
-- `DISTINCT` over joined sources;
 - scalar/tableless `SELECT DISTINCT`, `FROM DUAL` distinct, aggregate distinct
   query blocks, grouped distinct, `SQL_CALC_FOUND_ROWS DISTINCT`, `UNION`
   branch changes, subqueries, CTEs, derived tables, or `TABLE`;
@@ -99,9 +106,9 @@ This slice intentionally does not support:
   descriptor families;
 - non-ASCII string collation parity, explicit per-expression collations, or
   binary collation overrides;
-- `ORDER BY` keys that are not selected, `FIELD()` order keys, expression order
-  keys, ordinal order keys, or broad MySQL representative-row behavior for
-  duplicate groups;
+- `FIELD()` order keys, expression order keys, ordinal order keys, or broad
+  MySQL representative-row behavior for duplicate groups beyond descriptor
+  order keys in the documented mode-sensitive subset;
 - optimizer hints, optimizer row-scan stopping guarantees, temporary-table
   implementation details, protocol-grade metadata beyond existing MyLite
   result descriptors, or privilege semantics.
@@ -126,6 +133,10 @@ The runtime-supported subset is narrower:
 distinct_select(A) ::=
     SELECT DISTINCT distinct_projection FROM single_descriptor_table
     where_opt order_by_selected_columns_opt limit_opt.
+
+distinct_select(A) ::=
+    SELECT DISTINCT distinct_projection FROM joined_descriptor_sources
+    where_opt order_by_descriptor_columns_opt limit_opt.
 
 distinct_projection(A) ::= distinct_column_item.
 distinct_projection(A) ::= distinct_projection COMMA distinct_column_item.
@@ -203,13 +214,11 @@ Use existing MyLite diagnostics unless listed otherwise:
   columns: existing descriptor `SELECT` diagnostics;
 - scalar/tableless or `DUAL` distinct:
   `SELECT DISTINCT supports only descriptor-backed table reads`;
-- joined-source distinct:
-  `joined SELECT does not yet support DISTINCT`;
-- unsupported projection expression:
-  `SELECT supports only descriptor table columns`;
+- unsupported row-scalar distinct:
+  `row-scalar SELECT projection does not support DISTINCT`;
 - unsupported selected descriptor family:
   `SELECT DISTINCT supports only integer, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or nonbinary string descriptor columns`;
-- unsupported distinct order key:
+- unsupported default-mode distinct order key:
   `SELECT DISTINCT supports ORDER BY only on selected columns`;
 - `SQL_CALC_FOUND_ROWS` with distinct:
   `SQL_CALC_FOUND_ROWS supports only non-distinct descriptor-backed table SELECT`;
@@ -247,11 +256,12 @@ distinct rejection tests that become supported. Coverage must include:
 - `NULL` duplicate elimination;
 - integer, `YEAR`, temporal, and ASCII nonbinary string values;
 - case-insensitive ASCII string duplicate elimination;
-- aliases and selected-column `ORDER BY`;
+- aliases, selected-column `ORDER BY`, loose-mode non-selected descriptor
+  `ORDER BY`, and joined descriptor `DISTINCT`;
 - `WHERE`, `LIMIT`, and `OFFSET`;
 - close/reopen persistence;
-- unsupported scalar/`DUAL`, joined, expression/literal projection,
-  unsupported descriptor families, non-selected order keys, and
+- unsupported scalar/`DUAL`, expression/literal projection, unsupported
+  descriptor families, default-mode non-selected order keys, and
   `SQL_CALC_FOUND_ROWS DISTINCT`;
 - MySQL 8.4.9 expectation script for the user-visible behavior admitted by this
   phase.
@@ -259,6 +269,6 @@ distinct rejection tests that become supported. Coverage must include:
 ## Compatibility Updates
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-query-expressions.md` to
-describe limited single-table rowset `DISTINCT` support. Do not claim broad
-joined, grouped, scalar, expression, full collation, optimizer, or
+describe limited descriptor rowset `DISTINCT` support. Do not claim broad
+grouped, scalar, expression, full collation, optimizer, or
 `SQL_CALC_FOUND_ROWS` distinct behavior.

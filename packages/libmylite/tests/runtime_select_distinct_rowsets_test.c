@@ -72,6 +72,10 @@ int main(void) {
 static int test_distinct_rowset_success_and_reopen(void) {
     static const char *const columns_ab[] = {"a", "b"};
     static const char *const values_ab[] = {NULL, "11", "1", "10", "1", "11"};
+    static const char *const columns_a[] = {"a"};
+    static const char *const values_a_non_selected_order[] = {"1", NULL};
+    static const char *const columns_b[] = {"b"};
+    static const char *const values_b_joined_non_selected_order[] = {"10", "11"};
     static const char *const columns_s[] = {"s"};
     static const char *const values_s[] = {NULL, "Alpha", "Beta"};
     static const char *const columns_s_txt[] = {"s", "txt"};
@@ -217,6 +221,29 @@ static int test_distinct_rowset_success_and_reopen(void) {
             .context = "filtered distinct rowset",
         }
     );
+    failures += execute_ok(database, "SET sql_mode = ''", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT a FROM t ORDER BY b",
+            .columns = columns_a,
+            .column_count = 1U,
+            .values = values_a_non_selected_order,
+            .row_count = 2U,
+            .context = "loose mode distinct non-selected order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT l.b FROM t AS l JOIN t AS r ON l.a = r.a ORDER BY l.s, l.b",
+            .columns = columns_b,
+            .column_count = 1U,
+            .values = values_b_joined_non_selected_order,
+            .row_count = 2U,
+            .context = "joined distinct non-selected order",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -285,7 +312,7 @@ static int test_distinct_rowset_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "row-scalar SELECT projection does not support DISTINCT",
         }
     );
     failures += execute_error(
@@ -314,15 +341,6 @@ static int test_distinct_rowset_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SELECT ORDER BY supports only descriptor columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT DISTINCT l.a FROM t AS l JOIN t AS r ON l.a = r.a",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "joined SELECT does not yet support DISTINCT",
         }
     );
     failures += execute_error(

@@ -173,6 +173,9 @@ static int validate_select_distinct_order(
     if (plan == NULL || !plan->is_distinct || !plan->order.has_order) {
         return MYLITE_OK;
     }
+    if (!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY)) {
+        return MYLITE_OK;
+    }
     for (size_t item_index = 0U; item_index < plan->order.item_count; ++item_index) {
         const struct planned_select_order_item *item = &plan->order.items[item_index];
 
@@ -318,10 +321,6 @@ static int plan_joined_select(
         return MYLITE_ERROR;
     }
     select_list = child_at(joined_select->statement, 0U);
-    if (out_plan->is_distinct) {
-        set_unsupported_error(database, "joined SELECT does not yet support DISTINCT");
-        return MYLITE_ERROR;
-    }
     rc = collect_select_optional_clauses(database, joined_select->statement, &clauses);
     if (rc == MYLITE_OK) {
         rc =
@@ -368,6 +367,9 @@ static int plan_joined_select(
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_columns(database, select_list, &source_context, NULL, 0U, out_plan);
+    }
+    if (rc == MYLITE_OK && out_plan->is_distinct) {
+        rc = validate_select_distinct_columns(database, out_plan);
     }
     if (rc == MYLITE_OK) {
         rc = plan_joined_select_predicate(

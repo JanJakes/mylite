@@ -98,7 +98,7 @@ case "$version" in
 esac
 
 cleanup
-run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; SET SESSION sql_mode = '';" >/dev/null
+run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
 
 run_mysql \
     "CREATE TABLE t ("\
@@ -257,13 +257,41 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_error_contains \
-    "MySQL rejects distinct order by non-selected descriptor column" \
+    "MySQL rejects default-mode distinct order by non-selected descriptor column" \
     "ERROR 3065 (HY000)" \
-    "SELECT DISTINCT a FROM t ORDER BY b;" \
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY'; SELECT DISTINCT a FROM t ORDER BY b;" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "MySQL accepts joined distinct, deferred in MyLite" \
-    "CREATE TABLE j (a INT, c INT); INSERT INTO j VALUES (1,1), (1,2); "\
+non_selected_order_expected=$(cat <<EXPECTED
+1
+NULL
+EXPECTED
+)
+expect_output \
+    "loose mode distinct accepts non-selected descriptor order column" \
+    "$non_selected_order_expected" \
+    "SET SESSION sql_mode = ''; SELECT DISTINCT a FROM t ORDER BY b;" \
+    "$DATABASE"
+
+joined_distinct_expected=$(cat <<EXPECTED
+1	1
+1	2
+EXPECTED
+)
+expect_output \
+    "joined distinct rowsets" \
+    "$joined_distinct_expected" \
+    "SET SESSION sql_mode = ''; CREATE TABLE j (a INT, c INT); INSERT INTO j VALUES (1,1), (1,2); "\
 "SELECT DISTINCT t.a, j.c FROM t JOIN j ON t.a = j.a ORDER BY t.a, j.c;" \
+    "$DATABASE"
+
+joined_non_selected_order_expected=$(cat <<EXPECTED
+10
+11
+EXPECTED
+)
+expect_output \
+    "joined distinct accepts non-selected descriptor order column" \
+    "$joined_non_selected_order_expected" \
+    "SET SESSION sql_mode = ''; SELECT DISTINCT t.b FROM t JOIN j ON t.a = j.a ORDER BY t.s, t.b;" \
     "$DATABASE"

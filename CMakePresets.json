@@ -15,12 +15,25 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "MYLITE_WARNINGS_AS_ERRORS": "ON"
       }
+    },
+    {
+      "name": "php-dev",
+      "displayName": "Developer build with PHP extensions",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/php-dev",
+      "cacheVariables": {
+        "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
+      }
     }
   ],
   "buildPresets": [
     {
       "name": "dev",
       "configurePreset": "dev"
+    },
+    {
+      "name": "php-dev",
+      "configurePreset": "php-dev"
     },
     {
       "name": "format",
@@ -48,6 +61,13 @@
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "php-dev",
+      "configurePreset": "php-dev",
       "output": {
         "outputOnFailure": true
       }

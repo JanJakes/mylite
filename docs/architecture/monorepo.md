@@ -15,6 +15,9 @@ will all depend on it.
 | `docs/architecture/` | Architecture notes and engineering standards for repository-wide design decisions. |
 | `docs/specs/` | Feature specifications and MySQL-runtime-verified test expectations for substantive compatibility work. |
 | `packages/libmylite/` | Embedded MyLite runtime library. This owns the public C API and core SQL pipeline implementation. |
+| `packages/php-ext-mylite/` | Core PHP module for direct embedded MyLite access. |
+| `packages/php-ext-mysqli-mylite/` | Drop-in PHP mysqli replacement backed by MyLite. |
+| `packages/php-ext-pdo-mylite/` | PDO driver package registered as `mylite`. |
 | `tests/` | Cross-package and integration tests. Package-local tests stay next to the package they exercise. |
 | `third_party/` | Pinned upstream source snapshots and vendored build tools. |
 | `tools/` | Command-line tools and developer utilities. Buildable tools should live in subdirectories. |

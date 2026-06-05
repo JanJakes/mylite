@@ -97,7 +97,7 @@ packages:
 
 - tooling
 - MySQL wire protocol support
-- PHP extension
+- PHP extensions (`mylite`, a mysqli replacement, and `pdo_mylite`)
 - other application and runtime wiring
 
 ## SQLite extensions

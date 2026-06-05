@@ -1,0 +1,24 @@
+add_library(mylite_php_pdo_extension MODULE
+  src/php_pdo_mylite.c
+)
+target_include_directories(mylite_php_pdo_extension PRIVATE
+  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/packages/libmylite/include>"
+  "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/packages/libmylite/include>"
+)
+add_dependencies(mylite_php_pdo_extension mylite_php_extension)
+target_compile_definitions(mylite_php_pdo_extension PRIVATE COMPILE_DL_PDO_MYLITE=1)
+mylite_configure_php_extension(mylite_php_pdo_extension)
+set_target_properties(mylite_php_pdo_extension PROPERTIES OUTPUT_NAME pdo_mylite)
+mylite_configure_c_target(mylite_php_pdo_extension)
+if(NOT MSVC)
+  target_compile_options(mylite_php_pdo_extension PRIVATE -Wno-unused-parameter)
+endif()
+
+if(BUILD_TESTING)
+  mylite_add_php_test(
+    php-ext-pdo-mylite.api
+    -d "extension=$<TARGET_FILE:mylite_php_extension>"
+    -d "extension=$<TARGET_FILE:mylite_php_pdo_extension>"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/pdo_api_test.php"
+  )
+endif()

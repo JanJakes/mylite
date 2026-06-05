@@ -15,13 +15,21 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CTest)
 include(MyLiteCompilerOptions)
 include(MyLiteDeveloperTools)
+include(MyLitePHP)
 
 option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
 option(MYLITE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(MYLITE_BUILD_PHP_EXTENSIONS "Build MyLite PHP extensions" OFF)
 
 add_subdirectory(third_party/sqlite)
 add_subdirectory(tools/lemon)
 add_subdirectory(packages/libmylite)
+
+if(MYLITE_BUILD_PHP_EXTENSIONS)
+  add_subdirectory(packages/php-ext-mylite)
+  add_subdirectory(packages/php-ext-mysqli-mylite)
+  add_subdirectory(packages/php-ext-pdo-mylite)
+endif()
 
 if(MYLITE_BUILD_TOOLS)
   add_subdirectory(tools)

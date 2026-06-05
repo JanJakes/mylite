@@ -145,6 +145,29 @@ expect_output \
     "$DATABASE"
 
 run_mysql \
+    "DROP TABLE IF EXISTS wp_options; "\
+"CREATE TABLE wp_options (option_id INT, option_name VARCHAR(255), "\
+"option_value LONGTEXT, autoload VARCHAR(20)); "\
+"INSERT INTO wp_options VALUES "\
+"(1, '_transient_old', 'payload', 'no'), "\
+"(2, '_transient_timeout_old', '1', 'no'), "\
+"(3, '_transient_keep', 'payload', 'no'), "\
+"(4, '_transient_timeout_keep', '9999999999', 'no'), "\
+"(5, 'regular', 'value', 'yes');" \
+    "$DATABASE" >/dev/null
+expect_output \
+    "same-table transient cleanup text timeout compared to integer literal" \
+    "2	0	_transient_keep,_transient_timeout_keep,regular" \
+    "DELETE a, b FROM wp_options a, wp_options b "\
+"WHERE a.option_name LIKE '\\\\_transient\\\\_%' "\
+"AND a.option_name NOT LIKE '\\\\_transient\\\\_timeout_%' "\
+"AND b.option_name = CONCAT( '_transient_timeout_', SUBSTRING( a.option_name, 12 ) ) "\
+"AND b.option_value < 100; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(option_name ORDER BY option_id) "\
+"FROM wp_options;" \
+    "$DATABASE"
+
+run_mysql \
     "CREATE TABLE ${DATABASE}.qualified_t (id INT, k INT); "\
 "CREATE TABLE ${DATABASE}.qualified_u (id INT, k INT); "\
 "INSERT INTO ${DATABASE}.qualified_t VALUES (1,10),(2,20); "\

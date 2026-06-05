@@ -42,6 +42,9 @@ script added for this feature:
   `1052 / 23000`.
 - MySQL rejects `ORDER BY` and `LIMIT` in multiple-table `DELETE` syntax with
   `1064 / 42000`.
+- WordPress-style same-table transient cleanup can compare a `LONGTEXT`
+  timeout value to an integer literal, for example `b.option_value < 100`, and
+  MySQL coerces the string operand numerically for that direct comparison.
 
 ## Feature Scope
 
@@ -63,7 +66,8 @@ MyLite supports the smallest coherent joined delete path:
   `LEFT JOIN`, and `LEFT OUTER JOIN`;
 - the existing joined `ON` equality subset;
 - the existing joined `WHERE` predicate subset, plus row-scalar RHS expressions
-  admitted by the current row-scalar planner for string comparisons;
+  admitted by the current row-scalar planner for string comparisons and
+  signed integer RHS literals for direct string-family comparisons;
 - exact affected-row counts for target rows deleted once;
 - warning count `0` for supported in-range deletes;
 - result shape follows existing non-query statement result conventions.

@@ -1270,6 +1270,14 @@ static int append_select_predicate_subject_sql(
     const struct planned_select_predicate_node *node,
     bool qualify
 ) {
+    if (node->compare_string_as_integer) {
+        return append_string_integer_value_sql_for_source(
+            string,
+            &node->column,
+            node->column_source_index,
+            qualify
+        );
+    }
     if (node->compare_date_as_datetime) {
         return append_date_midnight_value_sql_for_source(
             string,
@@ -1287,6 +1295,24 @@ static int append_select_predicate_subject_sql(
     );
 }
 
+static int append_string_integer_value_sql_for_source(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify
+) {
+    int rc = mylite_dynamic_string_append(string, "CAST(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_column_name_sql_for_source(string, column, source_index, qualify);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS INTEGER)");
+    }
+
+    return rc;
+}
+
 static int append_select_like_binary_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -1296,11 +1322,8 @@ static int append_select_like_binary_predicate_sql(
     int rc = mylite_dynamic_string_append(string, "_mylite_like_binary(");
 
     if (rc == MYLITE_OK) {
-        rc = append_select_predicate_subject_sql(
-            string,
-            node,
-            predicate->qualify_column_references
-        );
+        rc =
+            append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, ", ");
@@ -1318,10 +1341,7 @@ static int append_select_like_binary_predicate_sql(
         ++(*next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(
-            string,
-            node->like_uses_escape ? ", 1)" : ", 0)"
-        );
+        rc = mylite_dynamic_string_append(string, node->like_uses_escape ? ", 1)" : ", 0)");
     }
 
     return rc;

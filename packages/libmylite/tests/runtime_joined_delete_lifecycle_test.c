@@ -268,6 +268,39 @@ static int test_joined_delete_success_persistence_and_table_lifecycle(void) {
             .context = "multi-target comma joined delete removes expired transient pair",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_options_literal (option_id INT, option_name VARCHAR(255), "
+        "option_value LONGTEXT, autoload VARCHAR(20))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO wp_options_literal VALUES "
+        "(1, '_transient_old', 'payload', 'no'), "
+        "(2, '_transient_timeout_old', '1', 'no'), "
+        "(3, '_transient_keep', 'payload', 'no'), "
+        "(4, '_transient_timeout_keep', '9999999999', 'no'), "
+        "(5, 'regular', 'value', 'yes')"
+    );
+    failures += expect_delete_ok(
+        database,
+        "DELETE a, b FROM wp_options_literal a, wp_options_literal b "
+        "WHERE a.option_name LIKE '\\_transient\\_%' "
+        "AND a.option_name NOT LIKE '\\_transient\\_timeout_%' "
+        "AND b.option_name = CONCAT( '_transient_timeout_', SUBSTRING( a.option_name, 12 ) ) "
+        "AND b.option_value < 100",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT option_name FROM wp_options_literal ORDER BY option_id",
+            .values = remaining_transient_names,
+            .row_count = 3U,
+            .column_count = 1U,
+            .context = "multi-target comma joined delete compares text timeout to integer literal",
+        }
+    );
 
     failures += create_join_tables(
         database,

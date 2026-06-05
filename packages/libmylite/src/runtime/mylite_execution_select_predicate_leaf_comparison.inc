@@ -593,9 +593,18 @@ static int plan_comparison_predicate_value(
         );
     }
     if (predicate_comparison_value_is_null(child_at(predicate_node, 1U))) {
-        node->value =
-            (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        node->value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return MYLITE_OK;
+    }
+    if (column_descriptor_is_string_family(&node->column) &&
+        predicate_value_is_integer_literal(child_at(predicate_node, 1U))) {
+        node->compare_string_as_integer = true;
+        return convert_predicate_string_numeric_literal(
+            database,
+            child_at(predicate_node, 1U),
+            &node->column,
+            &node->value
+        );
     }
     return convert_predicate_value_with_date_comparison_mode(
         database,
@@ -653,8 +662,34 @@ static bool comparison_predicate_rhs_requires_row_scalar_value(
                column_descriptor_is_datetime(&node->column) ||
                column_descriptor_is_timestamp(&node->column);
     }
-    return column_descriptor_is_string_family(&node->column) &&
-           rhs->kind != MYLITE_SQL_AST_LITERAL;
+    if (column_descriptor_is_string_family(&node->column) &&
+        predicate_value_is_integer_literal(rhs)) {
+        return false;
+    }
+    return column_descriptor_is_string_family(&node->column) && rhs->kind != MYLITE_SQL_AST_LITERAL;
+}
+
+static bool predicate_value_is_integer_literal(const struct mylite_sql_ast_node *value_node) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NULL;
+
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return false;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    return literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_FALSE;
 }
 
 static void planned_select_predicate_node_deinit_runtime_values(

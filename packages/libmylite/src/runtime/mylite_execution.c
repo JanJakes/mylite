@@ -2048,6 +2048,7 @@ struct planned_select_predicate_node {
     struct planned_value *values;
     size_t value_count;
     bool compare_date_as_datetime;
+    bool compare_string_as_integer;
     size_t left_index;
     size_t right_index;
     bool like_uses_escape;
@@ -19187,6 +19188,7 @@ static bool comparison_predicate_rhs_requires_row_scalar_value(
     const struct mylite_sql_ast_node *predicate_node,
     const struct planned_select_predicate_node *node
 );
+static bool predicate_value_is_integer_literal(const struct mylite_sql_ast_node *value_node);
 static void planned_select_predicate_node_deinit_runtime_values(
     struct planned_select_predicate_node *node
 );
@@ -19512,6 +19514,12 @@ static int convert_predicate_integer_literal(
 static int convert_predicate_exact_integer_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_predicate_string_numeric_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
@@ -24873,6 +24881,12 @@ static int append_descriptor_value_sql_for_source(
 static int append_select_predicate_subject_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
+    bool qualify
+);
+static int append_string_integer_value_sql_for_source(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
     bool qualify
 );
 static int append_date_midnight_value_sql_for_source(

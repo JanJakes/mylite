@@ -223,6 +223,10 @@ Supported comparison semantics:
   for the admitted list shapes.
 - ISO-like datetime strings in string descriptor columns are not converted to
   temporal values. They are ordinary string operands.
+- String-family descriptor comparisons against signed integer RHS literals use
+  MySQL-style numeric coercion for the current table predicate subset. This is
+  covered only for direct comparison operators such as `<`, `=`, and `>`, not
+  for `BETWEEN` or `IN` bounds.
 
 ## Unsupported
 
@@ -233,9 +237,10 @@ Deferred until later slices:
 - `ENUM` / `SET` range and membership predicates;
 - literal-left, expression-left, function, parameter, variable,
   column-to-column, subquery, row-constructor, or generated-column operands;
-- numeric-to-string and string-to-numeric comparison conversion;
-- `BETWEEN` or comparison bounds that are `NULL`, numeric, temporal, boolean,
-  hex, bit, or other non-string literals for string descriptor targets;
+- broad numeric-to-string and string-to-numeric comparison conversion beyond
+  the limited signed integer RHS direct-comparison subset;
+- `BETWEEN` bounds, `IN` values, or comparison bounds that are temporal, hex,
+  bit, or other non-string literals for string descriptor targets;
 - empty `IN` lists, `IN` subqueries, row constructors, or expression list
   values outside ordinary string literals and `NULL`;
 - optimizer or index-use parity with MySQL.

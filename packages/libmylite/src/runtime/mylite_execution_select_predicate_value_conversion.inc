@@ -143,6 +143,76 @@ static int convert_predicate_exact_integer_string_literal(
     return MYLITE_OK;
 }
 
+static int convert_predicate_string_numeric_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const uint64_t signed_positive_max = 9223372036854775807ULL;
+    const uint64_t signed_negative_abs_max = 9223372036854775808ULL;
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
+    if (value_node == NULL) {
+        set_unsupported_error(
+            database,
+            "WHERE string numeric predicates support only signed integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "WHERE string numeric predicates support only signed integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "WHERE string numeric predicates support only signed integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_predicate_out_of_range_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    if (is_negative) {
+        if (magnitude > signed_negative_abs_max) {
+            set_predicate_out_of_range_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        out_value->integer = magnitude == signed_negative_abs_max ? INT64_MIN : -(int64_t)magnitude;
+        return MYLITE_OK;
+    }
+    if (magnitude > signed_positive_max) {
+        set_predicate_out_of_range_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    out_value->integer = (int64_t)magnitude;
+    return MYLITE_OK;
+}
+
 static bool predicate_integer_string_ascii_whitespace(unsigned char byte) {
     return (byte == ' ' || (byte >= '\t' && byte <= '\r')) != 0;
 }

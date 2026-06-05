@@ -431,13 +431,14 @@ table-level `AUTO_INCREMENT=N` option when the table's next value is greater
 than `1`. An empty `CREATE TABLE ... LIKE` clone with next value `1` omits the
 table-level option.
 
-`SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` render the
-separate InnoDB-style status metadata value when it is positive. Tables created
-without an explicit `AUTO_INCREMENT=N` option report SQL `NULL` in these status
-surfaces even when generated inserts have advanced the durable next counter.
-`CREATE TABLE ... AUTO_INCREMENT=N` also exposes that status value for tables
-without an auto-increment column, matching MySQL 8.4.9, while `SHOW CREATE
-TABLE` still omits the option when no column can generate values.
+`SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` render SQL
+`NULL` for a fresh implicit auto-increment table, the durable next counter after
+an implicit auto-increment table's counter has advanced, or the separate
+InnoDB-style status metadata value when an explicit `AUTO_INCREMENT=N` table
+option established one. `CREATE TABLE ... AUTO_INCREMENT=N` also exposes that
+status value for tables without an auto-increment column, matching MySQL 8.4.9,
+while `SHOW CREATE TABLE` still omits the option when no column can generate
+values.
 
 `SHOW INDEX` remains driven by the primary-key descriptor and does not need
 additional auto-increment-specific rows.

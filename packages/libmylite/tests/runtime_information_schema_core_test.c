@@ -108,7 +108,7 @@ static int test_information_schema_core_queries(void) {
     };
     static const char *const table_values[] = {
         "app", "other",    "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
-        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
+        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", "2",
         "app", "wp_users", "BASE TABLE", "InnoDB", "10", "Dynamic", "0", "16384", NULL,
     };
     static const char *const table_computed_columns[] = {"name", "engine", "data"};

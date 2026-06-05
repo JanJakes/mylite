@@ -417,6 +417,8 @@ static int table_status_auto_increment_display_value(
     size_t buffer_size,
     const char **out_value
 ) {
+    bool has_auto_increment = false;
+    bool has_value = false;
     int rc = MYLITE_OK;
 
     if (database == NULL || table == NULL || buffer == NULL || out_value == NULL) {
@@ -431,9 +433,21 @@ static int table_status_auto_increment_display_value(
             buffer,
             buffer_size
         );
-        if (rc == MYLITE_OK) {
-            *out_value = buffer;
+        has_value = rc == MYLITE_OK;
+    } else {
+        rc = table_status_has_auto_increment(database, table, &has_auto_increment);
+        if (rc == MYLITE_OK && has_auto_increment && table->auto_increment_next > 1) {
+            rc = format_show_table_status_integer(
+                database,
+                table->auto_increment_next,
+                buffer,
+                buffer_size
+            );
+            has_value = rc == MYLITE_OK;
         }
+    }
+    if (rc == MYLITE_OK && has_value) {
+        *out_value = buffer;
     }
     return rc;
 }

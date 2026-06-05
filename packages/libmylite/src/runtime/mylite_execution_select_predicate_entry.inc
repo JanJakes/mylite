@@ -30,6 +30,7 @@ static int plan_joined_select_predicate(
     const struct select_predicate_plan_options options = {
         .allow_exists = false,
         .allow_in_subquery = true,
+        .allow_scalar_subquery_in_literal = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
     };

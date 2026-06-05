@@ -23,6 +23,7 @@ static int plan_grouped_aggregate(
     struct select_predicate_plan_options predicate_options = {
         .allow_exists = true,
         .allow_in_subquery = true,
+        .allow_scalar_subquery_in_literal = true,
         .allow_date_format_numeric_predicate = true,
     };
     struct select_source_context source_context = {0};

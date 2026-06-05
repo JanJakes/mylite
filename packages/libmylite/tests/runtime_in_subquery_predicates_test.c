@@ -79,11 +79,13 @@ static int test_in_subquery_values_and_persistence(void) {
 
     static const char *const id_column[] = {"id"};
     static const char *const name_column[] = {"name"};
+    static const char *const count_column[] = {"COUNT(*)"};
     static const char *const matched_user_ids[] = {"1", "2"};
     static const char *const unmatched_user_ids[] = {"3", "4", "5"};
     static const char *const all_user_ids[] = {"1", "2", "3", "4", "5"};
     static const char *const string_matches[] = {"Ann", "Cat"};
     static const char *const joined_user_ids[] = {"1", "2"};
+    static const char *const scalar_subquery_count[] = {"3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -238,6 +240,35 @@ static int test_in_subquery_values_and_persistence(void) {
             .context = "inner joined source distinct IN subquery",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT u.id FROM users AS u WHERE "
+                   "(SELECT o.status FROM orders AS o "
+                   "WHERE o.user_id = u.id AND o.status = 'open') NOT IN ('closed') "
+                   "ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = matched_user_ids,
+            .row_count = 2U,
+            .context = "scalar subquery NOT IN literal list",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM orders, users AS u "
+                   "WHERE u.id = orders.user_id AND "
+                   "(orders.status IN ('open') OR "
+                   "(orders.status = 'closed' AND "
+                   "(SELECT name FROM users WHERE id = u.id) IN ('ANN')))",
+            .columns = count_column,
+            .column_count = 1U,
+            .values = scalar_subquery_count,
+            .row_count = 1U,
+            .context = "scalar subquery IN literal list in joined COUNT predicate",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -385,6 +416,15 @@ static int test_in_subquery_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "IN subqueries are supported only in SELECT WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM users WHERE (SELECT name FROM selected_names) IN ('Ann')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "scalar subquery IN predicates are supported only in SELECT WHERE",
         }
     );
 

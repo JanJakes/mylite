@@ -2039,6 +2039,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON = 12,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL = 13,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN = 14,
+    PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN = 15,
 };
 
 struct planned_select_predicate_node {
@@ -2084,6 +2085,7 @@ enum planned_select_order_item_kind {
 struct select_predicate_plan_options {
     bool allow_exists;
     bool allow_in_subquery;
+    bool allow_scalar_subquery_in_literal;
     bool allow_column_reference_rhs;
     bool allow_same_scope_column_reference_rhs;
     bool allow_date_format_numeric_predicate;
@@ -19623,6 +19625,16 @@ static int plan_in_literal_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_scalar_subquery_in_literal_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_in_subquery_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_statement,
@@ -19779,6 +19791,16 @@ static int bind_select_in_predicate_parameters(
     int *parameter_index
 );
 static int bind_select_in_literal_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_scalar_subquery_in_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_in_value_list_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate_node *node,
     int *parameter_index
@@ -25204,6 +25226,11 @@ static int append_select_row_scalar_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_scalar_subquery_in_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
 static int append_select_exists_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_exists_subquery *subquery,
@@ -25307,6 +25334,11 @@ static int append_select_in_predicate_term_sql(
     size_t *next_parameter
 );
 static int append_select_in_literal_predicate_term_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_in_value_list_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
     size_t *next_parameter

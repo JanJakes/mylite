@@ -29,3 +29,5 @@
 - [x] Extend the SELECT predicate slice for optional inner `DISTINCT`, joined
       outer SELECT sources, descriptor-equality inner `INNER JOIN` sources, and
       joined-source update target-table protection.
+- [x] Extend SELECT-style predicates for scalar-subquery membership against
+      descriptor-converted literal lists, including joined aggregate predicates.

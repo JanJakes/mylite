@@ -1495,6 +1495,65 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT p.ID FROM posts AS p WHERE "
+        "(SELECT post_status FROM posts WHERE ID = p.post_parent) IN ('publish');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "scalar subquery IN predicate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_SCALAR_SUBQUERY,
+        "scalar subquery IN left operand"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_PREDICATE_VALUE_LIST,
+        "scalar subquery IN value list"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT p.ID FROM posts AS p WHERE "
+        "(SELECT post_status FROM posts WHERE ID = p.post_parent) NOT IN ('trash');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "scalar subquery NOT IN predicate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "scalar subquery NOT IN child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("SELECT EXISTS (SELECT 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

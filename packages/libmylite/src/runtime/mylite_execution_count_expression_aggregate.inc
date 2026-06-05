@@ -274,6 +274,10 @@ static int plan_single_source_count_expression_aggregate_source(
     size_t *out_table_column_count,
     struct planned_count_expression_aggregate *out_plan
 ) {
+    const struct select_predicate_plan_options predicate_options = {
+        .allow_exists = false,
+        .allow_scalar_subquery_in_literal = true,
+    };
     int rc = resolve_visible_table_reference(
         database,
         child_at(from_clause, 0U),
@@ -302,12 +306,13 @@ static int plan_single_source_count_expression_aggregate_source(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_predicate(
+        rc = plan_select_predicate_with_options(
             database,
             clauses->where_clause,
             out_source_context,
             *out_table_columns,
             *out_table_column_count,
+            &predicate_options,
             &out_plan->source.predicate
         );
     }

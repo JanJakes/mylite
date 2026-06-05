@@ -326,6 +326,19 @@ static int plan_in_predicate(
         set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
         return MYLITE_ERROR;
     }
+    if (child_at(predicate_node, 0U) != NULL &&
+        child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        return plan_scalar_subquery_in_literal_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            predicate,
+            out_node_index
+        );
+    }
     right = child_at(predicate_node, 1U);
     if (right == NULL || right->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         return plan_in_literal_predicate(
@@ -466,6 +479,114 @@ static int plan_in_literal_predicate(
     }
 
     return rc;
+}
+
+static int plan_scalar_subquery_in_literal_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    const struct mylite_sql_ast_node *left = child_at(predicate_node, 0U);
+    const struct mylite_sql_ast_node *right = child_at(predicate_node, 1U);
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+    size_t outer_source_count = 1U;
+
+    if (options == NULL || !options->allow_scalar_subquery_in_literal) {
+        set_unsupported_error(
+            database,
+            "scalar subquery IN predicates are supported only in SELECT WHERE"
+        );
+        return MYLITE_ERROR;
+    }
+    if (source_context == NULL) {
+        set_unsupported_error(
+            database,
+            "scalar subquery IN predicates support only an outer table source"
+        );
+        return MYLITE_ERROR;
+    }
+    if (right == NULL || right->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(
+            database,
+            "scalar subquery IN predicates support only literal value lists"
+        );
+        return MYLITE_ERROR;
+    }
+    if (left == NULL || mylite_sql_ast_node_child_count(left) != 1U) {
+        set_unsupported_error(database, "scalar subquery supports only parenthesized SELECT");
+        return MYLITE_ERROR;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        outer_source_count = source_context->source_count;
+    }
+
+    node.in_subquery = calloc(1U, sizeof(*node.in_subquery));
+    if (node.in_subquery == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_in_subquery(
+        database,
+        child_at(left, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        outer_source_count,
+        node.in_subquery
+    );
+    if (rc == MYLITE_OK) {
+        if (column_descriptor_is_enum(&node.in_subquery->column)) {
+            set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
+            rc = MYLITE_ERROR;
+        } else if (column_descriptor_is_set(&node.in_subquery->column)) {
+            set_unsupported_error(database, "WHERE set predicates do not yet support IN");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        if (column_descriptor_is_date(&node.in_subquery->column)) {
+            rc = convert_predicate_date_in_value_list(
+                database,
+                right,
+                &node.in_subquery->column,
+                &node.values,
+                &node.value_count,
+                &node.compare_date_as_datetime
+            );
+        } else {
+            rc = convert_predicate_in_value_list(
+                database,
+                right,
+                &node.in_subquery->column,
+                &node.values,
+                &node.value_count
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_array_deinit(node.values, node.value_count);
+        free(node.values);
+        planned_in_subquery_deinit(node.in_subquery);
+        free(node.in_subquery);
+        return rc;
+    }
+
+    predicate->qualify_column_references = true;
+    return MYLITE_OK;
 }
 
 static int plan_in_subquery_predicate(

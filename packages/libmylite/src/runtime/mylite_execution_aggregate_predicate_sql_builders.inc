@@ -1106,6 +1106,9 @@ static int append_select_predicate_non_exists_node_sql(
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
+        return append_select_scalar_subquery_in_predicate_sql(string, node, next_parameter);
+    }
 
     return append_select_predicate_column_term_sql(string, predicate, node, next_parameter);
 }
@@ -1130,6 +1133,9 @@ static int append_select_predicate_non_subquery_node_sql(
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
+        return MYLITE_ERROR;
     }
 
     return append_select_predicate_column_term_sql_without_subqueries(
@@ -1274,6 +1280,34 @@ static int append_select_row_scalar_predicate_sql(
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_select_scalar_subquery_in_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (node == NULL || node->in_subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = append_select_in_subquery_sql(string, node->in_subquery, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && column_descriptor_is_string_family(&node->in_subquery->column)) {
+        rc = append_string_key_collation_sql(string);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_in_value_list_sql(string, node, next_parameter);
+    }
+
+    return rc;
 }
 
 static int append_select_exists_predicate_sql(
@@ -1878,11 +1912,20 @@ static int append_select_in_literal_predicate_term_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
-    int rc = MYLITE_OK;
-
     if (node->in_subquery != NULL) {
         return MYLITE_ERROR;
     }
+
+    return append_select_in_value_list_sql(string, node, next_parameter);
+}
+
+static int append_select_in_value_list_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
     if (node->value_count == 0U) {
         return MYLITE_ERROR;
     }

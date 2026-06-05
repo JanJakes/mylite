@@ -107,9 +107,10 @@ Observed against the local `mysql:8.4.9` runtime:
   warning count, row count, found-rows state, and transaction completion. Inner
   `IN` subqueries do not publish independent result objects or statement
   completion state.
-- Lexer/parser/AST: admits `qualified_identifier IN (select_statement)` as a
-  predicate atom. Existing keyword `NOT` composition owns `NOT IN`. The parser
-  stores source spans and AST children only; it does not bind descriptors.
+- Lexer/parser/AST: admits `qualified_identifier IN (select_statement)` and
+  `(select_statement) IN (literal_list)` as predicate atoms. Existing keyword
+  `NOT` composition owns `NOT IN`. The parser stores source spans and AST
+  children only; it does not bind descriptors.
 - Analyzer/planner: resolves the outer source table, outer membership column,
   inner source table, inner selected column, inner predicate columns,
   correlated outer references, and unsupported shapes from MyLite descriptors.
@@ -152,11 +153,19 @@ in_subquery_predicate:
     qualified_identifier IN ( in_subquery )
 ```
 
+Supported scalar-subquery membership atom:
+
+```sql
+scalar_subquery_in_literal_predicate:
+    ( in_subquery ) IN ( predicate_literal [, ...] )
+```
+
 Supported `NOT IN` form:
 
 ```sql
 not_in_subquery_predicate:
     NOT in_subquery_predicate
+    NOT scalar_subquery_in_literal_predicate
 ```
 
 The parser may construct `NOT IN` by wrapping the `IN` predicate with the
@@ -207,6 +216,22 @@ The outer membership column and inner selected column must be in the same
 supported family. MyLite does not perform implicit cross-family conversion in
 this phase. `NULL` values in either source keep MySQL three-valued membership
 semantics.
+
+For the scalar-subquery membership form, the inner selected descriptor column
+owns conversion for the literal list. The form is admitted in SELECT-style
+predicate contexts, including the current aggregate-source predicate envelope,
+and reuses the same descriptor source, selected-column, inner predicate,
+correlation, and generated-SQL ownership as descriptor-column `IN` subqueries.
+It is intended for application predicates such as parent-row status checks:
+
+```sql
+(SELECT parent.status FROM posts AS parent WHERE parent.id = child.parent_id)
+    IN ('publish')
+```
+
+General expression-left `IN`, DML scalar-subquery membership predicates,
+scalar-subquery membership against another subquery, row constructors, and full
+scalar-subquery cardinality diagnostics remain deferred.
 
 Unsupported inner clauses for this phase:
 
@@ -417,7 +442,7 @@ Add C runtime tests under `packages/libmylite/tests/`, preferably a new
 
 - successful filtered SELECTs for all supported `IN` and `NOT IN` shapes;
 - parser AST coverage for `IN (SELECT ...)`, `NOT IN (SELECT ...)`, source
-  spans, and nested parentheses;
+  spans, scalar-subquery `IN (literal_list)`, and nested parentheses;
 - descriptor authority for schema-qualified and unqualified outer/inner
   tables, visible temporary sources if admitted by implementation, and
   selected-schema independence;
@@ -425,8 +450,9 @@ Add C runtime tests under `packages/libmylite/tests/`, preferably a new
 - correlated equality and null-safe equality over integer-family descriptors;
 - deterministic unsupported diagnostics for tableless subqueries, `DUAL`,
   wildcard projection, inner joins, derived tables, nested subqueries,
-  functions, expression projections, `ORDER BY`, `LIMIT`, offset limits,
-  parameters, unsupported descriptor families, and wider predicate contexts;
+  functions, expression projections, scalar-subquery membership in deferred DML
+  contexts, `ORDER BY`, `LIMIT`, offset limits, parameters, unsupported
+  descriptor families, and wider predicate contexts;
 - no catalog mutation, descriptor generation change, or file-format preamble
   change for file-backed reads;
 - independent file-backed handles with independent selected-schema state;

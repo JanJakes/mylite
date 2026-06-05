@@ -443,6 +443,17 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "count star grouped by nullable key",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT DISTINCT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_count_values,
+            .row_count = 3U,
+            .context = "distinct grouped aggregate keeps grouped rows",
+        }
+    );
     failures += execute_ok(database, "SET SESSION sql_mode = ''", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1590,15 +1601,6 @@ static int test_grouped_diagnostics(void) {
             .sqlstate = "42000",
             .message_part =
                 "GROUP BY supports only integer and nonbinary string descriptor group columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT DISTINCT g, COUNT(*) FROM grouped_numbers GROUP BY g",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP BY does not support SELECT DISTINCT",
         }
     );
     failures += execute_error(

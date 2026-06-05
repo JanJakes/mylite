@@ -142,7 +142,8 @@ expect_error \
     1055 \
     "42000" \
     "Expression #1 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT a AS b, COUNT(*) FROM ambiguous GROUP BY b ORDER BY b;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT a AS b, COUNT(*) FROM ambiguous GROUP BY b ORDER BY b;"
 expect_error \
     "duplicate selected aliases" \
     1052 \

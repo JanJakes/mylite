@@ -122,6 +122,28 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
     static const char *const aliased_pk_values[] = {"1", "Alpha", "2", "Beta", "3", "Gamma"};
     static const char *const order_columns[] = {"id", "c"};
     static const char *const order_values[] = {"1", "1", "2", "1", "3", "1"};
+    static const char *const relaxed_columns[] = {
+        "post_id",
+        "id",
+        "title",
+        "created",
+        "status",
+        "comment_count",
+    };
+    static const char *const relaxed_values[] = {
+        "1",
+        "1",
+        "Alpha",
+        "2024-01-01 00:00:00",
+        "publish",
+        "2",
+        "2",
+        "2",
+        "Beta",
+        "2024-01-02 00:00:00",
+        "draft",
+        "1",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -246,6 +268,21 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
             .context = "unselected primary key dependent order column",
         }
     );
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c.post_id, p.*, COUNT(*) AS comment_count "
+                   "FROM comments AS c LEFT JOIN posts AS p ON p.id = c.post_id "
+                   "WHERE c.post_id IN (1, 2) GROUP BY p.id ORDER BY p.id",
+            .columns = relaxed_columns,
+            .column_count = 6U,
+            .values = relaxed_values,
+            .row_count = 2U,
+            .context = "relaxed mode admits WordPress-style grouped outer join projection",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = DEFAULT", NULL);
 
     mylite_close(database);
     database = NULL;

@@ -132,6 +132,18 @@ expect_value \
 expect_value "where group one row" "1	3	30" "$(printf '%s\n' "$core" | sed -n '8p')"
 expect_value "where group two row" "2	2	NULL" "$(printf '%s\n' "$core" | sed -n '9p')"
 
+distinct_group=$(run_mysql \
+    "USE ${DATABASE};
+     SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     SELECT DISTINCT g, COUNT(*) FROM t GROUP BY g ORDER BY g;"
+)
+expect_value "strict distinct null group" "NULL	2" \
+    "$(printf '%s\n' "$distinct_group" | sed -n '1p')"
+expect_value "strict distinct group one" "1	3" \
+    "$(printf '%s\n' "$distinct_group" | sed -n '2p')"
+expect_value "strict distinct group two" "2	2" \
+    "$(printf '%s\n' "$distinct_group" | sed -n '3p')"
+
 no_match=$(run_mysql \
     "USE ${DATABASE};
      SELECT g, COUNT(i) FROM t WHERE id > 99 GROUP BY g ORDER BY g;"
@@ -215,7 +227,8 @@ expect_error \
     1055 \
     "42000" \
     "Expression #1 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT i, COUNT(*) FROM t GROUP BY g;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT i, COUNT(*) FROM t GROUP BY g;"
 
 cleanup
 

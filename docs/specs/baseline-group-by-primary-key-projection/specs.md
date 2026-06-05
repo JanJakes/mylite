@@ -2,10 +2,14 @@
 
 ## Purpose
 
-This feature extends the descriptor-backed grouped `SELECT` baseline with the
-smallest useful `ONLY_FULL_GROUP_BY` functional-dependence rule: a selected
-descriptor column is legal when the `GROUP BY` list contains every primary-key
-column of that selected column's source table.
+This feature extends the descriptor-backed grouped `SELECT` baseline with two
+mode-sensitive rules:
+
+- with `ONLY_FULL_GROUP_BY` enabled, a selected descriptor column is legal when
+  the `GROUP BY` list contains every primary-key column of that selected
+  column's source table;
+- with `ONLY_FULL_GROUP_BY` disabled, MyLite admits descriptor projections that
+  MySQL accepts as nondeterministic grouped values.
 
 The main user-visible target is the common WordPress shape that joins a base
 row to one-to-many metadata rows, groups by the base row primary key, and still
@@ -48,6 +52,11 @@ With default `ONLY_FULL_GROUP_BY` enabled:
 - In a `LEFT JOIN`, `GROUP BY` over the left source primary key permits
   selecting left-source columns, but it does not permit selecting arbitrary
   right-source columns.
+- With `ONLY_FULL_GROUP_BY` disabled, MySQL permits nonaggregated descriptor
+  columns and wildcard-expanded columns even when they are not functionally
+  dependent on the grouping keys. This includes WordPress's grouped outer-join
+  maintenance query shape that groups by a joined table primary key while
+  selecting a stable column from the outer source.
 - `SELECT p.* ... GROUP BY p.pk` is accepted when every visible `p` column is
   from the primary-key-determined source.
 - `SELECT * ... GROUP BY p.pk` over a joined source fails when the wildcard
@@ -85,6 +94,8 @@ Where:
   - a grouped descriptor column;
   - a descriptor column from a source whose complete primary key is present in
     the `GROUP BY` list;
+  - when `ONLY_FULL_GROUP_BY` is disabled, any resolved descriptor column in
+    the current grouped source envelope;
   - an unqualified `*` as the whole select list, expanded source by source,
     only when every expanded visible column is legal by the same rule;
   - a qualified `source.*`, only when every visible column of that source is
@@ -111,9 +122,9 @@ Where:
 - Full MySQL functional-dependence inference from unique `NOT NULL` indexes,
   equalities in `WHERE` or join conditions, transitive dependencies, constants,
   outer-join special cases, views, derived tables, CTEs, or scalar subqueries.
-- Disabling `ONLY_FULL_GROUP_BY`, `ANY_VALUE()`, grouping expressions, grouping
-  aliases, grouping ordinals, `ROLLUP`, grouping sets, window functions, or
-  nondeterministic nondependent projection.
+- `ANY_VALUE()`, grouping expressions, grouping aliases, grouping ordinals,
+  `ROLLUP`, grouping sets, window functions, or deterministic selection of
+  nondeterministic nondependent projection values.
 - Arbitrary expression projections, expression `ORDER BY`, ordinal `ORDER BY`,
   multiple sort keys, full `HAVING` expressions, or unbounded aggregate
   function coverage.
@@ -184,6 +195,10 @@ grammar.
   - it exactly matches one of the resolved `GROUP BY` keys for the same source;
   - the same source has a primary-key descriptor and every primary-key part
     exactly matches one resolved `GROUP BY` key for that source.
+- If `ONLY_FULL_GROUP_BY` is disabled, descriptor-column and wildcard legality
+  checks accept every resolved descriptor column that fits the existing grouped
+  planner shape. SQLite chooses the representative grouped value, matching
+  MySQL's documented nondeterministic relaxed-mode behavior.
 - A wildcard expansion applies the same rule to each visible column it expands.
   The first illegal expanded column determines the `1055 / 42000` diagnostic.
 - Composite primary keys require all parts in the `GROUP BY` list. Order does

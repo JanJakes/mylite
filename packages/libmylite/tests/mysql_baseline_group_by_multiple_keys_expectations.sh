@@ -253,13 +253,15 @@ expect_error \
     1055 \
     "42000" \
     "Expression #3 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT a, b, n, COUNT(*) FROM t GROUP BY a, b;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT a, b, n, COUNT(*) FROM t GROUP BY a, b;"
 expect_error \
     "missing selected group key" \
     1055 \
     "42000" \
     "Expression #2 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT a, b, COUNT(*) FROM t GROUP BY a;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT a, b, COUNT(*) FROM t GROUP BY a;"
 expect_error \
     "unknown group key" \
     1054 \

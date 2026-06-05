@@ -315,6 +315,9 @@ static int append_grouped_aggregate_query_sql(
 ) {
     int rc = mylite_dynamic_string_append(string, "SELECT ");
 
+    if (rc == MYLITE_OK && plan->is_distinct) {
+        rc = mylite_dynamic_string_append(string, "DISTINCT ");
+    }
     if (rc == MYLITE_OK) {
         rc = append_grouped_aggregate_select_list_sql(string, plan, next_parameter);
     }

@@ -183,7 +183,8 @@ expect_error \
     1055 \
     "42000" \
     "Expression #2 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT g, n, COUNT(*) FROM t GROUP BY g;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT g, n, COUNT(*) FROM t GROUP BY g;"
 expect_error \
     "unknown aggregate argument" \
     1054 \

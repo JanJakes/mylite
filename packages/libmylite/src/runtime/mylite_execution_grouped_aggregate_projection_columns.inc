@@ -383,6 +383,9 @@ static int validate_grouped_projection_column(
 ) {
     int rc = MYLITE_OK;
 
+    if (!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY)) {
+        return MYLITE_OK;
+    }
     if (grouped_projection_column_is_allowed(
             database,
             plan,

@@ -33,11 +33,9 @@ static int plan_grouped_aggregate(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_grouped_aggregate){0};
+    out_plan->is_distinct =
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
     out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
-    if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
-        set_unsupported_error(database, "GROUP BY does not support SELECT DISTINCT");
-        return MYLITE_ERROR;
-    }
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
         set_unsupported_error(
             database,

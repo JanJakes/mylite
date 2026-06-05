@@ -238,7 +238,6 @@ Required diagnostics include:
 - syntax errors: existing parser syntax diagnostics;
 - missing/default schema, unknown schema, unknown table, reserved schema/table
   names, and unsupported object kind: existing grouped source diagnostics;
-- `SELECT DISTINCT`: `GROUP BY does not support SELECT DISTINCT`;
 - select-list shape outside `group_column, aggregate...`:
   `GROUP BY supports one grouped descriptor column and one or more aggregate results`;
 - too many aggregate select items:
@@ -275,6 +274,8 @@ expectation script covering:
 - existing signed/unsigned integer descriptor families;
 - nullable group keys, nullable aggregate arguments, and all-`NULL` aggregate
   argument groups;
+- grouped `SELECT DISTINCT` over supported grouped projection and aggregate
+  items;
 - `WHERE` filtering before grouping;
 - `HAVING` on selected aggregate aliases and expressions in a multi-aggregate
   select;

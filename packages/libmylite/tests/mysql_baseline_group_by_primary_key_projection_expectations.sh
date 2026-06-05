@@ -109,6 +109,7 @@ run_mysql \
 
 core=$(run_mysql \
     "USE ${DATABASE};
+     SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
      DO 0;
      SELECT id, title, created, status
        FROM posts GROUP BY id ORDER BY created DESC LIMIT 2;
@@ -170,6 +171,7 @@ expect_value "status" "0	-1" "$(printf '%s\n' "$core" | sed -n '29p')"
 
 chained_left=$(run_mysql \
     "USE ${DATABASE};
+     SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
      SELECT p.*
        FROM posts AS p
        LEFT JOIN comments AS c ON p.id = c.post_id
@@ -181,24 +183,43 @@ chained_left=$(run_mysql \
 expect_value "chained left grouped primary key projection" \
     "1	Alpha	2024-01-01 00:00:00	publish" "$chained_left"
 
+relaxed=$(run_mysql \
+    "USE ${DATABASE};
+     SET SESSION sql_mode = '';
+     SELECT c.post_id, p.*, COUNT(*) AS comment_count
+       FROM comments AS c LEFT JOIN posts AS p ON p.id = c.post_id
+      WHERE c.post_id IN (1, 2)
+      GROUP BY p.id
+      ORDER BY p.id;"
+)
+expect_value "relaxed grouped outer join projection first" \
+    "1	1	Alpha	2024-01-01 00:00:00	publish	2" \
+    "$(printf '%s\n' "$relaxed" | sed -n '1p')"
+expect_value "relaxed grouped outer join projection second" \
+    "2	2	Beta	2024-01-02 00:00:00	draft	1" \
+    "$(printf '%s\n' "$relaxed" | sed -n '2p')"
+
 expect_error \
     "no primary key selected column" \
     1055 \
     "42000" \
     "Expression #1 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT title FROM no_pk GROUP BY id;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT title FROM no_pk GROUP BY id;"
 expect_error \
     "partial composite primary key" \
     1055 \
     "42000" \
     "Expression #2 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE}; SELECT a, b, v FROM cpk GROUP BY a;"
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE}; SELECT a, b, v FROM cpk GROUP BY a;"
 expect_error \
     "right source selected column" \
     1055 \
     "42000" \
     "Expression #2 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE};
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE};
      SELECT p.id, c.body, COUNT(c.id)
        FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
        GROUP BY p.id;"
@@ -207,7 +228,8 @@ expect_error \
     1055 \
     "42000" \
     "Expression #5 of SELECT list is not in GROUP BY clause" \
-    "USE ${DATABASE};
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE};
      SELECT *
        FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
        GROUP BY p.id;"
@@ -216,7 +238,8 @@ expect_error \
     1055 \
     "42000" \
     "Expression #1 of ORDER BY clause is not in GROUP BY clause" \
-    "USE ${DATABASE};
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE};
      SELECT p.id, COUNT(c.id) AS c
        FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
        GROUP BY p.id ORDER BY c.body;"

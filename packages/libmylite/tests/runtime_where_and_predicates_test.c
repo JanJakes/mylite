@@ -82,6 +82,7 @@ int main(void) {
 
 static int test_where_and_predicates(void) {
     static const char *const and_row[] = {"2"};
+    static const char *const exact_integer_string_row[] = {"2"};
     static const char *const nested_row[] = {"2"};
     static const char *const null_row[] = {"3"};
     static const char *const distinct_row[] = {"9"};
@@ -299,6 +300,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "comparison and predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = ' 1 '",
+            .values = exact_integer_string_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "exact quoted integer comparison predicate",
         }
     );
     failures += expect_result(
@@ -523,6 +536,18 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN '-2' AND '1' ORDER BY id",
+            .values = between_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "exact quoted integer between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i BETWEEN 1 AND -2 ORDER BY id",
             .values = NULL,
             .column_count = 1U,
@@ -702,6 +727,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "duplicate in predicate values",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN ('1', '0') ORDER BY id",
+            .values = in_duplicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "exact quoted integer in predicate",
         }
     );
     failures += expect_result(
@@ -2446,11 +2483,12 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM numbers WHERE i BETWEEN '1' AND 2",
+        "SELECT id FROM numbers WHERE i BETWEEN '1.5' AND 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
+            .message_part =
+                "WHERE supports only integer, boolean, and exact quoted integer predicate literals",
         }
     );
     failures += execute_error(
@@ -2532,11 +2570,12 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM numbers WHERE i IN ('1')",
+        "SELECT id FROM numbers WHERE i IN ('1.5')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
+            .message_part =
+                "WHERE supports only integer, boolean, and exact quoted integer predicate literals",
         }
     );
     failures += execute_error(

@@ -128,6 +128,16 @@ expect_output \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE 1 = i;"
 
 expect_output \
+    "quoted integer descriptor equality" \
+    "2" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i = '2';"
+
+expect_output \
+    "quoted integer descriptor equality with whitespace" \
+    "2" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i = ' 2 ';"
+
+expect_output \
     "literal-left less-than flips to column greater-than" \
     "1,2" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE 0 < i;"
@@ -186,6 +196,16 @@ expect_output \
     "literal predicates compose with existing boolean grammar" \
     "1" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE TRUE AND 1 = i OR FALSE;"
+
+expect_output \
+    "quoted integer BETWEEN bounds" \
+    "1,2,4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i BETWEEN '-1' AND '2';"
+
+expect_output \
+    "quoted integer IN values" \
+    "2,4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i IN ('2','-1');"
 
 expect_output \
     "scalar literal predicate updates" \

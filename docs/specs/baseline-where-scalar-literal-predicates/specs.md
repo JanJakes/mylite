@@ -19,11 +19,13 @@ WHERE 1 IS TRUE
 WHERE NULL IS UNKNOWN
 ```
 
-The feature is intentionally not a general expression engine. It admits only
-signed 64-bit decimal integer literals, `TRUE`, `FALSE`, and `NULL` in the
-new scalar-literal positions. Descriptor-column predicates continue to resolve
-through MyLite catalog descriptors. SQLite still executes the final physical
-filter from generated SQL with bound parameters.
+The feature is intentionally not a general expression engine. It admits signed
+64-bit decimal integer literals, `TRUE`, `FALSE`, and `NULL` in the new
+scalar-literal positions. Descriptor-column integer predicates also admit exact
+quoted signed integer strings with optional leading and trailing ASCII
+whitespace. Descriptor-column predicates continue to resolve through MyLite
+catalog descriptors. SQLite still executes the final physical filter from
+generated SQL with bound parameters.
 
 ## Sources And Evidence
 
@@ -77,6 +79,7 @@ Supported scalar literal comparisons:
 scalar_literal comparison_operator scalar_literal
 scalar_literal comparison_operator column_reference
 column_reference comparison_operator NULL
+column_reference comparison_operator exact_integer_string_literal
 ```
 
 `scalar_literal` is one of:
@@ -125,8 +128,10 @@ used:
 
 This phase does not add:
 
-- string, decimal, float, hex, bit, temporal, JSON, parameter, variable,
-  function, cast, collation, subquery, or row-constructor scalar predicates;
+- string scalar truth predicates, string-to-string scalar comparisons, decimal
+  string numeric predicate coercion, truncated string numeric predicate
+  warnings, float, hex, bit, temporal, JSON, parameter, variable, function,
+  cast, collation, subquery, or row-constructor scalar predicates;
 - descriptor-column bare truth predicates such as `WHERE column_name`;
 - expression-left predicates such as `WHERE column_name + 1 = 2`;
 - function predicates such as `WHERE ABS(column_name) = 1`;
@@ -151,6 +156,8 @@ Runtime probes against MySQL 8.4.9 verify the admitted surface:
   no rows because the result is SQL `NULL`.
 - `WHERE 1 = column_name` matches the same rows as
   `WHERE column_name = 1`.
+- `WHERE column_name = '1'` and `WHERE column_name = ' 1 '` match the same rows
+  as integer literal comparisons and record no warnings.
 - For ordered comparisons with a literal on the left, MySQL evaluates the
   predicate normally. MyLite normalizes these by flipping the comparison
   operator and keeping the descriptor column on the left of generated SQL.

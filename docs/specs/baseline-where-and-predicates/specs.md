@@ -50,8 +50,9 @@ column_reference IS NOT NULL
 ```
 
 `integer_or_boolean_value` is an unsigned decimal integer literal in the
-current descriptor range, optionally prefixed by unary `+` or `-`, or `TRUE` /
-`FALSE`. Boolean literals convert to `1` and `0`.
+current descriptor range, optionally prefixed by unary `+` or `-`, an exact
+quoted signed integer string with optional leading and trailing ASCII
+whitespace, or `TRUE` / `FALSE`. Boolean literals convert to `1` and `0`.
 
 The feature applies to the existing statement families that already call the
 shared descriptor-backed `WHERE` planner:
@@ -91,7 +92,8 @@ This phase does not add:
   comparisons, arithmetic, functions, casts, collations, parameters, variables,
   or arbitrary expression evaluation;
 - `NULL` comparison literals such as `column = NULL` or `column <=> NULL`;
-- string, decimal, float, hex, bit, temporal, JSON, or binary literals;
+- noninteger string, decimal, float, hex, bit, temporal, JSON, or binary
+  literals;
 - boolean composition in `HAVING`;
 - joins, multi-table DML, aliases for `DELETE` or `UPDATE`, full MySQL
   resolver rules, optimizer hints, locks, privileges, indexes, constraints,
@@ -311,4 +313,3 @@ Add MySQL-runtime-verified expectations and C tests for:
 - persistence after reopen, rename/drop interactions where existing lifecycle
   tests cover them, independent file-backed handles, preamble preservation, and
   zero-initialized cleanup for any new planner state.
-

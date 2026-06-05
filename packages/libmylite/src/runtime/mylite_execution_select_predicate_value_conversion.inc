@@ -28,12 +28,29 @@ static int convert_predicate_integer_literal(
     }
     if (!boolean_literal_magnitude(literal, &magnitude)) {
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
             set_unsupported_error(
                 database,
-                "WHERE supports only integer or boolean predicate literals"
+                "WHERE supports only integer, boolean, and exact quoted integer predicate literals"
             );
             return MYLITE_ERROR;
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+            if (is_negative) {
+                set_unsupported_error(
+                    database,
+                    "WHERE supports only integer, boolean, and exact quoted integer predicate "
+                    "literals"
+                );
+                return MYLITE_ERROR;
+            }
+            return convert_predicate_exact_integer_string_literal(
+                database,
+                literal,
+                column,
+                out_value
+            );
         }
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
@@ -56,6 +73,78 @@ static int convert_predicate_integer_literal(
     out_value->is_null = false;
 
     return MYLITE_OK;
+}
+
+static int convert_predicate_exact_integer_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t value_start = 0U;
+    size_t value_end = 0U;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "WHERE supports only integer, boolean, and exact quoted integer predicate literals",
+        "invalid integer string literal",
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    while (value_start < text_length &&
+           predicate_integer_string_ascii_whitespace((unsigned char)text[value_start])) {
+        ++value_start;
+    }
+    value_end = text_length;
+    while (value_end > value_start &&
+           predicate_integer_string_ascii_whitespace((unsigned char)text[value_end - 1U])) {
+        --value_end;
+    }
+
+    parse_result = mylite_execution_parse_signed_integer_text(
+        text + value_start,
+        value_end - value_start,
+        &magnitude,
+        &is_negative
+    );
+    if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK) {
+        set_unsupported_error(
+            database,
+            "WHERE supports only integer, boolean, and exact quoted integer predicate literals"
+        );
+        free(text);
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_integer_for_predicate(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &out_value->integer
+    );
+    free(text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_value->is_null = false;
+    return MYLITE_OK;
+}
+
+static bool predicate_integer_string_ascii_whitespace(unsigned char byte) {
+    return (byte == ' ' || (byte >= '\t' && byte <= '\r')) != 0;
 }
 
 static int convert_predicate_value(

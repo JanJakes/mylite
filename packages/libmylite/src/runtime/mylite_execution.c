@@ -19509,6 +19509,13 @@ static int convert_predicate_integer_literal(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+static int convert_predicate_exact_integer_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static bool predicate_integer_string_ascii_whitespace(unsigned char byte);
 static int convert_predicate_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

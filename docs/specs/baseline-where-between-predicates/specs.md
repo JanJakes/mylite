@@ -10,8 +10,8 @@ and `NULL` row values, descriptor-driven `SELECT ... WHERE`, descriptor-driven
 and the existing `NOT` / `AND` / `OR` predicate tree.
 
 The implementation is intentionally narrow. It supports one descriptor column on
-the left side and two supported integer or boolean bound literals. It does not
-introduce general expression evaluation.
+the left side and two supported integer, exact quoted integer string, or boolean
+bound literals. It does not introduce general expression evaluation.
 
 ## Sources
 
@@ -62,6 +62,7 @@ right-operand value subset:
 integer_literal
 + integer_literal
 - integer_literal
+exact_integer_string_literal
 TRUE
 FALSE
 ```
@@ -89,8 +90,10 @@ This phase does not add:
 - arbitrary expression operands on the left side or either bound;
 - literal-left range tests;
 - `NULL` bounds;
-- string, decimal, float, hex, bit, temporal, JSON, parameter, variable,
-  function, cast, collation, subquery, row-constructor, or arithmetic bounds;
+- noninteger string bounds, decimal string numeric coercion, truncated string
+  numeric predicate warnings, float, hex, bit, temporal, JSON, parameter,
+  variable, function, cast, collation, subquery, row-constructor, or arithmetic
+  bounds;
 - column-to-column range tests;
 - bare truth tests such as `WHERE column BETWEEN ...` outside the descriptor
   range form described here;
@@ -123,6 +126,8 @@ admitted surface:
   part of the range predicate; later `AND` tokens compose predicates.
 - `TRUE` and `FALSE` bounds behave as integer `1` and `0` for this integer
   descriptor subset.
+- Exact quoted integer string bounds such as `'-1'` and `' 2 '` behave like
+  their integer literal values and record no warnings.
 - Supported `BETWEEN` statements record no warnings.
 - `WHERE` filtering happens before grouping, aggregate calculation, DML row
   mutation, ordering, and limiting.
@@ -320,9 +325,9 @@ The feature preserves existing diagnostics for:
 - allocation failures;
 - public API misuse.
 
-Unsupported bound expressions such as `col BETWEEN other_col AND 9`, string
-bounds, decimal bounds, parameter bounds, and `NULL` bounds must be rejected
-deterministically. They must not be passed through to SQLite.
+Unsupported bound expressions such as `col BETWEEN other_col AND 9`,
+noninteger string bounds, decimal bounds, parameter bounds, and `NULL` bounds
+must be rejected deterministically. They must not be passed through to SQLite.
 
 ## Tests
 

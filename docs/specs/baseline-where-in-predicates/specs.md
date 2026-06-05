@@ -8,9 +8,9 @@ descriptor-driven predicate tree, including comparisons, `IS NULL`, keyword
 `NOT`, `AND` / `&&`, `OR` / `||`, and `BETWEEN`.
 
 The implementation is intentionally narrow. It supports one descriptor column
-on the left side and a nonempty list of supported integer, boolean, or `NULL`
-literal values. It does not introduce general expression evaluation or
-subqueries.
+on the left side and a nonempty list of supported integer, exact quoted integer
+string, boolean, or `NULL` literal values. It does not introduce general
+expression evaluation or subqueries.
 
 ## Sources
 
@@ -62,6 +62,7 @@ NOT column_name IN (in_value[, in_value]...)
 integer_literal
 + integer_literal
 - integer_literal
+exact_integer_string_literal
 TRUE
 FALSE
 NULL
@@ -92,9 +93,10 @@ This phase does not add:
 - arbitrary expression operands on the left side or in the list;
 - literal-left membership tests;
 - empty lists;
-- string, decimal, float, hex, bit, temporal, JSON, parameter, variable,
-  function, cast, collation, subquery, row-constructor, or arithmetic list
-  items;
+- noninteger string list items, decimal string numeric coercion, truncated
+  string numeric predicate warnings, float, hex, bit, temporal, JSON,
+  parameter, variable, function, cast, collation, subquery, row-constructor, or
+  arithmetic list items;
 - `IN (subquery)` or `NOT IN (subquery)`;
 - row-value membership tests;
 - table value constructors;

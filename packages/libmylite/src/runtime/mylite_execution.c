@@ -10295,6 +10295,15 @@ static int validate_alter_table_modify_indexes(
     struct planned_alter_table_modify_column *plan
 );
 static int refresh_alter_table_modify_index_parts(struct planned_alter_table_modify_column *plan);
+static int validate_alter_table_modify_auto_increment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct planned_alter_table_modify_column *plan
+);
+static bool alter_table_modify_auto_increment_has_leading_key(
+    const struct planned_alter_table_modify_column *plan
+);
 static int validate_alter_table_modify_primary_index(
     struct mylite_db *database,
     const struct loaded_index_info *index

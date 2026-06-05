@@ -8594,6 +8594,9 @@ identifier(A) ::= GEOMETRY(T). {
 identifier(A) ::= GEOMETRYCOLLECTION(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= GEOMCOLLECTION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= LINESTRING(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -9767,6 +9770,14 @@ spatial_type(A) ::= MULTIPOLYGON(T). {
         });
 }
 spatial_type(A) ::= GEOMETRYCOLLECTION(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRYCOLLECTION,
+        });
+}
+spatial_type(A) ::= GEOMCOLLECTION(T). {
     A = mylite_sql_parser_make_spatial_type(
         state,
         (struct mylite_sql_spatial_type_tokens){

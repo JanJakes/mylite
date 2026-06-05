@@ -119,6 +119,23 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(id, ':', renamed) ORDER BY id) "\
 "FROM ${DATABASE}.qualified_numbers;"
 
+auto_increment_change_expected=$(printf '%b\n' \
+    "2\t0" \
+    "id\tint\tNO\tPRI\tNULL\tauto_increment" \
+    "v\tvarchar(20)\tYES\t\tNULL\t" \
+    "1:a,2:b"
+)
+expect_output \
+    "auto increment change column" \
+    "$auto_increment_change_expected" \
+    "CREATE TABLE ${DATABASE}.auto_change ("\
+"id BIGINT NOT NULL AUTO_INCREMENT, v VARCHAR(20), PRIMARY KEY (id)); "\
+"INSERT INTO ${DATABASE}.auto_change (v) VALUES ('a'), ('b'); "\
+"ALTER TABLE ${DATABASE}.auto_change CHANGE COLUMN id id INT NOT NULL AUTO_INCREMENT; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM ${DATABASE}.auto_change; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM ${DATABASE}.auto_change;"
+
 run_mysql \
     "CREATE TABLE numbers (id INT NOT NULL, n INT NOT NULL, u INT UNSIGNED NULL, "\
 "b BIGINT NULL, bu BIGINT UNSIGNED NULL); "\
@@ -151,6 +168,15 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count; "\
 "SHOW COLUMNS FROM numbers; "\
 "SELECT GROUP_CONCAT(CONCAT(id, ':', final) ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+expect_error \
+    "auto increment change column without key" \
+    1075 \
+    42000 \
+    "there can be only one auto column and it must be defined as a key" \
+    "CREATE TABLE auto_no_key (id INT, v INT); "\
+"ALTER TABLE auto_no_key CHANGE id id INT NOT NULL AUTO_INCREMENT;" \
     "$DATABASE"
 
 show_create_expected=$(cat <<'EXPECTED'

@@ -138,6 +138,17 @@ expect_output \
 "WHERE table_schema = '${DATABASE}' AND table_name = 'spatial_meta' "\
 "ORDER BY INDEX_NAME, SEQ_IN_INDEX;"
 
+geomcollection_alias_expected=$(printf '%b\n' \
+    "0\t1" \
+    "gc\tgeomcollection\tNO\tMUL\tNULL\t"
+)
+expect_output \
+    "geomcollection alias spatial column" \
+    "$geomcollection_alias_expected" \
+    "USE ${DATABASE}; "\
+"CREATE TABLE spatial_geom_alias (gc GEOMCOLLECTION NOT NULL, SPATIAL KEY sp (gc)); "\
+"SELECT ROW_COUNT(), @@warning_count; SHOW COLUMNS FROM spatial_geom_alias;"
+
 index_forms_expected=$(cat <<\EXPECTED
 alter_spatial	CREATE TABLE `alter_spatial` (
   `g` geometry NOT NULL,

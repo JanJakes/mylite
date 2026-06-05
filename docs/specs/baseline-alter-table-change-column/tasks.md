@@ -63,6 +63,9 @@ SQLite physical table names, and the existing integer/`NULL` row model.
    - Support pure rename and case-only spelling updates.
    - Validate existing rows against target nullability and integer range inside
      the catalog mutation before descriptor replacement and physical rebuild.
+   - Admit explicit `AUTO_INCREMENT` on one supported integer-family replacement
+     column only when a key starts with that column, and keep `SERIAL` alias
+     support out of this slice.
    - Return an empty DDL result with MySQL-compatible affected rows and no
      warnings.
 
@@ -96,8 +99,8 @@ SQLite physical table names, and the existing integer/`NULL` row model.
      rename-plus-type changes, same-definition no-op, case-only spelling
      update, selected-schema, schema-qualified, persistence, DML after change,
      diagnostics, unsupported syntax, descriptor preservation/update, physical
-     schema generation, rollback, preamble safety, independent handles, and
-     result behavior.
+     schema generation, rollback, preamble safety, independent handles,
+     explicit `AUTO_INCREMENT` replacement, and result behavior.
    - Keep tests deterministic and avoid adding a new test framework.
 
 9. Build integration
@@ -124,7 +127,7 @@ SQLite physical table names, and the existing integer/`NULL` row model.
 - Full `ALTER TABLE`, multiple change actions and combined actions outside the
   dedicated limited multi-action ALTER slice, algorithms, locks, non-admitted
   defaults, non-admitted types, indexes, keys, constraints, generated columns,
-  invisible columns, auto-increment, temporary tables, views, triggers,
+  invisible columns, `SERIAL` alias expansion, temporary tables, views, triggers,
   cascades, foreign keys, privileges, metadata locks, dependency maintenance,
   implicit commit boundaries, arbitrary SQLite pass-through, and SQLite fork
   patches.

@@ -91,6 +91,9 @@ static int resolve_alter_table_column_replacement_plan(
         rc = validate_alter_table_modify_indexes(database, out_plan);
     }
     if (rc == MYLITE_OK) {
+        rc = validate_alter_table_modify_auto_increment(database, columns, column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
     }
     if (rc == MYLITE_OK && out_plan->is_noop &&
@@ -353,6 +356,84 @@ static int refresh_alter_table_modify_index_parts(struct planned_alter_table_mod
     return MYLITE_OK;
 }
 
+static int validate_alter_table_modify_auto_increment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct planned_alter_table_modify_column *plan
+) {
+    size_t auto_increment_count = 0U;
+    struct integer_column_range range = {0};
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || columns == NULL || plan->column_index >= column_count) {
+        set_runtime_error(database, "invalid ALTER TABLE auto-increment plan");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        const bool is_auto_increment =
+            column_index == plan->column_index ? plan->column.is_auto_increment
+                                               : columns[column_index].is_auto_increment;
+
+        if (is_auto_increment) {
+            ++auto_increment_count;
+        }
+    }
+    if (auto_increment_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (auto_increment_count > 1U) {
+        set_wrong_auto_key_error(database);
+        return MYLITE_ERROR;
+    }
+    if (!plan->column.is_auto_increment) {
+        return MYLITE_OK;
+    }
+
+    rc = integer_range_for_logical_type(
+        database,
+        (struct integer_logical_type_range_request){
+            .logical_type = plan->column.logical_type,
+            .unsupported_message = "AUTO_INCREMENT supports only baseline integer columns",
+        },
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!alter_table_modify_auto_increment_has_leading_key(plan)) {
+        set_wrong_auto_key_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool alter_table_modify_auto_increment_has_leading_key(
+    const struct planned_alter_table_modify_column *plan
+) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->adds_inline_primary_key || plan->adds_inline_unique_key) {
+        return true;
+    }
+
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if (key->part_count == 0U) {
+            continue;
+        }
+        if (key->parts[0].column.column_id == plan->original_column.column_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static int validate_alter_table_modify_primary_index(
     struct mylite_db *database,
     const struct loaded_index_info *index
@@ -542,7 +623,8 @@ static int complete_alter_table_modify_column_plan(
     }
 
 rebuild_column:
-    if (!modify_column_type_matches(&out_plan->original_column, &out_plan->column)) {
+    if (!modify_column_type_matches(&out_plan->original_column, &out_plan->column) ||
+        out_plan->original_column.is_auto_increment != out_plan->column.is_auto_increment) {
         out_plan->reports_rebuild_row_count = true;
     }
     rc = choose_sqlite_rowid_alias(
@@ -575,6 +657,9 @@ static bool modify_column_definition_matches(
         return false;
     }
     if (original_column->is_nullable != replacement_column->is_nullable) {
+        return false;
+    }
+    if (original_column->is_auto_increment != replacement_column->is_auto_increment) {
         return false;
     }
     if (original_column->on_update_current_timestamp !=
@@ -635,6 +720,9 @@ static bool modify_column_metadata_only_replacement(
         return false;
     }
     if (original_column->is_nullable != replacement_column->is_nullable) {
+        return false;
+    }
+    if (original_column->is_auto_increment != replacement_column->is_auto_increment) {
         return false;
     }
     if (!modify_column_integer_value_domain_matches(original_column, replacement_column)) {

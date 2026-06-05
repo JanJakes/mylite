@@ -175,6 +175,14 @@ static int test_spatial_metadata_surface(void) {
         "geo",
         "NO",
     };
+    static const char *const geomcollection_alias_columns[] = {
+        "gc",
+        "geomcollection",
+        "NO",
+        "MUL",
+        NULL,
+        "",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -222,6 +230,21 @@ static int test_spatial_metadata_surface(void) {
             .column_count = show_index_field_count,
             .row_count = 1U,
             .context = "spatial SHOW INDEX",
+        }
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE TABLE spatial_geom_alias (gc GEOMCOLLECTION NOT NULL, SPATIAL KEY sp (gc))",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM spatial_geom_alias",
+            .values = geomcollection_alias_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "GEOMCOLLECTION alias SHOW COLUMNS",
         }
     );
     failures += expect_query_values(

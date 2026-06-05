@@ -95,6 +95,9 @@ The implementation must add:
 - case-only spelling updates for the changed column;
 - descriptor name, type, and nullability replacement while preserving column id,
   ordinal position, table id, table name, physical table name, and row values;
+- explicit `AUTO_INCREMENT` preservation or addition for one supported
+  integer-family replacement column when a primary, unique, or secondary key
+  starts with that column;
 - validation that existing non-`NULL` row values fit the target integer range;
 - validation that existing `NULL` row values are rejected when the target
   definition is `NOT NULL`;
@@ -117,8 +120,9 @@ This feature must not implement:
   limited multi-action ALTER slice;
 - `MODIFY COLUMN`, `RENAME COLUMN`, or table rename in this `CHANGE` path;
 - table-qualified old or replacement column names;
-- non-admitted `DEFAULT`, generated, invisible, auto-increment, primary key, unique,
-  foreign key, check, comment, collation, charset, storage, or option clauses;
+- non-admitted `DEFAULT`, generated, invisible, `SERIAL` alias, primary key,
+  unique, foreign key, check, comment, collation, charset, storage, or option
+  clauses;
 - non-integer column types;
 - indexes, keys, constraints, table options, or partitions;
 - temporary tables, views, triggers, privileges, metadata locks, foreign keys,
@@ -162,7 +166,7 @@ ALTER TABLE table_name CHANGE old_column_name column_definition
 ALTER TABLE table_name CHANGE COLUMN old_column_name column_definition
 
 column_definition:
-    new_column_name integer_type [NULL | NOT NULL]
+    new_column_name integer_type [NULL | NOT NULL] [AUTO_INCREMENT]
 
 integer_type:
     INT
@@ -194,7 +198,7 @@ alter_table_change_column_statement ::=
 column_keyword_opt ::= .
 column_keyword_opt ::= COLUMN.
 
-column_definition ::= identifier integer_type nullability_opt.
+column_definition ::= identifier integer_type nullability_opt auto_increment_opt.
 
 integer_type ::= INT.
 integer_type ::= INTEGER.
@@ -206,6 +210,9 @@ integer_type ::= BIGINT UNSIGNED.
 nullability_opt ::= .
 nullability_opt ::= NULL.
 nullability_opt ::= NOT NULL.
+
+auto_increment_opt ::= .
+auto_increment_opt ::= AUTO_INCREMENT.
 
 table_name ::= identifier.
 table_name ::= identifier DOT identifier.

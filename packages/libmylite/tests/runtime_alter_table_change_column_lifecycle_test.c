@@ -40,6 +40,7 @@ enum {
     mysql_error_blob_key_without_length = 1170,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_wrong_auto_key = 1075,
 };
 
 struct expected_sql_error {
@@ -272,6 +273,18 @@ static int test_change_column_success_persistence_and_dml(void) {
     static const char *const rows_after_delete[] = {"1", "2", "2", "6"};
     static const char *const persisted_rows[] = {"1", "2", "2", "6"};
     static const char *const renamed_rows[] = {"9"};
+    static const char auto_increment_show_create[] =
+        "CREATE TABLE `auto_change` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `v` varchar(20) DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const auto_increment_show_create_rows[] = {
+        "auto_change",
+        auto_increment_show_create,
+    };
+    static const char *const auto_increment_rows[] = {"1", "a", "2", "b"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -315,6 +328,47 @@ static int test_change_column_success_persistence_and_dml(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "schema-qualified change without selected schema",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE app.auto_change ("
+        "id BIGINT NOT NULL AUTO_INCREMENT, v VARCHAR(20), PRIMARY KEY (id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO app.auto_change (v) VALUES ('a'), ('b')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE app.auto_change CHANGE COLUMN id id INT NOT NULL AUTO_INCREMENT",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM app.auto_change ORDER BY id",
+            .values = auto_increment_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "auto-increment rows after change",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE app.auto_change",
+            .values = auto_increment_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "auto-increment SHOW CREATE after change",
         }
     );
 
@@ -1501,6 +1555,18 @@ static int test_change_column_diagnostics_and_rollback(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE auto_no_key (id INT, v INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE auto_no_key CHANGE id id INT NOT NULL AUTO_INCREMENT",
+        (struct expected_sql_error){
+            .code = mysql_error_wrong_auto_key,
+            .sqlstate = "42000",
+            .message_part = "there can be only one auto column and it must be defined as a key",
         }
     );
 

@@ -483,6 +483,7 @@ static void make_modify_target_descriptor(
         plan->column.physical_type
     );
     out_column->is_nullable = plan->column.is_nullable;
+    out_column->is_auto_increment = plan->column.is_auto_increment;
     out_column->on_update_current_timestamp = plan->column.on_update_current_timestamp;
     out_column->default_kind = plan->column.default_kind;
     out_column->default_integer = plan->column.default_integer;

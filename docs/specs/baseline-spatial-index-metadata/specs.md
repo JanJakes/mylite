@@ -58,9 +58,9 @@ internals, or restrictively licensed implementation sources.
 Runtime probes establish:
 
 - `GEOMETRY`, `POINT`, `LINESTRING`, `POLYGON`, `MULTIPOINT`,
-  `MULTILINESTRING`, `MULTIPOLYGON`, and `GEOMETRYCOLLECTION` are accepted as
-  column types. `SHOW CREATE TABLE` renders `GEOMETRYCOLLECTION` as
-  `geomcollection`.
+  `MULTILINESTRING`, `MULTIPOLYGON`, `GEOMETRYCOLLECTION`, and the
+  `GEOMCOLLECTION` synonym are accepted as column types. `SHOW CREATE TABLE`
+  renders both collection spellings as `geomcollection`.
 - Nullable spatial columns render `DEFAULT NULL`; non-null spatial columns
   render no default clause.
 - Explicit `DEFAULT NULL` is accepted for nullable spatial columns. A non-NULL
@@ -107,7 +107,7 @@ Supported:
 - persistent MyLite base tables;
 - spatial column descriptors for `GEOMETRY`, `POINT`, `LINESTRING`, `POLYGON`,
   `MULTIPOINT`, `MULTILINESTRING`, `MULTIPOLYGON`, and
-  `GEOMETRYCOLLECTION`;
+  `GEOMETRYCOLLECTION` plus its `GEOMCOLLECTION` synonym;
 - optional `NULL`, `NOT NULL`, and explicit `DEFAULT NULL` on spatial columns;
 - omitted/default values for nullable spatial columns storing SQL `NULL`;
 - strict diagnostics for omitted, explicit `DEFAULT`, or explicit `NULL` into
@@ -183,6 +183,7 @@ spatial_type:
   MULTILINESTRING
   MULTIPOLYGON
   GEOMETRYCOLLECTION
+  GEOMCOLLECTION
 
 CREATE TABLE table_name (
   column_name spatial_type [NULL | NOT NULL] [DEFAULT NULL],
@@ -213,6 +214,7 @@ spatial_type ::= MULTIPOINT.
 spatial_type ::= MULTILINESTRING.
 spatial_type ::= MULTIPOLYGON.
 spatial_type ::= GEOMETRYCOLLECTION.
+spatial_type ::= GEOMCOLLECTION.
 
 table_constraint ::= spatial_index_definition.
 
@@ -290,6 +292,7 @@ subtype controls display text:
 | `MULTILINESTRING` | `multilinestring` |
 | `MULTIPOLYGON` | `multipolygon` |
 | `GEOMETRYCOLLECTION` | `geomcollection` |
+| `GEOMCOLLECTION` | `geomcollection` |
 
 Spatial columns are binary logical values for this slice:
 

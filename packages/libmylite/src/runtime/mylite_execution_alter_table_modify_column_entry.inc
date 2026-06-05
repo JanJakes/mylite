@@ -121,11 +121,15 @@ static int plan_alter_table_change_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = reject_auto_increment_column_definition(
-            database,
-            child_at(statement, 2U),
-            "ALTER TABLE CHANGE COLUMN does not support AUTO_INCREMENT"
-        );
+        const struct mylite_sql_ast_node *column_definition = child_at(statement, 2U);
+
+        if (mylite_sql_ast_node_integer_type_is_serial_alias(child_at(column_definition, 1U)) != 0) {
+            set_unsupported_error(
+                database,
+                "ALTER TABLE CHANGE COLUMN does not support AUTO_INCREMENT"
+            );
+            rc = MYLITE_ERROR;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = plan_alter_table_modify_column_position(database, child_at(statement, 3U), out_plan);

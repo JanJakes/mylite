@@ -124,6 +124,56 @@ static int plan_temporal_extract_comparison_predicate(
     return rc;
 }
 
+static int plan_temporal_extract_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_temporal_extract_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_temporal_extract_predicate_value(
+            database,
+            child_at(predicate_node, 1U),
+            &node.value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_temporal_extract_predicate_value(
+            database,
+            child_at(predicate_node, 2U),
+            &node.upper_value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
 static int plan_temporal_extract_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,

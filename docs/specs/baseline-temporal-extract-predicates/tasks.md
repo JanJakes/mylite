@@ -11,6 +11,8 @@
 - [x] Update compatibility documentation for the exact admitted subset.
 - [x] Widen numeric temporal extractor predicates to supported joined `SELECT`
   source envelopes, including grouped left-join WordPress taxonomy queries.
+- [x] Widen numeric temporal extractor predicates to integer/boolean
+  `BETWEEN` ranges used by WordPress date queries.
 - [x] Run targeted runtime/MySQL expectation tests.
 - [x] Run `cmake --workflow --preset check`.
 - [x] Run subagent release-gate review, fix findings, commit atomically, and push `main`.

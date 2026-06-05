@@ -2,11 +2,12 @@
 
 Date, time, timestamp, interval, time-zone, and calendar functions.
 
-Numeric temporal extractors also have a limited single-table `WHERE` predicate
+Numeric temporal extractors also have a limited descriptor-source `WHERE` predicate
 slice: top-level/truth, comparison against signed integer/boolean/`NULL`
-literals, and `IS [NOT] NULL` over one descriptor-backed table source. This
-does not admit general expression predicates, DML assignments, defaults,
-generated columns, or grouping/having expressions.
+literals, integer/boolean `BETWEEN` ranges, and `IS [NOT] NULL` over one
+descriptor-backed table or joined source. This does not admit general
+expression predicates, DML assignments, defaults, generated columns, or
+grouping/having expressions.
 
 | Function or operator | Status | Notes |
 | --- | --- | --- |

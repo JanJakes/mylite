@@ -506,6 +506,9 @@ static int test_temporal_extract_predicates(void) {
     static const char *const values_day[] = {"1"};
     static const char *const values_dayofweek[] = {"1"};
     static const char *const values_dayofyear[] = {"1"};
+    static const char *const values_between_year[] = {"1", "2"};
+    static const char *const values_between_dayofmonth[] = {"1", "2"};
+    static const char *const values_not_between_year[] = {"3"};
     static const char *const values_week[] = {"2"};
     static const char *const values_weekday[] = {"1"};
     static const char *const values_weekofyear[] = {"1"};
@@ -635,6 +638,39 @@ static int test_temporal_extract_predicates(void) {
             .values = values_dayofyear,
             .row_count = 1U,
             .context = "temporal extract DAYOFYEAR predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) BETWEEN 2000 AND 2010 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_between_year,
+            .row_count = 2U,
+            .context = "temporal extract YEAR BETWEEN predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE DAYOFMONTH(dt) BETWEEN 2 AND 3 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_between_dayofmonth,
+            .row_count = 2U,
+            .context = "temporal extract DAYOFMONTH BETWEEN predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE YEAR(d) NOT BETWEEN 2000 AND 2010 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_not_between_year,
+            .row_count = 1U,
+            .context = "temporal extract YEAR NOT BETWEEN predicate",
         }
     );
     failures += expect_query(

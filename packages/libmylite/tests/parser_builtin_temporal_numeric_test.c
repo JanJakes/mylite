@@ -3111,6 +3111,19 @@ static int test_temporal_extract_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT id FROM t WHERE YEAR(d) BETWEEN 2000 AND 2010 "
+        "AND DAYOFMONTH(d) NOT BETWEEN 9 AND 11;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "temporal extract between and predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT DAYNAME();", MYLITE_SQL_PARSE_OK, &result);
     expression = parser_test_child_at(
         parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),

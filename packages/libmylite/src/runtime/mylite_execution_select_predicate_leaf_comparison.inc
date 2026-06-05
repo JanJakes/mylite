@@ -121,15 +121,27 @@ static int plan_select_predicate_leaf_node(
             &node_index
         );
     } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
-        rc = plan_between_predicate(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_predicate,
-            &node_index
-        );
+        if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
+            rc = plan_temporal_extract_between_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate,
+                &node_index
+            );
+        } else {
+            rc = plan_between_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate,
+                &node_index
+            );
+        }
     } else if (predicate_node->kind == MYLITE_SQL_AST_IN_PREDICATE) {
         rc = plan_in_predicate(
             database,
@@ -284,15 +296,27 @@ static int plan_select_predicate_leaf_node_without_exists(
             &node_index
         );
     } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
-        rc = plan_between_predicate(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_predicate,
-            &node_index
-        );
+        if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
+            rc = plan_temporal_extract_between_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate,
+                &node_index
+            );
+        } else {
+            rc = plan_between_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate,
+                &node_index
+            );
+        }
     } else {
         rc = plan_in_literal_predicate(
             database,

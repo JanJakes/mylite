@@ -4081,6 +4081,15 @@ predicate_atom(A) ::= temporal_extract_predicate_expression(C) predicate_compari
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
+predicate_atom(A) ::= temporal_extract_predicate_expression(C) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
+predicate_atom(A) ::= temporal_extract_predicate_expression(C) NOT(N) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
 predicate_atom(A) ::= temporal_extract_predicate_expression(C) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);

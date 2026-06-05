@@ -152,7 +152,8 @@ static int bind_select_non_in_predicate_node_parameters(
 
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
-        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL) {
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
         rc = bind_row_scalar_expression_parameters(
             statement,
             node->row_scalar_expression,
@@ -170,6 +171,19 @@ static int bind_select_non_in_predicate_node_parameters(
             }
             if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
                 ++(*parameter_index);
+            }
+        }
+        if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
+            rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
+            if (rc == MYLITE_OK) {
+                ++(*parameter_index);
+            }
+            if (rc == MYLITE_OK) {
+                rc =
+                    bind_planned_value_parameter(statement, *parameter_index, &node->upper_value);
+                if (rc == MYLITE_OK) {
+                    ++(*parameter_index);
+                }
             }
         }
         return rc;

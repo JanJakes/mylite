@@ -2037,6 +2037,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH = 11,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON = 12,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL = 13,
+    PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN = 14,
 };
 
 struct planned_select_predicate_node {
@@ -19029,6 +19030,15 @@ static int plan_temporal_extract_truth_predicate(
     size_t *out_node_index
 );
 static int plan_temporal_extract_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_temporal_extract_between_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
     const struct select_source_context *source_context,

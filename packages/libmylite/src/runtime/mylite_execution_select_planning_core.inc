@@ -2013,6 +2013,7 @@ static bool planned_row_scalar_tableless_filter_node_is_supported(
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL:
+    case PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN:
         return (node->row_scalar_expression != NULL &&
                 node->row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) != 0;
     default:

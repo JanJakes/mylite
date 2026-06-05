@@ -63,9 +63,9 @@ Runtime probes establish the behavior used by this phase:
   `1292`, preserving the existing extractor warning text.
 - Successful valid in-range predicates produce no warnings.
 - MySQL accepts broader shapes such as string comparison operands, arithmetic
-  operands, function calls on either side, `IN`, `BETWEEN`, expression ordering,
-  and source envelopes outside MyLite's current descriptor-backed `SELECT`
-  joins. This phase defers those shapes.
+  operands, function calls on either side, `IN`, general `BETWEEN`, expression
+  ordering, and source envelopes outside MyLite's current descriptor-backed
+  `SELECT` joins. This phase defers those shapes.
 
 ## Supported SQL
 
@@ -86,6 +86,8 @@ temporal_extract_predicate:
     numeric_temporal_extract_expr
   | NOT numeric_temporal_extract_expr
   | numeric_temporal_extract_expr comparison_operator integer_domain_literal
+  | numeric_temporal_extract_expr BETWEEN integer_range_literal AND integer_range_literal
+  | numeric_temporal_extract_expr NOT BETWEEN integer_range_literal AND integer_range_literal
   | numeric_temporal_extract_expr IS NULL
   | numeric_temporal_extract_expr IS NOT NULL
 
@@ -97,6 +99,11 @@ integer_domain_literal:
   | TRUE
   | FALSE
   | NULL
+
+integer_range_literal:
+    decimal_integer_literal_with_optional_unary_sign
+  | TRUE
+  | FALSE
 ```
 
 `numeric_temporal_extract_expr` is any already supported row-scalar temporal
@@ -138,9 +145,9 @@ This slice intentionally does not support:
 - literal-left comparison forms such as `2008 = YEAR(column)`;
 - `DATE()`, `TIME()`, `LAST_DAY()`, `DAYNAME()`, `MONTHNAME()`, or other
   text-returning temporal functions in predicates;
-- `IN`, `BETWEEN`, `LIKE`, `REGEXP`, arithmetic, scalar functions, casts,
-  `CASE`, `IF()`, control-flow, aggregate, window, grouping, or having
-  predicates around extractor results;
+- `IN`, general expression `BETWEEN`, `LIKE`, `REGEXP`, arithmetic, scalar
+  functions, casts, `CASE`, `IF()`, control-flow, aggregate, window, grouping,
+  or having predicates around extractor results;
 - source envelopes outside the current descriptor-backed `SELECT` table/join
   support, CTEs, subqueries, DML assignments, defaults, generated columns,
   constraints, expression indexes, or arbitrary SQLite pass-through;
@@ -156,6 +163,9 @@ admitted shape is:
 temporal_extract_truth(A) ::= numeric_temporal_extract_expr(B).
 temporal_extract_comparison(A) ::=
     numeric_temporal_extract_expr(B) comparison_operator(C) integer_domain_literal(D).
+temporal_extract_between(A) ::=
+    numeric_temporal_extract_expr(B) BETWEEN(C) integer_range_literal(D)
+    AND integer_range_literal(E).
 temporal_extract_is_null(A) ::=
     numeric_temporal_extract_expr(B) IS null_operator(C).
 ```
@@ -167,13 +177,14 @@ These snippets describe MyLite's supported subset, not MySQL's full grammar.
 Planning:
 
 1. Detect top-level or parenthesized numeric temporal extractor calls in
-   `WHERE`, comparison-left, and `IS [NOT] NULL` predicate positions.
+   `WHERE`, comparison-left, `BETWEEN`, and `IS [NOT] NULL` predicate
+   positions.
 2. Reuse `plan_row_scalar_temporal_extract_expression()` with the active
    source context so descriptor names, aliases, and unknown-column diagnostics
    stay consistent with other predicate expressions.
-3. Convert comparison literals with the existing signed-64 integer-domain
-   parser used by similar function predicate slices. `TRUE` maps to `1`,
-   `FALSE` maps to `0`, and `NULL` stays `NULL`.
+3. Convert comparison and range literals with the existing signed-64
+   integer-domain parser used by similar function predicate slices. `TRUE`
+   maps to `1`, `FALSE` maps to `0`, and comparison `NULL` stays `NULL`.
 4. Generate SQLite `WHERE` SQL that calls MyLite's registered
    `_mylite_temporal_extract(...)` function. All literal and discriminator
    values are bound parameters.
@@ -184,6 +195,9 @@ Execution:
 - Comparison predicates use SQLite numeric comparison over the MyLite-generated
   integer or `NULL` result. `<=>` maps to SQLite `IS`, matching this limited
   integer/`NULL` domain.
+- `BETWEEN` predicates use the same generated extractor expression and integer
+  lower/upper bounds, preserving MySQL's inclusive numeric range behavior for
+  the admitted literal subset.
 - `IS NULL` / `IS NOT NULL` predicates test the extractor result directly.
 - Invalid temporal values preserve the existing extractor warning behavior.
 - The public result object follows existing `SELECT` conventions.
@@ -211,6 +225,8 @@ temporal extractor test binary:
 
 - successful `WHERE YEAR(d) = 2008`, `MONTH(dt)`, `DAYOFMONTH(dt)`,
   `HOUR(tm)`, `MINUTE(dt)`, `SECOND(tm)`, and `QUARTER(d)` comparisons;
+- successful `YEAR(d) BETWEEN ...`, `DAYOFMONTH(dt) BETWEEN ...`, and
+  `YEAR(d) NOT BETWEEN ...` range predicates;
 - truth and `NOT` truth predicates over nonzero, zero, and `NULL` extractor
   results;
 - `<=> NULL`, `IS NULL`, and `IS NOT NULL` behavior;

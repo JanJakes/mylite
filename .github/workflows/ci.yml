@@ -116,8 +116,17 @@ jobs:
           free -h
           docker version
 
-      - name: Build WordPress PHPUnit environment
-        run: tools/wordpress-phpunit-mysqli-mylite build
+      - name: Build WordPress PHPUnit Docker image
+        run: tools/wordpress-phpunit-mysqli-mylite image
+
+      - name: Fetch WordPress test checkout
+        run: tools/wordpress-phpunit-mysqli-mylite fetch-wordpress
+
+      - name: Build MyLite PHP extensions
+        run: tools/wordpress-phpunit-mysqli-mylite build-extensions
+
+      - name: Install WordPress PHPUnit dependencies
+        run: tools/wordpress-phpunit-mysqli-mylite install-dependencies
 
       - name: Run WordPress PHPUnit test suite
         run: tools/wordpress-phpunit-mysqli-mylite test

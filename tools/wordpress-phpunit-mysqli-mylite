@@ -46,12 +46,16 @@ DOCKERFILE
 
 usage() {
   cat <<USAGE
-usage: tools/wordpress-phpunit-mysqli-mylite [build|test|run] [phpunit-args...]
+usage: tools/wordpress-phpunit-mysqli-mylite [command] [phpunit-args...]
 
 Commands:
-  build  Build the Docker image, WordPress test checkout, PHP extensions, and PHPUnit dependencies.
-  test   Run the WordPress PHPUnit test suite against the prepared MyLite PHP extensions.
-  run    Build the environment, then run the WordPress PHPUnit test suite.
+  image                 Build the Docker image.
+  fetch-wordpress       Fetch the WordPress test checkout.
+  build-extensions      Build the MyLite PHP extensions and PHP wrapper.
+  install-dependencies  Install WordPress and PHPUnit dependencies.
+  build                 Build the Docker image and full PHPUnit environment.
+  test                  Run the WordPress PHPUnit test suite.
+  run                   Build the environment, then run the WordPress PHPUnit test suite.
 USAGE
 }
 
@@ -128,10 +132,11 @@ define( 'WPLANG', '' );
 PHP
 }
 
-build_wordpress_phpunit_environment() {
+fetch_wordpress_develop() {
   mkdir -p "${HOME}" "$(dirname "${MYLITE_WORDPRESS_DIR}")" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}"
 
   phase "Fetch WordPress develop"
+  local fetch_start
   fetch_start="$(date +%s)"
   if [ ! -d "${MYLITE_WORDPRESS_DIR}/.git" ]; then
     git init "${MYLITE_WORDPRESS_DIR}"
@@ -142,8 +147,11 @@ build_wordpress_phpunit_environment() {
   wordpress_sha="$(git -C "${MYLITE_WORDPRESS_DIR}" rev-parse HEAD)"
   echo "wordpress_sha=${wordpress_sha}"
   echo "wordpress_fetch_seconds=$(seconds_since "${fetch_start}")"
+}
 
+build_mylite_php_extensions() {
   phase "Build MyLite PHP extensions"
+  local build_start
   build_start="$(date +%s)"
   cmake -S . -B "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}" -G Ninja \
     -DMYLITE_WARNINGS_AS_ERRORS=ON \
@@ -164,8 +172,12 @@ PHP
   chmod +x "${php_wrapper}"
   "${php_wrapper}" -r 'if (!extension_loaded("mylite") || !extension_loaded("mysqli") || !function_exists("mysqli_connect")) { exit(1); }'
   echo "mylite_build_seconds=$(seconds_since "${build_start}")"
+}
 
+install_wordpress_phpunit_dependencies() {
+  mkdir -p "${HOME}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}"
   phase "Install WordPress PHPUnit dependencies"
+  local deps_start
   deps_start="$(date +%s)"
   composer --working-dir="${MYLITE_WORDPRESS_DIR}" install --no-interaction --no-progress --prefer-dist
   if [ ! -x "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" ]; then
@@ -176,9 +188,20 @@ PHP
   write_wordpress_config
 }
 
+build_wordpress_phpunit_environment() {
+  fetch_wordpress_develop
+  build_mylite_php_extensions
+  install_wordpress_phpunit_dependencies
+}
+
+phpunit_output_has_nonpassing_summary() {
+  grep -Eq '^(FAILURES!|ERRORS!|No tests executed!|There (was|were) [0-9]+ (failure|failures|error|errors))' "$1"
+}
+
 run_wordpress_phpunit_suite() {
   require_executable "${php_wrapper}"
   require_executable "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit"
+  mkdir -p "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}"
 
   phase "Prepare MyLite database"
   rm -f "${MYLITE_WORDPRESS_DB_PATH}"
@@ -197,19 +220,33 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
   write_wordpress_config
 
   phase "Run WordPress PHPUnit test suite"
+  suite_log="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}/wordpress-phpunit.log"
   suite_start="$(date +%s)"
   set +e
   (
     cd "${MYLITE_WORDPRESS_DIR}"
     "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" "$@"
-  )
-  suite_status="$?"
+  ) 2>&1 | tee "${suite_log}"
+  suite_status="${PIPESTATUS[0]}"
   set -e
+  if [ "${suite_status}" -eq 0 ] && phpunit_output_has_nonpassing_summary "${suite_log}"; then
+    printf '%s\n' "PHPUnit reported a non-passing summary but exited with status 0" >&2
+    suite_status=1
+  fi
   echo "wordpress_phpunit_seconds=$(seconds_since "${suite_start}")"
   return "${suite_status}"
 }
 
 case "${container_phase}" in
+  fetch-wordpress)
+    fetch_wordpress_develop
+    ;;
+  build-extensions)
+    build_mylite_php_extensions
+    ;;
+  install-dependencies)
+    install_wordpress_phpunit_dependencies
+    ;;
   build)
     build_wordpress_phpunit_environment
     ;;
@@ -227,7 +264,7 @@ CONTAINER
 command="run"
 if [ "$#" -gt 0 ]; then
   case "$1" in
-    build|test|run)
+    image|fetch-wordpress|build-extensions|install-dependencies|build|test|run)
       command="$1"
       shift
       ;;
@@ -246,6 +283,12 @@ fi
 overall_start="$(date +%s)"
 set +e
 case "${command}" in
+  image)
+    build_image
+    ;;
+  fetch-wordpress|build-extensions|install-dependencies)
+    run_container "${command}"
+    ;;
   build)
     build_image
     run_container build

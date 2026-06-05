@@ -164,7 +164,6 @@ expect_error \
 accepted_but_deferred=$(run_mysql_with_headers \
     "SELECT IF(1,2,3), 1+2;
      SELECT (1+2), IF(1,2,3);
-     SELECT 1 FROM t ORDER BY id IS NULL, id;
      SELECT IF(1,2,3) FROM t ORDER BY id IS NULL, id;
      SELECT 1, IF(1,2,3) WHERE TRUE;
      SELECT 1, IF(1,2,3) LIMIT 1;
@@ -177,10 +176,6 @@ expect_value \
 2	3
 (1+2)	IF(1,2,3)
 3	2
-1
-1
-1
-1
 IF(1,2,3)
 2
 2

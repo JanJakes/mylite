@@ -129,10 +129,16 @@ expect_output \
     "SELECT ${digits82}; SELECT @@warning_count;" \
     "$DATABASE"
 
+expect_output_with_headers \
+    "table-backed literal projection" \
+    "test
+1" \
+    "SELECT 1 AS test FROM t WHERE id = 1 LIMIT 1;" \
+    "$DATABASE"
+
 accepted_but_deferred=$(run_mysql_with_headers \
     "SELECT (1), (+1), (-1), (NULL), (TRUE), (FALSE);
      SELECT 'x', 1.0, 1e0, 0x10, b'10';
-     SELECT 1 FROM t;
      SELECT 1 ORDER BY 1;
      SELECT 1 LIMIT 0;
      SELECT 1 LIMIT 1;" \
@@ -144,9 +150,6 @@ expect_value \
 1	1	-1	NULL	1	0
 x	1.0	1e0	0x10	b'10'
 x	1.0	1	0x10	0x02
-1
-1
-1
 1
 1
 1

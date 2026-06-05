@@ -1102,6 +1102,8 @@ static int test_scalar_binary_literal_projection(void) {
 }
 
 static int test_scalar_expression_projection_unsupported_forms(void) {
+    static const char *const column_one[] = {"one"};
+    static const char *const value_one[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1414,13 +1416,15 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .message_part = "SELECT IF() supports only signed 64-bit integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT 1 AS one FROM t",
+            .columns = column_one,
+            .column_count = 1U,
+            .values = value_one,
+            .row_count = 1U,
+            .context = "table-backed literal projection",
         }
     );
     failures += execute_error(

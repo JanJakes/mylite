@@ -11,6 +11,7 @@ SELECT scalar_value[, scalar_value ...]
 SELECT ALL scalar_value[, scalar_value ...]
 SELECT scalar_value[, scalar_value ...] FROM DUAL
 SELECT ALL scalar_value[, scalar_value ...] FROM DUAL
+SELECT scalar_literal[, scalar_literal ...] FROM descriptor_table [WHERE ...] [ORDER BY ...] [LIMIT ...]
 ```
 
 The admitted values are the already-supported warning-free scalar leaves and
@@ -26,14 +27,17 @@ functions:
 
 The user-visible addition is mixed scalar value select lists such as
 `SELECT 1, IF(1,2,3), ISNULL(NULL) FROM DUAL`, plus parenthesized admitted
-values inside and outside the supported scalar functions. The architectural
-addition is a shared scalar-value projection classifier and validation path,
-so new scalar functions do not require another homogeneous projection lane.
+values inside and outside the supported scalar functions. A later compatible
+extension admits table-backed scalar-literal projection such as
+`SELECT 1 AS test FROM t WHERE id = 1 LIMIT 1` through the existing row-scalar
+table envelope. The architectural addition is a shared scalar-value projection
+classifier and validation path, so new scalar functions do not require another
+homogeneous projection lane.
 
-This is still not a general expression engine. It does not add table-backed
-expression projection, arithmetic, comparison or logical operators as scalar
-values, string/decimal/float/temporal operands, hex or bit literals as numeric
-operands, user or system
+This is still not a general expression engine. It does not add general
+table-backed expression projection, arithmetic, comparison or logical
+operators as scalar values, string/decimal/float/temporal operands, hex or bit
+literals as numeric operands, user or system
 variables inside scalar value functions, subqueries, CTEs, aliases in
 expressions, query clauses around no-source scalar value projection, predicates,
 DML assignment expressions, expression metadata, or arbitrary SQLite
@@ -234,7 +238,8 @@ Successful supported statements return:
 Unsupported forms must fail deterministically without falling through to
 SQLite:
 
-- table-backed scalar value projection, including `SELECT 1 FROM t`;
+- general table-backed scalar value projection outside the documented
+  scalar-literal and row-scalar slices;
 - scalar value projection with no-source `WHERE`, `ORDER BY`, `GROUP BY`,
   `HAVING`, or `LIMIT`;
 - arithmetic, comparison, logical, bitwise, cast, string, decimal, float, hex,
@@ -275,9 +280,9 @@ Fast C tests should cover:
   `ISNULL()`;
 - row count, warning count, affected rows, absence of catalog generation
   changes, and `.mylite` preamble preservation;
-- deterministic rejection of table-backed scalar value projection, arithmetic,
-  clauses around no-source scalar value projection, parameters, variables,
-  subqueries, column references, and unsupported functions;
+- deterministic rejection of unsupported table-backed scalar expressions,
+  arithmetic, clauses around no-source scalar value projection, parameters,
+  variables, subqueries, column references, and unsupported functions;
 - wrong arity propagation in a mixed projection list;
 - independent handles; and
 - zero-initialized cleanup for any new helper objects.

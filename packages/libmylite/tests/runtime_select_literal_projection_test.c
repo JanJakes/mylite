@@ -222,7 +222,11 @@ static int test_literal_projection_values_and_file_safety(void) {
 }
 
 static int test_literal_projection_diagnostics_and_table_selects(void) {
+    static const char *const column_one[] = {"one"};
+    static const char *const column_test[] = {"test"};
     static const char *const column_id[] = {"id"};
+    static const char *const values_one[] = {"1", "1"};
+    static const char *const value_one[] = {"1"};
     static const char *const values_id[] = {"1", "2"};
     char path[test_path_capacity];
     char digits82[literal_rejected_text_capacity];
@@ -316,13 +320,26 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
             .context = "descriptor table select still works",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT 1 AS one FROM t ORDER BY id",
+            .columns = column_one,
+            .column_count = 1U,
+            .values = values_one,
+            .row_count = 2U,
+            .context = "table-backed literal projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 AS test FROM t WHERE id = 1 LIMIT 1",
+            .columns = column_test,
+            .column_count = 1U,
+            .values = value_one,
+            .row_count = 1U,
+            .context = "table-backed literal presence check",
         }
     );
 

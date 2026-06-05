@@ -98,25 +98,29 @@ static bool select_statement_is_row_scalar_projection_attempt(
 
     select_item = child_at(select_list, 0U);
     while (select_item != NULL) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            (row_scalar_expression_contains_row_function(child_at(select_item, 0U)) ||
+            (row_scalar_expression_contains_row_function(expression) ||
              (has_table_source &&
-              row_scalar_expression_contains_rand_function(child_at(select_item, 0U))) ||
+              row_scalar_expression_contains_rand_function(expression)) ||
              (has_table_source &&
-              row_scalar_expression_contains_any_value_function(child_at(select_item, 0U))) ||
+              row_scalar_expression_contains_any_value_function(expression)) ||
              (has_table_source &&
-              row_scalar_expression_contains_conversion_expression(child_at(select_item, 0U))) ||
+              row_scalar_expression_contains_conversion_expression(expression)) ||
              (has_table_source &&
-              row_scalar_expression_is_concat_operator(child_at(select_item, 0U))) ||
-             (has_table_source && row_scalar_expression_contains_date_interval_second_function(
-                                      child_at(select_item, 0U)
-                                  )) ||
-             row_scalar_expression_contains_statement_time_function(child_at(select_item, 0U)) ||
+              row_scalar_expression_is_concat_operator(expression)) ||
              (has_table_source &&
-              row_scalar_expression_contains_control_flow_function(child_at(select_item, 0U))) ||
-             (has_table_source && row_scalar_expression_contains_integer_arithmetic_attempt(
-                                      child_at(select_item, 0U)
-                                  )))) {
+              row_scalar_expression_contains_date_interval_second_function(expression)) ||
+             row_scalar_expression_contains_statement_time_function(expression) ||
+             (has_table_source &&
+              row_scalar_expression_contains_control_flow_function(expression)) ||
+             (has_table_source &&
+              row_scalar_expression_contains_integer_arithmetic_attempt(expression)) ||
+             (has_table_source && expression != NULL &&
+              expression->kind == MYLITE_SQL_AST_LITERAL) ||
+             (has_table_source && expression != NULL &&
+              expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
             return true;
         }
         select_item = select_item->next_sibling;

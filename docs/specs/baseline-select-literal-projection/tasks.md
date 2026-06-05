@@ -4,8 +4,9 @@
 
 Add the next narrow scalar query slice: `SELECT` projection of supported
 decimal integer, `NULL`, `TRUE`, and `FALSE` literals with no table source or
-with `FROM DUAL`, preserving existing result, diagnostics, alias, and
-statement-context conventions.
+with `FROM DUAL`, plus a later table-backed scalar-literal projection slice for
+one descriptor-backed source, preserving existing result, diagnostics, alias,
+and statement-context conventions.
 
 ## Tasks
 
@@ -41,6 +42,9 @@ statement-context conventions.
      literal projection expressions.
    - Convert supported literal values to public result cells without using
      SQLite.
+   - Route one-table table-backed scalar literal projection through the
+     existing row-scalar table envelope so descriptor predicates, descriptor
+     ordering, and `LIMIT` stay SQLite-backed.
    - Normalize decimal integer values, including leading zeros, unary signs,
      signed zero, 81-significant-digit acceptance, and 82-significant-digit
      rejection.
@@ -77,9 +81,10 @@ statement-context conventions.
 
 ## Out Of Scope
 
-- General expression projection, table-backed literal projection,
-  parenthesized literal projection, string/decimal/float/hex/bit values,
+- General expression projection, parenthesized literal projection,
+  string/decimal/float/hex/bit values in the no-source literal path,
   arithmetic, parameters, casts, variables, functions outside existing scalar
-  slices, subqueries, predicates, ordering, limits, grouping, joins, CTEs, set
-  operations, exact expression metadata, warning/truncation behavior for
+  slices, subqueries, no-source predicates, no-source ordering, no-source
+  limits, grouping, joins, CTEs, set operations, exact expression metadata,
+  warning/truncation behavior for
   >81-significant-digit integers, and SQLite fork patches.

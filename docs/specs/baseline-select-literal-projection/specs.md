@@ -4,14 +4,16 @@
 
 This feature specifies a narrow no-source scalar `SELECT` extension:
 projection of decimal integer, `NULL`, `TRUE`, and `FALSE` literals with no
-table source or with `FROM DUAL`. It builds on `mylite_execute()`, statement
-context, the parser scaffold, scalar/session select execution, `SELECT ALL`,
+table source or with `FROM DUAL`, plus table-backed scalar literal projection
+over one descriptor-backed source through the row-scalar select envelope. It
+builds on `mylite_execute()`, statement context, the parser scaffold,
+scalar/session select execution, row-scalar table planning, `SELECT ALL`,
 select-item aliases, and the existing public result conventions.
 
 This is intentionally not general expression projection. It does not add
-table-backed literal projection, arithmetic, string/decimal/float/hex/bit
-values, functions beyond existing scalar slices, predicates, ordering, limits,
-or arbitrary SQLite pass-through.
+arithmetic, general table-backed expressions, functions beyond existing scalar
+slices, no-source predicates, no-source ordering, no-source limits, or
+arbitrary SQLite pass-through.
 
 ## Sources
 
@@ -72,9 +74,10 @@ Observed against the local `mysql:8.4.9` runtime:
 - Successful literal projection returns `@@warning_count = 0`, no affected
   rows, and makes a following `ROW_COUNT()` return `-1`.
 - MySQL accepts wider forms such as parenthesized literals, string literals,
-  decimal literals, floats, hex, bit literals, table-backed literal projection,
-  no-source `ORDER BY`, and no-source `LIMIT`. Those remain outside this
-  slice.
+  decimal literals, floats, hex, bit literals, no-source `ORDER BY`, and
+  no-source `LIMIT`. Those remain outside the no-source literal slice.
+- `SELECT 1 AS test FROM t WHERE id = 1 LIMIT 1` returns one row when the
+  descriptor-backed source predicate matches, and zero rows when it does not.
 
 The reproducible probe lives in
 `packages/libmylite/tests/mysql_baseline_select_literal_projection_expectations.sh`.
@@ -86,6 +89,8 @@ The implementation must add:
 - runtime support for `SELECT literal_projection_list`;
 - runtime support for `SELECT ALL literal_projection_list`;
 - runtime support for the same forms with `FROM DUAL`;
+- runtime support for one-table table-backed scalar literal projection over the
+  current row-scalar table `WHERE`, `ORDER BY`, and `LIMIT` envelope;
 - literal projection items limited to unparenthesized decimal integer literals
   with optional unary `+` or `-`, `NULL`, `TRUE`, and `FALSE`;
 - decimal integer rendering for up to 81 significant digits, including
@@ -110,10 +115,9 @@ This feature must not implement:
   collations, or subqueries;
 - parenthesized literal projection, because MySQL has source-label behavior
   that should be specified separately before admission;
-- table-backed literal projection such as `SELECT 1 FROM t`;
-- `WHERE`, `ORDER BY`, `LIMIT`, `OFFSET`, `GROUP BY`, `HAVING`, windows,
-  joins, CTEs, set operations, locking clauses, `INTO`, or other select
-  modifiers for literal projection;
+- no-source or `DUAL` `WHERE`, `ORDER BY`, `LIMIT`, or `OFFSET`;
+- `GROUP BY`, `HAVING`, windows, joins, CTEs, set operations, locking clauses,
+  `INTO`, or other select modifiers for literal projection;
 - MySQL's warning/truncation behavior for integer literals above 81
   significant digits;
 - protocol-grade expression metadata, exact numeric type metadata, charsets,
@@ -190,13 +194,15 @@ select_item ::= expression select_alias.
 ```
 
 The parser may admit these expression forms wherever the shared select-item
-expression grammar is used. The analyzer accepts them only in no-source and
-`FROM DUAL` literal projection statements. Existing descriptor-backed table
-selects continue to reject non-descriptor projection expressions.
+expression grammar is used. The analyzer accepts them in no-source and
+`FROM DUAL` literal projection statements and in the documented table-backed
+row-scalar literal projection envelope. Existing descriptor-backed table
+selects continue to reject non-descriptor projection expressions outside the
+documented row-scalar slices.
 
 ## Semantics
 
-For supported statements:
+For supported no-source and `FROM DUAL` literal statements:
 
 - exactly one result row is produced;
 - each select item produces one result column;
@@ -218,14 +224,18 @@ For supported statements:
 `SELECT ALL` remains duplicate-preserving default syntax. Since literal
 projection has exactly one implicit row, it has no visible value effect.
 
+For supported table-backed scalar literal projection, source row matching,
+ordering, and limiting follow the existing row-scalar table envelope, and each
+matched source row contributes one projected result row.
+
 ## Diagnostics
 
 Required deterministic diagnostics:
 
 - syntax errors and unsupported grammar use the existing parser/runtime
   diagnostics;
-- unsupported table-backed literal projection reports that descriptor-backed
-  `SELECT` supports only descriptor columns and supported aggregate forms;
+- unsupported table-backed expression projection reports the relevant
+  row-scalar or descriptor-backed `SELECT` diagnostic;
 - unsupported parenthesized literal projection reports an unsupported literal
   projection expression;
 - unsupported string, decimal, float, hex, bit, parameter, arithmetic,
@@ -242,11 +252,12 @@ Required deterministic diagnostics:
 
 ## SQLite And Storage
 
-Supported literal projection does not use SQLite execution. It is a MyLite
-wrapper/runtime result construction path because there is no table source, no
-physical row storage, and no descriptor lookup. This is the optimal path for
-this slice: it avoids preparing a synthetic SQLite statement while preserving
-the public result conventions used by other row-returning statements.
+Supported no-source literal projection does not use SQLite execution. It is a
+MyLite wrapper/runtime result construction path because there is no table
+source, no physical row storage, and no descriptor lookup. Table-backed scalar
+literal projection uses the existing row-scalar planner and SQLite-backed table
+scan so predicate filtering, ordering, and limiting stay in the same path as
+other row-scalar table projections.
 
 No SQLite fork patches are required.
 
@@ -275,7 +286,8 @@ Add fast C tests under `packages/libmylite/tests/` covering:
 - integer normalization boundaries, including 81 significant digits and
   rejection of 82 significant digits;
 - unsupported literal/projection forms listed above;
-- unchanged descriptor-backed table select behavior;
+- unchanged descriptor-backed column select behavior and table-backed scalar
+  literal projection through the row-scalar table envelope;
 - no storage/catalog mutation and `.mylite` preamble preservation for
   file-backed handles; and
 - zero-initialized cleanup for any new helper state if helper state is added.
@@ -283,7 +295,8 @@ Add fast C tests under `packages/libmylite/tests/` covering:
 ## Compatibility Notes
 
 This slice narrows the previous "no expression-level numeric/boolean
-semantics" gap only for no-source and `DUAL` literal projection. It does not
-make literals general expressions, and it does not change DML conversion,
-predicate conversion, descriptor-backed table projection, ordering, limits, or
-metadata fidelity.
+semantics" gap for no-source and `DUAL` literal projection and for
+one-table scalar-literal row-scalar projection. It does not make literals
+general expressions, and it does not change DML conversion, predicate
+conversion, general descriptor-backed table expression projection, or metadata
+fidelity.

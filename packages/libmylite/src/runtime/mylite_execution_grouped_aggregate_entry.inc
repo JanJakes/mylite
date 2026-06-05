@@ -175,6 +175,9 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
         planned_select_source_deinit(&plan->sources[source_index]);
     }
+    for (size_t join_index = 0U; join_index < plan->join_count; ++join_index) {
+        planned_select_join_condition_deinit(&plan->join_conditions[join_index]);
+    }
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
         planned_row_scalar_expression_deinit(
             &plan->aggregates[aggregate_index].aggregate_row_scalar_expression
@@ -186,7 +189,8 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     free(plan->projections);
     free(plan->groups);
     free(plan->sources);
-    planned_select_join_condition_deinit(&plan->join_condition);
+    free(plan->join_kinds);
+    free(plan->join_conditions);
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->having.value);
     planned_select_order_deinit(&plan->order);

@@ -870,11 +870,10 @@ static int reject_unsupported_multi_source_join_edges(
     }
 
     for (size_t join_index = 0U; join_index < plan->join_count; ++join_index) {
-        if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
-            plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        if (plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
             set_unsupported_error(
                 database,
-                "multi-source SELECT supports only inner and cartesian join chains"
+                "multi-source SELECT does not support RIGHT JOIN chains"
             );
             return MYLITE_ERROR;
         }

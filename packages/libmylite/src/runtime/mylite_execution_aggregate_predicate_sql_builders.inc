@@ -322,7 +322,7 @@ static int append_grouped_aggregate_query_sql(
         rc = mylite_dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_grouped_aggregate_from_sql(string, plan);
+        rc = append_grouped_aggregate_from_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
@@ -359,51 +359,20 @@ static int append_grouped_aggregate_query_sql(
 
 static int append_grouped_aggregate_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 ) {
-    int rc = MYLITE_OK;
+    struct planned_select source_plan = {0};
 
     if (plan->source_count == 0U) {
         return mylite_dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
     }
-    if (plan->source_count != 2U) {
-        return MYLITE_ERROR;
-    }
-
-    rc = mylite_dynamic_string_append_quoted_identifier(
-        string,
-        plan->sources[0].table.physical_name
-    );
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 0U);
-    }
-    if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
-        rc = mylite_dynamic_string_append(string, " LEFT JOIN ");
-    } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
-        rc = mylite_dynamic_string_append(string, " RIGHT JOIN ");
-    } else if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " JOIN ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(
-            string,
-            plan->sources[1].table.physical_name
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 1U);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_join_condition_sql(string, &plan->join_condition, NULL);
-    }
-
-    return rc;
+    source_plan.sources = plan->sources;
+    source_plan.source_count = plan->source_count;
+    source_plan.join_kinds = plan->join_kinds;
+    source_plan.join_conditions = plan->join_conditions;
+    source_plan.join_count = plan->join_count;
+    return append_select_from_sql(string, &source_plan, next_parameter);
 }
 
 static int append_grouped_aggregate_select_list_sql(

@@ -168,6 +168,19 @@ expect_value "unselected fd order second" "2	1" "$(printf '%s\n' "$core" | sed -
 expect_value "unselected fd order third" "3	1" "$(printf '%s\n' "$core" | sed -n '28p')"
 expect_value "status" "0	-1" "$(printf '%s\n' "$core" | sed -n '29p')"
 
+chained_left=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT p.*
+       FROM posts AS p
+       LEFT JOIN comments AS c ON p.id = c.post_id
+       LEFT JOIN comments AS c2 ON p.id = c2.post_id
+       WHERE c.score IN (5, 7) AND c2.id IN (10, 11) AND p.status = 'publish'
+       GROUP BY p.id
+       ORDER BY p.created DESC;"
+)
+expect_value "chained left grouped primary key projection" \
+    "1	Alpha	2024-01-01 00:00:00	publish" "$chained_left"
+
 expect_error \
     "no primary key selected column" \
     1055 \

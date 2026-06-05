@@ -3238,18 +3238,11 @@ select_statement(A) ::=
         state, T, M, B, D, W, G, H, O, L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) select_item_list(B) FROM inner_join_table_source(JT)
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM joined_table_source(JT)
     where_clause_opt(W) group_clause_opt(G)
     having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, JT, W, G, H, O, L, K);
-}
-select_statement(A) ::=
-    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT)
-    outer_join_operator(JO) table_source(RT) ON join_condition(J) where_clause_opt(W) group_clause_opt(G)
-    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM comma_table_sources(CT)
@@ -3349,12 +3342,20 @@ derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) table_alias_
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
 
-inner_join_table_source(A) ::=
+joined_table_source(A) ::=
     table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {
     A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
 }
-inner_join_table_source(A) ::=
-    inner_join_table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {
+joined_table_source(A) ::=
+    joined_table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+joined_table_source(A) ::=
+    table_source(LT) outer_join_operator(JO) table_source(RT) ON join_condition(J). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+joined_table_source(A) ::=
+    joined_table_source(LT) outer_join_operator(JO) table_source(RT) ON join_condition(J). {
     A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
 }
 

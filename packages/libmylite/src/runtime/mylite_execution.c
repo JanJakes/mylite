@@ -2853,6 +2853,9 @@ struct planned_grouped_aggregate {
     size_t source_count;
     enum mylite_sql_ast_join_kind join_kind;
     struct planned_select_join_condition join_condition;
+    enum mylite_sql_ast_join_kind *join_kinds;
+    struct planned_select_join_condition *join_conditions;
+    size_t join_count;
     struct planned_select_predicate predicate;
     struct planned_grouped_having having;
     struct planned_select_order order;
@@ -24757,7 +24760,8 @@ static int append_grouped_aggregate_query_sql(
 );
 static int append_grouped_aggregate_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 );
 static int append_grouped_aggregate_select_list_sql(
     struct mylite_dynamic_string *string,

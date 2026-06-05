@@ -107,6 +107,13 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
         "draft",
         "1",
     };
+    static const char *const chained_left_columns[] = {"id", "title", "created", "status"};
+    static const char *const chained_left_values[] = {
+        "1",
+        "Alpha",
+        "2024-01-01 00:00:00",
+        "publish",
+    };
     static const char *const composite_columns[] = {"a", "b", "v"};
     static const char *const composite_values[] = {"1", "1", "aa", "1", "2", "ab", "2", "1", "ba"};
     static const char *const title_columns[] = {"title"};
@@ -178,6 +185,21 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
             .values = wildcard_values,
             .row_count = 2U,
             .context = "qualified wildcard primary key projection with aggregate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.* FROM posts AS p "
+                   "LEFT JOIN comments AS c ON p.id = c.post_id "
+                   "LEFT JOIN comments AS c2 ON p.id = c2.post_id "
+                   "WHERE c.score IN (5, 7) AND c2.id IN (10, 11) AND p.status = 'publish' "
+                   "GROUP BY p.id ORDER BY p.created DESC",
+            .columns = chained_left_columns,
+            .column_count = 4U,
+            .values = chained_left_values,
+            .row_count = 1U,
+            .context = "chained left joins grouped by left primary key",
         }
     );
     failures += expect_query(

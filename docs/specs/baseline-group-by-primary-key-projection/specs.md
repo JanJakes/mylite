@@ -76,8 +76,9 @@ GROUP BY group_key [, group_key ...]
 
 Where:
 
-- `source` is the existing one-table source or current two-table joined source
-  admitted by grouped aggregate execution.
+- `source` is the existing one-table source or current descriptor joined
+  source envelope admitted by grouped aggregate execution, including
+  descriptor-backed left outer join chains.
 - `group_key` is one to four descriptor column references already supported by
   the multiple-key `GROUP BY` baseline.
 - `select_item` may be:

@@ -128,6 +128,9 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
     static const char *const right_order_desc_rows[] = {"1", "8", "1", "7", "4", NULL};
     static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9", "4", NULL};
     static const char *const alias_order_rows[] = {"1", "8", "1", "7", "4", NULL};
+    static const char *const chained_left_rows[] = {
+        "1", "7", "7", "1", "7", "8", "1", "8", "7", "1", "8", "8",
+    };
     static const char *const temp_shadow_rows[] = {"10", "7", "10", "8"};
     static const char *const row_count_rows[] = {"-1"};
     char path[test_path_capacity];
@@ -230,6 +233,19 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 3U,
             .context = "order by selected alias",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.id, r2.id FROM lefts AS l "
+                   "LEFT JOIN rights AS r ON l.k = r.k "
+                   "LEFT JOIN rights AS r2 ON l.k = r2.k "
+                   "WHERE l.id = 1 ORDER BY r.id, r2.id",
+            .values = chained_left_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "chained left joins preserve earlier matches",
         }
     );
     failures += expect_query_values(
@@ -608,17 +624,6 @@ static int test_left_join_diagnostics(void) {
             .message_part = "syntax",
         }
     );
-    failures += expect_error(
-        database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k "
-        "LEFT JOIN rights AS rights2 ON lefts.k = rights2.k",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

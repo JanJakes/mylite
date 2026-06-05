@@ -50,54 +50,58 @@ static int plan_grouped_aggregate_join_source(
     struct planned_grouped_aggregate *out_plan,
     struct select_source_context *out_source_context
 ) {
-    const struct mylite_sql_ast_node *join_condition = child_at(from_clause, 2U);
+    struct planned_select select_plan = {0};
+    struct joined_select_temp_nodes temp_nodes = {0};
     int rc = MYLITE_OK;
 
-    out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
-    if ((out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
-         out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) &&
-        join_condition == NULL) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
-        set_unsupported_error(database, "GROUP BY does not support RIGHT JOIN");
-        return MYLITE_ERROR;
-    }
-    out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
-    if (out_plan->sources == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    out_plan->source_count = 2U;
-
-    rc = plan_joined_select_source(database, child_at(from_clause, 0U), &out_plan->sources[0]);
+    rc = prepare_joined_select_plan(database, from_clause, &select_plan, &temp_nodes);
     if (rc == MYLITE_OK) {
-        rc = plan_joined_select_source(database, child_at(from_clause, 1U), &out_plan->sources[1]);
+        for (size_t join_index = 0U; rc == MYLITE_OK && join_index < select_plan.join_count;
+             ++join_index) {
+            if (select_plan.join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+                set_unsupported_error(database, "GROUP BY does not support RIGHT JOIN");
+                rc = MYLITE_ERROR;
+            }
+        }
     }
     if (rc == MYLITE_OK) {
         rc = reject_duplicate_select_source_reference(
             database,
-            out_plan->sources,
-            out_plan->source_count
+            select_plan.sources,
+            select_plan.source_count
         );
     }
     if (rc == MYLITE_OK) {
         rc = init_join_select_source_context(
-            out_plan->sources,
-            out_plan->source_count,
+            select_plan.sources,
+            select_plan.source_count,
             out_source_context
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_joined_select_condition(
+        rc = plan_joined_select_conditions(
             database,
-            join_condition,
-            out_plan->join_kind,
-            out_source_context,
-            &out_plan->join_condition
+            temp_nodes.join_condition_nodes,
+            temp_nodes.join_condition_node_count,
+            &select_plan
         );
     }
+    if (rc == MYLITE_OK) {
+        out_plan->sources = select_plan.sources;
+        out_plan->source_count = select_plan.source_count;
+        out_plan->join_kinds = select_plan.join_kinds;
+        out_plan->join_conditions = select_plan.join_conditions;
+        out_plan->join_count = select_plan.join_count;
+        out_plan->join_kind = select_plan.join_kind;
+        select_plan.sources = NULL;
+        select_plan.source_count = 0U;
+        select_plan.join_kinds = NULL;
+        select_plan.join_conditions = NULL;
+        select_plan.join_count = 0U;
+    } else {
+        planned_select_deinit(&select_plan);
+    }
+    joined_select_temp_nodes_deinit(&temp_nodes);
 
     return rc;
 }

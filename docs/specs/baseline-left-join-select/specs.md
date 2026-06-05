@@ -2,17 +2,17 @@
 
 ## Status
 
-This feature extends the descriptor-backed two-source `SELECT` join path from
-inner/cartesian joins to the first outer-join slice: `LEFT JOIN` and
-`LEFT OUTER JOIN` with one descriptor equality `ON` condition.
+This feature extends descriptor-backed `SELECT` joins from inner/cartesian
+joins to left outer joins: `LEFT JOIN` and `LEFT OUTER JOIN` with one
+descriptor equality `ON` condition, including left-deep chains used by
+WordPress taxonomy queries.
 
-This is intentionally not full MySQL outer-join support. It supports two
-readable MyLite table descriptors, optional source aliases, required
-one-column same-family integer or ASCII string descriptor equality `ON`, the
-existing descriptor `WHERE` predicate subset, one descriptor `ORDER BY` key,
-and the existing `SELECT` `LIMIT` forms. It does not implement `USING`,
-natural joins, right joins, chains of more than two tables, derived tables,
-join updates, or general expression projection.
+This is intentionally not full MySQL outer-join support. It supports readable
+MyLite table descriptors, optional source aliases, required one-column
+same-family integer or ASCII string descriptor equality `ON`, the existing
+descriptor `WHERE` predicate subset, one descriptor `ORDER BY` key, and the
+existing `SELECT` `LIMIT` forms. It does not implement `USING`, natural joins,
+right joins, derived tables, join updates, or general expression projection.
 
 ## Sources
 
@@ -101,17 +101,19 @@ In scope:
 
 - `SELECT column_list FROM left_source LEFT JOIN right_source ON left = right ...`;
 - `SELECT column_list FROM left_source LEFT OUTER JOIN right_source ON left = right ...`;
+- `SELECT column_list FROM left_source LEFT JOIN right_source ON left = right
+  LEFT JOIN next_source ON left = next ...`;
 - `SELECT * FROM left_source LEFT [OUTER] JOIN right_source ON left = right ...`;
 - required `ON left_column = right_column` where both operands resolve to
   supported same-family integer-family columns or supported ASCII string-family
-  columns in the two-source scope;
+  columns in the current join edge scope;
 - unqualified, table-qualified, alias-qualified, and schema-table-qualified
   source references using the existing selected/default schema policy;
 - optional source aliases using `AS alias` or bare `alias`;
 - projection of descriptor columns only, plus wildcard expansion of visible
-  descriptor columns from left then right;
+  descriptor columns in source order;
 - existing descriptor `WHERE`, `ORDER BY`, and `LIMIT` subsets, with column
-  resolution performed across both joined sources;
+  resolution performed across joined sources;
 - left-row preservation and right-side `NULL` extension for unmatched rows;
 - persistent and shadowing session temporary readable table descriptors through
   the existing readable-table resolver;
@@ -123,7 +125,7 @@ Out of scope:
 
 - right outer joins;
 - full outer joins;
-- more than two source tables or chained joins;
+- right or full outer join chains;
 - outer joins without `ON`;
 - `USING`, natural joins, comma joins, `STRAIGHT_JOIN` as a join operator,
   parenthesized table references, ODBC escape joins, lateral or derived tables,
@@ -185,16 +187,19 @@ select_statement ::=
     where_clause_opt group_clause_opt having_clause_opt order_clause_opt
     limit_clause_opt select_locking_clause_opt.
 
-joined_table_source ::= table_source.
-joined_table_source ::= table_source join_operator table_source join_condition_opt.
+joined_table_source ::= table_source inner_join_operator table_source join_condition_opt.
+joined_table_source ::= joined_table_source inner_join_operator table_source join_condition_opt.
+joined_table_source ::= table_source outer_join_operator table_source ON join_equality_condition.
+joined_table_source ::= joined_table_source outer_join_operator table_source ON join_equality_condition.
 
 table_source ::= table_name table_alias_opt.
 
-join_operator ::= JOIN.
-join_operator ::= INNER JOIN.
-join_operator ::= CROSS JOIN.
-join_operator ::= LEFT JOIN.
-join_operator ::= LEFT OUTER JOIN.
+inner_join_operator ::= JOIN.
+inner_join_operator ::= INNER JOIN.
+inner_join_operator ::= CROSS JOIN.
+
+outer_join_operator ::= LEFT JOIN.
+outer_join_operator ::= LEFT OUTER JOIN.
 
 join_condition_opt ::= .
 join_condition_opt ::= ON join_equality_condition.
@@ -202,9 +207,9 @@ join_condition_opt ::= ON join_equality_condition.
 join_equality_condition ::= qualified_identifier EQUAL qualified_identifier.
 ```
 
-Runtime then rejects missing `ON` for `LEFT [OUTER] JOIN` because MySQL's outer
-join syntax requires a join specification. The optional condition remains only
-for the existing inner/cartesian join operators.
+The optional condition remains only for the existing inner/cartesian join
+operators. `LEFT [OUTER] JOIN` requires `ON` in the admitted grammar because
+MySQL's outer join syntax requires a join specification.
 
 ## Name Resolution
 
@@ -317,7 +322,7 @@ fork patch or optional SQLite syntax is needed.
 | Unknown order column | `1054 / 42S22`, order clause |
 | Ambiguous order column or alias | `1052 / 23000`, order clause |
 | Qualified wildcard | existing parse or unsupported diagnostic |
-| `USING`, natural, right, or chained outer joins | existing parse or unsupported diagnostic |
+| `USING`, natural, or right outer joins | existing parse or unsupported diagnostic |
 | Unsupported projection expression, aggregate, grouping, or distinct join | deterministic unsupported diagnostic |
 | Physical SQLite failure | existing physical row-operation diagnostic |
 | Allocation failure | existing allocation diagnostic |
@@ -333,8 +338,8 @@ Add MySQL expectation script:
 Coverage:
 
 - parser acceptance for `LEFT JOIN` and `LEFT OUTER JOIN`;
-- parser/runtime rejection for missing `ON`, `USING`, right joins, natural
-  joins, and chained joins;
+- parser/runtime rejection for missing `ON`, `USING`, right joins, and natural
+  joins;
 - left-row preservation with matching and unmatched rows;
 - `SELECT *` left-then-right visible descriptor-column order with duplicate
   labels;
@@ -359,11 +364,11 @@ Coverage:
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-joins.md` to say MyLite
-supports a limited two-source descriptor-backed `LEFT [OUTER] JOIN ... ON`
-subset in `SELECT`.
+supports a limited descriptor-backed `LEFT [OUTER] JOIN ... ON` subset in
+`SELECT`, including left-deep chains.
 
 Do not claim support for right joins, full joins, `USING`, natural joins,
-join chains, derived tables, arbitrary `ON` predicates, join updates, aggregate
+derived tables, arbitrary `ON` predicates, join updates, aggregate
 joins, grouped joins, expression projections, full collation behavior, optimizer
 plan equivalence, or protocol-grade origin metadata.
 

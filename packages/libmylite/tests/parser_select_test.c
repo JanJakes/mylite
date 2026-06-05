@@ -3956,6 +3956,27 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT l.id FROM lefts l LEFT JOIN rights r ON l.k = r.k "
+        "LEFT JOIN extras e ON r.id = e.id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    from_join = parser_test_child_at(statement, 1U);
+    nested_join = parser_test_child_at(from_join, 0U);
+    failures += parser_test_expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "left chain root");
+    failures += parser_test_expect_node(nested_join, MYLITE_SQL_AST_FROM_JOIN, "left chain nested");
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
+        "left chain root kind"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_join_kind(nested_join) == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
+        "left chain nested kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT l.id FROM lefts l LEFT OUTER JOIN rights r ON l.k = r.k;",
         MYLITE_SQL_PARSE_OK,
         &result

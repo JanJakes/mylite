@@ -45,6 +45,16 @@ expect_true(
     'insert multi auto row'
 );
 expect_same(2, $mysqli->insert_id, 'multi auto insert id property');
+expect_true(
+    $mysqli->query("INSERT INTO auto_posts (id, title) VALUES (10, 'manual')"),
+    'insert explicit auto row'
+);
+expect_same(10, $mysqli->insert_id, 'explicit auto insert id property');
+$last_id_result = $mysqli->query('SELECT LAST_INSERT_ID() AS id');
+if (!$last_id_result instanceof mysqli_result) {
+    throw new RuntimeException('last insert id result type');
+}
+expect_same(['id' => '2'], $last_id_result->fetch_assoc(), 'explicit auto preserves sql last insert id');
 
 $result->data_seek(0);
 $field = $result->fetch_field();

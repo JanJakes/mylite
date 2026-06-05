@@ -70,6 +70,11 @@ static int execute_insert_from_plan(
         );
         database->session.last_insert_id =
             (uint64_t)counters.first_inserted_generated_auto_increment;
+    } else if (counters.inserted_explicit_auto_increment) {
+        mylite_result_set_insert_id(
+            result,
+            (uint64_t)counters.last_inserted_explicit_auto_increment
+        );
     }
 
     return MYLITE_OK;
@@ -163,6 +168,11 @@ static int execute_load_data_infile_from_plan(
         );
         database->session.last_insert_id =
             (uint64_t)counters.first_inserted_generated_auto_increment;
+    } else if (counters.inserted_explicit_auto_increment) {
+        mylite_result_set_insert_id(
+            result,
+            (uint64_t)counters.last_inserted_explicit_auto_increment
+        );
     }
 
     return MYLITE_OK;
@@ -982,6 +992,7 @@ static int finish_successful_insert_plan_row(
     struct insert_execution_counters *counters
 ) {
     ++counters->affected_rows;
+    record_inserted_explicit_auto_increment(plan, row_index, counters);
     record_inserted_generated_auto_increment(plan, row_index, counters);
     if (!plan->has_auto_increment) {
         return MYLITE_OK;
@@ -1330,6 +1341,27 @@ static int advance_auto_increment_after_ignored_duplicate(
         row_index,
         auto_increment_next_after_rows
     );
+}
+
+static void record_inserted_explicit_auto_increment(
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+) {
+    const struct planned_value *auto_value = NULL;
+
+    if (!plan->has_auto_increment || row_index >= plan->row_count ||
+        plan->rows[row_index].generated_auto_increment) {
+        return;
+    }
+
+    auto_value = &plan->rows[row_index].values[plan->auto_increment_column_index];
+    if (auto_value->is_null || auto_value->is_text || auto_value->integer <= 0) {
+        return;
+    }
+
+    counters->last_inserted_explicit_auto_increment = auto_value->integer;
+    counters->inserted_explicit_auto_increment = true;
 }
 
 static void record_inserted_generated_auto_increment(

@@ -1926,7 +1926,9 @@ struct insert_auto_increment_mode_counts {
 struct insert_execution_counters {
     int64_t affected_rows;
     int64_t auto_increment_next_after_rows;
+    int64_t last_inserted_explicit_auto_increment;
     int64_t first_inserted_generated_auto_increment;
+    bool inserted_explicit_auto_increment;
     bool inserted_generated_auto_increment;
 };
 
@@ -17183,6 +17185,11 @@ static int advance_auto_increment_after_ignored_duplicate(
     const struct planned_insert *plan,
     size_t row_index,
     int64_t *auto_increment_next_after_rows
+);
+static void record_inserted_explicit_auto_increment(
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
 );
 static void record_inserted_generated_auto_increment(
     const struct planned_insert *plan,

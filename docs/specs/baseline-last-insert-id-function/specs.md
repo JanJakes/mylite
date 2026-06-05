@@ -187,8 +187,10 @@ and is deferred for a later state-mutating expression slice.
 
 `LAST_INSERT_ID()` returns the connection-local MySQL-style last insert id as
 unsigned decimal text. The current generated auto-increment insert subset stores
-the first generated id for the statement; literal `LAST_INSERT_ID(expr)` scalar
-and `DO` forms store the admitted unsigned value.
+the first generated id for the statement; explicit non-special auto-increment
+values update client result insert-id metadata without changing this SQL
+session value. Literal `LAST_INSERT_ID(expr)` scalar and `DO` forms store the
+admitted unsigned value.
 
 Initial state:
 
@@ -223,10 +225,11 @@ current select begins. Other supported expressions in the same scalar select
 do not change the last-insert-id value.
 
 Successful generated auto-increment write results expose the first generated id
-through `mylite_result_insert_id()`. The mysqli compatibility extension copies
-that result metadata to the link and statement `insert_id` properties. Results
-for statements that do not generate an auto-increment value expose insert id
-`0`.
+through `mylite_result_insert_id()`. Successful explicit-only auto-increment
+write results expose the last positive explicit value stored into the
+auto-increment column. The mysqli compatibility extension copies that result
+metadata to the link and statement `insert_id` properties. Results for
+statements that do not store such a value expose insert id `0`.
 
 ## Diagnostics
 
@@ -301,7 +304,7 @@ The MySQL expectation artifact must verify:
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and `docs/compatibility/functions-system.md` to mark
-`LAST_INSERT_ID()` and generated auto-increment result insert-id metadata as
+`LAST_INSERT_ID()` and current auto-increment result insert-id metadata as
 limited support. Do not claim wire-protocol insert-id packets, sequence
 emulation, mixed-mode allocation parity, or stored-program behavior.
 

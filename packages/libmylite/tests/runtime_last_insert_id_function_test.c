@@ -400,7 +400,7 @@ static int test_last_insert_id_expression_values(void) {
     static const char *const explicit_after_generated_values[] = {"11"};
     static const char *const explicit_insert_rows[] = {"10"};
     static const char *const generated_insert_rows[] = {"10", "11", "12"};
-    static const char *const explicit_after_generated_rows[] = {"10", "11", "12", "20"};
+    static const char *const explicit_after_generated_rows[] = {"10", "11", "12", "20", "21"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -522,7 +522,17 @@ static int test_last_insert_id_expression_values(void) {
         "CREATE TABLE ai (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
     failures += execute_statement_ok(database, "SELECT LAST_INSERT_ID(99)");
-    failures += execute_statement_ok(database, "INSERT INTO ai (id, v) VALUES (10, 10)");
+    failures += execute_ok(database, "INSERT INTO ai (id, v) VALUES (10, 10)", &result);
+    failures += expect_non_query_result_with_insert_id(
+        result,
+        (struct expected_non_query_result){
+            .affected_rows = 1,
+            .insert_id = 10U,
+            .context = "explicit insert result id",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
     failures += expect_scalar_result(
         result,
@@ -570,7 +580,18 @@ static int test_last_insert_id_expression_values(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += execute_statement_ok(database, "INSERT INTO ai (id, v) VALUES (20, 40)");
+    failures +=
+        execute_ok(database, "INSERT INTO ai (id, v) VALUES (20, 40), (21, 50)", &result);
+    failures += expect_non_query_result_with_insert_id(
+        result,
+        (struct expected_non_query_result){
+            .affected_rows = 2,
+            .insert_id = 21U,
+            .context = "explicit after generated insert result id",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
     failures += expect_scalar_result(
         result,
@@ -587,7 +608,7 @@ static int test_last_insert_id_expression_values(void) {
     failures += expect_single_column_rows(
         result,
         explicit_after_generated_rows,
-        4U,
+        5U,
         "explicit after generated row ids"
     );
     mylite_result_free(result);

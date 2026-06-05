@@ -580,8 +580,7 @@ static int test_last_insert_id_expression_values(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures +=
-        execute_ok(database, "INSERT INTO ai (id, v) VALUES (20, 40), (21, 50)", &result);
+    failures += execute_ok(database, "INSERT INTO ai (id, v) VALUES (20, 40), (21, 50)", &result);
     failures += expect_non_query_result_with_insert_id(
         result,
         (struct expected_non_query_result){

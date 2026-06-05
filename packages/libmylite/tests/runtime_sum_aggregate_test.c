@@ -115,8 +115,11 @@ static int test_sum_values_persistence_rename_and_drop(void) {
     failures += execute_ok(database, "ALTER TABLE numbers ALTER COLUMN tie SET INVISIBLE", &result);
     mylite_result_free(result);
     result = NULL;
-    failures +=
-        execute_ok(database, "CREATE TABLE options (option_value TEXT, autoload VARCHAR(20))", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE options (option_value TEXT, autoload VARCHAR(20))",
+        NULL
+    );
     failures += execute_ok(
         database,
         "INSERT INTO options VALUES "

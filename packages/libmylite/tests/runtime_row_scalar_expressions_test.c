@@ -303,11 +303,7 @@ static int test_table_backed_concat(void) {
             .context = "concat labels",
         }
     );
-    failures += execute_ok(
-        database,
-        "SET sql_mode = ''",
-        NULL
-    );
+    failures += execute_ok(database, "SET sql_mode = ''", NULL);
     failures += execute_ok(
         database,
         "CREATE TABLE posts(id INT, post_date DATETIME, post_type VARCHAR(20), "
@@ -332,8 +328,8 @@ static int test_table_backed_concat(void) {
                    "FROM posts WHERE post_type = 'foo' AND post_status != 'auto-draft' "
                    "AND post_status != 'trash' ORDER BY post_date DESC",
             .columns = columns_distinct_date_parts,
-            .column_count = sizeof(columns_distinct_date_parts) /
-                            sizeof(columns_distinct_date_parts[0]),
+            .column_count =
+                sizeof(columns_distinct_date_parts) / sizeof(columns_distinct_date_parts[0]),
             .values = values_distinct_date_parts,
             .row_count = 3U,
             .context = "distinct row-scalar temporal parts",

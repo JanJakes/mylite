@@ -129,7 +129,18 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
     static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9", "4", NULL};
     static const char *const alias_order_rows[] = {"1", "8", "1", "7", "4", NULL};
     static const char *const chained_left_rows[] = {
-        "1", "7", "7", "1", "7", "8", "1", "8", "7", "1", "8", "8",
+        "1",
+        "7",
+        "7",
+        "1",
+        "7",
+        "8",
+        "1",
+        "8",
+        "7",
+        "1",
+        "8",
+        "8",
     };
     static const char *const temp_shadow_rows[] = {"10", "7", "10", "8"};
     static const char *const row_count_rows[] = {"-1"};

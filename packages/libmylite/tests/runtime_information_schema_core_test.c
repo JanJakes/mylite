@@ -117,9 +117,15 @@ static int test_information_schema_core_queries(void) {
     static const char *const table_computed_values[] = {"t", "InnoDB", "0"};
     static const char *const table_size_columns[] = {"table", "rows", "bytes"};
     static const char *const table_size_values[] = {
-        "other",    "1", "16384",
-        "t",        "1", "16384",
-        "wp_users", "0", "32768",
+        "other",
+        "1",
+        "16384",
+        "t",
+        "1",
+        "16384",
+        "wp_users",
+        "0",
+        "32768",
     };
     static const char *const indexed_column_join_columns[] = {
         "DATA_TYPE",

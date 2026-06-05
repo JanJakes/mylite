@@ -2785,15 +2785,7 @@ static int test_small_integer_diagnostics_and_rollback(void) {
             .message_part = "Out of range value for column 'ti' in WHERE",
         }
     );
-    failures += execute_error(
-        database,
-        "DELETE FROM ranges WHERE tiu = -1",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'tiu' in WHERE",
-        }
-    );
+    failures += expect_dml_ok(database, "DELETE FROM ranges WHERE tiu = -1", 0);
     failures += execute_error(
         database,
         "CREATE TABLE unsupported_width (c TINYINT(+1))",

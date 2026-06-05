@@ -203,6 +203,7 @@ static int test_where_and_predicates(void) {
     static const char *const between_precedence_rows[] = {"1", "3"};
     static const char *const between_bool_rows[] = {"2", "4"};
     static const char *const between_unsigned_rows[] = {"1", "2"};
+    static const char *const between_unsigned_negative_rows[] = {"1", "2"};
     static const char *const between_all_rows[] = {"1", "2", "3", "4"};
     static const char *const between_distinct_rows[] = {NULL, "9"};
     static const char *const between_count_row[] = {"3"};
@@ -244,6 +245,7 @@ static int test_where_and_predicates(void) {
     static const char *const in_precedence_rows[] = {"1", "3"};
     static const char *const in_bool_rows[] = {"2", "4"};
     static const char *const in_unsigned_boundary_rows[] = {"1", "3"};
+    static const char *const in_unsigned_negative_rows[] = {"2"};
     static const char *const in_bigint_boundary_rows[] = {"1", "3"};
     static const char *const in_warning_rows[] = {"1"};
     static const char *const in_persisted_rows[] = {"8", "8", "8"};
@@ -2480,13 +2482,16 @@ static int test_where_and_predicates(void) {
             .message_part = "Out of range value for column 'i' in WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE iu BETWEEN -1 AND 2",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'iu' in WHERE",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu BETWEEN -1 AND 2 ORDER BY id",
+            .values = between_unsigned_negative_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned negative between predicate",
         }
     );
     failures += execute_error(
@@ -2567,13 +2572,16 @@ static int test_where_and_predicates(void) {
             .message_part = "Out of range value for column 'i' in WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE iu IN (-1, 2)",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'iu' in WHERE",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu IN (-1, 2) ORDER BY id",
+            .values = in_unsigned_negative_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned negative in predicate",
         }
     );
     failures += execute_error(
@@ -3811,13 +3819,16 @@ static int test_where_scalar_literal_predicates(void) {
             .message_part = "Out of range value for column 'id' in WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE -1 = iu",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'iu' in WHERE",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE -1 = iu",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reversed unsigned negative predicate",
         }
     );
     failures += execute_error(

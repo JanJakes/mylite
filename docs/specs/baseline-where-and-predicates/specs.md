@@ -209,9 +209,9 @@ unknown names.
 Each comparison atom reuses the existing MyLite-owned predicate conversion:
 
 - signed integer descriptor columns admit values in their signed type range;
-- unsigned descriptor columns admit nonnegative values in their unsigned type
-  range, limited by the current signed-64 SQLite physical storage envelope
-  where applicable;
+- unsigned descriptor columns admit signed negative comparison literals and
+  nonnegative values in their unsigned type range, limited by the current
+  signed-64 SQLite physical storage envelope where applicable;
 - `TRUE` and `FALSE` convert to `1` and `0`;
 - empty or ASCII-whitespace-only quoted strings convert to `0` without a
   warning in descriptor integer predicates, matching MySQL's observed behavior;
@@ -310,6 +310,7 @@ Add MySQL-runtime-verified expectations and C tests for:
 - `DELETE` and `UPDATE`, including affected rows, `ORDER BY`, and `LIMIT`;
 - unknown first and later predicate columns;
 - out-of-range first and later predicate literals;
+- negative signed literals compared with unsigned descriptor columns;
 - unsupported `OR`, `XOR`, `NOT`, bare truth tests, expression predicates,
   column-to-column predicates, literal-left predicates, string/decimal/float/
   hex/bit values, parameters, functions, subqueries, and `HAVING` boolean

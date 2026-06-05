@@ -194,6 +194,25 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "unsigned negative between predicate" \
+    "1
+2" \
+    "SELECT id FROM numbers WHERE iu BETWEEN -1 AND 2 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "unsigned negative in predicate" \
+    "2" \
+    "SELECT id FROM numbers WHERE iu IN (-1, 2) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "reversed unsigned negative predicate no rows" \
+    "" \
+    "SELECT id FROM numbers WHERE -1 = iu;" \
+    "$DATABASE"
+
+expect_output \
     "source qualified and alias conjunction" \
     "2" \
     "SELECT n.id FROM numbers AS n WHERE n.i = 1 AND n.nn = 6;" \

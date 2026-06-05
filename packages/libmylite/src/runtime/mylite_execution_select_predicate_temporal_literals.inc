@@ -573,8 +573,11 @@ static int convert_integer_for_predicate(
         return rc;
     }
     if (is_negative) {
-        if ((range.negative_abs_max == 0U && magnitude != 0U) ||
-            magnitude > range.negative_abs_max) {
+        if (magnitude > bigint_signed_negative_abs_max) {
+            set_predicate_out_of_range_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        if (range.negative_abs_max != 0U && magnitude > range.negative_abs_max) {
             set_predicate_out_of_range_error(database, column->name);
             return MYLITE_ERROR;
         }

@@ -510,13 +510,19 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "Out of range value for column 'i' in WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_query_empty(
         database,
-        "SELECT i FROM numbers WHERE iu = -1",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'iu' in WHERE",
+        (struct expected_empty_query){
+            .sql = "SELECT i FROM numbers WHERE iu = -1",
+            .context = "unsigned column negative predicate equality"
+        }
+    );
+    failures += expect_query_single_value(
+        database,
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE iu > -1",
+            .expected = "3",
+            .context = "unsigned column negative predicate range"
         }
     );
     failures += execute_error(
@@ -563,13 +569,12 @@ static int test_filtered_select_diagnostics(void) {
             .context = "column equal null predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE i = '1'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
+        (struct expected_single_value_query){
+            .sql = "SELECT i FROM numbers WHERE i = '1'",
+            .expected = "1",
+            .context = "exact quoted integer predicate literal",
         }
     );
     failures += execute_error(
@@ -640,7 +645,8 @@ static int test_filtered_select_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
+            .message_part =
+                "WHERE supports only integer, boolean, and exact quoted integer predicate literals",
         }
     );
     failures += execute_error(

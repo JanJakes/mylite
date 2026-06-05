@@ -227,6 +227,18 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "unsigned negative equality predicate no rows" \
+    "" \
+    "SELECT i FROM numbers WHERE iu = -1;" \
+    "$DATABASE"
+
+expect_output \
+    "unsigned negative range predicate" \
+    "3" \
+    "SELECT COUNT(*) FROM numbers WHERE iu > -1;" \
+    "$DATABASE"
+
+expect_output \
     "signed bigint minimum predicate" \
     "-2" \
     "SELECT i FROM numbers WHERE b = -9223372036854775808;" \

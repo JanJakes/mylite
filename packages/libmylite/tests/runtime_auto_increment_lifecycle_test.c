@@ -360,7 +360,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
             .context = "advanced auto increment SHOW CREATE",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", "12", "advanced status");
+    failures += expect_show_table_status_auto_increment(database, "t", NULL, "advanced status");
     session = mylite_connection_session_state(database);
     if (session != NULL) {
         failures += expect_uint64(
@@ -585,7 +585,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
     failures += expect_show_table_status_auto_increment(
         database,
         "default_set",
-        "8",
+        NULL,
         "hidden default status"
     );
     failures += execute_error(
@@ -620,7 +620,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
             .context = "reopened generated rows",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", "12", "reopened status");
+    failures += expect_show_table_status_auto_increment(database, "t", NULL, "reopened status");
 
     mylite_close(database);
     remove_related_files(path);
@@ -1000,7 +1000,7 @@ static int test_auto_increment_independent_handles(void) {
             .context = "second handle auto increment rows",
         }
     );
-    failures += expect_show_table_status_auto_increment(first, "t", "2", "first handle status");
+    failures += expect_show_table_status_auto_increment(first, "t", NULL, "first handle status");
     failures += expect_show_table_status_auto_increment(second, "t", "5", "second handle status");
 
     mylite_close(second);

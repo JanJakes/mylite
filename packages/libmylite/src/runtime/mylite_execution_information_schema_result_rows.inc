@@ -821,18 +821,13 @@ static int information_schema_sort_row_indexes(
     size_t *indexes,
     size_t index_count
 ) {
-    bool needs_auto_increment_null_order = false;
     int rc = MYLITE_OK;
 
     if (!query->has_order) {
-        rc = information_schema_needs_auto_increment_null_default_order(
-            database,
-            statement,
-            query,
-            &needs_auto_increment_null_order
-        );
-        if (rc == MYLITE_OK && needs_auto_increment_null_order) {
-            information_schema_sort_auto_increment_null_row_indexes(rows, indexes, index_count);
+        (void)database;
+        (void)statement;
+        if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
+            information_schema_sort_tables_default_row_indexes(rows, indexes, index_count);
         }
         return rc;
     }
@@ -856,93 +851,7 @@ static int information_schema_sort_row_indexes(
     return MYLITE_OK;
 }
 
-static int information_schema_needs_auto_increment_null_default_order(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const struct information_schema_query *query,
-    bool *out_needs_order
-) {
-    const struct mylite_sql_ast_node *optional_clause = NULL;
-
-    if (out_needs_order == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_needs_order = false;
-    if (statement == NULL || query == NULL ||
-        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
-        return MYLITE_OK;
-    }
-    optional_clause = child_at(statement, 2U);
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            return information_schema_predicate_has_auto_increment_is_null(
-                database,
-                query,
-                child_at(optional_clause, 0U),
-                out_needs_order
-            );
-        }
-        optional_clause = optional_clause->next_sibling;
-    }
-    return MYLITE_OK;
-}
-
-static int information_schema_predicate_has_auto_increment_is_null(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *predicate_node,
-    bool *out_has_predicate
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    int rc = MYLITE_OK;
-
-    if (out_has_predicate == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_has_predicate = false;
-    if (!scalar_arithmetic_node_stack_push(&stack, predicate_node)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    while (rc == MYLITE_OK && stack.count != 0U && !*out_has_predicate) {
-        const struct mylite_sql_ast_node *predicate =
-            unwrap_parenthesized_predicate(stack.items[--stack.count]);
-
-        if (predicate == NULL) {
-            continue;
-        }
-        if (predicate->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE &&
-            mylite_sql_ast_node_operator(predicate) == MYLITE_SQL_AST_OPERATOR_IS_NULL) {
-            size_t column_index = 0U;
-
-            rc = information_schema_resolve_column_reference(
-                database,
-                query,
-                child_at(predicate, 0U),
-                COLUMN_REFERENCE_WHERE,
-                &column_index
-            );
-            if (rc == MYLITE_OK) {
-                *out_has_predicate =
-                    column_index == information_schema_tables_auto_increment_column;
-            }
-        } else if (
-            predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-            predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-            predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE
-        ) {
-            rc = information_schema_predicate_stack_push_binary_children(
-                database,
-                &stack,
-                predicate
-            );
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-    return rc;
-}
-
-static void information_schema_sort_auto_increment_null_row_indexes(
+static void information_schema_sort_tables_default_row_indexes(
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count
@@ -952,7 +861,7 @@ static void information_schema_sort_auto_increment_null_row_indexes(
         size_t scan = index;
 
         while (scan > 0U &&
-               information_schema_compare_auto_increment_null_rows(
+               information_schema_compare_tables_default_rows(
                    rows,
                    row_index,
                    indexes[scan - 1U]
@@ -964,19 +873,31 @@ static void information_schema_sort_auto_increment_null_row_indexes(
     }
 }
 
-static int information_schema_compare_auto_increment_null_rows(
+static int information_schema_compare_tables_default_rows(
     const struct information_schema_row_set *rows,
     size_t left_row,
     size_t right_row
 ) {
     const char *left_schema = rows->rows[left_row][information_schema_tables_table_schema_column];
     const char *right_schema = rows->rows[right_row][information_schema_tables_table_schema_column];
-    const int left_priority = information_schema_auto_increment_null_schema_priority(left_schema);
+    const int left_priority = information_schema_tables_default_schema_priority(left_schema);
     const int right_priority =
-        information_schema_auto_increment_null_schema_priority(right_schema);
+        information_schema_tables_default_schema_priority(right_schema);
 
     if (left_priority != right_priority) {
         return left_priority - right_priority;
+    }
+    const int left_table_priority = information_schema_tables_default_table_priority(
+        left_schema,
+        rows->rows[left_row][information_schema_tables_table_name_column]
+    );
+    const int right_table_priority = information_schema_tables_default_table_priority(
+        right_schema,
+        rows->rows[right_row][information_schema_tables_table_name_column]
+    );
+
+    if (left_table_priority != right_table_priority) {
+        return left_table_priority - right_table_priority;
     }
     return information_schema_compare_text(
         rows->definition,
@@ -986,16 +907,16 @@ static int information_schema_compare_auto_increment_null_rows(
     );
 }
 
-static int information_schema_auto_increment_null_schema_priority(const char *schema_name) {
+static int information_schema_tables_default_schema_priority(const char *schema_name) {
     enum { information_schema_unknown_schema_priority = 5 };
 
     if (schema_name == NULL) {
         return information_schema_unknown_schema_priority;
     }
-    if (strcmp(schema_name, "information_schema") == 0) {
+    if (strcmp(schema_name, "mysql") == 0) {
         return 0;
     }
-    if (strcmp(schema_name, "mysql") == 0) {
+    if (strcmp(schema_name, "information_schema") == 0) {
         return 1;
     }
     if (strcmp(schema_name, "performance_schema") == 0) {
@@ -1005,6 +926,17 @@ static int information_schema_auto_increment_null_schema_priority(const char *sc
         return 3;
     }
     return information_schema_unknown_schema_priority - 1;
+}
+
+static int information_schema_tables_default_table_priority(
+    const char *schema_name,
+    const char *table_name
+) {
+    if (schema_name != NULL && table_name != NULL && strcmp(schema_name, "mysql") == 0 &&
+        strcmp(table_name, "innodb_table_stats") == 0) {
+        return 0;
+    }
+    return 1;
 }
 
 static int information_schema_compare_rows(

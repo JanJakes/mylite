@@ -108,9 +108,11 @@ static int test_information_schema_core_queries(void) {
     };
     static const char *const table_values[] = {
         "app", "other",    "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
-        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", "2",
+        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
         "app", "wp_users", "BASE TABLE", "InnoDB", "10", "Dynamic", "0", "16384", NULL,
     };
+    static const char *const auto_increment_predicate_columns[] = {"TABLE_NAME"};
+    static const char *const auto_increment_predicate_values[] = {"t"};
     static const char *const table_computed_columns[] = {"name", "engine", "data"};
     static const char *const table_computed_values[] = {"t", "InnoDB", "0"};
     static const char *const indexed_column_join_columns[] = {
@@ -311,6 +313,19 @@ static int test_information_schema_core_queries(void) {
             .values = table_values,
             .row_count = 3U,
             .context = "tables base descriptor rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = 'app' AND AUTO_INCREMENT > 1 ORDER BY TABLE_NAME",
+            .column_names = auto_increment_predicate_columns,
+            .column_count = sizeof(auto_increment_predicate_columns) /
+                            sizeof(auto_increment_predicate_columns[0]),
+            .values = auto_increment_predicate_values,
+            .row_count = 1U,
+            .context = "tables implicit auto increment predicate next value",
         }
     );
     failures += expect_query(

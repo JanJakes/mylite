@@ -316,6 +316,7 @@ static int information_schema_predicate_row_value(
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor table = {0};
+    struct table_status_values status = {0};
     bool found = false;
     int rc = MYLITE_OK;
 
@@ -366,7 +367,15 @@ static int information_schema_predicate_row_value(
         return MYLITE_OK;
     }
 
-    return table_status_auto_increment_display_value(database, &table, buffer, buffer_size, out_value);
+    status.auto_increment = row[column_index];
+    return table_status_auto_increment_predicate_value(
+        database,
+        &table,
+        &status,
+        buffer,
+        buffer_size,
+        out_value
+    );
 }
 
 static int information_schema_compound_predicate_matches(

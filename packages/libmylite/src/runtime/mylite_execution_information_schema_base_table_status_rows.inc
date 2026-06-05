@@ -407,7 +407,7 @@ static int table_status_auto_increment_predicate_value(
         return MYLITE_OK;
     }
 
-    return table_status_auto_increment_display_value(database, table, buffer, buffer_size, out_value);
+    return table_status_auto_increment_next_value(database, table, buffer, buffer_size, out_value);
 }
 
 static int table_status_auto_increment_display_value(
@@ -417,7 +417,7 @@ static int table_status_auto_increment_display_value(
     size_t buffer_size,
     const char **out_value
 ) {
-    bool has_auto_increment = false;
+    bool has_shadowing_temporary = false;
     bool has_value = false;
     int rc = MYLITE_OK;
 
@@ -434,20 +434,92 @@ static int table_status_auto_increment_display_value(
             buffer_size
         );
         has_value = rc == MYLITE_OK;
-    } else {
-        rc = table_status_has_auto_increment(database, table, &has_auto_increment);
-        if (rc == MYLITE_OK && has_auto_increment && table->auto_increment_next > 1) {
-            rc = format_show_table_status_integer(
+    } else if (table->auto_increment_next > 1) {
+        rc = table_status_has_shadowing_temporary_table(
+            database,
+            table,
+            &has_shadowing_temporary
+        );
+        if (rc == MYLITE_OK && has_shadowing_temporary) {
+            rc = table_status_auto_increment_next_value(
                 database,
-                table->auto_increment_next,
+                table,
                 buffer,
-                buffer_size
+                buffer_size,
+                out_value
             );
-            has_value = rc == MYLITE_OK;
+            has_value = rc == MYLITE_OK && *out_value != NULL;
         }
     }
     if (rc == MYLITE_OK && has_value) {
         *out_value = buffer;
+    }
+    return rc;
+}
+
+static int table_status_auto_increment_next_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    bool has_auto_increment = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || table == NULL || buffer == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = NULL;
+
+    rc = table_status_has_auto_increment(database, table, &has_auto_increment);
+    if (rc == MYLITE_OK && has_auto_increment && table->auto_increment_next > 1) {
+        rc = format_show_table_status_integer(
+            database,
+            table->auto_increment_next,
+            buffer,
+            buffer_size
+        );
+        if (rc == MYLITE_OK) {
+            *out_value = buffer;
+        }
+    }
+    return rc;
+}
+
+static int table_status_has_shadowing_temporary_table(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_has_shadowing_temporary
+) {
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor temporary_table = {0};
+    int rc = MYLITE_OK;
+
+    if (database == NULL || table == NULL || out_has_shadowing_temporary == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_has_shadowing_temporary = false;
+
+    rc = mylite_catalog_read_schema_by_id(database, table->schema_id, &schema);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read table status schema");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        schema.name,
+        table->name,
+        &temporary_table,
+        out_has_shadowing_temporary
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table status");
     }
     return rc;
 }

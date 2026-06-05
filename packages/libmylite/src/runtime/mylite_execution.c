@@ -6648,6 +6648,18 @@ static int table_status_auto_increment_display_value(
     size_t buffer_size,
     const char **out_value
 );
+static int table_status_auto_increment_next_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+);
+static int table_status_has_shadowing_temporary_table(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_has_shadowing_temporary
+);
 static int table_status_has_auto_increment(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
@@ -7490,29 +7502,21 @@ static int information_schema_sort_row_indexes(
     size_t *indexes,
     size_t index_count
 );
-static int information_schema_needs_auto_increment_null_default_order(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const struct information_schema_query *query,
-    bool *out_needs_order
-);
-static int information_schema_predicate_has_auto_increment_is_null(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *predicate_node,
-    bool *out_has_predicate
-);
-static void information_schema_sort_auto_increment_null_row_indexes(
+static void information_schema_sort_tables_default_row_indexes(
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count
 );
-static int information_schema_compare_auto_increment_null_rows(
+static int information_schema_compare_tables_default_rows(
     const struct information_schema_row_set *rows,
     size_t left_row,
     size_t right_row
 );
-static int information_schema_auto_increment_null_schema_priority(const char *schema_name);
+static int information_schema_tables_default_schema_priority(const char *schema_name);
+static int information_schema_tables_default_table_priority(
+    const char *schema_name,
+    const char *table_name
+);
 static int information_schema_compare_rows(
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,

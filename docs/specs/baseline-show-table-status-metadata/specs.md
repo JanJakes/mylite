@@ -213,7 +213,7 @@ For each supported persistent base table, MyLite emits:
 | `Max_data_length` / `MAX_DATA_LENGTH` | `0` |
 | `Index_length` / `INDEX_LENGTH` | `16384` when at least one non-primary index descriptor exists; otherwise `0` |
 | `Data_free` / `DATA_FREE` | `0` |
-| `Auto_increment` / `AUTO_INCREMENT` | SQL `NULL` for fresh implicit auto-increment tables and non-auto tables; the durable next counter after implicit counters advance; the explicit table-option status value when available |
+| `Auto_increment` / `AUTO_INCREMENT` | SQL `NULL` for implicit auto-increment tables and non-auto tables; the explicit table-option status value when available |
 | `Create_time` / `CREATE_TIME` | Formatted descriptor creation time, or SQL `NULL` for legacy zero values |
 | `Update_time` / `UPDATE_TIME` | Formatted descriptor update time, or SQL `NULL` for legacy zero values |
 | `Check_time` / `CHECK_TIME` | SQL `NULL` |
@@ -224,7 +224,8 @@ For each supported persistent base table, MyLite emits:
 
 The fixed size fields are MyLite-owned deterministic placeholders. They are not
 SQLite page counts and not full InnoDB statistics. `Auto_increment` predicates
-evaluate the same metadata value that is rendered in the result row.
+can evaluate the durable next counter for implicit auto-increment tables even
+when the rendered result cell is SQL `NULL`.
 
 ## DML Side Effects
 

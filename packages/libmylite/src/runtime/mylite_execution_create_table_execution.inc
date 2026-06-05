@@ -1051,30 +1051,6 @@ static bool planned_create_table_has_fulltext_index(const struct planned_create_
     return false;
 }
 
-static bool planned_create_table_has_spatial_index(const struct planned_create_table *plan) {
-    if (plan == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
-        if (plan->secondary_indexes[index].kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool planned_create_table_has_spatial_column(const struct planned_create_table *plan) {
-    if (plan == NULL) {
-        return false;
-    }
-    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        if (planned_column_is_spatial(&plan->columns[column_index])) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static int execute_physical_create_table(
     struct mylite_db *database,
     const struct planned_create_table *plan,

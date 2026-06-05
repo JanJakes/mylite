@@ -104,7 +104,7 @@ Runtime probes establish:
 
 Supported:
 
-- persistent MyLite base tables;
+- persistent MyLite base tables and session temporary tables;
 - spatial column descriptors for `GEOMETRY`, `POINT`, `LINESTRING`, `POLYGON`,
   `MULTIPOINT`, `MULTILINESTRING`, `MULTIPOLYGON`, and
   `GEOMETRYCOLLECTION` plus its `GEOMCOLLECTION` synonym;
@@ -113,7 +113,7 @@ Supported:
 - strict diagnostics for omitted, explicit `DEFAULT`, or explicit `NULL` into
   non-null spatial columns without a usable default;
 - table-level `SPATIAL [KEY | INDEX] [index_name] (column_name)` in
-  persistent `CREATE TABLE`;
+  persistent `CREATE TABLE` and `CREATE TEMPORARY TABLE`;
 - single-action `ALTER TABLE table_name ADD SPATIAL [KEY | INDEX] [index_name]
   (column_name)`;
 - standalone `CREATE SPATIAL INDEX index_name ON table_name (column_name)`;
@@ -122,13 +122,14 @@ Supported:
 - trailing `COMMENT 'string'`, `VISIBLE`, and `INVISIBLE` spatial index
   options through the existing index-option metadata path;
 - descriptor-backed `SHOW COLUMNS`, `SHOW CREATE TABLE`, `SHOW INDEX`,
-  `CREATE TABLE ... LIKE`, `ALTER TABLE ... DROP INDEX|KEY`,
+  `CREATE TABLE ... LIKE`, `CREATE TEMPORARY TABLE ... LIKE`,
+  `ALTER TABLE ... DROP INDEX|KEY`,
   `ALTER TABLE ... RENAME INDEX|KEY`, standalone `DROP INDEX`, and limited
   `INFORMATION_SCHEMA.COLUMNS` / `STATISTICS` metadata;
 - no-result DDL result shape with zero affected rows and warning `3674` for
   each supported spatial index created without SRID metadata;
-- file-backed persistence, independent handles, and `.mylite` preamble
-  preservation.
+- file-backed persistence, independent handles, temporary-table close-time
+  cleanup, and `.mylite` preamble preservation.
 
 Deferred:
 
@@ -138,7 +139,7 @@ Deferred:
 - SRID attributes and `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS`;
 - R-tree or other spatial physical indexes;
 - spatial optimizer behavior;
-- temporary spatial columns or indexes;
+- post-create temporary spatial index DDL;
 - `ALTER TABLE ... ADD|MODIFY|CHANGE COLUMN` spatial column definitions;
 - spatial primary keys or unique indexes;
 - multi-column spatial indexes, prefix parts, ordered spatial key parts,
@@ -324,13 +325,14 @@ that the spatial index will not be used by the optimizer because the column has
 no SRID attribute. This warning is intentionally retained until MyLite supports
 SRID-restricted spatial columns.
 
-`CREATE TABLE ... LIKE` clones spatial columns and spatial indexes without
-re-emitting the no-SRID spatial index warning for cloned descriptors, matching
-MySQL 8.4.9. `CREATE TABLE ... SELECT` continues to omit indexes and should not
-infer spatial column types from arbitrary expressions. `ALTER TABLE ... DROP INDEX|KEY`, standalone
-`DROP INDEX`, `ALTER TABLE ... RENAME INDEX|KEY`, and `ALTER TABLE ... ALTER
-INDEX ... VISIBLE|INVISIBLE` operate on spatial descriptors through the same
-catalog paths used by current secondary and fulltext indexes.
+`CREATE TABLE ... LIKE` and `CREATE TEMPORARY TABLE ... LIKE` clone spatial
+columns and spatial indexes without re-emitting the no-SRID spatial index
+warning for cloned descriptors, matching MySQL 8.4.9. `CREATE TABLE ... SELECT`
+continues to omit indexes and should not infer spatial column types from
+arbitrary expressions. `ALTER TABLE ... DROP INDEX|KEY`, standalone `DROP
+INDEX`, `ALTER TABLE ... RENAME INDEX|KEY`, and `ALTER TABLE ... ALTER INDEX
+... VISIBLE|INVISIBLE` operate on persistent spatial descriptors through the
+same catalog paths used by current secondary and fulltext indexes.
 
 ## Introspection
 
@@ -460,8 +462,6 @@ physical column to preserve future byte payload storage.
 | index name `PRIMARY` | existing `1280 / 42000` |
 | unsupported `USING` or unsupported grammar | syntax error or existing deterministic unsupported diagnostic |
 | non-NULL spatial DML value | `1064 / 42000`, `Spatial DML supports only NULL or DEFAULT values` |
-| temporary spatial index | `1064 / 42000`, `Temporary SPATIAL indexes are not yet supported` |
-| temporary spatial column | `1064 / 42000`, `Temporary SPATIAL columns are not yet supported` |
 | `ALTER TABLE ... ADD COLUMN` spatial definition | `1064 / 42000`, `ALTER TABLE ADD COLUMN does not yet support spatial columns` |
 | SQLite/catalog/allocation failure | existing MyLite failure diagnostics and cleanup |
 

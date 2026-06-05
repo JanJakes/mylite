@@ -8920,8 +8920,6 @@ static int append_temporary_secondary_index_descriptor(
     struct temporary_index_descriptor_positions *positions
 );
 static bool planned_create_table_has_fulltext_index(const struct planned_create_table *plan);
-static bool planned_create_table_has_spatial_index(const struct planned_create_table *plan);
-static bool planned_create_table_has_spatial_column(const struct planned_create_table *plan);
 static int execute_physical_alter_table_add_column(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan

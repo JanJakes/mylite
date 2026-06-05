@@ -107,7 +107,7 @@ static int test_temporary_auto_increment_metadata_dml_and_persistence(void) {
         "YES",
         "",
         NULL,
-        "",
+        NULL,
     };
     static const char *const primary_index[] = {
         "shadowed",

@@ -100,8 +100,8 @@ static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
     static const char *const persistent_rows[] = {"1", "10"};
     static const char *const persistent_reopened_rows[] = {"1", "10", "2", "20"};
     static const char *const temp_columns[] = {
-        "id",   "int",         "NO",  "PRI", NULL, "", "v",     "int", "YES", "", NULL, "",
-        "note", "varchar(10)", "YES", "MUL", NULL, "", "added", "int", "YES", "", NULL, "",
+        "id",   "int",         "NO",  "PRI", NULL, NULL, "v",     "int", "YES", "", NULL, NULL,
+        "note", "varchar(10)", "YES", "MUL", NULL, NULL, "added", "int", "YES", "", NULL, NULL,
     };
     static const char *const temp_indexes[] = {
         "shadowed", "0", "PRIMARY", "1",   "id",  "A",        "0", NULL,       NULL,  "",

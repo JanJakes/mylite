@@ -149,6 +149,37 @@ expect_output \
 "CREATE TABLE spatial_geom_alias (gc GEOMCOLLECTION NOT NULL, SPATIAL KEY sp (gc)); "\
 "SELECT ROW_COUNT(), @@warning_count; SHOW COLUMNS FROM spatial_geom_alias;"
 
+temporary_spatial_expected=$(printf '%b\n' \
+    '0\t1' \
+    'g\tgeomcollection\tNO\tMUL\tNULL\tNULL' \
+    'tmp_spatial\t1\tsg\t1\tg\tA\t0\t32\tNULL\t\tSPATIAL\t\t\tYES\tNULL' \
+    'tmp_spatial\tCREATE TEMPORARY TABLE `tmp_spatial` (\n  `g` geomcollection NOT NULL,\n  SPATIAL KEY `sg` (`g`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci' \
+    '0' \
+    '0\t0' \
+    'tmp_like_clone\t1\tsg\t1\tg\tA\t0\t32\tNULL\t\tSPATIAL\t\t\tYES\tNULL' \
+    '0\t0' \
+    'g\tgeometry\tYES\t\tNULL\tNULL'
+)
+expect_output \
+    "temporary spatial metadata" \
+    "$temporary_spatial_expected" \
+    "USE ${DATABASE}; "\
+"CREATE TEMPORARY TABLE tmp_spatial (g GEOMCOLLECTION NOT NULL, SPATIAL KEY sg (g)); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM tmp_spatial; "\
+"SHOW INDEX FROM tmp_spatial; "\
+"SHOW CREATE TABLE tmp_spatial; "\
+"SELECT COUNT(*) FROM information_schema.columns "\
+"WHERE table_schema = '${DATABASE}' AND table_name = 'tmp_spatial'; "\
+"CREATE TABLE tmp_like_source (g GEOMETRY NOT NULL, SPATIAL KEY sg (g)); "\
+"CREATE TABLE tmp_like_column_source (g GEOMETRY); "\
+"CREATE TEMPORARY TABLE tmp_like_clone LIKE tmp_like_source; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW INDEX FROM tmp_like_clone; "\
+"CREATE TEMPORARY TABLE tmp_like_column_clone LIKE tmp_like_column_source; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM tmp_like_column_clone;"
+
 index_forms_expected=$(cat <<\EXPECTED
 alter_spatial	CREATE TABLE `alter_spatial` (
   `g` geometry NOT NULL,

@@ -767,6 +767,65 @@ static int test_spatial_null_dml_and_result_metadata(void) {
 }
 
 static int test_spatial_diagnostics(void) {
+    static const char temporary_show_create[] =
+        "CREATE TEMPORARY TABLE `tmp_spatial` (\n"
+        "  `g` geomcollection NOT NULL,\n"
+        "  SPATIAL KEY `sg` (`g`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const temporary_show_create_rows[] = {
+        "tmp_spatial",
+        temporary_show_create,
+    };
+    static const char *const temporary_spatial_columns[] = {
+        "g",
+        "geomcollection",
+        "NO",
+        "MUL",
+        NULL,
+        NULL,
+    };
+    static const char *const temporary_spatial_index[] = {
+        "tmp_spatial",
+        "1",
+        "sg",
+        "1",
+        "g",
+        "A",
+        "0",
+        "32",
+        NULL,
+        "",
+        "SPATIAL",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const temporary_like_index[] = {
+        "tmp_like_clone",
+        "1",
+        "sg",
+        "1",
+        "g",
+        "A",
+        "0",
+        "32",
+        NULL,
+        "",
+        "SPATIAL",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const temporary_like_column[] = {
+        "g",
+        "geometry",
+        "YES",
+        "",
+        NULL,
+        NULL,
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -883,55 +942,79 @@ static int test_spatial_diagnostics(void) {
             .message_part = "Duplicate key name 'sg'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok_with_warning_count(
         database,
-        "CREATE TEMPORARY TABLE tmp_spatial (g GEOMETRY NOT NULL, SPATIAL KEY sg (g))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Temporary SPATIAL indexes are not yet supported",
+        "CREATE TEMPORARY TABLE tmp_spatial (g GEOMCOLLECTION NOT NULL, SPATIAL KEY sg (g))",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM tmp_spatial",
+            .values = temporary_spatial_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "temporary spatial SHOW COLUMNS",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM tmp_spatial",
+            .values = temporary_spatial_index,
+            .column_count = show_index_field_count,
+            .row_count = 1U,
+            .context = "temporary spatial SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE tmp_spatial",
+            .values = temporary_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "temporary spatial SHOW CREATE",
+        }
+    );
+    failures += expect_statement_ok_with_warning_count(
         database,
         "CREATE TEMPORARY TABLE tmp_implicit_spatial (g GEOMETRY NOT NULL, KEY kg (g))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Temporary SPATIAL indexes are not yet supported",
-        }
+        1U
     );
-    failures += execute_error(
-        database,
-        "CREATE TEMPORARY TABLE tmp_spatial_column (g GEOMETRY)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Temporary SPATIAL columns are not yet supported",
-        }
-    );
+    failures += expect_statement_ok(database, "CREATE TEMPORARY TABLE tmp_spatial_column (g GEOMETRY)");
     failures += expect_statement_ok_with_warning_count(
         database,
         "CREATE TABLE tmp_like_source (g GEOMETRY NOT NULL, SPATIAL KEY sg (g))",
         1U
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TEMPORARY TABLE tmp_like_clone LIKE tmp_like_source",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Temporary SPATIAL indexes are not yet supported",
+        "CREATE TEMPORARY TABLE tmp_like_clone LIKE tmp_like_source"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM tmp_like_clone",
+            .values = temporary_like_index,
+            .column_count = show_index_field_count,
+            .row_count = 1U,
+            .context = "temporary spatial LIKE SHOW INDEX",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE tmp_like_column_source (g GEOMETRY)");
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TEMPORARY TABLE tmp_like_column_clone LIKE tmp_like_column_source",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Temporary SPATIAL columns are not yet supported",
+        "CREATE TEMPORARY TABLE tmp_like_column_clone LIKE tmp_like_column_source"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM tmp_like_column_clone",
+            .values = temporary_like_column,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "temporary spatial LIKE column",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE spatial_alter_scope (id INT)");

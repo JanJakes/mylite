@@ -60,14 +60,6 @@ static int execute_create_temporary_table_statement(
         set_temporary_fulltext_index_error(database);
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && planned_create_table_has_spatial_index(&plan)) {
-        set_unsupported_error(database, "Temporary SPATIAL indexes are not yet supported");
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && planned_create_table_has_spatial_column(&plan)) {
-        set_unsupported_error(database, "Temporary SPATIAL columns are not yet supported");
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK) {
         rc =
             maybe_finish_create_temporary_if_not_exists_noop(database, statement, &plan, &finished);
@@ -153,14 +145,6 @@ static int execute_create_temporary_table_like_statement(
     rc = plan_create_table_like(database, statement, &plan);
     if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan.create_table)) {
         set_temporary_fulltext_index_error(database);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && planned_create_table_has_spatial_index(&plan.create_table)) {
-        set_unsupported_error(database, "Temporary SPATIAL indexes are not yet supported");
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && planned_create_table_has_spatial_column(&plan.create_table)) {
-        set_unsupported_error(database, "Temporary SPATIAL columns are not yet supported");
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {

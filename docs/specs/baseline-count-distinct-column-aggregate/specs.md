@@ -3,17 +3,20 @@
 ## Status
 
 This feature specifies a narrow `COUNT(DISTINCT expr)` slice:
-`COUNT(DISTINCT column_name)`. It builds on `mylite_execute()`, statement
-context, the parser scaffold, durable catalog descriptors, schema/table
-lifecycle, integer/`NULL` row values, descriptor-driven single-table `SELECT`,
-the baseline `WHERE` predicate subset, and the existing `COUNT(*)`,
-`COUNT(column)`, and `COUNT(integer/NULL/boolean literal)` aggregate paths.
+`COUNT(DISTINCT column_name)`, including parenthesized descriptor-column
+arguments such as `COUNT(DISTINCT(table.column))`. It builds on
+`mylite_execute()`, statement context, the parser scaffold, durable catalog
+descriptors, schema/table lifecycle, integer/`NULL` row values,
+descriptor-driven single-table `SELECT`, the baseline `WHERE` predicate subset,
+and the existing `COUNT(*)`, `COUNT(column)`, and
+`COUNT(integer/NULL/boolean literal)` aggregate paths.
 
 The feature is intentionally not full `COUNT(DISTINCT expr)` support. It
-admits exactly one aggregate select item, one unqualified descriptor column,
-one persistent base-table source, and an optional baseline `WHERE` predicate.
-It does not add multiple distinct expressions, table-qualified arguments,
-literal distinct arguments, expression arguments, aliases, grouping, ordering,
+admits exactly one aggregate select item, one descriptor column, one persistent
+base-table source, and an optional baseline `WHERE` predicate. It supports the
+existing source-qualified descriptor-column surface and the parenthesized form
+used by WordPress. It does not add multiple distinct expressions, literal
+distinct arguments, general expression arguments, aliases, grouping, ordering,
 limiting, window forms, or general distinct query semantics.
 
 ## Sources
@@ -79,11 +82,15 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - `COUNT (DISTINCT column)` and `COUNT/**/(DISTINCT column)` fail with syntax
   error `1064` under the default SQL mode. They do not follow the same stored
   function resolution path observed for `COUNT (1)` or `COUNT (column)`.
-- `COUNT(DISTINCT table.column)`, `COUNT(DISTINCT n, nn)`,
-  `COUNT(DISTINCT 1)`, `COUNT(DISTINCT TRUE)`, and
-  `COUNT(DISTINCT n + 1)` are valid MySQL aggregate expressions, but remain
-  outside this MyLite slice because they require qualified-name, multi-
-  expression, literal, or general expression aggregate argument support.
+- `COUNT(DISTINCT table.column)`, `COUNT(DISTINCT(table.column))`, and
+  `COUNT(DISTINCT (table.column))` are valid MySQL aggregate expressions.
+  MySQL preserves the parenthesized argument spelling in result labels such as
+  `COUNT(DISTINCT(t.id))`.
+- `COUNT(DISTINCT n, nn)`, `COUNT(DISTINCT 1)`,
+  `COUNT(DISTINCT TRUE)`, and `COUNT(DISTINCT n + 1)` are valid MySQL
+  aggregate expressions, but remain outside this MyLite slice because they
+  require multi-expression, literal, or general expression aggregate argument
+  support.
 - `ORDER BY` and `LIMIT` on a single aggregate row are valid MySQL syntax, with
   `LIMIT 0` suppressing the row. This slice rejects `ORDER BY` and `LIMIT` for
   aggregate selects to preserve the current aggregate cardinality surface.
@@ -97,14 +104,15 @@ The reproducible probe lives in
 
 The implementation must add:
 
-- parser and AST support for no-space `COUNT(DISTINCT identifier)`;
+- parser and AST support for no-space `COUNT(DISTINCT identifier)` and
+  `COUNT(DISTINCT(qualified_identifier))`;
 - descriptor-driven
   `SELECT COUNT(DISTINCT column_name) FROM table_name [WHERE predicate]`;
 - unqualified and schema-qualified table-name resolution using the existing
   selected/default schema policy;
 - one persistent MyLite base-table descriptor source only;
-- unqualified distinct aggregate argument column resolution from MyLite
-  descriptors;
+- unqualified, source-qualified, and parenthesized distinct aggregate argument
+  column resolution from MyLite descriptors;
 - explicit aggregate access to invisible descriptor columns, matching explicit
   projection, `COUNT(column)`, `MIN(column)`, and `MAX(column)` behavior;
 - reuse of the existing baseline `WHERE` predicate subset and conversion
@@ -127,9 +135,9 @@ unchanged.
 
 This feature must not implement:
 
-- general `COUNT(DISTINCT expr)`, multiple distinct expressions,
-  table-qualified columns, literals, arithmetic expressions, functions,
-  parenthesized expressions, parameters, subqueries, or qualified wildcards;
+- general `COUNT(DISTINCT expr)`, multiple distinct expressions, literals,
+  arithmetic expressions, functions outside the parenthesized descriptor-column
+  form, parameters, subqueries, or qualified wildcards;
 - no-source or `FROM DUAL` evaluation for `COUNT(DISTINCT column)`;
 - aliases, mixed projections, multiple aggregate select items, aggregate
   comparisons, aggregate arithmetic, or nested aggregates;
@@ -290,20 +298,19 @@ Add a MySQL-runtime expectation artifact covering:
 - warning count `0` and following `ROW_COUNT() == -1`;
 - default result labels, including block-comment spacing around `DISTINCT` and
   the argument;
-- MySQL-accepted but deferred forms: multiple distinct expressions,
-  table-qualified columns, literals, boolean literals, and expression
-  arguments;
+- MySQL-accepted but deferred forms: multiple distinct expressions, literals,
+  boolean literals, and non-descriptor expression arguments;
 - whitespace/comment between `COUNT` and `(` syntax-error behavior.
 
 Add or extend fast C tests covering:
 
-- parser acceptance for `COUNT(DISTINCT column)`, case variants, quoted
+- parser acceptance for `COUNT(DISTINCT column)`, parenthesized descriptor
+  columns such as `COUNT(DISTINCT(table.column))`, case variants, quoted
   identifiers, and comments inside the argument list;
 - parser rejection for `COUNT (DISTINCT column)`,
-  `COUNT/**/(DISTINCT column)`, `COUNT(DISTINCT t.column)`,
-  `COUNT(DISTINCT *)`, `COUNT(DISTINCT column, other)`,
-  `COUNT(DISTINCT 1)`, `COUNT(DISTINCT TRUE)`, and
-  `COUNT(DISTINCT column + 1)`;
+  `COUNT/**/(DISTINCT column)`, `COUNT(DISTINCT *)`,
+  `COUNT(DISTINCT column, other)`, `COUNT(DISTINCT 1)`,
+  `COUNT(DISTINCT TRUE)`, and `COUNT(DISTINCT column + 1)`;
 - runtime table-backed, empty-table, all-`NULL`, duplicate-value, filtered,
   no-match, label, warning count, affected rows, following `ROW_COUNT()`,
   reopen persistence, physical failure, independent handle, and preamble
@@ -330,7 +337,7 @@ Update:
 - `docs/compatibility/sql-query-expressions.md`.
 
 Use partial wording such as limited one-column
-`COUNT(DISTINCT descriptor_column)`. Keep `COUNT()` wording explicit that
-general `COUNT(expr)` remains unsupported, and keep `COUNT(DISTINCT)` wording
-explicit that multiple expressions and expression arguments remain
-unsupported.
+`COUNT(DISTINCT descriptor_column)` and the parenthesized descriptor-column
+form. Keep `COUNT()` wording explicit that general `COUNT(expr)` remains
+unsupported, and keep `COUNT(DISTINCT)` wording explicit that multiple
+expressions and non-descriptor expression arguments remain unsupported.

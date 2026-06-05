@@ -906,6 +906,24 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT(numbers.id)) FROM numbers",
+            .column = "COUNT(DISTINCT(numbers.id))",
+            .value = "4",
+            .context = "parenthesized table-qualified count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT(nums.n)) FROM numbers AS nums",
+            .column = "COUNT(DISTINCT(nums.n))",
+            .value = "2",
+            .context = "parenthesized alias-qualified count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT ALL COUNT(DISTINCT n) FROM numbers",
             .column = "COUNT(DISTINCT n)",
             .value = "2",

@@ -7586,6 +7586,10 @@ expression(A) ::= COUNT(T) LPAREN(L) DISTINCT qualified_identifier(B) RPAREN(R).
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R);
 }
+expression(A) ::= COUNT(T) LPAREN(L) DISTINCT LPAREN qualified_identifier(B) RPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R);
+}
 expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R);

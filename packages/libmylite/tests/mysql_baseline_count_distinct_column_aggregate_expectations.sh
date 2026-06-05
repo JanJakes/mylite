@@ -126,15 +126,16 @@ headers_output=$(run_mysql_with_headers \
     "USE ${DATABASE};
      SELECT COUNT(DISTINCT n), count(distinct n), Count( DISTINCT n ),
             COUNT(DISTINCT /*x*/n), COUNT(DISTINCT/*x*/n),
-            COUNT(/*x*/DISTINCT n), (COUNT(DISTINCT n)), COUNT(DISTINCT N) FROM t;"
+            COUNT(/*x*/DISTINCT n), (COUNT(DISTINCT n)), COUNT(DISTINCT N),
+            COUNT(DISTINCT(t.n)), COUNT(DISTINCT (t.n)) FROM t;"
 )
 headers=$(printf '%s\n' "$headers_output" | sed -n '1p')
 values=$(printf '%s\n' "$headers_output" | sed -n '2p')
 expect_value \
     "count distinct labels" \
-    "COUNT(DISTINCT n)	count(distinct n)	Count( DISTINCT n )	COUNT(DISTINCT /*x*/ n)	COUNT(DISTINCT/*x*/ n)	COUNT(/*x*/ DISTINCT n)	(COUNT(DISTINCT n))	COUNT(DISTINCT N)" \
+    "COUNT(DISTINCT n)	count(distinct n)	Count( DISTINCT n )	COUNT(DISTINCT /*x*/ n)	COUNT(DISTINCT/*x*/ n)	COUNT(/*x*/ DISTINCT n)	(COUNT(DISTINCT n))	COUNT(DISTINCT N)	COUNT(DISTINCT(t.n))	COUNT(DISTINCT (t.n))" \
     "$headers"
-expect_value "count distinct label values" "2	2	2	2	2	2	2	2" "$values"
+expect_value "count distinct label values" "2	2	2	2	2	2	2	2	2	2" "$values"
 
 where_counts=$(run_mysql \
     "USE ${DATABASE};

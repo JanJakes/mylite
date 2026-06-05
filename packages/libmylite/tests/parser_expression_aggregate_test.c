@@ -1525,6 +1525,47 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT COUNT(DISTINCT(t.n)), COUNT(DISTINCT (db.t.nn)) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION,
+        "parenthesized qualified count distinct function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "COUNT(DISTINCT(t.n))",
+        "parenthesized qualified count distinct span"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(first_expression, 0U),
+        "t.n",
+        "parenthesized qualified count distinct argument"
+    );
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION,
+        "spaced parenthesized qualified count distinct function"
+    );
+    failures += parser_test_expect_span_text(
+        second_expression,
+        "COUNT(DISTINCT (db.t.nn))",
+        "spaced parenthesized qualified count distinct span"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(second_expression, 0U),
+        "db.t.nn",
+        "spaced parenthesized qualified count distinct argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT COUNT(/* inside */DISTINCT n), COUNT(DISTINCT/* inside */n) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result

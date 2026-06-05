@@ -89,8 +89,9 @@ slice:
   key `1171` diagnostic before auto-increment allocation matters.
 - `AUTO_INCREMENT = 0` table option is accepted and normalizes to the default
   next value `1`; negative table-option values are syntax errors.
-- `CREATE TABLE ... AUTO_INCREMENT = 7` persists an initial next value of `7`,
-  and the first generated row receives `7`.
+- `CREATE TABLE ... AUTO_INCREMENT = 7` persists an initial next value and
+  initial status metadata value of `7`, and the first generated row receives
+  `7`.
 - Omitted auto-increment columns, explicit `NULL`, explicit `0`, and explicit
   `DEFAULT` each generate the next sequence value under MySQL's default SQL
   mode. `NO_AUTO_VALUE_ON_ZERO` changes this upstream, but MyLite's current
@@ -430,9 +431,13 @@ table-level `AUTO_INCREMENT=N` option when the table's next value is greater
 than `1`. An empty `CREATE TABLE ... LIKE` clone with next value `1` omits the
 table-level option.
 
-`SHOW TABLE STATUS` renders the table's durable next value in the
-`Auto_increment` column for admitted auto-increment tables and SQL `NULL` for
-non-auto-increment tables.
+`SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` render the
+separate InnoDB-style status metadata value when it is positive. Tables created
+without an explicit `AUTO_INCREMENT=N` option report SQL `NULL` in these status
+surfaces even when generated inserts have advanced the durable next counter.
+`CREATE TABLE ... AUTO_INCREMENT=N` also exposes that status value for tables
+without an auto-increment column, matching MySQL 8.4.9, while `SHOW CREATE
+TABLE` still omits the option when no column can generate values.
 
 `SHOW INDEX` remains driven by the primary-key descriptor and does not need
 additional auto-increment-specific rows.
@@ -527,7 +532,8 @@ Cover:
 - out-of-range initial table-option counters producing `1467`;
 - hidden `ALTER TABLE ... ALTER column SET DEFAULT` behavior for
   auto-increment metadata and later omitted inserts;
-- table option `AUTO_INCREMENT=0` and positive starting values;
+- table option `AUTO_INCREMENT=0`, positive starting values, and the status
+  metadata split from generated-value counters;
 - schema-qualified and unqualified table resolution through existing policy;
 - missing default schema, unknown schema, unknown table, and reserved-name
   diagnostics where auto-increment code touches those paths;

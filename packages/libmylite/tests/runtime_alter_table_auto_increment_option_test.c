@@ -178,6 +178,16 @@ static int test_alter_auto_increment_success_metadata_and_persistence(void) {
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const zero_rows[] = {"5", "5"};
+    static const char *const lower_after_row_show_create[] = {
+        "lower_after_row",
+        "CREATE TABLE `lower_after_row` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const lower_after_row_information_schema[] = {"11"};
     static const char *const no_auto_show_create[] = {
         "no_auto",
         "CREATE TABLE `no_auto` (\n"
@@ -432,6 +442,48 @@ static int test_alter_auto_increment_success_metadata_and_persistence(void) {
         }
     );
 
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE lower_after_row (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO lower_after_row(id, v) VALUES(10, 1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE lower_after_row AUTO_INCREMENT=5",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE lower_after_row",
+            .values = lower_after_row_show_create,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "lower reset constrained show create",
+        }
+    );
+    failures += expect_show_table_status_auto_increment(
+        database,
+        "lower_after_row",
+        "11",
+        "lower reset constrained status"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA='app' AND TABLE_NAME='lower_after_row'",
+            .values = lower_after_row_information_schema,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "lower reset constrained information schema",
+        }
+    );
+
     failures += expect_statement_ok(database, "CREATE TABLE no_auto (id INT PRIMARY KEY, v INT)");
     failures += expect_statement_result(
         database,
@@ -635,7 +687,7 @@ static int test_alter_auto_increment_success_metadata_and_persistence(void) {
             .context = "reopened show create counter",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", "7", "reopened status");
+    failures += expect_show_table_status_auto_increment(database, "t", "10", "reopened status");
 
     mylite_close(database);
     remove_related_files(path);

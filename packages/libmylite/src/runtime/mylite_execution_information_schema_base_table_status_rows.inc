@@ -417,7 +417,6 @@ static int table_status_auto_increment_display_value(
     size_t buffer_size,
     const char **out_value
 ) {
-    bool has_auto_increment = false;
     int rc = MYLITE_OK;
 
     if (database == NULL || table == NULL || buffer == NULL || out_value == NULL) {
@@ -425,11 +424,10 @@ static int table_status_auto_increment_display_value(
     }
     *out_value = NULL;
 
-    rc = table_status_has_auto_increment(database, table, &has_auto_increment);
-    if (rc == MYLITE_OK && has_auto_increment) {
+    if (table->auto_increment_status > 0) {
         rc = format_show_table_status_integer(
             database,
-            table->auto_increment_next,
+            table->auto_increment_status,
             buffer,
             buffer_size
         );

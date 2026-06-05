@@ -126,7 +126,7 @@ static int test_temporary_auto_increment_metadata_dml_and_persistence(void) {
         "YES",
         NULL,
     };
-    static const char *const persistent_auto_increment[] = {"21"};
+    static const char *const persistent_auto_increment[] = {"20"};
     static const char *const empty_count[] = {"0"};
     static const char *const table_pk_state[] = {"1", "0", "1"};
     static const char *const table_pk_row[] = {"1", "10"};

@@ -223,10 +223,10 @@ For each supported persistent base table, MyLite emits:
 | `Comment` / `TABLE_COMMENT` | Empty string |
 
 The fixed size fields are MyLite-owned deterministic placeholders. They are not
-SQLite page counts and not full InnoDB statistics. MySQL 8.4.9 can evaluate
-`Auto_increment` predicates using the current next value even when the returned
-status row cell is `NULL`; this baseline mirrors that split for the supported
-predicate forms.
+SQLite page counts and not full InnoDB statistics. `Auto_increment` predicates
+evaluate the same status metadata value that is rendered in the result row: SQL
+`NULL` when no explicit positive table status value exists, otherwise that
+explicit status value.
 
 ## DML Side Effects
 

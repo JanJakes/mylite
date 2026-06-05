@@ -531,7 +531,8 @@ static int test_show_table_status_where_filters(void) {
     failures += create_status_schema(database);
     failures += execute_statement_ok(
         database,
-        "CREATE TABLE auto_numbers (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, i INT NULL)"
+        "CREATE TABLE auto_numbers (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, i INT NULL) "
+        "AUTO_INCREMENT=3"
     );
     failures += execute_statement_ok(database, "INSERT INTO auto_numbers(i) VALUES (10), (20)");
     failures += execute_statement_ok(database, "CREATE TABLE _tmp_table1 (id INT NOT NULL)");

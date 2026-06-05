@@ -59,9 +59,12 @@ supported and deferred surface. Observed behavior that defines this slice:
 - The `=` token is optional: `ALTER TABLE t AUTO_INCREMENT 10` is accepted.
 - `SHOW CREATE TABLE` renders `AUTO_INCREMENT=N` when the effective next value
   is greater than the default next value.
-- `SHOW TABLE STATUS` reports the effective next value in its
-  `Auto_increment` column for nonempty auto-increment tables in the observed
-  surface.
+- `SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` report the
+  first positive effective table auto-increment status value. If the requested
+  value is below the next value after the current maximum row value, the
+  metadata cell reports that higher effective value. Later generated inserts
+  and later `ALTER TABLE ... AUTO_INCREMENT=N` statements can change
+  `SHOW CREATE TABLE`'s effective next value without changing this status cell.
 - The next generated insert uses the effective next value and then advances the
   durable counter through the existing auto-increment lifecycle.
 - Setting the option lower than the current durable counter is allowed after
@@ -106,9 +109,9 @@ Supported:
     value and the next generated value after the current maximum row value;
   - preserve the existing max-value exhaustion behavior from the
     auto-increment lifecycle;
-- descriptor-backed `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, and limited
-  `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` surfaces through the existing
-  table descriptor counter;
+- descriptor-backed `SHOW CREATE TABLE` through the durable next counter and
+  `SHOW TABLE STATUS` / limited `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT`
+  through the table descriptor status value;
 - generated inserts, explicit inserts, updates, `CREATE TABLE ... LIKE`,
   `TRUNCATE`, reopen persistence, table rename/drop behavior, independent
   file-backed handles, and `.mylite` preamble preservation through existing
@@ -304,7 +307,8 @@ Cover:
   `CREATE TABLE ... LIKE`, table rename/drop, reopen persistence, and
   independent file-backed handles after the alter;
 - `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, and limited
-  `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` metadata after the alter;
+  `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` metadata after the alter, including
+  status persistence after later counter changes;
 - `.mylite` preamble preservation;
 - zero-initialized cleanup for any new statement/planner objects;
 - existing lexer, parser, runtime handle, diagnostics, statement context,

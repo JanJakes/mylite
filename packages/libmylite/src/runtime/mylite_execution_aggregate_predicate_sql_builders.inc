@@ -1920,13 +1920,18 @@ static int append_select_in_subquery_sql(
 
     rc = mylite_dynamic_string_append(string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = append_descriptor_value_sql_for_source(string, &subquery->column, 1U, true);
+        rc = append_descriptor_value_sql_for_source(
+            string,
+            &subquery->column,
+            subquery->column_source_index,
+            true
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_in_subquery_from_sql(string, subquery);
+        rc = append_in_subquery_from_sql(string, subquery, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql_without_exists(
@@ -1941,9 +1946,51 @@ static int append_select_in_subquery_sql(
 
 static int append_in_subquery_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_in_subquery *subquery
+    const struct planned_in_subquery *subquery,
+    size_t *next_parameter
 ) {
-    int rc = mylite_dynamic_string_append_quoted_identifier(
+    int rc = MYLITE_OK;
+
+    if (subquery->source_count > 0U) {
+        if (subquery->join_count != subquery->source_count - 1U || subquery->join_kinds == NULL ||
+            subquery->join_conditions == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = append_select_source_sql(
+            string,
+            &subquery->sources[0],
+            subquery->inner_source_index,
+            next_parameter
+        );
+        for (size_t join_index = 0U; rc == MYLITE_OK && join_index < subquery->join_count;
+             ++join_index) {
+            size_t right_source_index = join_index + 1U;
+
+            if (subquery->join_kinds[join_index] != MYLITE_SQL_AST_JOIN_KIND_INNER) {
+                return MYLITE_ERROR;
+            }
+            rc = mylite_dynamic_string_append(string, " JOIN ");
+            if (rc == MYLITE_OK) {
+                rc = append_select_source_sql(
+                    string,
+                    &subquery->sources[right_source_index],
+                    subquery->inner_source_index + right_source_index,
+                    next_parameter
+                );
+            }
+            if (rc == MYLITE_OK) {
+                struct planned_select_join_condition condition =
+                    subquery->join_conditions[join_index];
+
+                condition.left_source_index += subquery->inner_source_index;
+                condition.right_source_index += subquery->inner_source_index;
+                rc = append_select_join_condition_sql(string, &condition, next_parameter);
+            }
+        }
+        return rc;
+    }
+
+    rc = mylite_dynamic_string_append_quoted_identifier(
         string,
         subquery->source.table.physical_name
     );
@@ -1952,7 +1999,7 @@ static int append_in_subquery_from_sql(
         rc = mylite_dynamic_string_append(string, " AS ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_source_alias(string, 1U);
+        rc = append_select_source_alias(string, subquery->inner_source_index);
     }
 
     return rc;

@@ -2300,8 +2300,15 @@ struct exists_subquery_outer_context {
 
 struct planned_in_subquery {
     struct planned_select_source source;
+    struct planned_select_source *sources;
+    size_t source_count;
+    enum mylite_sql_ast_join_kind *join_kinds;
+    struct planned_select_join_condition *join_conditions;
+    size_t join_count;
     struct mylite_catalog_column_descriptor column;
+    size_t column_source_index;
     struct planned_select_predicate predicate;
+    size_t inner_source_index;
 };
 
 struct planned_select_join_condition {
@@ -19606,6 +19613,7 @@ static int plan_in_subquery_predicate(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    size_t outer_source_count,
     struct planned_select_predicate_node *node
 );
 static int plan_in_subquery(
@@ -19614,6 +19622,7 @@ static int plan_in_subquery(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    size_t outer_source_count,
     struct planned_in_subquery *out_subquery
 );
 static int plan_in_subquery_table_source(
@@ -19624,7 +19633,7 @@ static int plan_in_subquery_table_source(
 static int plan_in_subquery_select_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
-    const struct planned_in_subquery *subquery,
+    struct planned_in_subquery *subquery,
     struct mylite_catalog_column_descriptor *out_column
 );
 static bool in_subquery_columns_are_compatible(
@@ -25293,7 +25302,8 @@ static int append_select_in_subquery_sql(
 );
 static int append_in_subquery_from_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_in_subquery *subquery
+    const struct planned_in_subquery *subquery,
+    size_t *next_parameter
 );
 static int append_predicate_sql_work_node(
     struct predicate_sql_work_item **items,

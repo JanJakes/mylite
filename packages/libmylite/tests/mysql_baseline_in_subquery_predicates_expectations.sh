@@ -118,6 +118,14 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "integer in distinct subquery matches non-null values" \
+    "1,2,5" \
+    "SELECT GROUP_CONCAT(id ORDER BY id)
+     FROM users
+     WHERE id IN (SELECT DISTINCT user_id FROM orders);" \
+    "$DATABASE"
+
+expect_output \
     "integer not in with inner null filters every nonmatch" \
     "NULL" \
     "SELECT GROUP_CONCAT(id ORDER BY id)
@@ -219,6 +227,27 @@ expect_output \
      WHERE id IN (
          SELECT user_id FROM ${DATABASE}.orders WHERE status = 'open'
      );"
+
+expect_output \
+    "outer joined source with in subquery" \
+    "1,2" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users u JOIN orders o ON u.id = o.user_id
+     WHERE o.status = 'open'
+       AND u.id IN (SELECT user_id FROM orders WHERE user_id IS NOT NULL);" \
+    "$DATABASE"
+
+expect_output \
+    "inner joined distinct in subquery" \
+    "1,2" \
+    "SELECT GROUP_CONCAT(id ORDER BY id)
+     FROM users
+     WHERE id IN (
+         SELECT DISTINCT o.user_id
+         FROM orders o JOIN users u2 ON o.user_id = u2.id
+         WHERE u2.name IN ('Ann', 'Bob')
+     );" \
+    "$DATABASE"
 
 expect_output \
     "mysql accepts inner order without visible membership effect" \

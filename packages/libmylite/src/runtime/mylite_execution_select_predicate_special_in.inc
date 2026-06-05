@@ -320,6 +320,7 @@ static int plan_in_predicate(
         .right_index = SIZE_MAX,
     };
     int rc = MYLITE_OK;
+    size_t outer_source_count = 1U;
 
     if (predicate_node == NULL || predicate_node->kind != MYLITE_SQL_AST_IN_PREDICATE) {
         set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
@@ -360,9 +361,12 @@ static int plan_in_predicate(
             set_unsupported_error(database, "IN subqueries are supported only in SELECT WHERE");
             return MYLITE_ERROR;
         }
-        if (source_context == NULL || select_source_context_is_joined(source_context)) {
-            set_unsupported_error(database, "IN subqueries support only one outer table source");
+        if (source_context == NULL) {
+            set_unsupported_error(database, "IN subqueries support only an outer table source");
             return MYLITE_ERROR;
+        }
+        if (select_source_context_is_joined(source_context)) {
+            outer_source_count = source_context->source_count;
         }
         rc = plan_in_subquery_predicate(
             database,
@@ -370,6 +374,7 @@ static int plan_in_predicate(
             source_context,
             table_columns,
             table_column_count,
+            outer_source_count,
             &node
         );
     }
@@ -469,6 +474,7 @@ static int plan_in_subquery_predicate(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    size_t outer_source_count,
     struct planned_select_predicate_node *node
 ) {
     struct planned_in_subquery *subquery = NULL;
@@ -486,6 +492,7 @@ static int plan_in_subquery_predicate(
         outer_source_context,
         outer_columns,
         outer_column_count,
+        outer_source_count,
         subquery
     );
     if (rc == MYLITE_OK && !in_subquery_columns_are_compatible(&node->column, &subquery->column)) {
@@ -511,6 +518,7 @@ static int plan_in_subquery(
     const struct select_source_context *outer_source_context,
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
+    size_t outer_source_count,
     struct planned_in_subquery *out_subquery
 ) {
     const struct mylite_sql_ast_node *select_list = NULL;
@@ -520,6 +528,7 @@ static int plan_in_subquery(
     int rc = MYLITE_OK;
 
     *out_subquery = (struct planned_in_subquery){0};
+    out_subquery->inner_source_index = outer_source_count;
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         set_unsupported_error(database, "IN subqueries support only SELECT subqueries");
         return MYLITE_ERROR;
@@ -527,8 +536,12 @@ static int plan_in_subquery(
     select_list = child_at(statement, 0U);
     from_clause = child_at(statement, 1U);
     optional_clause = child_at(statement, 2U);
-    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
-        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT &&
+        mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
+        set_unsupported_error(database, "IN subqueries support only optional DISTINCT modifiers");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
         set_unsupported_error(database, "IN subqueries do not support SELECT modifiers");
         return MYLITE_ERROR;
     }
@@ -576,9 +589,85 @@ static int plan_in_subquery_table_source(
     const struct mylite_sql_ast_node *from_clause,
     struct planned_in_subquery *out_subquery
 ) {
+    struct planned_select joined_plan = {0};
+    struct joined_select_temp_nodes temp_nodes = {0};
+    int rc = MYLITE_OK;
+
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
-        set_unsupported_error(database, "IN subqueries support one descriptor table source");
-        return MYLITE_ERROR;
+        if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_JOIN) {
+            set_unsupported_error(database, "IN subqueries support one descriptor table source");
+            return MYLITE_ERROR;
+        }
+
+        rc = prepare_joined_select_plan(database, from_clause, &joined_plan, &temp_nodes);
+        if (rc == MYLITE_OK) {
+            rc = reject_duplicate_select_source_reference(
+                database,
+                joined_plan.sources,
+                joined_plan.source_count
+            );
+        }
+        if (rc == MYLITE_OK) {
+            for (size_t join_index = 0U; join_index < joined_plan.join_count; ++join_index) {
+                if (joined_plan.join_kinds[join_index] != MYLITE_SQL_AST_JOIN_KIND_INNER) {
+                    set_unsupported_error(
+                        database,
+                        "IN joined subqueries support only INNER JOIN sources"
+                    );
+                    rc = MYLITE_ERROR;
+                    break;
+                }
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_joined_select_conditions(
+                database,
+                temp_nodes.join_condition_nodes,
+                temp_nodes.join_condition_node_count,
+                &joined_plan
+            );
+        }
+        if (rc == MYLITE_OK) {
+            for (size_t join_index = 0U; join_index < joined_plan.join_count; ++join_index) {
+                const struct planned_select_join_condition *condition =
+                    &joined_plan.join_conditions[join_index];
+
+                if (!condition->has_condition) {
+                    set_unsupported_error(
+                        database,
+                        "IN joined subqueries require descriptor equality join conditions"
+                    );
+                    rc = MYLITE_ERROR;
+                    break;
+                }
+                if (condition->right_value_is_row_scalar_expression) {
+                    set_unsupported_error(
+                        database,
+                        "IN joined subqueries support only descriptor equality join conditions"
+                    );
+                    rc = MYLITE_ERROR;
+                    break;
+                }
+            }
+        }
+        if (rc == MYLITE_OK) {
+            out_subquery->sources = joined_plan.sources;
+            out_subquery->source_count = joined_plan.source_count;
+            out_subquery->join_kinds = joined_plan.join_kinds;
+            out_subquery->join_conditions = joined_plan.join_conditions;
+            out_subquery->join_count = joined_plan.join_count;
+
+            joined_plan.sources = NULL;
+            joined_plan.source_count = 0U;
+            joined_plan.join_kinds = NULL;
+            joined_plan.join_conditions = NULL;
+            joined_plan.join_count = 0U;
+        }
+        joined_select_temp_nodes_deinit(&temp_nodes);
+        if (rc != MYLITE_OK) {
+            planned_select_deinit(&joined_plan);
+        }
+        return rc;
     }
 
     return plan_joined_select_source(database, from_clause, &out_subquery->source);
@@ -587,12 +676,14 @@ static int plan_in_subquery_table_source(
 static int plan_in_subquery_select_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
-    const struct planned_in_subquery *subquery,
+    struct planned_in_subquery *subquery,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     const struct mylite_sql_ast_node *item = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
     struct select_source_context source_context = {0};
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
 
     *out_column = (struct mylite_catalog_column_descriptor){0};
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
@@ -622,21 +713,36 @@ static int plan_in_subquery_select_column(
         return MYLITE_ERROR;
     }
 
-    source_context = (struct select_source_context){
-        .source = &subquery->source.source,
-        .has_alias = subquery->source.has_alias,
-    };
-    memcpy(source_context.alias, subquery->source.alias, sizeof(source_context.alias));
-    return resolve_descriptor_column_reference(
+    if (subquery->source_count > 0U) {
+        rc = init_join_select_source_context(
+            subquery->sources,
+            subquery->source_count,
+            &source_context
+        );
+    } else {
+        source_context = (struct select_source_context){
+            .source = &subquery->source.source,
+            .has_alias = subquery->source.has_alias,
+        };
+        memcpy(source_context.alias, subquery->source.alias, sizeof(source_context.alias));
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         &source_context,
         COLUMN_REFERENCE_FIELD,
         "IN subqueries support one explicit descriptor select column",
-        subquery->source.columns,
-        subquery->source.column_count,
-        out_column
+        subquery->source_count > 0U ? NULL : subquery->source.columns,
+        subquery->source_count > 0U ? 0U : subquery->source.column_count,
+        out_column,
+        &source_index
     );
+    subquery->column_source_index = subquery->inner_source_index + source_index;
+    return rc;
 }
 
 static bool in_subquery_columns_are_compatible(
@@ -654,21 +760,45 @@ static int plan_in_subquery_inner_predicate(
     size_t outer_column_count,
     struct planned_in_subquery *subquery
 ) {
-    struct select_source_context inner_source_context = {
-        .source = &subquery->source.source,
-        .has_alias = subquery->source.has_alias,
-    };
+    struct select_source_context inner_source_context = {0};
+    const struct mylite_catalog_column_descriptor *inner_columns = NULL;
+    size_t inner_column_count = 0U;
     const struct select_predicate_plan_options options = {
         .allow_column_reference_rhs = true,
-        .exists_inner_source_index = 1U,
+        .exists_inner_source_index = subquery->inner_source_index,
+        .exists_inner_source_count = subquery->source_count == 0U ? 1U : subquery->source_count,
         .outer_source_context = outer_source_context,
         .outer_columns = outer_columns,
         .outer_column_count = outer_column_count,
     };
     int rc = MYLITE_OK;
 
-    memcpy(inner_source_context.alias, subquery->source.alias, sizeof(inner_source_context.alias));
+    if (subquery->source_count > 0U) {
+        rc = init_join_select_source_context(
+            subquery->sources,
+            subquery->source_count,
+            &inner_source_context
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    } else {
+        inner_source_context = (struct select_source_context){
+            .source = &subquery->source.source,
+            .has_alias = subquery->source.has_alias,
+        };
+        memcpy(
+            inner_source_context.alias,
+            subquery->source.alias,
+            sizeof(inner_source_context.alias)
+        );
+        inner_columns = subquery->source.columns;
+        inner_column_count = subquery->source.column_count;
+    }
+
     subquery->predicate = (struct planned_select_predicate){0};
+    subquery->predicate.qualify_column_references =
+        select_source_context_is_joined(&inner_source_context);
     if (where_clause == NULL) {
         return MYLITE_OK;
     }
@@ -681,8 +811,8 @@ static int plan_in_subquery_inner_predicate(
         database,
         child_at(where_clause, 0U),
         &inner_source_context,
-        subquery->source.columns,
-        subquery->source.column_count,
+        inner_columns,
+        inner_column_count,
         &options,
         &subquery->predicate
     );
@@ -690,7 +820,10 @@ static int plan_in_subquery_inner_predicate(
         planned_select_predicate_deinit_without_exists(&subquery->predicate);
     }
     if (rc == MYLITE_OK && subquery->predicate.qualify_column_references) {
-        offset_exists_inner_predicate_source_indexes(&subquery->predicate, 1U);
+        offset_exists_inner_predicate_source_indexes(
+            &subquery->predicate,
+            subquery->inner_source_index
+        );
     }
     return rc;
 }

@@ -29,6 +29,7 @@ static int plan_joined_select_predicate(
 ) {
     const struct select_predicate_plan_options options = {
         .allow_exists = false,
+        .allow_in_subquery = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
     };
@@ -211,6 +212,17 @@ static void planned_in_subquery_deinit(struct planned_in_subquery *subquery) {
     }
 
     planned_select_source_deinit_shallow(&subquery->source);
+    for (size_t source_index = 0U; source_index < subquery->source_count; ++source_index) {
+        planned_select_source_deinit_shallow(&subquery->sources[source_index]);
+    }
+    free(subquery->sources);
+    free(subquery->join_kinds);
+    if (subquery->join_conditions != NULL) {
+        for (size_t join_index = 0U; join_index < subquery->join_count; ++join_index) {
+            planned_select_join_condition_deinit(&subquery->join_conditions[join_index]);
+        }
+    }
+    free(subquery->join_conditions);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_in_subquery){0};
 }

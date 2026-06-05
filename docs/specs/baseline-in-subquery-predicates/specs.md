@@ -20,11 +20,13 @@ descriptors authoritative, and lowers the supported predicate to generated
 SQLite SQL over stable physical table names.
 
 This is not full MySQL `IN` subquery support. The supported outer statement is
-a single-table descriptor-backed `SELECT` filter. The supported inner query is
-one descriptor-backed persistent or visible session temporary base table with
-one explicit descriptor column, optional alias, and optional existing
-descriptor-backed `WHERE` predicate. Correlated inner predicates reuse the
-current `EXISTS` subquery correlation envelope.
+a descriptor-backed `SELECT` filter over the current single-table or joined
+source envelope. The supported inner query is one descriptor-backed persistent
+or visible session temporary base table, or a limited descriptor-backed
+`INNER JOIN` chain, with one explicit descriptor column, optional `DISTINCT`,
+optional aliases, and optional existing descriptor-backed `WHERE` predicate.
+Correlated inner predicates reuse the current `EXISTS` subquery correlation
+envelope.
 
 ## Sources And Evidence
 
@@ -80,6 +82,10 @@ Observed against the local `mysql:8.4.9` runtime:
   unqualified source after normal schema resolution.
 - MySQL accepts `ORDER BY` inside an `IN` subquery when no `LIMIT` is present,
   but the order has no visible effect for membership.
+- `SELECT DISTINCT inner_column` inside an `IN` subquery has the same visible
+  membership result as the non-distinct form.
+- Outer joined `SELECT` sources may contain `IN` subquery predicates, and inner
+  `INNER JOIN` subquery sources may provide the selected membership column.
 - MySQL rejects `LIMIT` inside `IN`, `ALL`, `ANY`, or `SOME` subqueries with
   `1235 / 42000` and the message
   `This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'`.
@@ -127,7 +133,7 @@ Outer statement subset:
 
 ```sql
 SELECT outer_select_list
-FROM table_name [table_alias]
+FROM descriptor_source
 WHERE outer_predicate
 [ORDER BY order_column [ASC | DESC]]
 [LIMIT select_limit]
@@ -135,7 +141,9 @@ WHERE outer_predicate
 
 `outer_predicate` is the existing descriptor-backed `WHERE` subset plus the new
 `in_subquery_predicate` atom, composed through the existing `NOT`, `AND`,
-`XOR`, `OR`, and parenthesized predicate rules.
+`XOR`, `OR`, and parenthesized predicate rules. `descriptor_source` may be the
+current single-table source or current supported descriptor joined-source
+envelope for `SELECT`.
 
 Supported `IN` subquery atom:
 
@@ -158,8 +166,8 @@ Supported inner subquery:
 
 ```sql
 in_subquery:
-    SELECT qualified_identifier
-    FROM table_name [table_alias]
+    SELECT [DISTINCT] qualified_identifier
+    FROM descriptor_table_or_inner_join_source
     [WHERE inner_predicate]
 ```
 
@@ -168,6 +176,10 @@ value participates in membership semantics, so MyLite resolves and lowers it
 through descriptor metadata. `SELECT *`, tableless subqueries, `DUAL`
 subqueries, expression items, aggregate items, scalar subquery items, and
 multi-column projection lists are deferred.
+
+Inner joined sources are limited to descriptor-backed `INNER JOIN` chains with
+descriptor equality `ON` conditions. Other join kinds and row-scalar join
+conditions remain deferred.
 
 Supported inner predicate forms:
 
@@ -200,8 +212,9 @@ Unsupported inner clauses for this phase:
 
 - `LIMIT`, including `LIMIT 0`;
 - `ORDER BY`, even though MySQL accepts it without `LIMIT`;
-- `DISTINCT`, grouping, aggregates, joins, locking clauses, select modifiers,
-  set operations, nested subqueries, CTEs, `TABLE`, and `VALUES`.
+- grouping, aggregates, locking clauses, select modifiers other than the
+  admitted `DISTINCT`, set operations, nested subqueries, CTEs, `TABLE`, and
+  `VALUES`.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -212,8 +225,8 @@ predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN select_statement(S) R
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN select_statement(S) RPAREN(R).
 
 in_subquery ::=
-    SELECT qualified_identifier
-    FROM table_name table_alias_opt
+    SELECT distinct_opt qualified_identifier
+    FROM descriptor_table_or_inner_join_source
     where_clause_opt.
 ```
 
@@ -225,14 +238,15 @@ with child 0 as the outer descriptor column and child 1 as the inner
 
 Planning:
 
-1. Resolve the outer selected/default schema and one descriptor-backed outer
-   table using existing `SELECT` source policy. Schema-qualified names use the
-   named schema. Reserved `_mylite_*` schemas and table names are rejected
-   before generated SQLite SQL exists.
+1. Resolve the outer selected/default schema and supported descriptor-backed
+   outer source using existing `SELECT` source policy. Schema-qualified names
+   use the named schema. Reserved `_mylite_*` schemas and table names are
+   rejected before generated SQLite SQL exists.
 2. Resolve the outer membership column through descriptors.
 3. Validate that the inner statement is one supported plain `SELECT` block with
-   one descriptor table source, one explicit selected descriptor column, no
-   unsupported clauses, and optional supported `WHERE`.
+   optional `DISTINCT`, one descriptor table source or admitted descriptor
+   `INNER JOIN` chain, one explicit selected descriptor column, no unsupported
+   clauses, and optional supported `WHERE`.
 4. Resolve the inner source through descriptors and reject unsupported object
    kinds once non-base-table descriptors exist.
 5. Resolve the inner selected descriptor column through the inner source. The
@@ -253,8 +267,9 @@ Execution:
 1. Build one public result for the outer `SELECT`; the inner `IN` subquery does
    not create a public result.
 2. Lower the admitted table-backed subquery to a SQLite membership subquery
-   over the generated physical table name. Inner and outer physical table
-   aliases are stable MyLite aliases such as `_mylite_s0` and `_mylite_s1`.
+   over generated physical table names. Inner and outer physical table aliases
+   are stable MyLite aliases such as `_mylite_s0` and `_mylite_s1`; inner
+   joined subquery aliases start after the outer source aliases.
 3. Bind all inner literal predicate values with the same prepared statement
    that executes the outer query. Correlated column comparisons emit quoted
    physical column references, not literal interpolation.
@@ -332,13 +347,14 @@ measurement shows a real need.
 Deferred until later slices:
 
 - `IN` subqueries in selected scalar expressions, `HAVING`, join conditions,
-  `UPDATE` / `DELETE` predicates, `CHECK` constraints, `SET`, or `DO`;
+  joined `UPDATE`, `DELETE` predicates, `CHECK` constraints, `SET`, or `DO`;
 - tableless and `DUAL` `IN` subqueries;
 - wildcard inner projection, even when the source has one column;
 - row-constructor `IN` subqueries;
 - quantified `ANY`, `SOME`, and `ALL` comparisons;
-- inner joins, aliases on more than one source, index hints, partitions,
-  select modifiers, `DISTINCT`, grouping, aggregates, windows, locking clauses,
+- inner joins outside descriptor equality `INNER JOIN` chains, aliases on
+  unsupported source kinds, index hints, partitions, select modifiers other
+  than the admitted `DISTINCT`, grouping, aggregates, windows, locking clauses,
   `ORDER BY`, `LIMIT`, and offset limits inside the `IN` subquery;
 - arbitrary inner projection expressions, functions, parameters, user
   variables, arithmetic, casts, explicit collations, and nested subqueries;

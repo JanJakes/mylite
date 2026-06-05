@@ -26,3 +26,6 @@
 - [x] Review the diff for descriptor authority, no arbitrary SQLite
       pass-through, result semantics, performance, cleanup, diagnostics, docs
       accuracy, and test relevance.
+- [x] Extend the SELECT predicate slice for optional inner `DISTINCT`, joined
+      outer SELECT sources, descriptor-equality inner `INNER JOIN` sources, and
+      joined-source update target-table protection.

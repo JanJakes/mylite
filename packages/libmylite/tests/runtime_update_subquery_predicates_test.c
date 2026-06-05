@@ -556,6 +556,16 @@ static int test_update_subquery_predicates_errors(void) {
     );
     failures += execute_error(
         database,
+        "UPDATE users SET flag = 5 WHERE id IN "
+        "(SELECT o.user_id FROM orders o JOIN users u ON o.user_id = u.id)",
+        (struct expected_sql_error){
+            .code = mysql_error_update_table_used,
+            .sqlstate = "HY000",
+            .message_part = "You can't specify target table 'users' for update in FROM clause",
+        }
+    );
+    failures += execute_error(
+        database,
         "UPDATE users SET flag = 5 WHERE id IN (SELECT user_id FROM orders LIMIT 1)",
         (struct expected_sql_error){
             .code = mysql_error_not_supported_yet,

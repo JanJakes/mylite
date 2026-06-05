@@ -280,6 +280,15 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "same target joined source in in subquery" \
+    1093 \
+    "HY000" \
+    "You can't specify target table 'users' for update in FROM clause" \
+    "UPDATE users SET flag = 5 WHERE id IN
+     (SELECT o.user_id FROM orders o JOIN users u ON o.user_id = u.id);" \
+    "$DATABASE"
+
+expect_error \
     "inner in limit keeps mysql diagnostic" \
     1235 \
     "42000" \

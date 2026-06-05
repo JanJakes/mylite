@@ -83,6 +83,7 @@ static int test_in_subquery_values_and_persistence(void) {
     static const char *const unmatched_user_ids[] = {"3", "4", "5"};
     static const char *const all_user_ids[] = {"1", "2", "3", "4", "5"};
     static const char *const string_matches[] = {"Ann", "Cat"};
+    static const char *const joined_user_ids[] = {"1", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -99,6 +100,19 @@ static int test_in_subquery_values_and_persistence(void) {
             .values = matched_user_ids,
             .row_count = 2U,
             .context = "integer IN subquery with inner predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE id IN "
+                   "(SELECT DISTINCT user_id FROM orders WHERE user_id IS NOT NULL) "
+                   "ORDER BY id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = matched_user_ids,
+            .row_count = 2U,
+            .context = "integer IN distinct subquery",
         }
     );
     failures += expect_query(
@@ -195,6 +209,33 @@ static int test_in_subquery_values_and_persistence(void) {
             .values = matched_user_ids,
             .row_count = 2U,
             .context = "schema-qualified outer and inner IN subquery",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT u.id FROM users u JOIN orders o ON u.id = o.user_id "
+                   "WHERE o.status = 'open' AND u.id IN "
+                   "(SELECT user_id FROM orders WHERE user_id IS NOT NULL) ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = joined_user_ids,
+            .row_count = 2U,
+            .context = "outer joined source IN subquery",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE id IN "
+                   "(SELECT DISTINCT o.user_id FROM orders o "
+                   "JOIN users u2 ON o.user_id = u2.id "
+                   "WHERE u2.name IN ('Ann', 'Bob')) ORDER BY id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = matched_user_ids,
+            .row_count = 2U,
+            .context = "inner joined source distinct IN subquery",
         }
     );
 

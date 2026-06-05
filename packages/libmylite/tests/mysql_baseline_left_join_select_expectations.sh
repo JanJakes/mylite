@@ -146,6 +146,17 @@ expect_output_with_headers \
     "$DATABASE"
 
 expect_output_with_headers \
+    "on condition admits right literal filter before null extension" \
+    "id	id
+1	7
+2	NULL
+3	NULL
+4	NULL" \
+    "SELECT l.id, r.id FROM lefts l LEFT JOIN rights r "\
+"ON l.k = r.k AND r.name = 'ALPHA' ORDER BY l.id, r.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "order by right nullable key asc" \
     "id	id
 4	NULL

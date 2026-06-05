@@ -472,6 +472,16 @@ static int append_select_join_condition_sql(
             );
         }
     }
+    if (rc == MYLITE_OK && planned_select_predicate_has_expression(&condition->extra_predicate)) {
+        rc = mylite_dynamic_string_append(string, " AND ");
+    }
+    if (rc == MYLITE_OK && planned_select_predicate_has_expression(&condition->extra_predicate)) {
+        rc = append_select_predicate_expression_sql(
+            string,
+            &condition->extra_predicate,
+            next_parameter
+        );
+    }
 
     return rc;
 }

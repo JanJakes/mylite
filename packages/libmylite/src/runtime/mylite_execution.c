@@ -2312,6 +2312,7 @@ struct planned_select_join_condition {
     size_t left_source_index;
     size_t right_source_index;
     struct planned_row_scalar_expression *right_row_scalar_expression;
+    struct planned_select_predicate extra_predicate;
 };
 
 struct planned_select {
@@ -11130,6 +11131,31 @@ static int plan_joined_select_condition(
     enum mylite_sql_ast_join_kind join_kind,
     const struct select_source_context *source_context,
     struct planned_select_join_condition *out_condition
+);
+static int plan_joined_select_condition_with_extra_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *condition_node,
+    const struct select_source_context *source_context,
+    struct planned_select_join_condition *out_condition
+);
+static int plan_joined_select_primary_condition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *condition_node,
+    const struct select_source_context *source_context,
+    struct planned_select_join_condition *out_condition
+);
+static int plan_joined_select_extra_on_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    struct planned_select_join_condition *out_condition
+);
+static bool joined_select_on_node_is_and(const struct mylite_sql_ast_node *node);
+static bool joined_select_on_node_is_descriptor_equality(
+    const struct mylite_sql_ast_node *node
+);
+static bool joined_select_on_node_is_primary_condition(
+    const struct mylite_sql_ast_node *node
 );
 static bool join_condition_columns_are_compatible(
     const struct mylite_catalog_column_descriptor *left,

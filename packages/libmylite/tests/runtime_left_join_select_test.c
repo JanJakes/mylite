@@ -124,6 +124,7 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
         NULL,
     };
     static const char *const anti_rows[] = {"2", NULL, "3", NULL, "4", NULL};
+    static const char *const on_right_literal_rows[] = {"1", "7", "2", NULL, "3", NULL, "4", NULL};
     static const char *const right_order_asc_rows[] = {"4", NULL, "1", "7", "1", "8"};
     static const char *const right_order_desc_rows[] = {"1", "8", "1", "7", "4", NULL};
     static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9", "4", NULL};
@@ -200,6 +201,17 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 3U,
             .context = "where filters after null extension",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r "
+                   "ON l.k = r.k AND r.name = 'ALPHA' ORDER BY l.id, r.id",
+            .values = on_right_literal_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "on condition filters right rows before null extension",
         }
     );
     failures += expect_query_values(

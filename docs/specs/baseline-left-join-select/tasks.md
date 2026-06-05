@@ -12,6 +12,8 @@
   preserving existing inner/cartesian join behavior.
 - [x] Extend descriptor-driven join planning with a join kind and require `ON`
   for left outer joins.
+- [x] Widen left-join `ON` planning to allow one required equality conjoined
+  with an extra supported descriptor predicate for WordPress metadata joins.
 - [x] Generate `LEFT JOIN` physical SQLite SQL from stable descriptor-owned
   physical table names and internal aliases.
 - [x] Add runtime tests for left-row preservation, right-side `NULL` extension,

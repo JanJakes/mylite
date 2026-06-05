@@ -4,15 +4,17 @@
 
 This feature extends descriptor-backed `SELECT` joins from inner/cartesian
 joins to left outer joins: `LEFT JOIN` and `LEFT OUTER JOIN` with one
-descriptor equality `ON` condition, including left-deep chains used by
-WordPress taxonomy queries.
+descriptor equality `ON` condition, including optional `AND`-conjoined
+descriptor predicates used by WordPress metadata anti-join queries and
+left-deep chains used by WordPress taxonomy queries.
 
 This is intentionally not full MySQL outer-join support. It supports readable
 MyLite table descriptors, optional source aliases, required one-column
-same-family integer or ASCII string descriptor equality `ON`, the existing
-descriptor `WHERE` predicate subset, one descriptor `ORDER BY` key, and the
-existing `SELECT` `LIMIT` forms. It does not implement `USING`, natural joins,
-right joins, derived tables, join updates, or general expression projection.
+same-family integer or ASCII string descriptor equality `ON`, optional
+additional `AND` predicates from the existing joined descriptor predicate
+subset, one descriptor `ORDER BY` key, and the existing `SELECT` `LIMIT` forms.
+It does not implement `USING`, natural joins, right joins, derived tables, join
+updates, or general expression projection.
 
 ## Sources
 
@@ -65,6 +67,10 @@ FROM lefts l LEFT JOIN rights r ON l.k = r.k
 WHERE r.id IS NULL
 ORDER BY l.id;
 
+SELECT l.id, r.id
+FROM lefts l LEFT JOIN rights r ON l.k = r.k AND r.name = 'ALPHA'
+ORDER BY l.id, r.id;
+
 SELECT *
 FROM lefts LEFT JOIN rights ON lefts.k = rights.k
 ORDER BY lefts.id, rights.id;
@@ -84,6 +90,9 @@ Observed behavior:
   labels are preserved.
 - `WHERE` filters after join null-extension, so `WHERE right.id IS NULL`
   selects unmatched left rows for this dataset.
+- Additional `AND` predicates inside `ON` filter right-side candidate rows
+  before left join null-extension. This preserves unmatched left rows while
+  excluding right rows that do not satisfy the extra `ON` predicate.
 - `LEFT JOIN` without a join specification reports parse error
   `1064 / 42000`.
 - MySQL accepts `LEFT JOIN ... USING (...)`, but it coalesces common columns and
@@ -107,6 +116,9 @@ In scope:
 - required `ON left_column = right_column` where both operands resolve to
   supported same-family integer-family columns or supported ASCII string-family
   columns in the current join edge scope;
+- optional `AND`-conjoined extra `ON` predicates from the existing descriptor
+  joined `WHERE` predicate subset, such as
+  `ON left_column = right_column AND right_column = 'literal'`;
 - unqualified, table-qualified, alias-qualified, and schema-table-qualified
   source references using the existing selected/default schema policy;
 - optional source aliases using `AS alias` or bare `alias`;
@@ -133,7 +145,10 @@ Out of scope:
 - qualified wildcards outside the later limited descriptor-backed
   [baseline qualified wildcard SELECT](../baseline-qualified-wildcard-select/specs.md)
   projection slice;
-- join predicates other than one descriptor-column equality;
+- join predicates that do not include one supported descriptor-column equality;
+- `ON` predicates using `OR`, `XOR`, nested arbitrary expressions, subqueries,
+  aggregates, window functions, row constructors, or parameters outside the
+  existing descriptor predicate subset;
 - mixed-type join comparisons and MySQL's conversion/warning behavior for those
   comparisons;
 - decimal, approximate, temporal, binary-string, and bit join key equality;
@@ -189,8 +204,8 @@ select_statement ::=
 
 joined_table_source ::= table_source inner_join_operator table_source join_condition_opt.
 joined_table_source ::= joined_table_source inner_join_operator table_source join_condition_opt.
-joined_table_source ::= table_source outer_join_operator table_source ON join_equality_condition.
-joined_table_source ::= joined_table_source outer_join_operator table_source ON join_equality_condition.
+joined_table_source ::= table_source outer_join_operator table_source ON join_condition.
+joined_table_source ::= joined_table_source outer_join_operator table_source ON join_condition.
 
 table_source ::= table_name table_alias_opt.
 
@@ -202,9 +217,13 @@ outer_join_operator ::= LEFT JOIN.
 outer_join_operator ::= LEFT OUTER JOIN.
 
 join_condition_opt ::= .
-join_condition_opt ::= ON join_equality_condition.
+join_condition_opt ::= ON join_condition.
 
+join_condition ::= join_equality_condition.
+join_condition ::= join_equality_condition AND on_extra_predicate.
+join_condition ::= on_extra_predicate AND join_equality_condition.
 join_equality_condition ::= qualified_identifier EQUAL qualified_identifier.
+on_extra_predicate ::= existing_joined_descriptor_predicate_subset.
 ```
 
 The optional condition remains only for the existing inner/cartesian join
@@ -251,6 +270,8 @@ generation, parameter binding, and result conversion.
 - `LEFT JOIN` and `LEFT OUTER JOIN` preserve every left-source row.
 - Matching right-source rows are returned for the admitted same-family
   descriptor-column equality.
+- Extra `AND` predicates inside `ON` are evaluated with the join condition and
+  therefore filter right-source candidate rows before `NULL` extension.
 - If no right row matches, each right-source projected descriptor column reads
   as `NULL`.
 - `NULL` join-key values do not match for the admitted `=` operator.
@@ -286,10 +307,10 @@ internal SQLite aliases:
 SELECT "_mylite_s0"."id", "_mylite_s1"."w"
 FROM "_mylite_user_table_<left_id>" AS "_mylite_s0"
 LEFT JOIN "_mylite_user_table_<right_id>" AS "_mylite_s1"
-  ON "_mylite_s0"."k" = "_mylite_s1"."k"
+  ON "_mylite_s0"."k" = "_mylite_s1"."k" AND ("_mylite_s1"."name" = ?1)
 WHERE "_mylite_s1"."id" IS NULL
 ORDER BY "_mylite_s0"."id" ASC
-LIMIT ?1
+LIMIT ?2
 ```
 
 Every generated SQLite identifier is quoted. User-supplied source names,

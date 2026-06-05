@@ -1348,9 +1348,6 @@ static int plan_joined_select_condition(
     const struct select_source_context *source_context,
     struct planned_select_join_condition *out_condition
 ) {
-    const struct mylite_sql_ast_node *right_node = NULL;
-    int rc = MYLITE_OK;
-
     *out_condition = (struct planned_select_join_condition){.has_condition = false};
     if (condition_node == NULL) {
         if (join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
@@ -1361,6 +1358,78 @@ static int plan_joined_select_condition(
         return MYLITE_OK;
     }
     condition_node = unwrap_parenthesized_expression(condition_node);
+    if (joined_select_on_node_is_and(condition_node)) {
+        return plan_joined_select_condition_with_extra_predicate(
+            database,
+            condition_node,
+            source_context,
+            out_condition
+        );
+    }
+
+    return plan_joined_select_primary_condition(
+        database,
+        condition_node,
+        source_context,
+        out_condition
+    );
+}
+
+static int plan_joined_select_condition_with_extra_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *condition_node,
+    const struct select_source_context *source_context,
+    struct planned_select_join_condition *out_condition
+) {
+    const struct mylite_sql_ast_node *left_node =
+        unwrap_parenthesized_expression(child_at(condition_node, 0U));
+    const struct mylite_sql_ast_node *right_node =
+        unwrap_parenthesized_expression(child_at(condition_node, 1U));
+    const struct mylite_sql_ast_node *primary_node = NULL;
+    const struct mylite_sql_ast_node *extra_node = NULL;
+    int rc = MYLITE_OK;
+
+    if (joined_select_on_node_is_descriptor_equality(left_node)) {
+        primary_node = left_node;
+        extra_node = right_node;
+    } else if (joined_select_on_node_is_descriptor_equality(right_node)) {
+        primary_node = right_node;
+        extra_node = left_node;
+    } else if (joined_select_on_node_is_primary_condition(left_node)) {
+        primary_node = left_node;
+        extra_node = right_node;
+    } else if (joined_select_on_node_is_primary_condition(right_node)) {
+        primary_node = right_node;
+        extra_node = left_node;
+    } else {
+        set_unsupported_error(database, "joined SELECT supports only descriptor equality ON");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_joined_select_primary_condition(database, primary_node, source_context, out_condition);
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_extra_on_predicate(
+            database,
+            extra_node,
+            source_context,
+            out_condition
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_join_condition_deinit(out_condition);
+    }
+    return rc;
+}
+
+static int plan_joined_select_primary_condition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *condition_node,
+    const struct select_source_context *source_context,
+    struct planned_select_join_condition *out_condition
+) {
+    const struct mylite_sql_ast_node *right_node = NULL;
+    int rc = MYLITE_OK;
+
     if ((condition_node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
          condition_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) ||
         mylite_sql_ast_node_operator(condition_node) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
@@ -1438,6 +1507,68 @@ static int plan_joined_select_condition(
 
     out_condition->has_condition = true;
     return MYLITE_OK;
+}
+
+static int plan_joined_select_extra_on_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    struct planned_select_join_condition *out_condition
+) {
+    const struct select_predicate_plan_options options = {
+        .allow_exists = false,
+        .allow_same_scope_column_reference_rhs = true,
+        .allow_date_format_numeric_predicate = true,
+    };
+    int rc = MYLITE_OK;
+
+    out_condition->extra_predicate = (struct planned_select_predicate){
+        .qualify_column_references = select_source_context_is_joined(source_context),
+    };
+    rc = plan_select_predicate_node(
+        database,
+        predicate_node,
+        source_context,
+        NULL,
+        0U,
+        &options,
+        &out_condition->extra_predicate
+    );
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit(&out_condition->extra_predicate);
+    }
+    return rc;
+}
+
+static bool joined_select_on_node_is_and(const struct mylite_sql_ast_node *node) {
+    return node != NULL && node->kind == MYLITE_SQL_AST_AND_PREDICATE;
+}
+
+static bool joined_select_on_node_is_descriptor_equality(
+    const struct mylite_sql_ast_node *node
+) {
+    node = unwrap_parenthesized_expression(node);
+    if (node == NULL ||
+        (node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+         node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) ||
+        mylite_sql_ast_node_operator(node) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
+        return false;
+    }
+    return predicate_node_is_column_reference(child_at(node, 0U)) &&
+           predicate_node_is_column_reference(child_at(node, 1U));
+}
+
+static bool joined_select_on_node_is_primary_condition(
+    const struct mylite_sql_ast_node *node
+) {
+    node = unwrap_parenthesized_expression(node);
+    if (node == NULL ||
+        (node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+         node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) ||
+        mylite_sql_ast_node_operator(node) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
+        return false;
+    }
+    return predicate_node_is_column_reference(child_at(node, 0U));
 }
 
 static bool join_condition_columns_are_compatible(
@@ -1574,6 +1705,7 @@ static void planned_select_join_condition_deinit(
         planned_row_scalar_expression_deinit(condition->right_row_scalar_expression);
         free(condition->right_row_scalar_expression);
     }
+    planned_select_predicate_deinit(&condition->extra_predicate);
     *condition = (struct planned_select_join_condition){0};
 }
 

@@ -258,15 +258,26 @@ static int bind_select_join_condition_parameters(
     const struct planned_select_join_condition *condition,
     int *parameter_index
 ) {
-    if (condition == NULL || !condition->has_condition ||
-        !condition->right_value_is_row_scalar_expression) {
+    int rc = MYLITE_OK;
+
+    if (condition == NULL || !condition->has_condition) {
         return MYLITE_OK;
     }
-    return bind_row_scalar_expression_parameters(
-        statement,
-        condition->right_row_scalar_expression,
-        parameter_index
-    );
+    if (condition->right_value_is_row_scalar_expression) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            condition->right_row_scalar_expression,
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(
+            statement,
+            &condition->extra_predicate,
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_row_scalar_select_parameters(

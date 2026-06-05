@@ -29,3 +29,5 @@
       and test relevance.
 - [x] Commit, review with a subagent, amend if needed, push `main`, then
       continue to the next baseline slice.
+- [x] Extend the documented MySQL 8.4.9 evidence and runtime coverage for
+      `SQL_CALC_FOUND_ROWS` on one-row aggregate selects.

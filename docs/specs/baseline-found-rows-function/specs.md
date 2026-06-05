@@ -41,6 +41,9 @@ The MySQL 8.4.9 probes establish these expectations for the admitted subset:
   current one-row scalar select itself is the relevant successful select result;
 - after `SELECT SQL_CALC_FOUND_ROWS ... LIMIT n`, `FOUND_ROWS()` returns the
   row count before `LIMIT`;
+- after `SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM t`, `FOUND_ROWS()` returns
+  `1`, the number of aggregate result rows before `LIMIT`, not the counted
+  table rows;
 - after a successful `SELECT` without `SQL_CALC_FOUND_ROWS`, `FOUND_ROWS()`
   returns the number of rows MySQL considered for client return up to the
   `LIMIT` envelope: for `LIMIT row_count`, the returned row count; for
@@ -110,11 +113,13 @@ The first implementation supported `SQL_CALC_FOUND_ROWS` only for the existing
 non-distinct descriptor-backed base-table `SELECT` column-list and wildcard
 paths with optional source alias, baseline `WHERE`, one-column `ORDER BY`, and
 existing `LIMIT` / `OFFSET` forms. Later slices admit the current joined and
-grouped descriptor-backed `SELECT` envelopes. MyLite still does not admit or
-execute `SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`,
-`DISTINCT`, `DISTINCTROW`, aggregate-only non-grouped selects, `CREATE TABLE
-... SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, `UNION`, `TABLE`,
-subqueries, CTEs, unsupported locking clauses, or other select modifiers.
+grouped descriptor-backed `SELECT` envelopes plus the current one-row
+aggregate-only envelopes. MyLite still does not admit or execute
+`SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`, row-scalar
+projection selects, `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, `REPLACE
+... SELECT`, `UNION`, `TABLE`, subqueries, CTEs, unsupported locking clauses,
+or other select modifiers outside the documented descriptor and aggregate
+paths.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -199,6 +204,11 @@ predicate. For admitted grouped descriptor-backed selects, the count is the
 number of groups after source resolution, `WHERE`, `GROUP BY`, and supported
 `HAVING`, but before `ORDER BY`, `LIMIT`, or `OFFSET`. `ORDER BY` does not
 change the found count.
+
+For admitted non-grouped one-row aggregate selects, the pre-limit found count
+is the aggregate result row count. For example, `SELECT SQL_CALC_FOUND_ROWS
+COUNT(*) FROM t` returns the table count as the result value but sets
+`FOUND_ROWS()` to `1`.
 
 The regular result set still applies `LIMIT` and `OFFSET`. Successful
 `SQL_CALC_FOUND_ROWS` statements append MySQL warning `1287`:

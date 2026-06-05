@@ -138,6 +138,23 @@ expect_value "limit offset second row" "3	0" "$(printf '%s\n' "$limits" | sed -n
 expect_value "limit comma first row" "2	1" "$(printf '%s\n' "$limits" | sed -n '3p')"
 expect_value "limit comma second row" "3	0" "$(printf '%s\n' "$limits" | sed -n '4p')"
 
+count_star=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT DISTINCT COUNT(*)
+       FROM posts p JOIN comments c ON p.id = c.post_id;
+     SELECT COUNT(*)
+       FROM posts p JOIN comments c ON p.id = c.post_id LIMIT 2000;"
+)
+expect_value "joined distinct count star" "3" "$(printf '%s\n' "$count_star" | sed -n '1p')"
+expect_value "joined count star limit" "3" "$(printf '%s\n' "$count_star" | sed -n '2p')"
+
+count_star_zero=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT COUNT(*)
+       FROM posts p JOIN comments c ON p.id = c.post_id LIMIT 0;"
+)
+expect_value "joined count star zero limit" "" "$count_star_zero"
+
 bitwise=$(run_mysql \
     "USE ${DATABASE};
      SELECT p.category, MIN(c.score), MAX(c.score), BIT_AND(c.score),

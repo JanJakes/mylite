@@ -164,6 +164,9 @@ static int test_joined_aggregate_values_and_persistence(void) {
         "total_roles",
     };
     static const char *const role_count_values[] = {"1", "1", "0", "0", "1", "1", "4"};
+    static const char *const distinct_join_count_columns[] = {"COUNT(*)"};
+    static const char *const distinct_join_count_values[] = {"4"};
+    static const char *const limited_join_count_values[] = {"4"};
     static const char *const inner_count_columns[] = {"post_id", "COUNT(*)"};
     static const char *const inner_count_values[] = {"1", "2", "2", "1"};
     static const char *const category_count_columns[] = {"category", "COUNT(c.id)"};
@@ -482,6 +485,42 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .values = role_count_values,
             .row_count = 1U,
             .context = "joined count nullif predicate role counts",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT COUNT(*) FROM usermeta INNER JOIN users ON user_id = ID "
+                   "WHERE meta_key = 'wp_capabilities'",
+            .columns = distinct_join_count_columns,
+            .column_count = 1U,
+            .values = distinct_join_count_values,
+            .row_count = 1U,
+            .context = "joined distinct count star",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM usermeta INNER JOIN users ON user_id = ID "
+                   "WHERE meta_key = 'wp_capabilities' LIMIT 2000",
+            .columns = distinct_join_count_columns,
+            .column_count = 1U,
+            .values = limited_join_count_values,
+            .row_count = 1U,
+            .context = "joined count star with limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM usermeta INNER JOIN users ON user_id = ID "
+                   "WHERE meta_key = 'wp_capabilities' LIMIT 0",
+            .columns = distinct_join_count_columns,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "joined count star with zero limit",
         }
     );
     failures += expect_row_count(database, "-1", "row count after joined aggregate select");

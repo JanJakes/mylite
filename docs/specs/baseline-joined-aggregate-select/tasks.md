@@ -20,3 +20,5 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review the final diff with a subagent, amend any findings, commit, and
   push to remote `main`.
+- [x] Extend runtime coverage for top-level `SELECT DISTINCT COUNT(*)` over the
+  current joined descriptor-source envelope.

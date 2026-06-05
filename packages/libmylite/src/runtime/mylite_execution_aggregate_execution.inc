@@ -181,6 +181,7 @@ static int plan_count(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_count){false};
+    out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
     expression = child_at(select_item, 0U);
     out_plan->expression = expression;
     out_plan->alias = child_at(select_item, 1U);
@@ -638,6 +639,9 @@ static int execute_count_from_plan(
     }
     if (rc == MYLITE_OK) {
         rc = append_count_value_row(database, result, count_text);
+    }
+    if (rc == MYLITE_OK && plan->calc_found_rows) {
+        mylite_result_set_found_row_count(result, 1U);
     }
     if (rc == MYLITE_OK) {
         apply_count_limit_to_result(result, plan);

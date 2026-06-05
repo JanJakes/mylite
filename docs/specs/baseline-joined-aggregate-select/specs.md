@@ -75,6 +75,8 @@ records the MySQL 8.4.9 probes for this phase. Observed behavior:
   clause-specific diagnostics as the existing single-table and joined paths.
 - Successful row-returning statements leave `@@warning_count = 0` and make the
   following `ROW_COUNT()` return `-1`.
+- Top-level `SELECT DISTINCT COUNT(*)` over the joined descriptor-source
+  envelope is accepted and returns the same one-row aggregate count as MySQL.
 
 ## Scope
 
@@ -127,7 +129,7 @@ Out of scope:
 - decimal, approximate, string, binary string, temporal, JSON, enum, set,
   collation, or charset grouping and aggregate expression semantics beyond the
   existing join key and predicate slices;
-- `SQL_CALC_FOUND_ROWS`, distinct grouped joins, locking behavior changes,
+- distinct grouped joins, locking behavior changes,
   optimizer hints, protocol-grade origin metadata, privileges, and exact
   optimizer plan equivalence.
 

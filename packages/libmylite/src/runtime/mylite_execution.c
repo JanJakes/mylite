@@ -2736,6 +2736,7 @@ enum planned_count_function {
 
 struct planned_count {
     bool has_source;
+    bool calc_found_rows;
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
     enum planned_count_function function;
@@ -2763,6 +2764,9 @@ struct planned_count_expression_aggregate {
     struct planned_select source;
     struct planned_count_expression_aggregate_item *items;
     size_t item_count;
+    bool is_distinct;
+    bool calc_found_rows;
+    struct planned_select_limit limit;
 };
 
 struct planned_count_source_nodes {

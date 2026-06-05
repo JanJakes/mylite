@@ -318,6 +318,7 @@ static int test_sql_calc_found_rows_selects(void) {
     static const char *const limit_rows[] = {"1", "2"};
     static const char *const filtered_rows[] = {"2"};
     static const char *const no_limit_rows[] = {"1", "2", "3", "4"};
+    static const char *const count_rows[] = {"4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -390,6 +391,18 @@ static int test_sql_calc_found_rows_selects(void) {
         (struct expected_found_rows_value){
             .expected = "4",
             .context = "sql calc no-limit found rows",
+        }
+    );
+
+    failures += execute_ok(database, "SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM t", &result);
+    failures += expect_single_column_rows(result, count_rows, 1U, 1U, "sql calc count rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_value(
+        database,
+        (struct expected_found_rows_value){
+            .expected = "1",
+            .context = "sql calc count found rows",
         }
     );
 
@@ -795,15 +808,6 @@ static int test_found_rows_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SELECT supports only",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL_CALC_FOUND_ROWS supports only",
         }
     );
     failures += execute_error(

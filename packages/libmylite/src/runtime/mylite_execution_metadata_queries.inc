@@ -290,6 +290,9 @@ static int execute_count_select_statement(
     if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, statement);
     }
+    if (rc == MYLITE_OK && mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        rc = append_sql_calc_found_rows_deprecation_warning(database);
+    }
     if (rc == MYLITE_OK) {
         rc = execute_count_from_plan(database, &count_plan, apply_sql_select_limit, out_result);
     }
@@ -308,6 +311,9 @@ static int execute_column_aggregate_select_statement(
 
     if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK && mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        rc = append_sql_calc_found_rows_deprecation_warning(database);
     }
     if (rc == MYLITE_OK) {
         rc = execute_column_aggregate_from_plan(
@@ -1655,17 +1661,6 @@ static int reject_select_modifier_usage_if_needed(
         );
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_select_calc_found_rows(statement) &&
-        !select_statement_has_group_by_clause(statement) &&
-        (select_statement_has_count_aggregate(statement) ||
-         select_statement_has_column_aggregate(statement))) {
-        set_unsupported_error(
-            database,
-            "SQL_CALC_FOUND_ROWS supports only descriptor-backed column-list and wildcard SELECT"
-        );
-        return MYLITE_ERROR;
-    }
-
     return MYLITE_OK;
 }
 

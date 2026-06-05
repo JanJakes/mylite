@@ -73,7 +73,11 @@ static int bind_count_expression_aggregate_parameters(
 static int append_count_expression_aggregate_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
-    mylite_result *result
+    mylite_result *result,
+    const struct planned_count_expression_aggregate *plan
+);
+static bool count_expression_aggregate_limit_excludes_result(
+    const struct planned_count_expression_aggregate *plan
 );
 static bool select_statement_has_joined_count_expression_source(
     const struct mylite_sql_ast_node *statement
@@ -128,6 +132,9 @@ static int execute_count_expression_aggregate_select_statement(
     if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, statement);
     }
+    if (rc == MYLITE_OK && mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        rc = append_sql_calc_found_rows_deprecation_warning(database);
+    }
     if (rc == MYLITE_OK) {
         rc = execute_count_expression_aggregate_from_plan(
             database,
@@ -154,20 +161,9 @@ static int plan_count_expression_aggregate(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_count_expression_aggregate){0};
-    if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
-        set_unsupported_error(
-            database,
-            "COUNT(NULLIF(predicate,FALSE)) aggregate does not support DISTINCT SELECT"
-        );
-        return MYLITE_ERROR;
-    }
-    if (mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
-        set_unsupported_error(
-            database,
-            "COUNT(NULLIF(predicate,FALSE)) aggregate does not support SQL_CALC_FOUND_ROWS"
-        );
-        return MYLITE_ERROR;
-    }
+    out_plan->is_distinct =
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+    out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
 
     rc = collect_count_expression_aggregate_clauses(database, statement, &clauses);
     if (rc == MYLITE_OK) {
@@ -191,6 +187,9 @@ static int plan_count_expression_aggregate(
             out_plan
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+    }
 
     free(table_columns);
     if (rc != MYLITE_OK) {
@@ -209,11 +208,10 @@ static int collect_count_expression_aggregate_clauses(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (out_clauses->having_clause != NULL || out_clauses->order_clause != NULL ||
-        out_clauses->limit_clause != NULL) {
+    if (out_clauses->having_clause != NULL || out_clauses->order_clause != NULL) {
         set_unsupported_error(
             database,
-            "COUNT(NULLIF(predicate,FALSE)) aggregate supports only WHERE"
+            "COUNT(NULLIF(predicate,FALSE)) aggregate supports only WHERE and LIMIT"
         );
         return MYLITE_ERROR;
     }
@@ -576,7 +574,7 @@ static int execute_count_expression_aggregate_from_plan(
         rc = bind_count_expression_aggregate_parameters(statement, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = append_count_expression_aggregate_row(database, statement, result);
+        rc = append_count_expression_aggregate_row(database, statement, result, plan);
     }
 
     rc = finalize_sqlite_statement(statement, rc);
@@ -584,6 +582,9 @@ static int execute_count_expression_aggregate_from_plan(
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return count_execution_error(database, rc);
+    }
+    if (plan->calc_found_rows) {
+        mylite_result_set_found_row_count(result, 1U);
     }
     if (apply_sql_select_limit) {
         apply_sql_select_limit_to_result(database, result);
@@ -631,7 +632,11 @@ static int build_count_expression_aggregate_sql(
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = mylite_dynamic_string_append(&string, "SELECT ");
+    if (plan->is_distinct) {
+        rc = mylite_dynamic_string_append(&string, "SELECT DISTINCT ");
+    } else {
+        rc = mylite_dynamic_string_append(&string, "SELECT ");
+    }
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
         if (item_index != 0U) {
             rc = mylite_dynamic_string_append(&string, ", ");
@@ -652,6 +657,9 @@ static int build_count_expression_aggregate_sql(
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(&string, &plan->source.predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -714,6 +722,15 @@ static int bind_count_expression_aggregate_parameters(
     if (rc == MYLITE_OK) {
         rc = bind_select_parameters_at(statement, &plan->source, &parameter_index);
     }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && plan->limit.has_offset) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+    }
 
     return rc;
 }
@@ -721,10 +738,14 @@ static int bind_count_expression_aggregate_parameters(
 static int append_count_expression_aggregate_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
-    mylite_result *result
+    mylite_result *result,
+    const struct planned_count_expression_aggregate *plan
 ) {
     int sqlite_rc = sqlite3_step(statement);
 
+    if (sqlite_rc == SQLITE_DONE && count_expression_aggregate_limit_excludes_result(plan)) {
+        return MYLITE_OK;
+    }
     if (sqlite_rc != SQLITE_ROW) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
@@ -739,4 +760,13 @@ static int append_count_expression_aggregate_row(
     }
 
     return MYLITE_OK;
+}
+
+static bool count_expression_aggregate_limit_excludes_result(
+    const struct planned_count_expression_aggregate *plan
+) {
+    if (plan == NULL || !plan->limit.has_limit) {
+        return false;
+    }
+    return plan->limit.row_count == 0 || (plan->limit.has_offset && plan->limit.offset > 0);
 }

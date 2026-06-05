@@ -130,6 +130,15 @@ expect_contains \
     "FOUND_ROWS() is deprecated and will be removed in a future release. Consider using COUNT(*) instead."
 expect_value "found rows select updates state" "1	1	-1" "$(printf '%s\n' "$calc_limit" | sed -n '6p')"
 
+calc_count=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM t;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();"
+)
+expect_value "sql calc count value" "4" "$(printf '%s\n' "$calc_count" | sed -n '1p')"
+expect_value "sql calc count found rows" "1	1	-1" \
+    "$(printf '%s\n' "$calc_count" | sed -n '2p')"
+
 ordinary_limit=$(run_mysql \
     "USE ${DATABASE};
      SELECT id FROM t ORDER BY id LIMIT 2;

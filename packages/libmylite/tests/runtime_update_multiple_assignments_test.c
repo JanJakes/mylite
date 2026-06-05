@@ -17,6 +17,7 @@ enum {
     test_path_suffix_capacity = 16,
     mysql_error_bad_null = 1048,
     mysql_error_unknown_column = 1054,
+    mysql_error_duplicate_entry = 1062,
     mysql_error_parse = 1064,
     mysql_error_data_out_of_range = 1264,
 };
@@ -40,6 +41,7 @@ static int test_multiple_assignment_errors_and_atomicity(void);
 static int test_independent_multiple_assignment_handles(void);
 static int open_app_database(const char *path, mylite_db **out_database);
 static int reset_rows_table(mylite_db *database);
+static int reset_key_table(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_update_ok(mylite_db *database, const char *sql, int64_t affected_rows);
@@ -123,6 +125,20 @@ static int test_multiple_assignment_success_persistence_and_limits(void) {
         "3",
         "10",
         "2023-11-14 22:16:20",
+    };
+    static const char *const after_composite_key_update[] = {
+        "71",
+        "71",
+        "nav_menu",
+        "",
+        "0",
+    };
+    static const char *const after_primary_key_update[] = {
+        "72",
+        "72",
+        "post_tag",
+        "renamed",
+        "0",
     };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -227,6 +243,41 @@ static int test_multiple_assignment_success_persistence_and_limits(void) {
     );
     failures += expect_update_ok(database, "UPDATE rows_t SET nn = NULL, b = 99 WHERE id = 999", 0);
     failures += expect_update_ok(database, "UPDATE rows_t SET nn = NULL, b = 99 LIMIT 0", 0);
+    failures += reset_key_table(database);
+    failures += expect_update_ok(
+        database,
+        "UPDATE key_t SET term_id = 71, taxonomy = 'nav_menu', description = '', parent = 0 "
+        "WHERE term_taxonomy_id = 71",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent "
+                   "FROM key_t WHERE term_taxonomy_id = 71",
+            .values = after_composite_key_update,
+            .column_count = 5U,
+            .row_count = 1U,
+            .context = "composite unique key multiple assignment",
+        }
+    );
+    failures += expect_update_ok(
+        database,
+        "UPDATE key_t SET term_taxonomy_id = 72, term_id = 72, taxonomy = 'post_tag', "
+        "description = 'renamed' WHERE term_taxonomy_id = 71",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent "
+                   "FROM key_t WHERE term_taxonomy_id = 72",
+            .values = after_primary_key_update,
+            .column_count = 5U,
+            .row_count = 1U,
+            .context = "primary key multiple assignment",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -270,6 +321,13 @@ static int test_multiple_assignment_errors_and_atomicity(void) {
         .message_part = "UPDATE multiple assignments",
     };
     static const char *const unchanged_after_error[] = {"1", "2", "3", "one"};
+    static const char *const unchanged_key_after_error[] = {
+        "71",
+        "0",
+        "nav_menu",
+        "pending",
+        "1",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -338,10 +396,37 @@ static int test_multiple_assignment_errors_and_atomicity(void) {
     );
     failures +=
         execute_error(database, "UPDATE rows_t SET id = 5, a = 1 WHERE id = 1", parse_unsupported);
+    failures += reset_key_table(database);
     failures += execute_error(
         database,
-        "UPDATE rows_t SET u_unique = 7, a = 1 WHERE id = 1",
-        parse_unsupported
+        "UPDATE key_t SET term_id = 70, taxonomy = 'category', description = 'dup' "
+        "WHERE term_taxonomy_id = 71",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE key_t SET term_taxonomy_id = 70, description = 'dup' "
+        "WHERE term_taxonomy_id = 71",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent "
+                   "FROM key_t WHERE term_taxonomy_id = 71",
+            .values = unchanged_key_after_error,
+            .column_count = 5U,
+            .row_count = 1U,
+            .context = "failed key multiple assignment leaves row unchanged",
+        }
     );
 
     mylite_close(database);
@@ -432,6 +517,33 @@ static int reset_rows_table(mylite_db *database) {
         "(1, 2, 3, 4, 'one', '2025-01-01 00:00:00'), "
         "(1, 5, 3, 5, 'two', '2025-01-01 00:00:00'), "
         "(NULL, 5, 3, 6, NULL, '2025-01-01 00:00:00')",
+        NULL
+    );
+
+    return failures;
+}
+
+static int reset_key_table(mylite_db *database) {
+    int failures = 0;
+
+    failures += execute_ok(database, "DROP TABLE IF EXISTS key_t", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE key_t ("
+        "term_taxonomy_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, "
+        "term_id BIGINT UNSIGNED NOT NULL, "
+        "taxonomy VARCHAR(32) NOT NULL, "
+        "description TEXT NOT NULL, "
+        "parent BIGINT UNSIGNED NOT NULL DEFAULT 0, "
+        "UNIQUE KEY term_id_taxonomy (term_id, taxonomy), "
+        "KEY parent (parent))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO key_t(term_taxonomy_id, term_id, taxonomy, description, parent) VALUES "
+        "(70, 70, 'category', 'existing', 0), "
+        "(71, 0, 'nav_menu', 'pending', 1)",
         NULL
     );
 

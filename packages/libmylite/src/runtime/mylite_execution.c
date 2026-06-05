@@ -14849,6 +14849,10 @@ static int lowercase_ascii_byte(int byte);
 static void planned_update_deinit(struct planned_update *plan);
 static bool planned_update_has_multiple_assignments(const struct planned_update *plan);
 static bool planned_update_assignment_is_noop(const struct planned_update_assignment *assignment);
+static const struct planned_update_assignment *planned_update_assignment_for_column(
+    const struct planned_update *plan,
+    int64_t column_id
+);
 static size_t planned_update_executable_assignment_count(const struct planned_update *plan);
 static int copy_update_assignments_for_execution(
     struct mylite_db *database,
@@ -17182,6 +17186,10 @@ static bool insert_duplicate_assignment_is_noop(
 static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan);
 static void set_insert_duplicate_arithmetic_unsupported_error(struct mylite_db *database);
 static int validate_update_string_key_value(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static int validate_update_multiple_string_key_values(
     struct mylite_db *database,
     const struct planned_update *plan
 );
@@ -25770,6 +25778,21 @@ static int handle_update_unique_key_conflict(
     const struct planned_update *executable_plan,
     const struct planned_update *plan,
     int sqlite_rc
+);
+static int handle_update_multiple_unique_key_conflict(
+    struct mylite_db *database,
+    const struct planned_update *executable_plan,
+    const struct planned_update *plan,
+    int sqlite_rc
+);
+static bool update_unique_key_index_has_assignment(
+    const struct planned_update *plan,
+    const struct loaded_index_info *index
+);
+static const struct planned_value *update_unique_key_assignment_value_for_part(
+    const struct planned_update *executable_plan,
+    const struct planned_update *plan,
+    const struct loaded_index_part *part
 );
 static int unique_key_tuple_exists(
     struct mylite_db *database,

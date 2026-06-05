@@ -542,7 +542,7 @@ static int append_update_unique_key_conflict_expression(
 ) {
     int rc = MYLITE_OK;
 
-    if (part->index_column.column_id == plan->assignment_column.column_id) {
+    if (update_unique_key_assignment_value_for_part(plan, plan, part) != NULL) {
         rc = append_loaded_key_part_parameter_sql(string, part, *next_parameter);
         if (rc == MYLITE_OK) {
             ++(*next_parameter);
@@ -585,7 +585,13 @@ static int bind_update_unique_key_conflict_parameters(
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK && !request->executable_plan->assignment_value.is_null) {
+    if (rc == MYLITE_OK && planned_update_has_multiple_assignments(request->plan)) {
+        rc = bind_update_multiple_changed_condition_parameters(
+            statement,
+            &parameter_index,
+            request->executable_plan
+        );
+    } else if (rc == MYLITE_OK && !request->executable_plan->assignment_value.is_null) {
         rc = bind_planned_value_parameter(
             statement,
             parameter_index,
@@ -632,7 +638,13 @@ static int bind_update_unique_key_internal_conflict_parameters(
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK && !request->executable_plan->assignment_value.is_null) {
+    if (rc == MYLITE_OK && planned_update_has_multiple_assignments(request->plan)) {
+        rc = bind_update_multiple_changed_condition_parameters(
+            statement,
+            &parameter_index,
+            request->executable_plan
+        );
+    } else if (rc == MYLITE_OK && !request->executable_plan->assignment_value.is_null) {
         rc = bind_planned_value_parameter(
             statement,
             parameter_index,
@@ -652,15 +664,16 @@ static int bind_update_unique_key_assignment_parameters(
 
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < request->index->part_count;
          ++part_index) {
-        if (request->index->parts[part_index].index_column.column_id !=
-            request->plan->assignment_column.column_id) {
+        const struct planned_value *value = update_unique_key_assignment_value_for_part(
+            request->executable_plan,
+            request->plan,
+            &request->index->parts[part_index]
+        );
+
+        if (value == NULL) {
             continue;
         }
-        rc = bind_planned_value_parameter(
-            statement,
-            *parameter_index,
-            &request->executable_plan->assignment_value
-        );
+        rc = bind_planned_value_parameter(statement, *parameter_index, value);
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
         }

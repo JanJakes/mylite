@@ -84,6 +84,9 @@ The implementation supports:
   selected-schema policy;
 - two or more assignment list entries;
 - distinct unqualified assignment targets only;
+- assignment to non-`AUTO_INCREMENT` primary-key and unique-key columns, with
+  duplicate-key diagnostics for the current supported primary-key and
+  unique-index subset;
 - assignment values admitted by the existing single-assignment constant
   conversion path: decimal integer, fixed decimal, approximate numeric,
   `TRUE`, `FALSE`, `NULL`, `DEFAULT`, ordinary string literals for supported
@@ -112,15 +115,16 @@ This feature does not add:
 - column-to-column assignments, general expressions, functions other than the
   existing current-timestamp value forms, variables, parameters, or
   `DEFAULT(column_name)`;
-- multiple assignment to primary-key, unique-key, or auto-increment columns;
+- multiple assignment to auto-increment columns;
 - automatic timestamp updates for key columns;
+- parent foreign-key cascade/set-null behavior beyond the existing direct
+  single-assignment parent-update action subset;
 - MySQL's left-to-right table-backed expression evaluation;
 - triggers, cascades, generated columns, privileges, locks, or SQLite fork
   patches.
 
-Single-assignment key updates, scalar subquery assignment, and same-column
-integer arithmetic remain owned by their existing phases and continue to use
-their existing paths.
+Scalar subquery assignment and same-column integer arithmetic remain owned by
+their existing phases and continue to use their existing paths.
 
 ## Ownership Boundaries
 
@@ -197,8 +201,7 @@ Runtime narrows this parsed shape:
 
 - each assignment target must be an unqualified descriptor column;
 - each target column may appear at most once;
-- each target column must not be auto-increment and must not participate in a
-  primary or unique key for this phase;
+- each target column must not be auto-increment;
 - each value must be one of the existing single-assignment constant value
   forms. Multi-assignment scalar subqueries and arithmetic expressions are
   rejected even though their single-assignment forms remain supported.
@@ -328,7 +331,9 @@ Coverage includes:
 - `WHERE`, `ORDER BY`, and `LIMIT` reuse, including `LIMIT 0`;
 - duplicate assignment target rejection;
 - arithmetic and scalar-subquery multi-assignment rejection;
-- key, unique-key, and auto-increment multi-assignment rejection;
+- non-`AUTO_INCREMENT` key and unique-key multi-assignment plus duplicate-key
+  rollback;
+- auto-increment multi-assignment rejection;
 - automatic `ON UPDATE CURRENT_TIMESTAMP` behavior;
 - reopen persistence and `.mylite` preamble preservation;
 - independent file-backed handles.
@@ -337,6 +342,6 @@ Coverage includes:
 
 `COMPATIBILITY.md` and `docs/compatibility/sql-table-dml.md` mark
 single-table `UPDATE` as still limited, but no longer one-assignment-only for
-ordinary non-key constant assignments. They continue to document the unsupported
-left-to-right expression, duplicate target, key update, scalar subquery, and
-arithmetic multi-assignment gaps.
+ordinary constant assignments. They continue to document the unsupported
+left-to-right expression, duplicate target, auto-increment target, scalar
+subquery, and arithmetic multi-assignment gaps.

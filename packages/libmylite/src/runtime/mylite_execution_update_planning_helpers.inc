@@ -183,8 +183,7 @@ static int plan_update_multiple_assignment(
         );
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_auto_increment(&table_columns[column_index]) ||
-        update_column_id_is_keyed(out_plan, table_columns[column_index].column_id)) {
+    if (column_descriptor_is_auto_increment(&table_columns[column_index])) {
         set_update_multiple_assignment_unsupported_error(database);
         return MYLITE_ERROR;
     }
@@ -706,6 +705,27 @@ static bool update_column_id_is_keyed(const struct planned_update *plan, int64_t
     return false;
 }
 
+static const struct planned_update_assignment *planned_update_assignment_for_column(
+    const struct planned_update *plan,
+    int64_t column_id
+) {
+    if (plan == NULL || !planned_update_has_multiple_assignments(plan)) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        const struct planned_update_assignment *assignment = &plan->assignments[index];
+
+        if (planned_update_assignment_is_noop(assignment)) {
+            continue;
+        }
+        if (assignment->column.column_id == column_id) {
+            return assignment;
+        }
+    }
+
+    return NULL;
+}
+
 static int validate_update_ignore_assignment_support(
     struct mylite_db *database,
     const struct planned_update *plan
@@ -828,8 +848,8 @@ static int validate_update_multiple_auto_update_columns(
 static void set_update_multiple_assignment_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
-        "UPDATE multiple assignments support only distinct unqualified non-key constant "
-        "assignments"
+        "UPDATE multiple assignments support only distinct unqualified constant assignments in "
+        "the current target-column subset"
     );
 }
 

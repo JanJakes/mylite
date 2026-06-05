@@ -70,6 +70,23 @@ reset_rows() {
         "$DATABASE" >/dev/null
 }
 
+reset_key_rows() {
+    run_mysql \
+        "DROP TABLE IF EXISTS key_t; "\
+"CREATE TABLE key_t ("\
+"term_taxonomy_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, "\
+"term_id BIGINT UNSIGNED NOT NULL, "\
+"taxonomy VARCHAR(32) NOT NULL, "\
+"description TEXT NOT NULL, "\
+"parent BIGINT UNSIGNED NOT NULL DEFAULT 0, "\
+"UNIQUE KEY term_id_taxonomy (term_id, taxonomy), "\
+"KEY parent (parent)); "\
+"INSERT INTO key_t(term_taxonomy_id, term_id, taxonomy, description, parent) VALUES "\
+"(70, 70, 'category', 'existing', 0), "\
+"(71, 0, 'nav_menu', 'pending', 1);" \
+        "$DATABASE" >/dev/null
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
 }
@@ -182,6 +199,45 @@ expect_output \
      SELECT ROW_COUNT(), @@warning_count,
          GROUP_CONCAT(CONCAT(id, ':', IFNULL(a, 'N'), ':', IFNULL(b, 'N')) ORDER BY id)
      FROM rows_t;" \
+    "$DATABASE"
+
+reset_key_rows
+expect_output \
+    "composite unique key multiple assignment" \
+    "1	0	71	71	nav_menu		0" \
+    "UPDATE key_t SET term_id = 71, taxonomy = 'nav_menu', description = '', parent = 0
+     WHERE term_taxonomy_id = 71;
+     SELECT ROW_COUNT(), @@warning_count, term_taxonomy_id, term_id, taxonomy, description, parent
+     FROM key_t WHERE term_taxonomy_id = 71;" \
+    "$DATABASE"
+
+expect_output \
+    "primary key multiple assignment" \
+    "1	0	72	72	post_tag	renamed	0" \
+    "UPDATE key_t SET term_taxonomy_id = 72, term_id = 72, taxonomy = 'post_tag',
+         description = 'renamed'
+     WHERE term_taxonomy_id = 71;
+     SELECT ROW_COUNT(), @@warning_count, term_taxonomy_id, term_id, taxonomy, description, parent
+     FROM key_t WHERE term_taxonomy_id = 72;" \
+    "$DATABASE"
+
+reset_key_rows
+expect_error \
+    "composite unique key duplicate" \
+    1062 \
+    23000 \
+    "Duplicate entry '70-category'" \
+    "UPDATE key_t SET term_id = 70, taxonomy = 'category', description = 'dup'
+     WHERE term_taxonomy_id = 71;" \
+    "$DATABASE"
+
+expect_error \
+    "primary key duplicate" \
+    1062 \
+    23000 \
+    "Duplicate entry '70'" \
+    "UPDATE key_t SET term_taxonomy_id = 70, description = 'dup'
+     WHERE term_taxonomy_id = 71;" \
     "$DATABASE"
 
 reset_rows

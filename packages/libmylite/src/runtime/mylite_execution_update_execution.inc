@@ -1325,6 +1325,9 @@ static int prepare_executable_update_plan(
     if (rc == MYLITE_OK && planned_update_auto_update_column_count(plan) > 0U) {
         rc = make_current_timestamp_value(database, &executable_plan->auto_update_value);
     }
+    if (rc == MYLITE_OK && planned_update_has_multiple_assignments(plan)) {
+        rc = validate_update_multiple_string_key_values(database, executable_plan);
+    }
     if (rc == MYLITE_OK && !planned_update_has_multiple_assignments(plan) &&
         plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL &&
         plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
@@ -1768,6 +1771,34 @@ static int validate_update_string_key_value(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_update_multiple_string_key_values(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if (!key->index.is_unique) {
+            continue;
+        }
+        for (size_t part_index = 0U; rc == MYLITE_OK && part_index < key->part_count;
+             ++part_index) {
+            const struct loaded_index_part *part = &key->parts[part_index];
+            const struct planned_update_assignment *assignment =
+                planned_update_assignment_for_column(plan, part->index_column.column_id);
+
+            if (assignment == NULL || !loaded_index_part_requires_string_key_validation(part)) {
+                continue;
+            }
+            rc = validate_string_key_value(database, &assignment->value);
+        }
+    }
+
+    return rc;
 }
 
 static int advance_auto_increment_after_update(

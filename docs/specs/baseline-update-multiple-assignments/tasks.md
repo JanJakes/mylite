@@ -6,13 +6,16 @@
       updates.
 - [x] Add MySQL expectation script for the supported user-visible subset.
 - [x] Extend the update planner to resolve and validate multiple distinct
-      unqualified non-key assignment targets.
+      unqualified constant assignment targets, including non-`AUTO_INCREMENT`
+      primary-key and unique-key columns.
 - [x] Reuse existing single-assignment constant conversion for each assignment
       only after matched-row checks.
 - [x] Generate one descriptor-driven SQLite `UPDATE` with multiple assignment
       parameters and an `OR` changed-row filter.
 - [x] Preserve automatic `ON UPDATE CURRENT_TIMESTAMP` behavior when explicit
       assignments change a row.
+- [x] Preserve duplicate-key diagnostics and rollback for supported
+      primary-key and unique-index multi-assignment updates.
 - [x] Add runtime C coverage for success, diagnostics, persistence,
       file-format safety, independent handles, and unsupported multi-assignment
       shapes.

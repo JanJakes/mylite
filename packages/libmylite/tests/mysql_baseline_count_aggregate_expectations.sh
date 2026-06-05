@@ -179,20 +179,39 @@ expect_value "explicit inner joined count star" "4" "$(printf '%s\n' "$joined_co
 expect_value "left joined count star" "4" "$(printf '%s\n' "$joined_counts" | sed -n '3p')"
 expect_value "joined count status" "0	-1" "$(printf '%s\n' "$joined_counts" | sed -n '4p')"
 
-accepted_but_deferred=$(run_mysql \
+accepted_count_forms=$(run_mysql \
     "USE ${DATABASE};
      SELECT COUNT(1), COUNT(n), COUNT(NULL) FROM t;
      SELECT COUNT(*) FROM t ORDER BY id;
-     SELECT COUNT(*) FROM t LIMIT 1;"
+     SELECT COUNT(n) FROM t ORDER BY id;
+     SELECT COUNT(1) FROM t ORDER BY id;
+     SELECT COUNT(DISTINCT n) FROM t ORDER BY id;
+     SELECT COUNT(*) FROM t LIMIT 1;
+     SELECT COUNT(n) FROM t LIMIT 1;
+     SELECT COUNT(1) FROM t LIMIT 1;
+     SELECT COUNT(DISTINCT n) FROM t LIMIT 1;
+     SELECT COUNT(*) FROM t ORDER BY id LIMIT 0, 3;"
 )
-expect_value "deferred count expr forms" "4	3	0" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
-expect_value "deferred order by aggregate" "4" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '2p')"
-expect_value "deferred limit one returns row" "4" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '3p')"
+expect_value "count expr forms" "4	3	0" "$(printf '%s\n' "$accepted_count_forms" | sed -n '1p')"
+expect_value "count order by aggregate" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '2p')"
+expect_value "count order by column" "3" "$(printf '%s\n' "$accepted_count_forms" | sed -n '3p')"
+expect_value "count order by literal" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '4p')"
+expect_value "count order by distinct" "2" "$(printf '%s\n' "$accepted_count_forms" | sed -n '5p')"
+expect_value "count limit one returns row" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '6p')"
+expect_value "count limit column" "3" "$(printf '%s\n' "$accepted_count_forms" | sed -n '7p')"
+expect_value "count limit literal" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '8p')"
+expect_value "count limit distinct" "2" "$(printf '%s\n' "$accepted_count_forms" | sed -n '9p')"
+expect_value "count order by limit offset zero" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '10p')"
 
 limit_zero=$(run_mysql "USE ${DATABASE}; SELECT 'before'; SELECT COUNT(*) FROM t LIMIT 0; SELECT 'after';")
-expect_value "deferred limit zero before marker" "before" "$(printf '%s\n' "$limit_zero" | sed -n '1p')"
-expect_value "deferred limit zero after marker" "after" "$(printf '%s\n' "$limit_zero" | sed -n '2p')"
-expect_value "deferred limit zero row count" "2" "$(printf '%s\n' "$limit_zero" | wc -l | tr -d ' ')"
+expect_value "count limit zero before marker" "before" "$(printf '%s\n' "$limit_zero" | sed -n '1p')"
+expect_value "count limit zero after marker" "after" "$(printf '%s\n' "$limit_zero" | sed -n '2p')"
+expect_value "count limit zero row count" "2" "$(printf '%s\n' "$limit_zero" | wc -l | tr -d ' ')"
+
+limit_positive_offset=$(run_mysql "USE ${DATABASE}; SELECT 'before'; SELECT COUNT(*) FROM t LIMIT 1, 1; SELECT 'after';")
+expect_value "count positive offset before marker" "before" "$(printf '%s\n' "$limit_positive_offset" | sed -n '1p')"
+expect_value "count positive offset after marker" "after" "$(printf '%s\n' "$limit_positive_offset" | sed -n '2p')"
+expect_value "count positive offset row count" "2" "$(printf '%s\n' "$limit_positive_offset" | wc -l | tr -d ' ')"
 
 having_empty=$(run_mysql "USE ${DATABASE}; SELECT 'before'; SELECT COUNT(*) FROM t HAVING COUNT(*) > 99; SELECT 'after';")
 expect_value "deferred empty having before marker" "before" "$(printf '%s\n' "$having_empty" | sed -n '1p')"

@@ -2393,76 +2393,104 @@ static int test_count_aggregate_diagnostics(void) {
             .message_part = "COUNT(DISTINCT column) supports exactly one aggregate select item",
         }
     );
-    failures += execute_error(
+    failures += expect_count_query(
         database,
-        "SELECT COUNT(*) FROM numbers ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(*) supports only WHERE",
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM numbers ORDER BY id",
+            .column = "COUNT(*)",
+            .value = "4",
+            .context = "count star descriptor order by",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers ORDER BY id",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "count column descriptor order by",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(1) FROM numbers ORDER BY id",
+            .column = "COUNT(1)",
+            .value = "4",
+            .context = "count literal descriptor order by",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT n) FROM numbers ORDER BY id",
+            .column = "COUNT(DISTINCT n)",
+            .value = "2",
+            .context = "count distinct descriptor order by",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM numbers LIMIT 1",
+            .column = "COUNT(*)",
+            .value = "4",
+            .context = "count star limit one",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers LIMIT 1",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "count column limit one",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(1) FROM numbers LIMIT 1",
+            .column = "COUNT(1)",
+            .value = "4",
+            .context = "count literal limit one",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT n) FROM numbers LIMIT 1",
+            .column = "COUNT(DISTINCT n)",
+            .value = "2",
+            .context = "count distinct limit one",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM numbers ORDER BY id LIMIT 0, 3",
+            .column = "COUNT(*)",
+            .value = "4",
+            .context = "count star order by limit offset zero",
+        }
+    );
+    failures += expect_count_rows_query(
+        database,
+        (struct expected_count_rows_query){
+            .sql = "SELECT COUNT(*) FROM numbers LIMIT 1, 1",
+            .column = "COUNT(*)",
+            .values = NULL,
+            .value_count = 0U,
+            .context = "count star positive offset limit",
         }
     );
     failures += execute_error(
         database,
-        "SELECT COUNT(n) FROM numbers ORDER BY id",
+        "SELECT COUNT(*) FROM numbers ORDER BY missing",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(column) supports only WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(1) FROM numbers ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(literal) supports only WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(DISTINCT n) FROM numbers ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports only WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(*) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(*) supports only WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(n) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(column) supports only WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(1) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(literal) supports only WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(DISTINCT n) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports only WHERE",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
         }
     );
     failures += expect_count_query(

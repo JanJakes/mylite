@@ -2741,6 +2741,7 @@ struct planned_count {
     struct mylite_catalog_column_descriptor count_column;
     struct planned_value count_literal;
     struct planned_select_predicate predicate;
+    struct planned_select_limit limit;
 };
 
 enum planned_count_expression_aggregate_item_kind {
@@ -2764,6 +2765,7 @@ struct planned_count_expression_aggregate {
 struct planned_count_source_nodes {
     const struct mylite_sql_ast_node *from_clause;
     const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *order_clause;
     const struct mylite_sql_ast_node *count_expression;
 };
 
@@ -12039,6 +12041,20 @@ static int plan_count_table_source(
     const struct planned_count_source_nodes *nodes,
     struct planned_count *out_plan
 );
+static int validate_count_order_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int validate_count_order_item(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
 static enum planned_count_function count_function_from_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -12064,6 +12080,7 @@ static int execute_count_from_plan(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static void apply_count_limit_to_result(mylite_result *result, const struct planned_count *plan);
 static int plan_count_expression_aggregate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

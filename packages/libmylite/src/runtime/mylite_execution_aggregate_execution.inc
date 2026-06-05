@@ -172,6 +172,8 @@ static int plan_count(
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
     const struct mylite_sql_ast_node *count_expression = NULL;
@@ -201,16 +203,26 @@ static int plan_count(
 
     optional_clause = child_at(statement, 2U);
     while (optional_clause != NULL) {
-        if (optional_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
             set_unsupported_error(database, count_supported_clauses_message(out_plan->function));
             return MYLITE_ERROR;
         }
-        where_clause = optional_clause;
         optional_clause = optional_clause->next_sibling;
+    }
+    rc = plan_select_limit(database, limit_clause, &out_plan->limit);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     source_nodes.from_clause = from_clause;
     source_nodes.where_clause = where_clause;
+    source_nodes.order_clause = order_clause;
     source_nodes.count_expression = count_expression;
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         return plan_count_without_source(database, &source_nodes, out_plan);
@@ -274,6 +286,10 @@ static int plan_count_without_source(
         }
         return MYLITE_ERROR;
     }
+    if (nodes->order_clause != NULL) {
+        set_unsupported_error(database, count_supported_clauses_message(out_plan->function));
+        return MYLITE_ERROR;
+    }
 
     return MYLITE_OK;
 }
@@ -307,7 +323,8 @@ static int plan_count_table_source(
         );
     }
     if (rc == MYLITE_OK &&
-        (nodes->where_clause != NULL || out_plan->function == PLANNED_COUNT_COLUMN ||
+        (nodes->where_clause != NULL || nodes->order_clause != NULL ||
+         out_plan->function == PLANNED_COUNT_COLUMN ||
          out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
         rc = mylite_execution_load_table_columns(
             database,
@@ -338,6 +355,15 @@ static int plan_count_table_source(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = validate_count_order_clause(
+            database,
+            nodes->order_clause,
+            &source_context,
+            table_columns,
+            table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_select_predicate(
             database,
             nodes->where_clause,
@@ -350,6 +376,87 @@ static int plan_count_table_source(
 
     free(table_columns);
     return rc;
+}
+
+static int validate_count_order_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        set_unsupported_error(database, "COUNT aggregate supports only descriptor ORDER BY columns");
+        return MYLITE_ERROR;
+    }
+
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        item = child_at(order_items, 0U);
+        while (item != NULL) {
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+                set_unsupported_error(
+                    database,
+                    "COUNT aggregate supports only descriptor ORDER BY columns"
+                );
+                return MYLITE_ERROR;
+            }
+            int rc = validate_count_order_item(
+                database,
+                child_at(item, 0U),
+                source_context,
+                table_columns,
+                table_column_count
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            item = item->next_sibling;
+        }
+        return MYLITE_OK;
+    }
+
+    return validate_count_order_item(
+        database,
+        child_at(order_clause, 0U),
+        source_context,
+        table_columns,
+        table_column_count
+    );
+}
+
+static int validate_count_order_item(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+
+    if (order_key != NULL && order_key->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(order_key) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_OK;
+    }
+    return resolve_descriptor_column_reference_with_source_index(
+        database,
+        order_key,
+        source_context,
+        COLUMN_REFERENCE_ORDER,
+        "COUNT aggregate supports only descriptor ORDER BY columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
 }
 
 static enum planned_count_function count_function_from_expression(
@@ -532,6 +639,9 @@ static int execute_count_from_plan(
     if (rc == MYLITE_OK) {
         rc = append_count_value_row(database, result, count_text);
     }
+    if (rc == MYLITE_OK) {
+        apply_count_limit_to_result(result, plan);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return count_execution_error(database, rc);
@@ -541,6 +651,15 @@ static int execute_count_from_plan(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static void apply_count_limit_to_result(mylite_result *result, const struct planned_count *plan) {
+    if (result == NULL || plan == NULL || !plan->limit.has_limit) {
+        return;
+    }
+    if (plan->limit.row_count == 0 || (plan->limit.has_offset && plan->limit.offset > 0)) {
+        mylite_result_truncate_rows(result, 0U);
+    }
 }
 
 static int append_count_result_column(

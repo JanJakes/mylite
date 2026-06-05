@@ -712,27 +712,43 @@ static int append_grouped_order_sql(
     if (!plan->order.has_order) {
         return MYLITE_OK;
     }
-    if (!plan->order_uses_aggregate) {
-        return append_select_order_sql(string, &plan->order, NULL);
-    }
-    if (plan->order_aggregate_index >= plan->aggregate_count) {
-        return MYLITE_ERROR;
-    }
-
     rc = mylite_dynamic_string_append(string, " ORDER BY ");
-    if (rc == MYLITE_OK) {
-        rc = append_grouped_aggregate_expression_sql(
-            string,
-            plan,
-            &plan->aggregates[plan->order_aggregate_index],
-            next_parameter
-        );
-    }
-    if (rc == MYLITE_OK) {
-        if (plan->order.direction == PLANNED_SELECT_ORDER_DESC) {
-            rc = mylite_dynamic_string_append(string, " DESC");
-        } else {
-            rc = mylite_dynamic_string_append(string, " ASC");
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->order.item_count;
+         ++item_index) {
+        const struct planned_select_order_item *item = &plan->order.items[item_index];
+
+        if (item_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK && plan->order_item_uses_aggregate[item_index]) {
+            size_t aggregate_index = plan->order_item_aggregate_indexes[item_index];
+
+            if (aggregate_index >= plan->aggregate_count) {
+                return MYLITE_ERROR;
+            }
+            rc = append_grouped_aggregate_expression_sql(
+                string,
+                plan,
+                &plan->aggregates[aggregate_index],
+                next_parameter
+            );
+        } else if (rc == MYLITE_OK && item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
+            if (item->expression == NULL) {
+                return MYLITE_ERROR;
+            }
+            rc = append_row_scalar_expression_sql(string, item->expression, next_parameter);
+        } else if (rc == MYLITE_OK && item->kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &item->column,
+                item->column_source_index,
+                plan->order.qualify_column_reference
+            );
+        } else if (rc == MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_order_direction_sql(string, item->direction);
         }
     }
 

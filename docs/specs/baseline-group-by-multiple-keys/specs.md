@@ -108,10 +108,12 @@ MyLite supports:
   nonbinary string column or its alias using `IS NULL` / `IS NOT NULL`, or one
   selected supported aggregate result using the existing aggregate `HAVING`
   subset;
-- optional `ORDER BY` on one selected grouped descriptor column, one unique
-  selected grouped descriptor-column alias, or one unique selected `COUNT`,
-  `MIN`, `MAX`, or `SUM` aggregate alias; when `ONLY_FULL_GROUP_BY` is disabled,
-  one descriptor column order key outside those strict forms is also admitted;
+- optional `ORDER BY` on a small ordered list of selected grouped descriptor
+  columns, unique selected grouped descriptor-column aliases, and unique
+  selected `COUNT`, `MIN`, `MAX`, or `SUM` aggregate aliases; when
+  `ONLY_FULL_GROUP_BY` is disabled, descriptor column order keys outside those
+  strict forms and `CAST(descriptor_column AS CHAR)` order keys are also
+  admitted for WordPress-style grouped comment metadata queries;
 - optional `ASC` and `DESC`, with omitted direction meaning ascending;
 - optional `LIMIT` and `OFFSET` using the existing grouped `SELECT` limit
   subset;
@@ -131,7 +133,8 @@ This phase does not add:
   `YEAR()` / `MONTH()` expression alias subsets, ordinals, literals,
   general expressions, function calls outside the `YEAR()` / `MONTH()` temporal
   archive subset, or parenthesized expression keys;
-- expression or multi-key `ORDER BY` for grouped results;
+- general expression `ORDER BY` for grouped results beyond
+  `CAST(descriptor_column AS CHAR)`;
 - aggregate expression `ORDER BY`, selected `AVG`, bitwise aggregate, or
   `GROUP_CONCAT()` alias ordering;
 - grouped `COUNT(DISTINCT)`;
@@ -214,9 +217,11 @@ behavior. Aggregate aliases keep the existing unique-alias requirement.
 For grouped `ORDER BY`, a grouped descriptor-column alias must be unique among
 selected group aliases. Aggregate alias ordering keeps the existing unique
 selected aggregate alias requirement and remains limited to `COUNT`, `MIN`,
-`MAX`, and `SUM`. When `ONLY_FULL_GROUP_BY` is disabled, MyLite accepts one
-descriptor order key outside those strict forms to match MySQL's relaxed mode
-for application query shapes such as WordPress archives.
+`MAX`, and `SUM`. Multiple order keys are applied left to right with each key's
+own direction. When `ONLY_FULL_GROUP_BY` is disabled, MyLite accepts descriptor
+order keys and `CAST(descriptor_column AS CHAR)` order expressions outside
+those strict forms to match MySQL's relaxed mode for application query shapes
+such as WordPress archives and comment metadata ordering.
 
 ## SQLite Handling
 
@@ -228,7 +233,7 @@ FROM "_mylite_user_table_<table_id>"
 [WHERE ...]
 GROUP BY "group_column_1", "group_column_2"
 [HAVING ...]
-[ORDER BY "group_column_1" ASC | SUM("n") DESC]
+[ORDER BY "group_column_1" ASC [, SUM("n") DESC ...]]
 [LIMIT ? [OFFSET ?]]
 ```
 
@@ -305,4 +310,4 @@ Add MySQL-runtime expectation coverage and fast C tests for:
 - diagnostics for unknown group keys, unknown selected keys, non-grouped
   selected columns, unselected group keys, unsupported key types, too many
   keys, duplicate aliases in grouped ordering, unsupported grouped aliases,
-  ordinals, expressions, and broader `HAVING`/`ORDER BY` forms.
+  ordinals, unsupported expressions, and broader `HAVING`/`ORDER BY` forms.

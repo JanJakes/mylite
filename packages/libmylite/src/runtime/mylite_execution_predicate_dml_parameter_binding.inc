@@ -375,15 +375,8 @@ static int bind_grouped_aggregate_parameters_with_limit(
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK && plan->order_uses_aggregate) {
-        if (plan->order_aggregate_index >= plan->aggregate_count) {
-            return MYLITE_ERROR;
-        }
-        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
-            statement,
-            &plan->aggregates[plan->order_aggregate_index],
-            &parameter_index
-        );
+    if (rc == MYLITE_OK && include_limit) {
+        rc = bind_grouped_order_parameters(statement, plan, &parameter_index);
     }
     if (rc == MYLITE_OK && include_limit && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
@@ -393,6 +386,40 @@ static int bind_grouped_aggregate_parameters_with_limit(
     }
     if (rc == MYLITE_OK && include_limit && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+    }
+
+    return rc;
+}
+
+static int bind_grouped_order_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || !plan->order.has_order) {
+        return MYLITE_OK;
+    }
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->order.item_count;
+         ++item_index) {
+        const struct planned_select_order_item *item = &plan->order.items[item_index];
+
+        if (plan->order_item_uses_aggregate[item_index]) {
+            size_t aggregate_index = plan->order_item_aggregate_indexes[item_index];
+
+            if (aggregate_index >= plan->aggregate_count) {
+                return MYLITE_ERROR;
+            }
+            rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+                statement,
+                &plan->aggregates[aggregate_index],
+                parameter_index
+            );
+        } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
+            rc =
+                bind_row_scalar_expression_parameters(statement, item->expression, parameter_index);
+        }
     }
 
     return rc;
@@ -479,11 +506,8 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
                 );
             }
             if (rc == MYLITE_OK) {
-                rc = bind_select_predicate_parameters(
-                    statement,
-                    &plan->predicate,
-                    &parameter_index
-                );
+                rc =
+                    bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
             }
         }
     } else {

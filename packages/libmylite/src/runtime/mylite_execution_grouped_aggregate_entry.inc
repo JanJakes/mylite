@@ -200,6 +200,8 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     free(plan->sources);
     free(plan->join_kinds);
     free(plan->join_conditions);
+    free(plan->order_item_uses_aggregate);
+    free(plan->order_item_aggregate_indexes);
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->having.value);
     planned_select_order_deinit(&plan->order);

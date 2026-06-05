@@ -2871,6 +2871,8 @@ struct planned_grouped_aggregate {
     struct planned_select_predicate predicate;
     struct planned_grouped_having having;
     struct planned_select_order order;
+    bool *order_item_uses_aggregate;
+    size_t *order_item_aggregate_indexes;
     bool order_uses_aggregate;
     size_t order_aggregate_index;
     bool calc_found_rows;
@@ -11950,9 +11952,25 @@ static int resolve_grouped_order_key(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    struct planned_select_order_item *out_item,
+    bool *out_uses_aggregate,
+    size_t *out_aggregate_index
+);
+static int plan_grouped_aggregate_order_ast_item_and_append(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
-static bool grouped_order_clause_uses_item_list(const struct mylite_sql_ast_node *order_clause);
+static int append_planned_grouped_order_item(
+    struct planned_grouped_aggregate *plan,
+    struct planned_select_order_item item,
+    bool uses_aggregate,
+    size_t aggregate_index
+);
 static int find_grouped_order_group_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,
@@ -26353,6 +26371,11 @@ static int bind_grouped_aggregate_row_scalar_expression_parameters(
     int *parameter_index
 );
 static int bind_grouped_key_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    int *parameter_index
+);
+static int bind_grouped_order_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,
     int *parameter_index

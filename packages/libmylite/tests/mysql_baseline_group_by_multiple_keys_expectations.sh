@@ -177,6 +177,70 @@ expect_value "aggregate order second" "2	1	2	40" "$(printf '%s\n' "$ordering" | 
 expect_value "qualified alias order first" "2	1	2" "$(printf '%s\n' "$ordering" | sed -n '3p')"
 expect_value "qualified alias order second" "1	1	2" "$(printf '%s\n' "$ordering" | sed -n '4p')"
 
+multi_order=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT a AS x, b AS y, COUNT(*) AS c
+       FROM t GROUP BY a, b ORDER BY c DESC, x DESC, y DESC LIMIT 3;"
+)
+expect_value "multi order first" "2	2	2" "$(printf '%s\n' "$multi_order" | sed -n '1p')"
+expect_value "multi order second" "2	1	2" "$(printf '%s\n' "$multi_order" | sed -n '2p')"
+expect_value "multi order third" "1	1	2" "$(printf '%s\n' "$multi_order" | sed -n '3p')"
+
+run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE comments(
+       id INT NOT NULL,
+       post_id INT NULL,
+       score INT NULL
+     ) ENGINE=InnoDB;
+     CREATE TABLE commentmeta(
+       comment_id INT NOT NULL,
+       meta_key VARCHAR(64) NOT NULL,
+       meta_value TEXT
+     ) ENGINE=InnoDB;
+     INSERT INTO comments VALUES
+       (101, 1, 5), (102, 1, NULL), (103, 2, 7), (104, NULL, 9), (105, 99, 11);
+     INSERT INTO commentmeta VALUES
+       (101, 'featured', 'a'), (102, 'featured', 'c'),
+       (103, 'featured', 'b'), (105, 'featured', 'b'),
+       (101, 'secondary', 'y'), (102, 'secondary', 'x'),
+       (103, 'secondary', 'z'), (105, 'secondary', 'w'),
+       (104, 'other', 'z');" >/dev/null
+
+joined_order=$(run_mysql \
+    "USE ${DATABASE};
+     SET SESSION sql_mode = '';
+     SELECT c.id
+       FROM comments c INNER JOIN commentmeta cm ON c.id = cm.comment_id
+      WHERE cm.meta_key = 'featured'
+      GROUP BY c.id
+      ORDER BY c.post_id ASC, c.id ASC;
+     SELECT c.id
+       FROM comments c INNER JOIN commentmeta cm ON c.id = cm.comment_id
+      WHERE cm.meta_key = 'featured'
+      GROUP BY c.id
+      ORDER BY CAST(cm.meta_value AS CHAR) DESC, c.id DESC;
+     SELECT c.id
+       FROM comments c
+       INNER JOIN commentmeta cm ON c.id = cm.comment_id
+       INNER JOIN commentmeta mt1 ON c.id = mt1.comment_id
+      WHERE cm.meta_key = 'featured' AND mt1.meta_key = 'secondary'
+      GROUP BY c.id
+      ORDER BY CAST(cm.meta_value AS CHAR) ASC, CAST(mt1.meta_value AS CHAR) DESC, c.id DESC;"
+)
+expect_value "joined descriptor multi order first" "101" "$(printf '%s\n' "$joined_order" | sed -n '1p')"
+expect_value "joined descriptor multi order second" "102" "$(printf '%s\n' "$joined_order" | sed -n '2p')"
+expect_value "joined descriptor multi order third" "103" "$(printf '%s\n' "$joined_order" | sed -n '3p')"
+expect_value "joined descriptor multi order fourth" "105" "$(printf '%s\n' "$joined_order" | sed -n '4p')"
+expect_value "joined cast multi order first" "102" "$(printf '%s\n' "$joined_order" | sed -n '5p')"
+expect_value "joined cast multi order second" "105" "$(printf '%s\n' "$joined_order" | sed -n '6p')"
+expect_value "joined cast multi order third" "103" "$(printf '%s\n' "$joined_order" | sed -n '7p')"
+expect_value "joined cast multi order fourth" "101" "$(printf '%s\n' "$joined_order" | sed -n '8p')"
+expect_value "joined two cast multi order first" "101" "$(printf '%s\n' "$joined_order" | sed -n '9p')"
+expect_value "joined two cast multi order second" "103" "$(printf '%s\n' "$joined_order" | sed -n '10p')"
+expect_value "joined two cast multi order third" "105" "$(printf '%s\n' "$joined_order" | sed -n '11p')"
+expect_value "joined two cast multi order fourth" "102" "$(printf '%s\n' "$joined_order" | sed -n '12p')"
+
 headers=$(run_mysql_with_headers \
     "USE ${DATABASE};
      SELECT a AS x, b AS y, COUNT(*) AS c FROM t GROUP BY a, b ORDER BY x, y LIMIT 1;"

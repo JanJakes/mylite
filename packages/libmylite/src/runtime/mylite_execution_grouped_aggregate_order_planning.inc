@@ -6,9 +6,7 @@ static int plan_grouped_aggregate_order(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 ) {
-    const struct mylite_sql_ast_node *order_key = NULL;
-    const struct mylite_sql_ast_node *direction = NULL;
-    size_t group_order_index = 0U;
+    const struct mylite_sql_ast_node *order_items = NULL;
     int rc = MYLITE_OK;
 
     out_plan->order.has_order = false;
@@ -21,32 +19,95 @@ static int plan_grouped_aggregate_order(
         return MYLITE_OK;
     }
     if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-        set_unsupported_error(database, "GROUP BY supports only one grouped ORDER BY column");
+        set_unsupported_error(database, "GROUP BY supports descriptor ORDER BY columns");
         return MYLITE_ERROR;
     }
 
-    order_key = child_at(order_clause, 0U);
-    if (grouped_order_clause_uses_item_list(order_clause)) {
-        set_unsupported_error(database, "GROUP BY supports only one grouped ORDER BY column");
-        return MYLITE_ERROR;
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
+
+        while (item != NULL) {
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+                set_unsupported_error(database, "GROUP BY supports descriptor ORDER BY columns");
+                return MYLITE_ERROR;
+            }
+            rc = plan_grouped_aggregate_order_ast_item_and_append(
+                database,
+                (struct select_order_ast_item_nodes){
+                    .order_key = child_at(item, 0U),
+                    .direction = child_at(item, 1U),
+                },
+                source_context,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            item = item->next_sibling;
+        }
+    } else {
+        rc = plan_grouped_aggregate_order_ast_item_and_append(
+            database,
+            (struct select_order_ast_item_nodes){
+                .order_key = child_at(order_clause, 0U),
+                .direction = child_at(order_clause, 1U),
+            },
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
     }
-    rc = resolve_grouped_order_key(
-        database,
-        order_key,
-        source_context,
-        table_columns,
-        table_column_count,
-        out_plan
-    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!out_plan->order_uses_aggregate &&
+
+    out_plan->order.has_order = out_plan->order.item_count > 0U;
+    return MYLITE_OK;
+}
+
+static int plan_grouped_aggregate_order_ast_item_and_append(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    struct planned_select_order_item planned_item = {
+        .kind = PLANNED_SELECT_ORDER_ITEM_COLUMN,
+        .direction = PLANNED_SELECT_ORDER_ASC,
+        .column_source_index = 0U,
+    };
+    bool uses_aggregate = false;
+    size_t aggregate_index = 0U;
+    size_t group_order_index = 0U;
+    int rc = resolve_grouped_order_key(
+        database,
+        item_nodes.order_key,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan,
+        &planned_item,
+        &uses_aggregate,
+        &aggregate_index
+    );
+
+    if (rc != MYLITE_OK) {
+        planned_select_order_item_deinit(&planned_item);
+        return rc;
+    }
+    apply_select_order_item_direction(item_nodes.direction, &planned_item);
+    if (!uses_aggregate && planned_item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN &&
         session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
         !find_matching_grouped_key(
             out_plan,
-            &out_plan->order.column,
-            out_plan->order.column_source_index,
+            &planned_item.column,
+            planned_item.column_source_index,
             &group_order_index
         )) {
         int dependency_rc = MYLITE_OK;
@@ -56,11 +117,12 @@ static int plan_grouped_aggregate_order(
                 out_plan,
                 table_columns,
                 table_column_count,
-                &out_plan->order.column,
-                out_plan->order.column_source_index,
+                &planned_item.column,
+                planned_item.column_source_index,
                 &dependency_rc
             )) {
             if (dependency_rc != MYLITE_OK) {
+                planned_select_order_item_deinit(&planned_item);
                 return dependency_rc;
             }
             set_only_full_group_by_error(
@@ -69,22 +131,29 @@ static int plan_grouped_aggregate_order(
                 "ORDER BY clause",
                 planned_grouped_aggregate_source_resolution(
                     out_plan,
-                    out_plan->order.column_source_index
+                    planned_item.column_source_index
                 ),
-                &out_plan->order.column
+                &planned_item.column
             );
+            planned_select_order_item_deinit(&planned_item);
             return MYLITE_ERROR;
         }
     }
-
-    out_plan->order.has_order = true;
-    out_plan->order.direction = PLANNED_SELECT_ORDER_ASC;
-    direction = child_at(order_clause, 1U);
-    if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-        out_plan->order.direction = PLANNED_SELECT_ORDER_DESC;
+    if (!uses_aggregate && planned_item.kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR &&
+        session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY)) {
+        set_unsupported_error(
+            database,
+            "GROUP BY supports scalar ORDER BY expressions only with ONLY_FULL_GROUP_BY disabled"
+        );
+        planned_select_order_item_deinit(&planned_item);
+        return MYLITE_ERROR;
     }
 
-    return MYLITE_OK;
+    rc = append_planned_grouped_order_item(out_plan, planned_item, uses_aggregate, aggregate_index);
+    if (rc != MYLITE_OK) {
+        planned_select_order_item_deinit(&planned_item);
+    }
+    return rc;
 }
 
 static int resolve_grouped_order_key(
@@ -93,7 +162,10 @@ static int resolve_grouped_order_key(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_grouped_aggregate *out_plan
+    struct planned_grouped_aggregate *out_plan,
+    struct planned_select_order_item *out_item,
+    bool *out_uses_aggregate,
+    size_t *out_aggregate_index
 ) {
     bool matches_alias = false;
     bool matches_unaliased_column = false;
@@ -118,9 +190,8 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        out_plan->order.column = out_plan->projections[matched_index].column;
-        out_plan->order.column_source_index =
-            out_plan->projections[matched_index].column_source_index;
+        out_item->column = out_plan->projections[matched_index].column;
+        out_item->column_source_index = out_plan->projections[matched_index].column_source_index;
         return MYLITE_OK;
     }
 
@@ -142,8 +213,8 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        out_plan->order.column = out_plan->groups[matched_index].column;
-        out_plan->order.column_source_index = out_plan->groups[matched_index].column_source_index;
+        out_item->column = out_plan->groups[matched_index].column;
+        out_item->column_source_index = out_plan->groups[matched_index].column_source_index;
         return MYLITE_OK;
     }
 
@@ -158,9 +229,8 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        out_plan->order.column = out_plan->projections[matched_index].column;
-        out_plan->order.column_source_index =
-            out_plan->projections[matched_index].column_source_index;
+        out_item->column = out_plan->projections[matched_index].column;
+        out_item->column_source_index = out_plan->projections[matched_index].column_source_index;
         return MYLITE_OK;
     }
 
@@ -175,8 +245,8 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        out_plan->order.column = out_plan->groups[matched_index].column;
-        out_plan->order.column_source_index = out_plan->groups[matched_index].column_source_index;
+        out_item->column = out_plan->groups[matched_index].column;
+        out_item->column_source_index = out_plan->groups[matched_index].column_source_index;
         return MYLITE_OK;
     }
 
@@ -191,9 +261,22 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_alias) {
-        out_plan->order_uses_aggregate = true;
-        out_plan->order_aggregate_index = matched_index;
+        *out_uses_aggregate = true;
+        *out_aggregate_index = matched_index;
         return MYLITE_OK;
+    }
+
+    if (row_scalar_conversion_kind_from_expression(order_key) !=
+        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+        rc = plan_select_order_row_scalar_expression(
+            database,
+            order_key,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_item
+        );
+        return rc;
     }
 
     rc = resolve_descriptor_column_reference_with_source_index(
@@ -205,23 +288,58 @@ static int resolve_grouped_order_key(
         "or selected aggregate columns",
         table_columns,
         table_column_count,
-        &out_plan->order.column,
+        &out_item->column,
         &order_source_index
     );
     if (rc == MYLITE_OK) {
-        out_plan->order.column_source_index = order_source_index;
+        out_item->column_source_index = order_source_index;
     }
 
     return rc;
 }
 
-static bool grouped_order_clause_uses_item_list(const struct mylite_sql_ast_node *order_clause) {
-    const struct mylite_sql_ast_node *order_key = child_at(order_clause, 0U);
+static int append_planned_grouped_order_item(
+    struct planned_grouped_aggregate *plan,
+    struct planned_select_order_item item,
+    bool uses_aggregate,
+    size_t aggregate_index
+) {
+    bool *uses_aggregate_items = NULL;
+    size_t *aggregate_indexes = NULL;
+    size_t item_index = plan->order.item_count;
+    size_t required_count = item_index + 1U;
+    int rc = MYLITE_OK;
 
-    if (order_key == NULL) {
-        return false;
+    uses_aggregate_items = (bool *)
+        realloc(plan->order_item_uses_aggregate, required_count * sizeof(*uses_aggregate_items));
+    if (uses_aggregate_items == NULL) {
+        return MYLITE_NOMEM;
     }
-    return order_key->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST;
+    plan->order_item_uses_aggregate = uses_aggregate_items;
+
+    aggregate_indexes = (size_t *)
+        realloc(plan->order_item_aggregate_indexes, required_count * sizeof(*aggregate_indexes));
+    if (aggregate_indexes == NULL) {
+        return MYLITE_NOMEM;
+    }
+    plan->order_item_aggregate_indexes = aggregate_indexes;
+
+    rc = append_planned_select_order_item(&plan->order, item);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    plan->order_item_uses_aggregate[item_index] = uses_aggregate;
+    plan->order_item_aggregate_indexes[item_index] = aggregate_index;
+    if (item_index == 0U) {
+        plan->order.direction = item.direction;
+        if (item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
+            plan->order.column = item.column;
+            plan->order.column_source_index = item.column_source_index;
+        }
+        plan->order_uses_aggregate = uses_aggregate;
+        plan->order_aggregate_index = aggregate_index;
+    }
+    return MYLITE_OK;
 }
 
 static int find_grouped_order_group_alias(

@@ -135,6 +135,25 @@ static int test_joined_aggregate_values_and_persistence(void) {
         "1",
         "7",
     };
+    static const char *const comment_meta_order_columns[] = {"id"};
+    static const char *const comment_meta_descriptor_order_values[] = {
+        "101",
+        "102",
+        "103",
+        "105",
+    };
+    static const char *const comment_meta_cast_order_values[] = {
+        "102",
+        "105",
+        "103",
+        "101",
+    };
+    static const char *const comment_meta_two_cast_order_values[] = {
+        "101",
+        "103",
+        "105",
+        "102",
+    };
     static const char *const role_count_columns[] = {
         "administrators",
         "editors",
@@ -381,6 +400,50 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .context = "joined grouped by two descriptor keys",
         }
     );
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c.id FROM comments c INNER JOIN commentmeta cm "
+                   "ON c.id = cm.comment_id WHERE cm.meta_key = 'featured' "
+                   "GROUP BY c.id ORDER BY c.post_id ASC, c.id ASC",
+            .columns = comment_meta_order_columns,
+            .column_count = 1U,
+            .values = comment_meta_descriptor_order_values,
+            .row_count = 4U,
+            .context = "joined grouped order by multiple descriptor columns",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c.id FROM comments c INNER JOIN commentmeta cm "
+                   "ON c.id = cm.comment_id WHERE cm.meta_key = 'featured' "
+                   "GROUP BY c.id ORDER BY CAST(cm.meta_value AS CHAR) DESC, c.id DESC",
+            .columns = comment_meta_order_columns,
+            .column_count = 1U,
+            .values = comment_meta_cast_order_values,
+            .row_count = 4U,
+            .context = "joined grouped order by cast expression and descriptor tiebreaker",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c.id FROM comments c INNER JOIN commentmeta cm "
+                   "ON c.id = cm.comment_id INNER JOIN commentmeta mt1 "
+                   "ON c.id = mt1.comment_id WHERE cm.meta_key = 'featured' "
+                   "AND mt1.meta_key = 'secondary' GROUP BY c.id "
+                   "ORDER BY CAST(cm.meta_value AS CHAR) ASC, "
+                   "CAST(mt1.meta_value AS CHAR) DESC, c.id DESC",
+            .columns = comment_meta_order_columns,
+            .column_count = 1U,
+            .values = comment_meta_two_cast_order_values,
+            .row_count = 4U,
+            .context = "joined grouped order by two cast expressions and descriptor tiebreaker",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = DEFAULT", NULL);
     failures += execute_ok(database, "CREATE TABLE users(ID INT NOT NULL)", NULL);
     failures += execute_ok(
         database,
@@ -649,6 +712,12 @@ static int seed_joined_aggregate_schema(mylite_db *database) {
         "CREATE TABLE comments(id INT NOT NULL, post_id INT NULL, score INT NULL)",
         NULL
     );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE commentmeta("
+        "comment_id INT NOT NULL, meta_key VARCHAR(64) NOT NULL, meta_value TEXT)",
+        NULL
+    );
     failures +=
         execute_ok(database, "INSERT INTO posts VALUES (1, 10), (2, 10), (3, 20), (4, NULL)", NULL);
     failures += execute_ok(
@@ -656,6 +725,16 @@ static int seed_joined_aggregate_schema(mylite_db *database) {
         "INSERT INTO comments VALUES "
         "(101, 1, 5), (102, 1, NULL), (103, 2, 7), "
         "(104, NULL, 9), (105, 99, 11)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO commentmeta VALUES "
+        "(101, 'featured', 'a'), (102, 'featured', 'c'), "
+        "(103, 'featured', 'b'), (105, 'featured', 'b'), "
+        "(101, 'secondary', 'y'), (102, 'secondary', 'x'), "
+        "(103, 'secondary', 'z'), (105, 'secondary', 'w'), "
+        "(104, 'other', 'z')",
         NULL
     );
 

@@ -359,6 +359,7 @@ static int plan_row_scalar_conversion_argument(
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         struct mylite_catalog_column_descriptor column = {0};
+        size_t source_index = 0U;
         int rc = MYLITE_OK;
 
         if (!has_source) {
@@ -383,7 +384,7 @@ static int plan_row_scalar_conversion_argument(
             return MYLITE_ERROR;
         }
 
-        rc = resolve_descriptor_column_reference(
+        rc = resolve_descriptor_column_reference_with_source_index(
             database,
             expression,
             source_context,
@@ -391,7 +392,8 @@ static int plan_row_scalar_conversion_argument(
             "row-scalar SELECT CAST/CONVERT supports only descriptor columns",
             table_columns,
             table_column_count,
-            &column
+            &column,
+            &source_index
         );
         if (rc != MYLITE_OK) {
             return rc;
@@ -402,6 +404,8 @@ static int plan_row_scalar_conversion_argument(
 
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
         out_expression->column = column;
+        out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+        out_expression->column_source_index = source_index;
         return MYLITE_OK;
     }
 
@@ -642,8 +646,7 @@ static int plan_row_scalar_session_value(
         ((!is_negative && magnitude <= (uint64_t)INT64_MAX) ||
          (is_negative && magnitude <= (uint64_t)INT64_MAX + 1U))) {
         if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
-            out_expression->value =
-                (struct planned_value){.is_null = false, .integer = INT64_MIN};
+            out_expression->value = (struct planned_value){.is_null = false, .integer = INT64_MIN};
         } else if (is_negative) {
             out_expression->value =
                 (struct planned_value){.is_null = false, .integer = -(int64_t)magnitude};

@@ -561,8 +561,7 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
                    "WHEN title LIKE '%bar%' OR title LIKE '%qux%' THEN 3 "
                    "ELSE 4 END, id",
             .values = case_logical_title_id,
-            .value_count =
-                sizeof(case_logical_title_id) / sizeof(case_logical_title_id[0]),
+            .value_count = sizeof(case_logical_title_id) / sizeof(case_logical_title_id[0]),
             .context = "searched CASE logical order key",
         }
     );

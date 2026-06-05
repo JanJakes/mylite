@@ -147,6 +147,38 @@ expect_value "where unsigned int boundary" "1" "$(printf '%s\n' "$where_counts" 
 expect_value "where bigint signed" "1" "$(printf '%s\n' "$where_counts" | sed -n '15p')"
 expect_value "where bigint unsigned supported max" "1" "$(printf '%s\n' "$where_counts" | sed -n '16p')"
 
+joined_counts=$(run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE posts (ID INT, post_status VARCHAR(20), post_type VARCHAR(20));
+     CREATE TABLE term_relationships (object_id INT, term_taxonomy_id INT);
+     INSERT INTO posts VALUES
+       (1, 'publish', 'post'),
+       (2, 'draft', 'post'),
+       (3, 'publish', 'page'),
+       (4, 'publish', 'post');
+     INSERT INTO term_relationships VALUES
+       (1, 1), (1, 2), (2, 1), (3, 1), (4, 1), (99, 1);
+     SELECT COUNT(*) AS c
+       FROM term_relationships, posts
+      WHERE posts.ID = term_relationships.object_id
+        AND post_status IN ('publish')
+        AND post_type IN ('post')
+        AND term_taxonomy_id = 1;
+     SELECT COUNT(*)
+       FROM posts AS p JOIN term_relationships AS tr
+         ON p.ID = tr.object_id
+      WHERE tr.term_taxonomy_id = 1;
+     SELECT COUNT(*) AS c
+       FROM posts AS p
+       LEFT JOIN term_relationships AS tr ON p.ID = tr.object_id
+      WHERE p.post_status = 'publish';
+     SELECT @@warning_count, ROW_COUNT();"
+)
+expect_value "comma joined WordPress-style count star" "2" "$(printf '%s\n' "$joined_counts" | sed -n '1p')"
+expect_value "explicit inner joined count star" "4" "$(printf '%s\n' "$joined_counts" | sed -n '2p')"
+expect_value "left joined count star" "4" "$(printf '%s\n' "$joined_counts" | sed -n '3p')"
+expect_value "joined count status" "0	-1" "$(printf '%s\n' "$joined_counts" | sed -n '4p')"
+
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
      SELECT COUNT(1), COUNT(n), COUNT(NULL) FROM t;

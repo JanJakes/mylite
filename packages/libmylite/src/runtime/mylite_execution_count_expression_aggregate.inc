@@ -49,7 +49,8 @@ static const struct mylite_sql_ast_node *count_expression_aggregate_predicate_no
 );
 static bool count_expression_aggregate_select_item_is_supported(
     const struct mylite_sql_ast_node *select_item,
-    bool *inout_has_expression_count
+    bool *inout_has_expression_count,
+    bool *inout_has_count_star
 );
 static int append_count_expression_aggregate_result_columns(
     struct mylite_db *database,
@@ -74,6 +75,9 @@ static int append_count_expression_aggregate_row(
     sqlite3_stmt *statement,
     mylite_result *result
 );
+static bool select_statement_has_joined_count_expression_source(
+    const struct mylite_sql_ast_node *statement
+);
 
 static bool select_statement_has_count_expression_aggregate(
     const struct mylite_sql_ast_node *statement
@@ -81,6 +85,7 @@ static bool select_statement_has_count_expression_aggregate(
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = NULL;
     bool has_expression_count = false;
+    bool has_count_star = false;
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
         select_list_is_wildcard(select_list)) {
@@ -91,14 +96,24 @@ static bool select_statement_has_count_expression_aggregate(
     while (select_item != NULL) {
         if (!count_expression_aggregate_select_item_is_supported(
                 select_item,
-                &has_expression_count
+                &has_expression_count,
+                &has_count_star
             )) {
             return false;
         }
         select_item = select_item->next_sibling;
     }
 
-    return has_expression_count;
+    return has_expression_count ||
+           (has_count_star && select_statement_has_joined_count_expression_source(statement));
+}
+
+static bool select_statement_has_joined_count_expression_source(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+
+    return from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JOIN;
 }
 
 static int execute_count_expression_aggregate_select_statement(
@@ -496,7 +511,8 @@ static const struct mylite_sql_ast_node *count_expression_aggregate_predicate_no
 
 static bool count_expression_aggregate_select_item_is_supported(
     const struct mylite_sql_ast_node *select_item,
-    bool *inout_has_expression_count
+    bool *inout_has_expression_count,
+    bool *inout_has_count_star
 ) {
     const struct mylite_sql_ast_node *expression = NULL;
 
@@ -508,6 +524,7 @@ static bool count_expression_aggregate_select_item_is_supported(
         return false;
     }
     if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+        *inout_has_count_star = true;
         return true;
     }
     if (count_expression_aggregate_predicate_node(expression) != NULL) {

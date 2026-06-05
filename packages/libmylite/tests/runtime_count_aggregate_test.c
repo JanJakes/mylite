@@ -401,6 +401,65 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
         }
     );
     failures += insert_count_rows(database);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE posts (ID INT, post_status VARCHAR(20), post_type VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE term_relationships (object_id INT, term_taxonomy_id INT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO posts VALUES "
+        "(1, 'publish', 'post'), "
+        "(2, 'draft', 'post'), "
+        "(3, 'publish', 'page'), "
+        "(4, 'publish', 'post')",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO term_relationships VALUES "
+        "(1, 1), (1, 2), (2, 1), (3, 1), (4, 1), (99, 1)",
+        NULL
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) AS c FROM term_relationships, posts "
+                   "WHERE posts.ID = term_relationships.object_id "
+                   "AND post_status IN ('publish') "
+                   "AND post_type IN ('post') "
+                   "AND term_taxonomy_id = 1",
+            .column = "c",
+            .value = "2",
+            .context = "comma joined count star with WordPress-style filters",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM posts AS p JOIN term_relationships AS tr "
+                   "ON p.ID = tr.object_id WHERE tr.term_taxonomy_id = 1",
+            .column = "COUNT(*)",
+            .value = "4",
+            .context = "explicit inner joined count star",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) AS c FROM posts AS p "
+                   "LEFT JOIN term_relationships AS tr ON p.ID = tr.object_id "
+                   "WHERE p.post_status = 'publish'",
+            .column = "c",
+            .value = "4",
+            .context = "left joined count star",
+        }
+    );
     failures += execute_ok(database, "ALTER TABLE numbers ALTER COLUMN n SET INVISIBLE", &result);
     mylite_result_free(result);
     result = NULL;

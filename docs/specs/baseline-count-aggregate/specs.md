@@ -2,17 +2,19 @@
 
 ## Status
 
-This feature specifies a narrow aggregate-function slice for `COUNT(*)`. It
+This feature specifies a narrow aggregate-function slice for `COUNT()`. It
 builds on `mylite_execute()`, statement context, the MyLite parser scaffold,
 file-backed `.mylite` opening, durable catalog descriptors, schema/table
-lifecycle, integer/`NULL` row values, descriptor-driven single-table `SELECT`,
-and the baseline `WHERE` predicate subset.
+lifecycle, integer/`NULL` row values, descriptor-driven `SELECT`, the current
+joined descriptor-source envelope, and the baseline `WHERE` predicate subset.
 
 The feature is intentionally not full aggregate support. It admits one
-`COUNT(*)` select item only, with either no table source, `FROM DUAL`, or one
-persistent base table with an optional baseline `WHERE` predicate. It does not
-add `GROUP BY`, `HAVING`, aggregate expressions, aliases, window functions, or
-other aggregate functions.
+`COUNT(*)`, supported `COUNT(literal)`, `COUNT(column)`, or
+`COUNT(DISTINCT column)` select item, with either no table source, `FROM DUAL`,
+one persistent base table with an optional baseline `WHERE` predicate, or for
+bare `COUNT(*)` only the current joined descriptor-source envelope. Grouped
+count forms are covered by grouped-aggregate specs. This slice does not add
+general aggregate expressions, window functions, or other aggregate functions.
 
 ## Sources
 
@@ -72,11 +74,11 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
   error `1064`, SQLSTATE `42000`.
 - `COUNT(t.*)`, `COUNT()`, `COUNT(*, *)`, and `COUNT(* + 1)` fail with syntax
   error `1064`.
-- `COUNT(1)`, `COUNT(column)`, and `COUNT(DISTINCT column)` are valid MySQL
-  aggregates, but remain outside this MyLite slice.
 - `SELECT COUNT(*) FROM table WHERE ...` follows normal MySQL predicate
   semantics. This slice reuses only the already specified descriptor-driven
   integer/`NULL` predicate subset.
+- `SELECT COUNT(*) FROM joined_sources WHERE ...` counts matched joined rows,
+  including comma joins and null-extended outer-join rows that survive `WHERE`.
 - `ORDER BY` without grouping is accepted by MySQL for `COUNT(*)`, but has no
   visible effect on the single aggregate row. `LIMIT 0` suppresses that row and
   `LIMIT 1` returns it. This slice rejects `ORDER BY` and `LIMIT` for aggregate
@@ -92,9 +94,13 @@ The implementation must add:
 - `COUNT` as a nonreserved identifier where identifier grammar admits it;
 - execution of `SELECT COUNT(*)` and `SELECT COUNT(*) FROM DUAL`;
 - descriptor-driven `SELECT COUNT(*) FROM table_name [WHERE predicate]`;
+- descriptor-driven `SELECT COUNT(*) FROM joined_descriptor_sources
+  [WHERE predicate]` within the current inner/cartesian/comma/no-op
+  `STRAIGHT_JOIN` and supported outer-join source envelope;
 - unqualified and schema-qualified table-name resolution using the existing
   selected/default schema policy;
-- one persistent MyLite base-table descriptor source only;
+- one persistent MyLite base-table descriptor source for non-joined count
+  forms;
 - reuse of the existing baseline `WHERE` predicate subset and conversion rules;
 - generated SQLite physical `SELECT COUNT(*)` SQL built only from descriptors
   and stable physical table names;
@@ -112,12 +118,13 @@ The implementation must add:
 
 This feature must not implement:
 
-- `COUNT(expr)`, `COUNT(DISTINCT expr)`, `COUNT()` with no argument,
-  `COUNT(table.*)`, aggregate arithmetic, aggregate comparisons, aggregate
-  aliases, table-backed mixed projections, multiple aggregate select items, or
-  general expression projection;
-- `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, window `OVER` clauses, joins,
-  CTEs, subqueries, unions, locking clauses, query modifiers, optimizer hints,
+- unsupported `COUNT(expr)` shapes, joined `COUNT(literal)`, joined
+  `COUNT(column)`, joined `COUNT(DISTINCT column)`, `COUNT()` with no
+  argument, `COUNT(table.*)`, aggregate arithmetic, aggregate comparisons,
+  table-backed mixed projections, multiple aggregate select items, or general
+  expression projection;
+- `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, window `OVER` clauses, CTEs,
+  subqueries, unions, locking clauses, query modifiers, optimizer hints,
   `INTO`, or arbitrary SQLite SQL pass-through;
 - other aggregate functions, aggregate metadata parity, protocol column flags,
   exact MySQL optimizer behavior, index-only count planning, transaction
@@ -136,16 +143,16 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission, the no-space `COUNT(` rule, and
   source spans. They remain independent of runtime, catalog, storage, and
   SQLite.
-- Analyzer/planner code recognizes the one-item `COUNT(*)` aggregate shape,
-  resolves optional table and predicate descriptors, rejects unsupported shapes,
-  and builds a descriptor-driven count plan.
+- Analyzer/planner code recognizes the supported one-item `COUNT()` aggregate
+  shapes, resolves optional table, joined source, and predicate descriptors,
+  rejects unsupported shapes, and builds a descriptor-driven count plan.
 - The catalog module remains authoritative for schema/table/column descriptors.
   `COUNT(*)` reads descriptors for table and predicate resolution but does not
   mutate catalog rows, descriptor versions, descriptor caches, catalog
   generation, or `sqlite_schema_generation`.
 - Runtime execution either returns the implicit one-row count for no-source and
-  `DUAL` forms or executes generated SQLite SQL against the descriptor-owned
-  physical table.
+  `DUAL` forms or executes generated SQLite SQL against descriptor-owned
+  physical table sources.
 - The result builder owns the one-column text result. Counts are formatted as
   non-`NULL` decimal integer text.
 - Storage/VFS owns the `.mylite` preamble and shifted SQLite payload boundary.
@@ -159,6 +166,7 @@ Supported subset:
 SELECT COUNT(*)
 SELECT COUNT(*) FROM DUAL
 SELECT COUNT(*) FROM table_name [WHERE predicate]
+SELECT COUNT(*) FROM joined_descriptor_sources [WHERE predicate]
 ```
 
 `table_name` uses the existing table lifecycle subset:
@@ -207,6 +215,10 @@ current MyLite handle in the descriptor-owned physical table. With a supported
 `WHERE` predicate, it returns the number of rows that satisfy that predicate.
 Rows are counted regardless of whether projected table columns contain `NULL`.
 
+`SELECT COUNT(*) FROM joined_descriptor_sources` uses the existing descriptor
+joined-source planner and counts rows produced by that source after supported
+join conditions and `WHERE` predicates are applied.
+
 Successful count selects:
 
 - return one result column;
@@ -225,15 +237,20 @@ is out of scope.
 
 ## Physical SQLite Handling
 
-Table-backed count selects lower to standard SQLite SQL:
+Table-backed count selects lower to standard SQLite SQL built from descriptor
+sources:
 
 ```sql
 SELECT COUNT(*) FROM "physical_table" [WHERE "physical_column" op ?]
+SELECT COUNT(*) FROM "physical_left" AS "_mylite_s0"
+JOIN "physical_right" AS "_mylite_s1" ON "_mylite_s0"."id" = "_mylite_s1"."id"
+[WHERE "_mylite_s0"."column" op ?]
 ```
 
 Rules:
 
 - physical table names come from MyLite table descriptors;
+- joined-source aliases are generated and never user-controlled;
 - predicate column names come from MyLite column descriptors;
 - every generated SQLite identifier is quoted;
 - predicate literals are converted by MyLite before execution and bound as
@@ -247,25 +264,26 @@ No-source and `FROM DUAL` count forms do not require SQLite execution.
 
 ## Diagnostics
 
-Supported `COUNT(*)` calls do not produce warnings.
+Supported `COUNT()` calls do not produce warnings.
 
 Diagnostics follow the existing baseline conventions where MyLite has not yet
 implemented full MySQL expression or metadata behavior:
 
 - `COUNT (*)` and `COUNT/**/(*)` fail with syntax error `1064`, SQLSTATE
   `42000`, matching observed MySQL default-mode behavior.
-- Unsupported count arguments such as `COUNT(1)`, `COUNT(column)`,
-  `COUNT(DISTINCT column)`, `COUNT()`, `COUNT(table.*)`, and aggregate
-  expressions fail deterministically, either through parse error `1064` or the
-  existing unsupported-statement diagnostic class.
+- Unsupported count arguments such as `COUNT()`, `COUNT(table.*)`, joined
+  non-star count forms, and aggregate expressions fail deterministically,
+  either through parse error `1064` or the existing unsupported-statement
+  diagnostic class.
 - Missing default schema, unknown schema, unknown table, reserved
   `_mylite_*` schema/table names, unsupported object kinds, unknown predicate
   columns, unsupported predicate shapes, unsupported predicate literals, and
   predicate conversion range failures reuse existing descriptor-driven
   `SELECT ... WHERE` diagnostics.
 - Unsupported `ORDER BY`, `LIMIT`, aliases, mixed projections, multiple count
-  items, grouping, having, joins, subqueries, CTEs, and query modifiers fail
-  deterministically before arbitrary SQLite SQL is generated.
+  items, grouping, having, joined non-star count forms, subqueries, CTEs, and
+  query modifiers fail deterministically before arbitrary SQLite SQL is
+  generated.
 - Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
   diagnostic. Physical SQLite failures use the existing physical-row failure
   diagnostic unless a narrower diagnostic has already been set.
@@ -281,6 +299,9 @@ Fast C tests must cover:
 - parser/runtime rejection for whitespace or comments between `COUNT` and `(`;
 - runtime no-source and `FROM DUAL` counts;
 - runtime table-backed count over empty and nonempty persistent base tables;
+- runtime joined `COUNT(*)` over comma, explicit inner, and supported outer
+  joined descriptor sources, including WordPress-style column-equality and
+  literal filters;
 - count over nullable rows, proving `COUNT(*)` includes rows with `NULL`
   values;
 - schema-qualified and unqualified table resolution, missing default schema,
@@ -296,11 +317,11 @@ Fast C tests must cover:
 - count after table rename and after truncate/drop where applicable;
 - physical `.mylite` preamble preservation;
 - zero-initialized cleanup for any new planner/result objects;
-- unsupported forms: `COUNT(1)`, `COUNT(column)`, `COUNT(DISTINCT column)`,
-  `COUNT()`, `COUNT(table.*)`, multiple count items, mixed projections,
-  aliases, aggregate arithmetic, `ORDER BY`, `LIMIT`, `GROUP BY`, `HAVING`,
-  joins, CTEs, subqueries, window `OVER`, parameters, and unsupported
-  predicate expressions;
+- unsupported forms: unsupported `COUNT(expr)` shapes, `COUNT()`,
+  `COUNT(table.*)`, joined non-star count forms, multiple count items, mixed
+  projections, aliases outside the supported result-label envelope, aggregate
+  arithmetic, `ORDER BY`, `LIMIT`, `GROUP BY`, `HAVING`, CTEs, subqueries,
+  window `OVER`, parameters, and unsupported predicate expressions;
 - existing lexer, parser, scalar function, schema lifecycle, table lifecycle,
   row values, select-where, select-order-limit, delete, update, truncate,
   result metadata, statement context, file-format, VFS, and SQLite bootstrap
@@ -313,12 +334,14 @@ record intentionally deferred MySQL-accepted forms without guessing.
 
 After implementation:
 
-- update `COMPATIBILITY.md` to mark `COUNT()` as limited for `COUNT(*)`;
+- update `COMPATIBILITY.md` to mark `COUNT()` as limited for supported
+  `COUNT(*)`, literal, column, and distinct-column forms;
 - update `docs/compatibility/functions-aggregate.md`;
 - update `docs/compatibility/sql-query-expressions.md` only if the documented
   select surface changes;
-- do not overclaim `COUNT(expr)`, `COUNT(DISTINCT)`, grouping, having, aliases,
-  window functions, order/limit aggregate semantics, general aggregate
+- do not overclaim general `COUNT(expr)`, joined non-star count forms,
+  grouping, having, aliases, window functions, order/limit aggregate semantics,
+  general aggregate
   expressions, protocol metadata, optimizer behavior, temporary tables, views,
   privileges, collations, or SQL modes.
 

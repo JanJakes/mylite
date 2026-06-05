@@ -331,7 +331,7 @@ static int append_grouped_aggregate_query_sql(
         rc = append_grouped_having_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK && include_order) {
-        rc = append_grouped_order_sql(string, plan);
+        rc = append_grouped_order_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK && include_limit) {
         rc = append_select_limit_sql(string, &plan->limit, next_parameter);
@@ -477,13 +477,14 @@ static int append_grouped_aggregate_select_item_sql(
         );
     }
 
-    return append_grouped_aggregate_expression_sql(string, plan, item);
+    return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
 }
 
 static int append_grouped_aggregate_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
-    const struct planned_grouped_aggregate_item *item
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
 ) {
     bool qualify = plan->source_count > 0U;
     int rc = MYLITE_OK;
@@ -498,6 +499,26 @@ static int append_grouped_aggregate_expression_sql(
             item->aggregate_column_source_index,
             qualify
         );
+    }
+    if (item->aggregate_uses_row_scalar_expression) {
+        if (next_parameter == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, grouped_aggregate_sql_function(item->function));
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, '(');
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                &item->aggregate_row_scalar_expression,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        return rc;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         rc = mylite_dynamic_string_append(string, "AVG(");
@@ -565,7 +586,7 @@ static int append_grouped_having_sql(
 
     rc = mylite_dynamic_string_append(string, " HAVING ");
     if (rc == MYLITE_OK) {
-        rc = append_grouped_having_operand_sql(string, plan);
+        rc = append_grouped_having_operand_sql(string, plan, next_parameter);
     }
     if (plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
         if (rc == MYLITE_OK) {
@@ -601,7 +622,8 @@ static int append_grouped_having_sql(
 
 static int append_grouped_having_operand_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 ) {
     if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN) {
         if (plan->having.group_index >= plan->group_count) {
@@ -615,7 +637,7 @@ static int append_grouped_having_operand_sql(
         );
     }
     if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE) {
-        return append_grouped_having_aggregate_sql(string, plan);
+        return append_grouped_having_aggregate_sql(string, plan, next_parameter);
     }
 
     return MYLITE_OK;
@@ -623,7 +645,8 @@ static int append_grouped_having_operand_sql(
 
 static int append_grouped_having_aggregate_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 ) {
     if (plan->having.aggregate_index >= plan->aggregate_count) {
         return MYLITE_ERROR;
@@ -631,13 +654,15 @@ static int append_grouped_having_aggregate_sql(
     return append_grouped_aggregate_expression_sql(
         string,
         plan,
-        &plan->aggregates[plan->having.aggregate_index]
+        &plan->aggregates[plan->having.aggregate_index],
+        next_parameter
     );
 }
 
 static int append_grouped_order_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -656,7 +681,8 @@ static int append_grouped_order_sql(
         rc = append_grouped_aggregate_expression_sql(
             string,
             plan,
-            &plan->aggregates[plan->order_aggregate_index]
+            &plan->aggregates[plan->order_aggregate_index],
+            next_parameter
         );
     }
     if (rc == MYLITE_OK) {

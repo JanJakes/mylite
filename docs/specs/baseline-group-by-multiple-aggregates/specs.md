@@ -84,6 +84,8 @@ MyLite supports this exact extension to the existing grouped aggregate path:
   - `MIN(column)`;
   - `MAX(column)`;
   - `SUM(column)`;
+  - narrow `SUM(column + column)` where both operands are integer descriptor
+    columns;
   - `AVG(column)`;
   - `BIT_AND(column)`;
   - `BIT_OR(column)`;
@@ -121,6 +123,7 @@ This slice intentionally does not add:
   expression, aggregate result, or function result;
 - aggregate-only grouped projection without projecting the grouped column;
 - grouped `COUNT(DISTINCT column)`;
+- grouped `SUM(expr)` beyond the exact two-column integer addition shape;
 - grouped `GROUP_CONCAT()` mixed with other aggregate results;
 - `GROUP_CONCAT(DISTINCT ...)`, multiple `GROUP_CONCAT()` expressions, or wider
   joined-source grouped `GROUP_CONCAT()`;
@@ -159,11 +162,13 @@ grouped_aggregate ::= COUNT LPAREN STAR RPAREN.
 grouped_aggregate ::= COUNT LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= MIN LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= MAX LPAREN qualified_identifier RPAREN.
-grouped_aggregate ::= SUM LPAREN qualified_identifier RPAREN.
+grouped_aggregate ::= SUM LPAREN sum_aggregate_argument RPAREN.
 grouped_aggregate ::= AVG LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= BIT_AND LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= BIT_OR LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= BIT_XOR LPAREN qualified_identifier RPAREN.
+sum_aggregate_argument ::= qualified_identifier.
+sum_aggregate_argument ::= qualified_identifier PLUS qualified_identifier.
 ```
 
 Runtime validation requires exactly one descriptor group-column select item in
@@ -206,8 +211,10 @@ GROUP BY "group_physical_column"
 For `AVG(column)`, MyLite selects `SUM(column), COUNT(column)` internally and
 formats the public result value with the existing grouped-average formatter.
 This means an `AVG` select item consumes two SQLite result columns but produces
-one public result cell. Bitwise aggregates call MyLite's registered SQLite
-aggregate callbacks and return unsigned decimal text.
+one public result cell. For the narrow `SUM(column + column)` form, MyLite
+emits a row-scalar integer addition expression as the `SUM()` argument. Bitwise
+aggregates call MyLite's registered SQLite aggregate callbacks and return
+unsigned decimal text.
 
 All generated identifiers are quoted. Predicate, separator, `HAVING`, and
 limit values are bound parameters. This feature adds no SQLite fork patch:
@@ -243,6 +250,8 @@ Required diagnostics include:
 - unsupported aggregate form, including grouped `COUNT(DISTINCT column)` and
   grouped `GROUP_CONCAT()` mixed with other aggregate results: deterministic
   unsupported diagnostics;
+- unsupported grouped `SUM(column + column)` operand:
+  `SUM(column + column) supports only integer descriptor columns`;
 - unsupported noninteger aggregate argument for current numeric aggregates:
   existing aggregate integer-column diagnostics;
 - unsupported `HAVING` predicate shape, unselected aggregate predicate, bitwise

@@ -477,6 +477,8 @@ enum {
     mysql_innodb_table_stats_column_count = 6,
     information_schema_tables_table_schema_column = 1,
     information_schema_tables_table_name_column = 2,
+    information_schema_tables_table_rows_column = 7,
+    information_schema_tables_data_length_column = 9,
     information_schema_tables_index_length_column = 11,
     information_schema_tables_auto_increment_column = 13,
     information_schema_tables_create_time_column = 14,
@@ -2807,6 +2809,8 @@ struct planned_grouped_aggregate_item {
     enum planned_grouped_aggregate_function function;
     struct mylite_catalog_column_descriptor aggregate_column;
     size_t aggregate_column_source_index;
+    bool aggregate_uses_row_scalar_expression;
+    struct planned_row_scalar_expression aggregate_row_scalar_expression;
     struct planned_select_order aggregate_order;
     bool has_separator;
     struct planned_value separator;
@@ -11681,6 +11685,22 @@ static int plan_grouped_column_aggregate_column(
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
+);
+static int plan_grouped_sum_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate_item *out_item
+);
+static int plan_grouped_sum_row_scalar_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
 );
 static int plan_grouped_group_concat_options(
     struct mylite_db *database,
@@ -24736,7 +24756,8 @@ static int append_grouped_aggregate_select_item_sql(
 static int append_grouped_aggregate_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
-    const struct planned_grouped_aggregate_item *item
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
 );
 static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function);
 static int append_grouped_having_sql(
@@ -24746,15 +24767,18 @@ static int append_grouped_having_sql(
 );
 static int append_grouped_having_operand_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 );
 static int append_grouped_having_aggregate_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 );
 static int append_grouped_order_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_grouped_aggregate *plan
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 );
 static int append_select_predicate_sql(
     struct mylite_dynamic_string *string,
@@ -26182,6 +26206,11 @@ static int bind_grouped_aggregate_parameters_with_limit(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,
     bool include_limit
+);
+static int bind_grouped_aggregate_row_scalar_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate_item *item,
+    int *parameter_index
 );
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);

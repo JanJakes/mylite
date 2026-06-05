@@ -127,8 +127,10 @@ Existing `COUNT`, `MIN`, and `MAX` behavior must remain unchanged.
 
 This feature must not implement:
 
-- `SUM(expr)` for literals, `NULL`, arithmetic, functions, parenthesized
-  expression arguments, `DISTINCT`, or general expression arguments;
+- standalone `SUM(expr)` for literals, `NULL`, arithmetic, functions,
+  parenthesized expression arguments, `DISTINCT`, or general expression
+  arguments; the narrow grouped `SUM(column + column)` metadata bridge is
+  specified by the grouped aggregate slice;
 - no-source or `FROM DUAL` aggregate evaluation;
 - multiple aggregate select items, mixed projections, aggregate comparisons,
   aggregate arithmetic, or nested aggregates;
@@ -213,14 +215,17 @@ SQL mode. Whitespace and comments are accepted inside the argument list.
 MyLite Lemon-syntax grammar snippets:
 
 ```lemon
-expression ::= SUM LPAREN qualified_identifier RPAREN.
+expression ::= SUM LPAREN sum_aggregate_argument RPAREN.
+sum_aggregate_argument ::= qualified_identifier.
+sum_aggregate_argument ::= qualified_identifier PLUS qualified_identifier.
 ```
 
 The parser may admit `SUM(column)` anywhere the expression grammar is
-currently shared, but the analyzer accepts it only as the sole select item in
-the supported statement shape. `SUM` remains usable as an ordinary unquoted
-identifier in identifier positions where the parser admits nonreserved
-keywords. Bare `SUM` is not an aggregate call.
+currently shared, and may admit the grouped metadata bridge
+`SUM(column + column)`, but the analyzer accepts only the statement shapes
+documented by the standalone and grouped aggregate slices. `SUM` remains usable
+as an ordinary unquoted identifier in identifier positions where the parser
+admits nonreserved keywords. Bare `SUM` is not an aggregate call.
 
 ## Runtime Semantics
 
@@ -318,7 +323,8 @@ The implementation tests must cover:
   parenthesized aggregates, and `SUM` as an ordinary identifier;
 - parser rejection for `SUM (column)`, `SUM/**/(column)`, `SUM()`,
   `SUM(*)`, `SUM(1)`, `SUM(NULL)`, `SUM(DISTINCT column)`, multi-argument
-  `SUM`, arithmetic/function arguments, and malformed shapes;
+  `SUM`, literal/function/non-column arithmetic arguments, and malformed
+  shapes;
 - successful `SUM(column)` over `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`,
   `INTEGER`, `BIGINT`, unsigned integer forms that remain within signed 64
   bits, and `BOOL`/`BOOLEAN` aliases;

@@ -115,6 +115,12 @@ static int test_information_schema_core_queries(void) {
     static const char *const auto_increment_predicate_values[] = {"t"};
     static const char *const table_computed_columns[] = {"name", "engine", "data"};
     static const char *const table_computed_values[] = {"t", "InnoDB", "0"};
+    static const char *const table_size_columns[] = {"table", "rows", "bytes"};
+    static const char *const table_size_values[] = {
+        "other",    "1", "16384",
+        "t",        "1", "16384",
+        "wp_users", "0", "32768",
+    };
     static const char *const indexed_column_join_columns[] = {
         "DATA_TYPE",
         "INDEX_NAME",
@@ -339,6 +345,22 @@ static int test_information_schema_core_queries(void) {
             .values = table_computed_values,
             .row_count = 1U,
             .context = "tables computed data length projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME AS 'table', TABLE_ROWS AS 'rows', "
+                   "SUM(DATA_LENGTH + INDEX_LENGTH) AS 'bytes' "
+                   "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME IN ('t', 'other', 'wp_users') "
+                   "GROUP BY TABLE_NAME ORDER BY TABLE_NAME",
+            .column_names = table_size_columns,
+            .column_count = sizeof(table_size_columns) / sizeof(table_size_columns[0]),
+            .values = table_size_values,
+            .row_count = sizeof(table_size_values) / sizeof(table_size_values[0]) /
+                         (sizeof(table_size_columns) / sizeof(table_size_columns[0])),
+            .context = "tables grouped size metadata projection",
         }
     );
     failures += expect_query(

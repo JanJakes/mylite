@@ -141,6 +141,17 @@ static int plan_grouped_aggregate_item(
             &out_item->aggregate_column_source_index
         );
     }
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_SUM &&
+        child_at(aggregate_expression, 0U)->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return plan_grouped_sum_row_scalar_expression(
+            database,
+            aggregate_expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_item
+        );
+    }
 
     return plan_grouped_column_aggregate_column(
         database,
@@ -152,6 +163,115 @@ static int plan_grouped_aggregate_item(
         &out_item->aggregate_column,
         &out_item->aggregate_column_source_index
     );
+}
+
+static int plan_grouped_sum_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate_item *out_item
+) {
+    const struct mylite_sql_ast_node *argument = child_at(function, 0U);
+    int rc = MYLITE_OK;
+
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_operator(argument) != MYLITE_SQL_AST_OPERATOR_ADD) {
+        set_unsupported_error(
+            database,
+            "SUM(column + column) supports only two descriptor columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_item->aggregate_row_scalar_expression.arguments =
+        (struct planned_row_scalar_expression *)calloc(
+            2U,
+            sizeof(*out_item->aggregate_row_scalar_expression.arguments)
+        );
+    if (out_item->aggregate_row_scalar_expression.arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_item->aggregate_row_scalar_expression.kind =
+        PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC;
+    out_item->aggregate_row_scalar_expression.arithmetic_operator = MYLITE_SQL_AST_OPERATOR_ADD;
+    out_item->aggregate_row_scalar_expression.argument_count = 2U;
+    out_item->aggregate_uses_row_scalar_expression = true;
+
+    rc = plan_grouped_sum_row_scalar_column(
+        database,
+        child_at(argument, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_item->aggregate_row_scalar_expression.arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_grouped_sum_row_scalar_column(
+            database,
+            child_at(argument, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_item->aggregate_row_scalar_expression.arguments[1]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(&out_item->aggregate_row_scalar_expression);
+        out_item->aggregate_uses_row_scalar_expression = false;
+    }
+    return rc;
+}
+
+static int plan_grouped_sum_row_scalar_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    struct integer_column_range range = {0};
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (column_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "SUM(column + column) supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = integer_range_for_column(
+        database,
+        &column,
+        "SUM(column + column) supports only integer descriptor columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
+    return MYLITE_OK;
 }
 
 static int plan_grouped_any_value_column(

@@ -25,6 +25,12 @@ static int information_schema_join_compat_execute_columns_statistics_union(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int information_schema_join_compat_execute_tables_grouped_size_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
 static int information_schema_join_compat_execute_dynamic_columns_select(
     struct mylite_db *database,
     bool apply_sql_select_limit,
@@ -109,6 +115,28 @@ static int information_schema_join_compat_append_columns_statistics_union_rows(
     const struct information_schema_join_compat_statistics_request *request,
     const char *schema_name,
     const char *table_name
+);
+static int information_schema_join_compat_append_tables_grouped_size_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result
+);
+static int information_schema_join_compat_append_tables_grouped_size_row(
+    struct mylite_db *database,
+    char *const *row,
+    mylite_result *result
+);
+static int information_schema_join_compat_format_table_size_bytes(
+    struct mylite_db *database,
+    char *const *row,
+    char *buffer,
+    size_t buffer_size
+);
+static bool information_schema_join_compat_parse_unsigned_text(
+    const char *text,
+    uint64_t *out_value
 );
 static int information_schema_join_compat_append_column_names(
     struct mylite_db *database,
@@ -230,6 +258,12 @@ static int execute_information_schema_join_compat_select_if_needed(
         "union all",
         "order by name",
     };
+    static const char *const tables_grouped_size_needles[] = {
+        "information_schema.tables",
+        "table_rows",
+        "sum(data_length + index_length)",
+        "group by table_name",
+    };
     bool matches = false;
     int rc = MYLITE_OK;
 
@@ -270,6 +304,26 @@ static int execute_information_schema_join_compat_select_if_needed(
         *out_handled = matches;
         if (matches) {
             return information_schema_join_compat_execute_columns_statistics_union(
+                database,
+                statement,
+                apply_sql_select_limit,
+                out_result
+            );
+        }
+        return rc;
+    }
+
+    rc = information_schema_join_compat_statement_contains_all(
+        database,
+        statement,
+        tables_grouped_size_needles,
+        sizeof(tables_grouped_size_needles) / sizeof(tables_grouped_size_needles[0]),
+        &matches
+    );
+    if (rc != MYLITE_OK || matches) {
+        *out_handled = matches;
+        if (matches) {
+            return information_schema_join_compat_execute_tables_grouped_size_select(
                 database,
                 statement,
                 apply_sql_select_limit,
@@ -490,6 +544,63 @@ static int information_schema_join_compat_execute_columns_statistics_union(
     information_schema_row_set_deinit(&columns);
     free(table_name);
     free(schema_name);
+    if (rc == MYLITE_OK) {
+        return information_schema_join_compat_finish_result(
+            database,
+            apply_sql_select_limit,
+            result,
+            out_result
+        );
+    }
+    mylite_result_free(result);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_execute_tables_grouped_size_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    static const char *const column_names[] = {"table", "rows", "bytes"};
+    const struct mylite_execution_catalog_table_definition *definition =
+        find_information_schema_table_definition("TABLES");
+    struct information_schema_row_set rows = {0};
+    struct information_schema_query query = {.definition = definition};
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (definition == NULL) {
+        set_runtime_error(database, "missing INFORMATION_SCHEMA.TABLES definition");
+        return MYLITE_ERROR;
+    }
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = information_schema_join_compat_append_named_result_columns(
+        database,
+        result,
+        column_names,
+        sizeof(column_names) / sizeof(column_names[0])
+    );
+    if (rc == MYLITE_OK) {
+        rc = build_information_schema_rows(database, NULL, definition, &rows);
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_join_compat_append_tables_grouped_size_rows(
+            database,
+            statement,
+            &query,
+            &rows,
+            result
+        );
+    }
+    information_schema_row_set_deinit(&rows);
     if (rc == MYLITE_OK) {
         return information_schema_join_compat_finish_result(
             database,
@@ -1005,6 +1116,119 @@ static int information_schema_join_compat_append_columns_statistics_union_rows(
     }
     information_schema_join_compat_name_rows_deinit(&names);
     return rc;
+}
+
+static int information_schema_join_compat_append_tables_grouped_size_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result
+) {
+    size_t *indexes = NULL;
+    size_t index_count = 0U;
+    int rc = information_schema_matching_row_indexes(
+        database,
+        statement,
+        query,
+        rows,
+        &indexes,
+        &index_count
+    );
+
+    if (rc == MYLITE_OK) {
+        information_schema_sort_tables_default_row_indexes(rows, indexes, index_count);
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        rc = information_schema_join_compat_append_tables_grouped_size_row(
+            database,
+            rows->rows[indexes[index]],
+            result
+        );
+    }
+    free(indexes);
+    return rc;
+}
+
+static int information_schema_join_compat_append_tables_grouped_size_row(
+    struct mylite_db *database,
+    char *const *row,
+    mylite_result *result
+) {
+    char bytes_text[integer_text_capacity];
+    const char *values[] = {
+        row[information_schema_tables_table_name_column],
+        row[information_schema_tables_table_rows_column],
+        bytes_text,
+    };
+    int rc = information_schema_join_compat_format_table_size_bytes(
+        database,
+        row,
+        bytes_text,
+        sizeof(bytes_text)
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_format_table_size_bytes(
+    struct mylite_db *database,
+    char *const *row,
+    char *buffer,
+    size_t buffer_size
+) {
+    uint64_t data_length = 0;
+    uint64_t index_length = 0;
+
+    if (!information_schema_join_compat_parse_unsigned_text(
+            row[information_schema_tables_data_length_column],
+            &data_length
+        ) ||
+        !information_schema_join_compat_parse_unsigned_text(
+            row[information_schema_tables_index_length_column],
+            &index_length
+        ) ||
+        data_length > UINT64_MAX - index_length) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA TABLES size metadata exceeds unsigned 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+    return format_uint64(database, data_length + index_length, buffer, buffer_size);
+}
+
+static bool information_schema_join_compat_parse_unsigned_text(
+    const char *text,
+    uint64_t *out_value
+) {
+    uint64_t value = 0;
+
+    if (text == NULL || *text == '\0' || out_value == NULL) {
+        return false;
+    }
+    while (*text != '\0') {
+        unsigned char byte = (unsigned char)*text;
+        uint64_t digit = 0;
+
+        if (byte < (unsigned char)'0' || byte > (unsigned char)'9') {
+            return false;
+        }
+        digit = (uint64_t)(byte - (unsigned char)'0');
+        if (value > (UINT64_MAX - digit) / (uint64_t)decimal_base) {
+            return false;
+        }
+        value = (value * (uint64_t)decimal_base) + digit;
+        ++text;
+    }
+    *out_value = value;
+    return true;
 }
 
 static int information_schema_join_compat_append_column_names(

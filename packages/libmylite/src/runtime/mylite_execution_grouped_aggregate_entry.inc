@@ -176,6 +176,9 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
         planned_select_source_deinit(&plan->sources[source_index]);
     }
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        planned_row_scalar_expression_deinit(
+            &plan->aggregates[aggregate_index].aggregate_row_scalar_expression
+        );
         planned_select_order_deinit(&plan->aggregates[aggregate_index].aggregate_order);
         planned_value_deinit(&plan->aggregates[aggregate_index].separator);
     }

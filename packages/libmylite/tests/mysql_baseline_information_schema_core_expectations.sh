@@ -183,6 +183,16 @@ expect_output \
 "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "\
 "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't';"
 
+table_grouped_size_expected=$(printf '%b' "other\t0\t16384\nt\t0\t16384")
+expect_output \
+    "tables grouped size metadata projection" \
+    "$table_grouped_size_expected" \
+    "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'ONLY_FULL_GROUP_BY', ''); "\
+"SELECT TABLE_NAME AS 'table', TABLE_ROWS AS 'rows', "\
+"SUM(DATA_LENGTH + INDEX_LENGTH) AS 'bytes' "\
+"FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${DATABASE}' "\
+"AND TABLE_NAME IN ('t', 'other') GROUP BY TABLE_NAME ORDER BY TABLE_NAME;"
+
 expect_error \
     "unknown information schema table" \
     1109 \

@@ -3847,13 +3847,21 @@ selected_grouped_aggregate_expression(A) ::= MAX(T) LPAREN(L) qualified_identifi
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
 }
-selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R);
 }
 selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R);
+}
+
+sum_aggregate_argument(A) ::= qualified_identifier(B). {
+    A = B;
+}
+sum_aggregate_argument(A) ::= qualified_identifier(B) PLUS(T) qualified_identifier(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
 }
 
 having_integer_value(A) ::= INTEGER(T). {
@@ -7613,7 +7621,7 @@ expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
 }
-expression(A) ::= SUM(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R);
 }

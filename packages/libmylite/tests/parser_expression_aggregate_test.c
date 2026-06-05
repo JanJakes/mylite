@@ -1921,6 +1921,7 @@ static int test_sum_aggregate(void) {
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
     const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *sum_argument = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -2018,6 +2019,44 @@ static int test_sum_aggregate(void) {
     failures += parser_test_expect_span_text(second_expression, "SUM(db.t.n)", "schema sum span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT SUM(data_length + index_length) FROM information_schema.TABLES;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "sum column plus column aggregate"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "SUM(data_length + index_length)",
+        "sum column plus column span"
+    );
+    sum_argument = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_node(
+        sum_argument,
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "sum column plus column argument"
+    );
+    failures +=
+        parser_test_expect_operator(sum_argument, MYLITE_SQL_AST_OPERATOR_ADD, "sum add operator");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(sum_argument, 0U),
+        "data_length",
+        "sum add left column"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(sum_argument, 1U),
+        "index_length",
+        "sum add right column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT (SUM(id));", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
@@ -2061,6 +2100,9 @@ static int test_sum_aggregate(void) {
     failures += parser_test_parse_sql("SELECT SUM(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT SUM(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parser_test_parse_sql("SELECT SUM(id + 1) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT SUM(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

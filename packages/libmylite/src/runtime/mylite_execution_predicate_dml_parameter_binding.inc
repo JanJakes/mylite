@@ -332,7 +332,12 @@ static int bind_grouped_aggregate_parameters_with_limit(
          ++aggregate_index) {
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
 
-        if (item->has_separator) {
+        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+            statement,
+            item,
+            &parameter_index
+        );
+        if (rc == MYLITE_OK && item->has_separator) {
             rc = bind_planned_value_parameter(statement, parameter_index, &item->separator);
             if (rc == MYLITE_OK) {
                 ++parameter_index;
@@ -342,11 +347,32 @@ static int bind_grouped_aggregate_parameters_with_limit(
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
+    if (rc == MYLITE_OK && plan->having.kind != PLANNED_GROUPED_HAVING_NONE &&
+        plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE) {
+        if (plan->having.aggregate_index >= plan->aggregate_count) {
+            return MYLITE_ERROR;
+        }
+        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+            statement,
+            &plan->aggregates[plan->having.aggregate_index],
+            &parameter_index
+        );
+    }
     if (rc == MYLITE_OK && plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
         rc = bind_int64_parameter(statement, parameter_index, plan->having.value.integer);
         if (rc == MYLITE_OK) {
             ++parameter_index;
         }
+    }
+    if (rc == MYLITE_OK && plan->order_uses_aggregate) {
+        if (plan->order_aggregate_index >= plan->aggregate_count) {
+            return MYLITE_ERROR;
+        }
+        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+            statement,
+            &plan->aggregates[plan->order_aggregate_index],
+            &parameter_index
+        );
     }
     if (rc == MYLITE_OK && include_limit && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
@@ -359,6 +385,21 @@ static int bind_grouped_aggregate_parameters_with_limit(
     }
 
     return rc;
+}
+
+static int bind_grouped_aggregate_row_scalar_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate_item *item,
+    int *parameter_index
+) {
+    if (item == NULL || !item->aggregate_uses_row_scalar_expression) {
+        return MYLITE_OK;
+    }
+    return bind_row_scalar_expression_parameters(
+        statement,
+        &item->aggregate_row_scalar_expression,
+        parameter_index
+    );
 }
 
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan) {

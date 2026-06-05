@@ -1618,6 +1618,7 @@ struct planned_alter_table_modify_column {
     char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool is_noop;
     bool is_metadata_only;
+    bool is_temporary;
     bool checks_duplicate_replacement;
     bool reports_rebuild_row_count;
     bool adds_inline_primary_key;
@@ -8935,7 +8936,7 @@ static int execute_physical_alter_table_rename_column(
 static int execute_physical_alter_table_modify_column(
     struct mylite_db *database,
     const struct planned_alter_table_modify_column *plan,
-    const struct mylite_catalog_mutation *mutation
+    uint64_t generation
 );
 
 static int create_schema_from_statement(
@@ -10364,6 +10365,14 @@ static void planned_alter_table_modify_column_deinit(
 static int alter_table_modify_column_from_plan(
     struct mylite_db *database,
     struct planned_alter_table_modify_column *plan
+);
+static int modify_temporary_column_from_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *plan
+);
+static int replace_temporary_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan
 );
 static int alter_table_modify_column_in_mutation(
     struct mylite_db *database,
@@ -24107,7 +24116,7 @@ static int build_alter_table_rename_column_sql(
 );
 static int build_modify_temporary_physical_name(
     const struct planned_alter_table_modify_column *plan,
-    const struct mylite_catalog_mutation *mutation,
+    uint64_t generation,
     char *destination,
     size_t destination_size
 );

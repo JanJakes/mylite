@@ -79,6 +79,18 @@ int mylite_temporary_catalog_append_column(
     const struct mylite_catalog_column_descriptor *column,
     size_t target_column_index
 );
+int mylite_temporary_catalog_replace_column(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    int64_t column_id,
+    const struct mylite_catalog_column_descriptor *column
+);
+int mylite_temporary_catalog_replace_columns(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
 int mylite_temporary_catalog_remove_column_by_id(
     struct mylite_temporary_catalog *catalog,
     int64_t table_id,

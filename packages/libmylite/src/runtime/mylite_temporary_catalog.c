@@ -291,6 +291,98 @@ int mylite_temporary_catalog_append_column(
     return MYLITE_OK;
 }
 
+int mylite_temporary_catalog_replace_column(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    int64_t column_id,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct mylite_temporary_catalog_table *table = NULL;
+    size_t column_position = 0U;
+    bool found = false;
+
+    if (catalog == NULL || table_id >= 0 || column_id >= 0 || column == NULL ||
+        column->table_id != table_id || column->column_id != column_id) {
+        return MYLITE_MISUSE;
+    }
+
+    table = find_table_by_id_mutable(catalog, table_id);
+    if (table == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (; column_position < table->column_count; ++column_position) {
+        const struct mylite_catalog_column_descriptor *current = &table->columns[column_position];
+
+        if (current->column_id == column_id) {
+            found = true;
+            continue;
+        }
+        if (strcmp(current->name, column->name) == 0) {
+            return MYLITE_ERROR;
+        }
+    }
+    if (!found) {
+        return MYLITE_ERROR;
+    }
+
+    for (column_position = 0U; column_position < table->column_count; ++column_position) {
+        if (table->columns[column_position].column_id == column_id) {
+            table->columns[column_position] = *column;
+            table->columns[column_position].ordinal_position = (int64_t)column_position + 1;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_ERROR;
+}
+
+int mylite_temporary_catalog_replace_columns(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    struct mylite_temporary_catalog_table *table = NULL;
+    struct mylite_catalog_column_descriptor *replacement = NULL;
+
+    if (catalog == NULL || table_id >= 0 || columns == NULL || column_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+    if (column_count > SIZE_MAX / sizeof(*replacement)) {
+        return MYLITE_NOMEM;
+    }
+
+    table = find_table_by_id_mutable(catalog, table_id);
+    if (table == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        if (columns[column_index].table_id != table_id || columns[column_index].column_id >= 0) {
+            return MYLITE_MISUSE;
+        }
+        for (size_t prior_index = 0U; prior_index < column_index; ++prior_index) {
+            if (columns[prior_index].column_id == columns[column_index].column_id ||
+                strcmp(columns[prior_index].name, columns[column_index].name) == 0) {
+                return MYLITE_ERROR;
+            }
+        }
+    }
+
+    replacement = calloc(column_count, sizeof(*replacement));
+    if (replacement == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memcpy(replacement, columns, column_count * sizeof(*replacement));
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        replacement[column_index].ordinal_position = (int64_t)column_index + 1;
+    }
+
+    free(table->columns);
+    table->columns = replacement;
+    table->column_count = column_count;
+    return MYLITE_OK;
+}
+
 int mylite_temporary_catalog_remove_column_by_id(
     struct mylite_temporary_catalog *catalog,
     int64_t table_id,

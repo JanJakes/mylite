@@ -114,13 +114,30 @@ static int resolve_alter_table_modify_target_table(
     struct mylite_db *database,
     struct planned_alter_table_modify_column *out_plan
 ) {
-    int rc = mylite_catalog_read_table_by_name(
+    bool found_temporary = false;
+    int rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        out_plan->target.schema.name,
+        out_plan->target.table_name,
+        &out_plan->table,
+        &found_temporary
+    );
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (found_temporary) {
+        out_plan->is_temporary = true;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_read_table_by_name(
         database,
         out_plan->target.schema.schema_id,
         out_plan->target.table_name,
         &out_plan->table
     );
-
     if (rc != MYLITE_OK) {
         set_table_does_not_exist_error(
             database,
@@ -129,7 +146,8 @@ static int resolve_alter_table_modify_target_table(
         );
         return MYLITE_ERROR;
     }
-    if (out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+    if (out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         set_unsupported_error(database, out_plan->unsupported_object_message);
         return MYLITE_ERROR;
     }
@@ -166,7 +184,13 @@ static int reject_alter_table_modify_restricted_tables(
     struct mylite_db *database,
     const struct planned_alter_table_modify_column *plan
 ) {
-    int rc = mylite_execution_reject_check_constraint_table_alter(
+    int rc = MYLITE_OK;
+
+    if (plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_execution_reject_check_constraint_table_alter(
         database,
         plan->table.table_id,
         "ALTER TABLE column replacement does not yet support CHECK-constrained tables"

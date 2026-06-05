@@ -9,6 +9,9 @@ static int alter_table_modify_column_from_plan(
     if (plan->is_noop) {
         return MYLITE_OK;
     }
+    if (plan->is_temporary) {
+        return modify_temporary_column_from_plan(database, plan);
+    }
 
     rc = mylite_catalog_begin_mutation(database, &mutation);
     if (rc == MYLITE_OK) {
@@ -33,6 +36,98 @@ static int alter_table_modify_column_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int modify_temporary_column_from_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *plan
+) {
+    int64_t validated_row_count = 0;
+    bool physical_schema_changed = false;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        set_runtime_error(database, "invalid temporary modify-column plan");
+        return MYLITE_ERROR;
+    }
+    if (plan->adds_inline_primary_key || plan->adds_inline_unique_key) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE column replacement on temporary tables does not yet support inline keys"
+        );
+        return MYLITE_ERROR;
+    }
+    if (plan->is_noop) {
+        return MYLITE_OK;
+    }
+
+    if (!plan->is_metadata_only) {
+        rc = validate_modify_column_existing_rows(database, plan, &validated_row_count);
+        if (rc == MYLITE_OK && plan->reports_rebuild_row_count) {
+            plan->affected_rows = validated_row_count;
+        }
+    }
+    if (rc == MYLITE_OK && plan->is_metadata_only &&
+        !modify_column_name_matches(&plan->original_column, &plan->column)) {
+        struct planned_alter_table_rename_column rename_plan = {
+            .target = plan->target,
+            .table = plan->table,
+            .column = plan->original_column,
+            .is_noop = false,
+        };
+
+        memcpy(rename_plan.new_column_name, plan->column.name, sizeof(rename_plan.new_column_name));
+        rc = execute_physical_alter_table_rename_column(database, &rename_plan);
+        physical_schema_changed = rc == MYLITE_OK;
+    } else if (rc == MYLITE_OK && !plan->is_metadata_only) {
+        rc = execute_physical_alter_table_modify_column(
+            database,
+            plan,
+            database->session.sqlite_schema_generation + 1U
+        );
+        physical_schema_changed = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = replace_temporary_column_descriptor(database, plan);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, plan->failure_message);
+        return rc;
+    }
+    if (physical_schema_changed) {
+        ++database->session.sqlite_schema_generation;
+    }
+
+    return MYLITE_OK;
+}
+
+static int replace_temporary_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan
+) {
+    struct mylite_catalog_column_descriptor replacement = {0};
+    int rc = MYLITE_OK;
+
+    if (plan->columns != NULL) {
+        rc = mylite_temporary_catalog_replace_columns(
+            &database->session.temporary_catalog,
+            plan->table.table_id,
+            plan->columns,
+            plan->column_count
+        );
+    } else {
+        make_modify_target_descriptor(plan, &replacement);
+        rc = mylite_temporary_catalog_replace_column(
+            &database->session.temporary_catalog,
+            plan->table.table_id,
+            plan->original_column.column_id,
+            &replacement
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to update temporary column descriptor");
+    }
+    return rc;
 }
 
 static int alter_table_modify_column_in_mutation(
@@ -114,7 +209,11 @@ static int alter_table_modify_column_in_mutation(
             }
         }
     } else if (rc == MYLITE_OK) {
-        rc = execute_physical_alter_table_modify_column(database, plan, mutation);
+        rc = execute_physical_alter_table_modify_column(
+            database,
+            plan,
+            mylite_catalog_mutation_generation(mutation)
+        );
         if (rc == MYLITE_OK) {
             *out_physical_schema_changed = true;
         }
@@ -510,13 +609,13 @@ static void make_modify_target_descriptor(
 static int execute_physical_alter_table_modify_column(
     struct mylite_db *database,
     const struct planned_alter_table_modify_column *plan,
-    const struct mylite_catalog_mutation *mutation
+    uint64_t generation
 ) {
     char temporary_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     char *sql = NULL;
     int rc = build_modify_temporary_physical_name(
         plan,
-        mutation,
+        generation,
         temporary_physical_name,
         sizeof(temporary_physical_name)
     );

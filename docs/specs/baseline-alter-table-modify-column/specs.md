@@ -12,12 +12,12 @@ descriptor `SELECT`, descriptor DML, and descriptor table introspection.
 
 The feature is intentionally not full MySQL `ALTER TABLE` support. It supports
 descriptor-driven column-definition replacement for persistent base tables and
-the currently admitted descriptor families. The dedicated multi-action ALTER
-slice may combine this same admitted no-warning replacement subset with other
-supported actions. This feature does not implement unrelated `CHANGE COLUMN`
-semantics, temporary tables, views, metadata locks, broad online-DDL behavior,
-privilege checks, dependency invalidation for unsupported object kinds, or full
-implicit-commit behavior.
+shadowing session temporary tables across the currently admitted descriptor
+families. The dedicated multi-action ALTER slice may combine this same admitted
+no-warning replacement subset with other supported actions. This feature does
+not implement unrelated `CHANGE COLUMN` semantics, views, metadata locks, broad
+online-DDL behavior, privilege checks, dependency invalidation for unsupported
+object kinds, or full implicit-commit behavior.
 
 ## Sources
 
@@ -81,7 +81,8 @@ The implementation must add:
 - parser and AST support for a limited
   `ALTER TABLE table_name MODIFY [COLUMN] column_definition` statement;
 - one modified column per `MODIFY` action;
-- persistent MyLite base-table descriptors only;
+- persistent MyLite base-table descriptors and shadowing session temporary-table
+  descriptors;
 - unqualified and schema-qualified target table resolution;
 - unqualified modified column names only;
 - `INT`, `INTEGER`, and `BIGINT`, each optionally `UNSIGNED`;
@@ -118,7 +119,8 @@ This feature must not implement:
   foreign key, check, comment, collation, charset, storage, or option clauses;
 - non-integer column types;
 - indexes, keys, constraints, table options, or partitions;
-- temporary tables, views, triggers, privileges, metadata locks, foreign keys,
+- inline primary-key or unique-key additions on temporary-table targets;
+- views, triggers, privileges, metadata locks, foreign keys,
   cascades, generated columns, invisible columns, routines, events, or
   `INFORMATION_SCHEMA` dependency maintenance;
 - reconstructing descriptors from SQLite schema text;
@@ -228,9 +230,9 @@ using the current case-insensitive catalog comparison policy. If the name
 matches an existing descriptor only by case, the operation is a case-only
 spelling update. If no descriptor matches, MyLite returns the unknown-column
 diagnostic; `MODIFY` does not provide a separate old-name/new-name pair.
-Only `MYLITE_CATALOG_TABLE_KIND_BASE` is supported. Later temporary tables,
-views, or other object kinds must be rejected before any physical SQLite SQL is
-generated.
+Only `MYLITE_CATALOG_TABLE_KIND_BASE` and
+`MYLITE_CATALOG_TABLE_KIND_TEMPORARY` are supported. Views or other object
+kinds must be rejected before any physical SQLite SQL is generated.
 
 Reserved `_mylite_*` schema and table names are MyLite-owned internals and must
 be rejected before generated SQLite SQL. Reserved `_mylite_*` column names must

@@ -96,16 +96,16 @@ int main(void) {
 }
 
 static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
-    static const char *const temp_rows[] = {"2", "250", "40", "3", "300", NULL};
+    static const char *const temp_rows[] = {"2", "250", "40", "bcd", "3", "300", NULL, "cde"};
     static const char *const persistent_rows[] = {"1", "10"};
     static const char *const persistent_reopened_rows[] = {"1", "10", "2", "20"};
     static const char *const temp_columns[] = {
-        "id",   "int",         "NO",  "PRI", NULL, NULL, "v",     "int", "YES", "", NULL, NULL,
-        "note", "varchar(10)", "YES", "MUL", NULL, NULL, "added", "int", "YES", "", NULL, NULL,
+        "id",       "int",  "NO",  "PRI", NULL, NULL, "v",     "int", "YES", "", NULL, NULL,
+        "note-key", "text", "YES", "MUL", NULL, NULL, "added", "int", "YES", "", NULL, NULL,
     };
     static const char *const temp_indexes[] = {
         "shadowed", "0", "PRIMARY", "1",   "id",  "A",        "0", NULL,       NULL,  "",
-        "BTREE",    "",  "",        "YES", NULL,  "shadowed", "1", "note_idx", "1",   "note",
+        "BTREE",    "",  "",        "YES", NULL,  "shadowed", "1", "note_idx", "1",   "note-key",
         "A",        "0", "3",       NULL,  "YES", "BTREE",    "",  "",         "YES", NULL,
     };
     static const char *const persistent_show_tables[] = {"shadowed"};
@@ -165,12 +165,17 @@ static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
         "UPDATE shadowed SET added = 40 WHERE id = 2",
         (struct expected_statement){1, 0U}
     );
+    failures += expect_statement(
+        database,
+        "ALTER TABLE shadowed CHANGE COLUMN note `note-key` TEXT DEFAULT NULL",
+        (struct expected_statement){2, 0U}
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v, added FROM shadowed ORDER BY id",
+            .sql = "SELECT id, v, added, `note-key` FROM shadowed ORDER BY id",
             .values = temp_rows,
-            .column_count = 3U,
+            .column_count = 4U,
             .row_count = 2U,
             .context = "temporary table shadows persistent table for DML and ALTER",
         }
@@ -208,7 +213,7 @@ static int test_temporary_shadowing_metadata_drop_and_cleanup(void) {
         "SHOW CREATE TABLE shadowed",
         0U,
         1U,
-        "KEY `note_idx` (`note`(3))",
+        "KEY `note_idx` (`note-key`(3))",
         "SHOW CREATE TABLE renders temporary prefix index"
     );
     failures += expect_query_contains(

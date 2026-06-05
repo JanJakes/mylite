@@ -1,13 +1,13 @@
 
 static int build_modify_temporary_physical_name(
     const struct planned_alter_table_modify_column *plan,
-    const struct mylite_catalog_mutation *mutation,
+    uint64_t generation,
     char *destination,
     size_t destination_size
 ) {
     int written = 0;
 
-    if (plan == NULL || mutation == NULL || destination == NULL || destination_size == 0U) {
+    if (plan == NULL || destination == NULL || destination_size == 0U) {
         return MYLITE_MISUSE;
     }
 
@@ -16,7 +16,7 @@ static int build_modify_temporary_physical_name(
         destination_size,
         "_mylite_user_table_%" PRId64 "_modify_%" PRIu64,
         plan->table.table_id,
-        mylite_catalog_mutation_generation(mutation)
+        generation
     );
     if (written < 0 || (size_t)written >= destination_size) {
         return MYLITE_NOMEM;
@@ -74,7 +74,10 @@ static int build_alter_table_modify_create_sql(
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = mylite_dynamic_string_append(&string, "CREATE TABLE ");
+    rc = mylite_dynamic_string_append(
+        &string,
+        plan->is_temporary ? "CREATE TEMPORARY TABLE " : "CREATE TABLE "
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_quoted_identifier(&string, temporary_physical_name);
     }

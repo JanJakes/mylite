@@ -12,6 +12,9 @@ static int execute_insert_from_plan(
     if (plan->has_auto_increment) {
         counters.auto_increment_next_after_rows = plan->auto_increment_next;
     }
+    if (rc == MYLITE_OK && plan->has_auto_increment) {
+        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
+    }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
     }
@@ -49,6 +52,14 @@ static int execute_insert_from_plan(
         rollback_statement_transaction(database, &transaction);
     }
     free(sql);
+    if (rc == MYLITE_OK && plan->has_auto_increment &&
+        counters.auto_increment_next_after_rows != plan->auto_increment_next) {
+        rc = record_persistent_auto_increment_high_water(
+            database,
+            &plan->table,
+            counters.auto_increment_next_after_rows
+        );
+    }
 
     if (rc != MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {
@@ -94,6 +105,9 @@ static int execute_load_data_infile_from_plan(
 
     if (plan->insert.has_auto_increment) {
         counters.auto_increment_next_after_rows = plan->insert.auto_increment_next;
+    }
+    if (rc == MYLITE_OK && plan->insert.has_auto_increment) {
+        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->insert.table);
     }
     if (rc == MYLITE_OK) {
         errno = 0;
@@ -147,6 +161,14 @@ static int execute_load_data_infile_from_plan(
         rollback_statement_transaction(database, &transaction);
     }
     free(sql);
+    if (rc == MYLITE_OK && plan->insert.has_auto_increment &&
+        counters.auto_increment_next_after_rows != plan->insert.auto_increment_next) {
+        rc = record_persistent_auto_increment_high_water(
+            database,
+            &plan->insert.table,
+            counters.auto_increment_next_after_rows
+        );
+    }
 
     if (rc != MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {

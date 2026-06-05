@@ -52,6 +52,7 @@ struct expected_statement {
 };
 
 static int test_auto_increment_success_metadata_persistence_and_mutation(void);
+static int test_auto_increment_user_rollback_high_water(void);
 static int test_auto_increment_type_families_and_diagnostics(void);
 static int test_auto_increment_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -98,6 +99,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_auto_increment_success_metadata_persistence_and_mutation();
+    failures += test_auto_increment_user_rollback_high_water();
     failures += test_auto_increment_type_families_and_diagnostics();
     failures += test_auto_increment_independent_handles();
 
@@ -625,6 +627,189 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
     mylite_close(database);
     remove_related_files(path);
 
+    return failures;
+}
+
+static int test_auto_increment_user_rollback_high_water(void) {
+    static const char *const transaction_last_insert[] = {"1"};
+    static const char *const transaction_empty_count[] = {"0"};
+    static const char *const transaction_generated_row[] = {"2", "20"};
+    static const char *const transaction_show_create[] = {
+        "tx",
+        "CREATE TABLE `tx` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const explicit_rollback_row[] = {"11", "20"};
+    static const char *const update_rollback_rows[] = {"1", "10", "21", "30"};
+    static const char *const savepoint_rollback_row[] = {"2", "20"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "rollback") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open rollback file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)");
+    failures += expect_statement_ok(database, "START TRANSACTION");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO tx(v) VALUES(10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = transaction_last_insert,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "persistent rollback preserves LAST_INSERT_ID",
+        }
+    );
+    failures += expect_statement_ok(database, "ROLLBACK");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = transaction_last_insert,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "persistent rollback preserves session insert id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM tx",
+            .values = transaction_empty_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "persistent rollback removes row",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO tx(v) VALUES(20)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM tx",
+            .values = transaction_generated_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "persistent rollback does not reuse generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE tx",
+            .values = transaction_show_create,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "persistent rollback advances durable counter",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE explicit_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(database, "START TRANSACTION");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO explicit_tx(id, v) VALUES(10, 10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_ok(database, "ROLLBACK");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO explicit_tx(v) VALUES(20)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM explicit_tx",
+            .values = explicit_rollback_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "persistent rollback preserves explicit high counter",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE update_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO update_tx(v) VALUES(10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_ok(database, "START TRANSACTION");
+    failures += expect_statement_result(
+        database,
+        "UPDATE update_tx SET id = 20 WHERE id = 1",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_ok(database, "ROLLBACK");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO update_tx(v) VALUES(30)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM update_tx ORDER BY id",
+            .values = update_rollback_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "persistent rollback preserves update high counter",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE savepoint_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(database, "START TRANSACTION");
+    failures += expect_statement_ok(database, "SAVEPOINT s");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO savepoint_tx(v) VALUES(10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_ok(database, "ROLLBACK TO SAVEPOINT s");
+    failures += expect_statement_ok(database, "COMMIT");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO savepoint_tx(v) VALUES(20)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM savepoint_tx",
+            .values = savepoint_rollback_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "savepoint rollback does not reuse generated id",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

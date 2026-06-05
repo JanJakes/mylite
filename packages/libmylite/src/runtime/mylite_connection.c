@@ -278,6 +278,10 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.prepared_statements = NULL;
     database->session.prepared_statement_count = 0U;
     database->session.prepared_statement_capacity = 0U;
+    free(database->session.auto_increment_high_waters);
+    database->session.auto_increment_high_waters = NULL;
+    database->session.auto_increment_high_water_count = 0U;
+    database->session.auto_increment_high_water_capacity = 0U;
     mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
@@ -394,6 +398,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->prepared_statements = NULL;
     session->prepared_statement_count = 0U;
     session->prepared_statement_capacity = 0U;
+    session->auto_increment_high_waters = NULL;
+    session->auto_increment_high_water_count = 0U;
+    session->auto_increment_high_water_capacity = 0U;
     session->has_timestamp_override = false;
     session->timestamp_override = 0;
     session->active_statement_time = 0;

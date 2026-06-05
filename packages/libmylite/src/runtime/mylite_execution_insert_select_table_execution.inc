@@ -70,8 +70,14 @@ static int execute_insert_select_table(
     const struct planned_insert_select *plan,
     struct insert_select_table_execution *execution
 ) {
-    int rc = begin_statement_transaction(database, &execution->transaction);
+    int rc = MYLITE_OK;
 
+    if (plan->target.has_auto_increment) {
+        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->target.table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = begin_statement_transaction(database, &execution->transaction);
+    }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, execution->drop_sql);
     }
@@ -107,6 +113,14 @@ static int execute_insert_select_table(
     }
     if (rc != MYLITE_OK) {
         rollback_statement_transaction(database, &execution->transaction);
+    }
+    if (rc == MYLITE_OK && plan->target.has_auto_increment &&
+        execution->counters.auto_increment_next_after_rows != plan->target.auto_increment_next) {
+        rc = record_persistent_auto_increment_high_water(
+            database,
+            &plan->target.table,
+            execution->counters.auto_increment_next_after_rows
+        );
     }
 
     return rc;

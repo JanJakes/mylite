@@ -117,6 +117,11 @@ slice:
   rather than copying the source counter.
 - `TRUNCATE TABLE` removes rows and resets the next generated value to `1` for
   the admitted InnoDB/default-mode surface.
+- Successfully allocated generated values, explicit high insert values, and
+  explicit high update values remain consumed when a user transaction rolls
+  back. The affected rows roll back, and `LAST_INSERT_ID()` remains the value
+  observed inside the rolled-back transaction, but later generated values do
+  not reuse the consumed counter values.
 - When a small integer auto-increment column reaches its maximum value, the
   next generated insert fails with duplicate-key error `1062` using the maximum
   key value. When the stored next value already exceeds the column maximum
@@ -407,8 +412,14 @@ duplicate-key error `1062` using the maximum key value.
 
 Insert execution must be statement-atomic. Row writes, counter changes, and the
 new session `LAST_INSERT_ID()` value become visible only after the SQLite
-transaction and catalog counter update commit. On failure or rollback, rows and
-counters remain unchanged, and `LAST_INSERT_ID()` remains unchanged.
+statement transaction and catalog counter update commit. On statement failure,
+rows and counters remain unchanged, and `LAST_INSERT_ID()` remains unchanged.
+After a successful statement inside an explicit user transaction, MyLite tracks
+the highest persistent auto-increment counter value outside the user
+transaction. If the user transaction later rolls back, rows roll back but the
+consumed counter high-water mark is restored so a later generated value is not
+reused. `ROLLBACK TO SAVEPOINT` may roll back catalog writes inside SQLite;
+the same high-water mark is reconciled before the final `COMMIT`.
 
 The durable counter persists across close/reopen. Deleting rows does not reset
 the counter. `TRUNCATE TABLE` resets the counter to `1` after deleting rows.
@@ -541,6 +552,9 @@ Cover:
   diagnostics where auto-increment code touches those paths;
 - reopen persistence of rows, counters, and `LAST_INSERT_ID()` session
   isolation;
+- explicit transaction rollback and savepoint rollback preserving consumed
+  generated, explicit-insert, and explicit-update counter high-water marks
+  while rolling back rows;
 - `DELETE` preserving the counter and `TRUNCATE` resetting it;
 - `CREATE TABLE ... LIKE` cloning the attribute and resetting the counter;
 - update of the auto-increment column advancing the counter when the new value

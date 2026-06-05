@@ -184,6 +184,57 @@ expect_show_table_status_auto_increment_after_sql \
 "INSERT INTO status_t (v) VALUES (110);" \
     "$DATABASE"
 
+rollback_expected=$(cat <<\EXPECTED
+1
+1
+0
+2:20
+rollback_t	CREATE TABLE `rollback_t` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `v` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+11:20
+1:10,21:30
+2:20
+EXPECTED
+)
+expect_output \
+    "transaction rollback consumes auto increment values" \
+    "$rollback_expected" \
+    "CREATE TABLE rollback_t (id INT AUTO_INCREMENT PRIMARY KEY, v INT); "\
+"START TRANSACTION; "\
+"INSERT INTO rollback_t(v) VALUES(10); "\
+"SELECT LAST_INSERT_ID(); "\
+"ROLLBACK; "\
+"SELECT LAST_INSERT_ID(); "\
+"SELECT COUNT(*) FROM rollback_t; "\
+"INSERT INTO rollback_t(v) VALUES(20); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM rollback_t; "\
+"SHOW CREATE TABLE rollback_t; "\
+"CREATE TABLE rollback_explicit (id INT AUTO_INCREMENT PRIMARY KEY, v INT); "\
+"START TRANSACTION; "\
+"INSERT INTO rollback_explicit(id, v) VALUES(10, 10); "\
+"ROLLBACK; "\
+"INSERT INTO rollback_explicit(v) VALUES(20); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM rollback_explicit; "\
+"CREATE TABLE rollback_update (id INT AUTO_INCREMENT PRIMARY KEY, v INT); "\
+"INSERT INTO rollback_update(v) VALUES(10); "\
+"START TRANSACTION; "\
+"UPDATE rollback_update SET id = 20 WHERE id = 1; "\
+"ROLLBACK; "\
+"INSERT INTO rollback_update(v) VALUES(30); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM rollback_update; "\
+"CREATE TABLE rollback_savepoint (id INT AUTO_INCREMENT PRIMARY KEY, v INT); "\
+"START TRANSACTION; "\
+"SAVEPOINT s; "\
+"INSERT INTO rollback_savepoint(v) VALUES(10); "\
+"ROLLBACK TO SAVEPOINT s; "\
+"COMMIT; "\
+"INSERT INTO rollback_savepoint(v) VALUES(20); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM rollback_savepoint;" \
+    "$DATABASE"
+
 insert_set_expected=$(cat <<\EXPECTED
 1	0	1
 1:10

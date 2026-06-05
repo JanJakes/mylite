@@ -3869,6 +3869,21 @@ static int execute_start_transaction_statement(
 );
 static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result);
+static int ensure_persistent_auto_increment_high_water_slot(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int record_persistent_auto_increment_high_water(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t next_value
+);
+static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *database);
+static int apply_persistent_auto_increment_high_water(
+    struct mylite_db *database,
+    const struct mylite_session_auto_increment_high_water *high_water
+);
+static void clear_persistent_auto_increment_high_waters(struct mylite_db *database);
 static int reconcile_temporary_physical_tables_after_user_rollback(struct mylite_db *database);
 static int temporary_physical_table_exists(
     struct mylite_db *database,
@@ -15203,7 +15218,8 @@ static int advance_auto_increment_after_update(
     struct mylite_db *database,
     const struct planned_update *plan,
     const struct planned_value *assignment_value,
-    int64_t affected_rows
+    int64_t affected_rows,
+    int64_t *out_auto_increment_next
 );
 static int update_table_auto_increment_next(
     struct mylite_db *database,

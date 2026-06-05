@@ -21,8 +21,10 @@ unsupported.
 The current generated `AUTO_INCREMENT` DML subset honors session-local
 `auto_increment_increment` and `auto_increment_offset` values for supported
 persistent and temporary tables when `1 <= offset <= increment <= 65535`.
-Mutable global values and the unclear MySQL edge case where offset exceeds the
-increment remain deferred.
+For persistent tables, generated values and explicit high insert/update values
+consumed by successful statements inside a user transaction are not reused after
+full or savepoint rollback. Mutable global values and the unclear MySQL edge
+case where offset exceeds the increment remain deferred.
 
 Ordinary non-strict DML has a limited implicit-default adjustment surface. When
 neither `STRICT_TRANS_TABLES` nor `STRICT_ALL_TABLES` is active, supported

@@ -8,6 +8,7 @@ static int execute_update_from_plan(
     bool matches_any_row = false;
     uint64_t matched_row_count = 0U;
     int64_t affected_rows = 0;
+    int64_t auto_increment_next_after_update = plan->table.auto_increment_next;
     int rc = MYLITE_OK;
 
     if (plan->generated_default_noop) {
@@ -17,6 +18,9 @@ static int execute_update_from_plan(
 
     rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
 
+    if (rc == MYLITE_OK && column_descriptor_is_auto_increment(&plan->assignment_column)) {
+        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
+    }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
     }
@@ -55,7 +59,8 @@ static int execute_update_from_plan(
             database,
             plan,
             &executable_plan.assignment_value,
-            affected_rows
+            affected_rows,
+            &auto_increment_next_after_update
         );
     }
     if (rc == MYLITE_OK) {
@@ -74,6 +79,13 @@ static int execute_update_from_plan(
         rollback_statement_transaction(database, &transaction);
     }
     executable_update_deinit(&executable_plan);
+    if (rc == MYLITE_OK && auto_increment_next_after_update != plan->table.auto_increment_next) {
+        rc = record_persistent_auto_increment_high_water(
+            database,
+            &plan->table,
+            auto_increment_next_after_update
+        );
+    }
 
     if (rc != MYLITE_OK) {
         return report_update_execution_error(database, rc);
@@ -498,12 +510,8 @@ static int append_update_integer_string_adjustment_diagnostic(
         return rc;
     }
 
-    parse_result = mylite_execution_parse_dml_integer_string_text(
-        text,
-        text_length,
-        &magnitude,
-        &is_negative
-    );
+    parse_result =
+        mylite_execution_parse_dml_integer_string_text(text, text_length, &magnitude, &is_negative);
     if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         rc = append_incorrect_integer_value_warning(database, text, column->name, row_number);
     } else if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OVERFLOW) {
@@ -1112,8 +1120,12 @@ static int handle_parent_update_cascade_unique_conflict(
     char record_value[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY] = "";
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc =
-        mylite_execution_load_table_columns(database, foreign_key->child_table.table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(
+        database,
+        foreign_key->child_table.table_id,
+        &columns,
+        &column_count
+    );
 
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
@@ -1212,7 +1224,10 @@ static int reject_unsupported_recursive_foreign_key_action(
         set_unsupported_error(database, "recursive foreign-key action is not supported");
         rc = MYLITE_ERROR;
     }
-    mylite_execution_loaded_foreign_key_infos_deinit(&child_parent_foreign_keys, &child_parent_foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &child_parent_foreign_keys,
+        &child_parent_foreign_key_count
+    );
     return rc;
 }
 
@@ -1805,12 +1820,16 @@ static int advance_auto_increment_after_update(
     struct mylite_db *database,
     const struct planned_update *plan,
     const struct planned_value *assignment_value,
-    int64_t affected_rows
+    int64_t affected_rows,
+    int64_t *out_auto_increment_next
 ) {
     struct integer_column_range range = {0};
     int64_t next_value = plan->table.auto_increment_next;
     int rc = MYLITE_OK;
 
+    if (out_auto_increment_next != NULL) {
+        *out_auto_increment_next = plan->table.auto_increment_next;
+    }
     if (planned_update_has_multiple_assignments(plan) || affected_rows <= 0 ||
         !column_descriptor_is_auto_increment(&plan->assignment_column) ||
         assignment_value->is_null || assignment_value->is_text || assignment_value->integer <= 0) {
@@ -1837,6 +1856,9 @@ static int advance_auto_increment_after_update(
     }
     if (rc == MYLITE_OK && next_value != plan->table.auto_increment_next) {
         rc = update_table_auto_increment_next(database, &plan->table, next_value);
+        if (rc == MYLITE_OK && out_auto_increment_next != NULL) {
+            *out_auto_increment_next = next_value;
+        }
     }
 
     return rc;

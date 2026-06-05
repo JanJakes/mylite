@@ -121,6 +121,11 @@ struct mylite_session_prepared_statement {
     size_t parameter_count;
 };
 
+struct mylite_session_auto_increment_high_water {
+    int64_t table_id;
+    int64_t next_value;
+};
+
 enum mylite_transaction_isolation {
     MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ = 0,
     MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED = 1,
@@ -166,6 +171,9 @@ struct mylite_session_state {
     struct mylite_session_prepared_statement *prepared_statements;
     size_t prepared_statement_count;
     size_t prepared_statement_capacity;
+    struct mylite_session_auto_increment_high_water *auto_increment_high_waters;
+    size_t auto_increment_high_water_count;
+    size_t auto_increment_high_water_capacity;
     int64_t timestamp_override;
     int64_t active_statement_time;
     struct mylite_temporary_catalog temporary_catalog;

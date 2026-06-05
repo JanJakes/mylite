@@ -52,11 +52,18 @@ static int execute_start_transaction_statement(
 
     clear_session_table_locks(database);
     if (database->session.user_transaction_active) {
-        rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+        rc = reconcile_persistent_auto_increment_high_waters(database);
+        if (rc == MYLITE_OK) {
+            rc = normalize_sqlite_control_rc(
+                database,
+                execute_sqlite_control_sql(database, "COMMIT")
+            );
+        }
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
             clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
+            clear_persistent_auto_increment_high_waters(database);
         }
     }
     if (rc == MYLITE_OK) {
@@ -96,11 +103,18 @@ static int execute_commit_statement(struct mylite_db *database, mylite_result **
     }
 
     if (database->session.user_transaction_active) {
-        rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+        rc = reconcile_persistent_auto_increment_high_waters(database);
+        if (rc == MYLITE_OK) {
+            rc = normalize_sqlite_control_rc(
+                database,
+                execute_sqlite_control_sql(database, "COMMIT")
+            );
+        }
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
             clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
+            clear_persistent_auto_increment_high_waters(database);
         }
     }
     if (rc != MYLITE_OK) {
@@ -129,6 +143,12 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
             clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
             rc = reconcile_temporary_physical_tables_after_user_rollback(database);
+            if (rc == MYLITE_OK) {
+                rc = reconcile_persistent_auto_increment_high_waters(database);
+            }
+            if (rc == MYLITE_OK) {
+                clear_persistent_auto_increment_high_waters(database);
+            }
         }
     }
     if (rc != MYLITE_OK) {
@@ -138,6 +158,159 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
 
     mylite_result_set_affected_rows(result, 0);
     return finish_successful_result(database, result, out_result);
+}
+
+static int ensure_persistent_auto_increment_high_water_slot(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_session_state *session = NULL;
+    struct mylite_session_auto_increment_high_water *high_waters = NULL;
+    size_t new_capacity = 0U;
+
+    if (database == NULL || table == NULL || !database->session.user_transaction_active ||
+        table->kind != MYLITE_CATALOG_TABLE_KIND_BASE || table->table_id <= 0) {
+        return MYLITE_OK;
+    }
+
+    session = &database->session;
+    for (size_t index = 0U; index < session->auto_increment_high_water_count; ++index) {
+        if (session->auto_increment_high_waters[index].table_id == table->table_id) {
+            return MYLITE_OK;
+        }
+    }
+
+    if (session->auto_increment_high_water_count == session->auto_increment_high_water_capacity) {
+        new_capacity = session->auto_increment_high_water_capacity == 0U
+                           ? 4U
+                           : session->auto_increment_high_water_capacity * 2U;
+        if (new_capacity < session->auto_increment_high_water_capacity ||
+            new_capacity > SIZE_MAX / sizeof(*high_waters)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        high_waters = (struct mylite_session_auto_increment_high_water *)
+            realloc(session->auto_increment_high_waters, new_capacity * sizeof(*high_waters));
+        if (high_waters == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        session->auto_increment_high_waters = high_waters;
+        session->auto_increment_high_water_capacity = new_capacity;
+    }
+
+    session->auto_increment_high_waters[session->auto_increment_high_water_count] =
+        (struct mylite_session_auto_increment_high_water){
+            .table_id = table->table_id,
+            .next_value = 0,
+        };
+    ++session->auto_increment_high_water_count;
+    return MYLITE_OK;
+}
+
+static int record_persistent_auto_increment_high_water(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t next_value
+) {
+    struct mylite_session_state *session = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || table == NULL || !database->session.user_transaction_active ||
+        table->kind != MYLITE_CATALOG_TABLE_KIND_BASE || table->table_id <= 0 || next_value <= 0) {
+        return MYLITE_OK;
+    }
+
+    session = &database->session;
+    for (size_t index = 0U; index < session->auto_increment_high_water_count; ++index) {
+        struct mylite_session_auto_increment_high_water *high_water =
+            &session->auto_increment_high_waters[index];
+
+        if (high_water->table_id == table->table_id) {
+            if (next_value > high_water->next_value) {
+                high_water->next_value = next_value;
+            }
+            return MYLITE_OK;
+        }
+    }
+
+    rc = ensure_persistent_auto_increment_high_water_slot(database, table);
+    for (size_t index = 0U; rc == MYLITE_OK && index < session->auto_increment_high_water_count;
+         ++index) {
+        struct mylite_session_auto_increment_high_water *high_water =
+            &session->auto_increment_high_waters[index];
+
+        if (high_water->table_id == table->table_id) {
+            high_water->next_value = next_value;
+            break;
+        }
+    }
+    return rc;
+}
+
+static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *database) {
+    struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    int rc = MYLITE_OK;
+
+    if (session == NULL || session->auto_increment_high_water_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < session->auto_increment_high_water_count;
+         ++index) {
+        rc = apply_persistent_auto_increment_high_water(
+            database,
+            &session->auto_increment_high_waters[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to reconcile auto-increment counters");
+    }
+    return rc;
+}
+
+static int apply_persistent_auto_increment_high_water(
+    struct mylite_db *database,
+    const struct mylite_session_auto_increment_high_water *high_water
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    if (high_water->table_id <= 0 || high_water->next_value <= 0) {
+        return MYLITE_OK;
+    }
+
+    rc = prepare_sqlite_statement(
+        database,
+        "UPDATE _mylite_catalog_tables "
+        "SET auto_increment_next = ?1 "
+        "WHERE table_id = ?2 AND auto_increment_next < ?1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_bind_int64(statement, 1, (sqlite3_int64)high_water->next_value);
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_bind_int64(statement, 2, (sqlite3_int64)high_water->table_id);
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    return finalize_sqlite_statement(statement, rc);
+}
+
+static void clear_persistent_auto_increment_high_waters(struct mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+
+    database->session.auto_increment_high_water_count = 0U;
 }
 
 static int reconcile_temporary_physical_tables_after_user_rollback(struct mylite_db *database) {

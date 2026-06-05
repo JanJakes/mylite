@@ -67,11 +67,15 @@ static int commit_active_user_transaction_for_ddl(struct mylite_db *database) {
         return MYLITE_OK;
     }
 
-    rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+    rc = reconcile_persistent_auto_increment_high_waters(database);
+    if (rc == MYLITE_OK) {
+        rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+    }
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = false;
         clear_active_transaction_characteristics(database);
         clear_user_savepoints(database);
+        clear_persistent_auto_increment_high_waters(database);
     }
     return rc;
 }

@@ -77,3 +77,55 @@ jobs:
 
       - name: Run clang-tidy
         run: cmake --build --preset tidy
+
+  php-extensions:
+    name: php-extensions
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install PHP build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build php-cli php-dev
+
+      - name: Configure
+        run: cmake --preset php-dev
+
+      - name: Build
+        run: cmake --build --preset php-dev
+
+      - name: Test
+        run: ctest --preset php-dev -R '^php-ext' --output-on-failure
+
+  wordpress-phpunit:
+    name: wordpress-phpunit-mysqli-mylite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      MYLITE_WORDPRESS_REF: 6ddfc9d9b532c6e95c1266165149815895e2eb56
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show runner resources
+        run: |
+          df -h .
+          free -h
+          docker version
+
+      - name: Run WordPress PHPUnit test suite
+        run: tools/wordpress-phpunit-mysqli-mylite --filter 'Tests_DB::test_check_connection_returns_true_when_there_is_a_connection'
+
+      - name: Show generated artifact sizes
+        if: always()
+        run: |
+          du -sh \
+            build/wordpress-tests.mylite \
+            build/wordpress-develop \
+            build/wordpress-phpunit-tools \
+            build/wordpress-php-mylite \
+            2>/dev/null || true
+          df -h .

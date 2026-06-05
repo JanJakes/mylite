@@ -1089,7 +1089,12 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     static const char *const unchanged_nullable[] = {NULL, "1"};
     static const char *const unchanged_range[] = {"2147483648"};
     static const char *const multi_modify_columns[] = {
-        "a", "bigint", "YES", "b", "bigint", "NO",
+        "a",
+        "bigint",
+        "YES",
+        "b",
+        "bigint",
+        "NO",
     };
     static const char *const multi_modify_values[] = {"1", "2", "3", "4"};
     char path[test_path_capacity];
@@ -1288,11 +1293,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
         "ALTER TABLE multi_modify MODIFY a BIGINT, MODIFY b BIGINT NOT NULL",
         &result
     );
-    failures += expect_size(
-        mylite_result_column_count(result),
-        0U,
-        "multi modify column count"
-    );
+    failures += expect_size(mylite_result_column_count(result), 0U, "multi modify column count");
     failures += expect_size(mylite_result_row_count(result), 0U, "multi modify row count");
     failures += expect_int64(mylite_result_affected_rows(result), 0, "multi modify affected");
     mylite_result_free(result);

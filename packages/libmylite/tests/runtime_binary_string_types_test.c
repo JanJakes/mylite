@@ -310,9 +310,11 @@ static int test_binary_success_persistence_and_introspection(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures +=
-        expect_statement_ok(database, "CREATE TABLE bit_binary (id INT, b BINARY(2), "
-                                      "vb VARBINARY(2), bl BLOB)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE bit_binary (id INT, b BINARY(2), "
+        "vb VARBINARY(2), bl BLOB)"
+    );
     failures += expect_dml_ok(
         database,
         "INSERT INTO bit_binary VALUES "

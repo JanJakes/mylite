@@ -73,8 +73,7 @@ static void like_binary_sqlite_callback(sqlite3_context *context, int argc, sqli
         sqlite3_result_error(context, "invalid _mylite_like_binary call", -1);
         return;
     }
-    if (sqlite3_value_type(argv[0]) == SQLITE_NULL ||
-        sqlite3_value_type(argv[1]) == SQLITE_NULL) {
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL) {
         sqlite3_result_null(context);
         return;
     }

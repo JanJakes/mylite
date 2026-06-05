@@ -526,21 +526,16 @@ static int test_current_timestamp_defaults_updates_metadata_and_persistence(void
             .context = "explicit current timestamp assignment",
         }
     );
-    failures += expect_statement_ok(
-        database,
-        "CREATE TABLE timestamp_predicate (id INT, v DATETIME)"
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE timestamp_predicate (id INT, v DATETIME)");
     failures += expect_dml_ok(
         database,
         "INSERT INTO timestamp_predicate VALUES (1, CURRENT_TIMESTAMP()), "
         "(2, '2023-01-01 00:00:00')",
         2
     );
-    failures += expect_dml_ok(
-        database,
-        "DELETE FROM timestamp_predicate WHERE v = CURRENT_TIMESTAMP()",
-        1
-    );
+    failures +=
+        expect_dml_ok(database, "DELETE FROM timestamp_predicate WHERE v = CURRENT_TIMESTAMP()", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){

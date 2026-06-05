@@ -191,7 +191,10 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;"
     );
     failures += expect_set_ok(database, "/*!50503 SET character_set_client = latin1 */;");
-    failures += expect_set_ok(database, "/*!40101 SET character_set_client = @OLD_CHARACTER_SET_CLIENT */;");
+    failures += expect_set_ok(
+        database,
+        "/*!40101 SET character_set_client = @OLD_CHARACTER_SET_CLIENT */;"
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -206,10 +209,7 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         database,
         "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;"
     );
-    failures += expect_set_ok(
-        database,
-        "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;"
-    );
+    failures += expect_set_ok(database, "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;");
     failures += expect_set_ok(
         database,
         "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;"

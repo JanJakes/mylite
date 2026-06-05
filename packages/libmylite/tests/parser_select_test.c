@@ -4122,11 +4122,8 @@ static int test_select_item_alias_clause(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT 1, BOGUS(1) FROM bogus;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT 1, BOGUS(1) FROM bogus;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
     select_list = parser_test_child_at(statement, 0U);
     {

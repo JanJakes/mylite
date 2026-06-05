@@ -1215,7 +1215,12 @@ static int test_change_column_diagnostics_and_rollback(void) {
     static const char *const unchanged_nullable[] = {NULL, "1"};
     static const char *const unchanged_range[] = {"2147483648"};
     static const char *const multi_change_columns[] = {
-        "c", "bigint", "YES", "d", "bigint", "NO",
+        "c",
+        "bigint",
+        "YES",
+        "d",
+        "bigint",
+        "NO",
     };
     static const char *const multi_change_values[] = {"1", "2", "3", "4"};
     char path[test_path_capacity];
@@ -1450,11 +1455,7 @@ static int test_change_column_diagnostics_and_rollback(void) {
         "ALTER TABLE multi_change CHANGE a c BIGINT, CHANGE b d BIGINT NOT NULL",
         &result
     );
-    failures += expect_size(
-        mylite_result_column_count(result),
-        0U,
-        "multi change column count"
-    );
+    failures += expect_size(mylite_result_column_count(result), 0U, "multi change column count");
     failures += expect_size(mylite_result_row_count(result), 0U, "multi change row count");
     failures += expect_int64(mylite_result_affected_rows(result), 0, "multi change affected");
     mylite_result_free(result);

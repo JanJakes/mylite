@@ -468,8 +468,10 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     failures += expect_drop_index_ok(database, "DROP INDEX `PRIMARY` ON primary_t");
     failures += expect_statement_ok(database, "CREATE TABLE primary_unquoted (id INT PRIMARY KEY)");
     failures += expect_drop_index_ok(database, "DROP INDEX PRIMARY ON primary_unquoted");
-    failures +=
-        expect_statement_ok(database, "CREATE TABLE primary_alter (id INT PRIMARY KEY, v INT UNIQUE)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE primary_alter (id INT PRIMARY KEY, v INT UNIQUE)"
+    );
     failures += expect_drop_index_ok(database, "ALTER TABLE primary_alter DROP INDEX `PRIMARY`");
     failures += expect_query_values(
         database,

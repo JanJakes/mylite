@@ -77,16 +77,52 @@ static int test_information_schema_constraints_queries(void) {
         "def", "app", "u_v",     "app", "constrained",   "UNIQUE",      "YES",
     };
     static const char *const named_primary_values[] = {
-        "def", "app", "c_unique", "app", "named_primary", "UNIQUE",      "YES",
-        "def", "app", "PRIMARY",  "app", "named_primary", "PRIMARY KEY", "YES",
+        "def",
+        "app",
+        "c_unique",
+        "app",
+        "named_primary",
+        "UNIQUE",
+        "YES",
+        "def",
+        "app",
+        "PRIMARY",
+        "app",
+        "named_primary",
+        "PRIMARY KEY",
+        "YES",
     };
     static const char *const alter_inline_values[] = {
-        "def", "app", "c",       "app", "alter_inline", "UNIQUE",      "YES",
-        "def", "app", "PRIMARY", "app", "alter_inline", "PRIMARY KEY", "YES",
+        "def",
+        "app",
+        "c",
+        "app",
+        "alter_inline",
+        "UNIQUE",
+        "YES",
+        "def",
+        "app",
+        "PRIMARY",
+        "app",
+        "alter_inline",
+        "PRIMARY KEY",
+        "YES",
     };
     static const char *const alter_modify_values[] = {
-        "def", "app", "b",       "app", "alter_modify", "UNIQUE",      "YES",
-        "def", "app", "PRIMARY", "app", "alter_modify", "PRIMARY KEY", "YES",
+        "def",
+        "app",
+        "b",
+        "app",
+        "alter_modify",
+        "UNIQUE",
+        "YES",
+        "def",
+        "app",
+        "PRIMARY",
+        "app",
+        "alter_modify",
+        "PRIMARY KEY",
+        "YES",
     };
     static const char *const key_column_usage_columns[] = {
         "CONSTRAINT_CATALOG",
@@ -449,19 +485,18 @@ static int test_information_schema_constraints_queries(void) {
         -1
     );
     failures += expect_statement_ok(database, "CREATE TABLE alter_inline (a INT)", -1);
-    failures += expect_statement_ok(database, "ALTER TABLE alter_inline ADD COLUMN b INT PRIMARY KEY", -1);
-    failures += expect_statement_ok(database, "ALTER TABLE alter_inline ADD COLUMN c INT UNIQUE", -1);
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE alter_inline ADD COLUMN b INT PRIMARY KEY", -1);
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE alter_inline ADD COLUMN c INT UNIQUE", -1);
     failures += expect_statement_ok(database, "CREATE TABLE alter_modify (a INT, b INT)", -1);
     failures += expect_statement_ok(
         database,
         "ALTER TABLE alter_modify CHANGE COLUMN a a INT PRIMARY KEY",
         -1
     );
-    failures += expect_statement_ok(
-        database,
-        "ALTER TABLE alter_modify MODIFY COLUMN b INT UNIQUE",
-        -1
-    );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE alter_modify MODIFY COLUMN b INT UNIQUE", -1);
     failures += expect_query(
         database,
         (struct expected_query){

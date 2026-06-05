@@ -163,8 +163,21 @@ static int test_unique_index_metadata_dml_and_persistence(void) {
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const full_prefix_show_index_rows[] = {
-        "full_prefix", "0", "name", "1",   "name", "A",  "0", NULL,
-        NULL,          "",  "BTREE", "",    "",     "YES", NULL,
+        "full_prefix",
+        "0",
+        "name",
+        "1",
+        "name",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
     };
     static const char *const inline_show_columns_rows[] = {
         "v",
@@ -322,8 +335,10 @@ static int test_unique_index_metadata_dml_and_persistence(void) {
             .context = "inline unique SHOW CREATE TABLE",
         }
     );
-    failures +=
-        expect_statement_ok(database, "CREATE TABLE full_prefix (name VARCHAR(20) NOT NULL DEFAULT '')");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE full_prefix (name VARCHAR(20) NOT NULL DEFAULT '')"
+    );
     failures +=
         expect_statement_ok(database, "ALTER TABLE full_prefix ADD UNIQUE INDEX name (name(20))");
     failures += expect_query_values(

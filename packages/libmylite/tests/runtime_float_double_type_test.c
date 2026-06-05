@@ -199,15 +199,24 @@ static int test_float_double_success_persistence_and_introspection(void) {
         "dn",  "double", "double",          "22", NULL, "NO",  "-2.25", NULL, NULL, NULL,
     };
     static const char *const scaled_default_show_columns_rows[] = {
-        "id",   "int",
-        "YES",  "",
-        NULL,   "",
-        "f",    "float(10,2)",
-        "NO",   "",
-        "0.00", "",
-        "d",    "double(10,2)",
-        "NO",   "",
-        "-2.50", "",
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "f",
+        "float(10,2)",
+        "NO",
+        "",
+        "0.00",
+        "",
+        "d",
+        "double(10,2)",
+        "NO",
+        "",
+        "-2.50",
+        "",
     };
     static const char *const scaled_default_row[] = {"1", "0.00", "-2.50"};
     static const char *const initial_rows[] = {

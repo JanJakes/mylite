@@ -492,17 +492,11 @@ static int test_show_table_status_where_filters(void) {
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
     };
     static const struct expected_status_row auto_and_numbers_rows[] = {
-        {.name = "auto_numbers",
-         .rows = "2",
-         .average_row_length = "8192",
-         .auto_increment = "3"},
+        {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
     };
     static const struct expected_status_row auto_numbers_row[] = {
-        {.name = "auto_numbers",
-         .rows = "2",
-         .average_row_length = "8192",
-         .auto_increment = "3"},
+        {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
     };
     static const struct expected_status_row name_case_row[] = {
         {.name = "NameCase", .rows = "0", .average_row_length = "0"},

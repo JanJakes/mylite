@@ -368,11 +368,8 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += create_empty_grouped_table(database, "empty_grouped_numbers");
     failures += create_grouped_table(database, "grouped_numbers");
     failures += create_string_grouped_table(database, "string_grouped");
-    failures += execute_ok(
-        database,
-        "CREATE TABLE no_group_having_names(name VARCHAR(20))",
-        &result
-    );
+    failures +=
+        execute_ok(database, "CREATE TABLE no_group_having_names(name VARCHAR(20))", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(

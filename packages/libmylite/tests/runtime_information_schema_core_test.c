@@ -107,33 +107,9 @@ static int test_information_schema_core_queries(void) {
         "AUTO_INCREMENT",
     };
     static const char *const table_values[] = {
-        "app",
-        "other",
-        "BASE TABLE",
-        "InnoDB",
-        "10",
-        "Dynamic",
-        "1",
-        "16384",
-        NULL,
-        "app",
-        "t",
-        "BASE TABLE",
-        "InnoDB",
-        "10",
-        "Dynamic",
-        "1",
-        "16384",
-        NULL,
-        "app",
-        "wp_users",
-        "BASE TABLE",
-        "InnoDB",
-        "10",
-        "Dynamic",
-        "0",
-        "16384",
-        NULL,
+        "app", "other",    "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
+        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
+        "app", "wp_users", "BASE TABLE", "InnoDB", "10", "Dynamic", "0", "16384", NULL,
     };
     static const char *const table_computed_columns[] = {"name", "engine", "data"};
     static const char *const table_computed_values[] = {"t", "InnoDB", "0"};
@@ -143,10 +119,18 @@ static int test_information_schema_core_queries(void) {
         "COLUMN_NAME",
     };
     static const char *const indexed_column_join_values[] = {
-        "bigint",  "PRIMARY",        "ID",
-        "varchar", "user_email",     "user_email",
-        "varchar", "user_login_key", "user_login",
-        "varchar", "user_nicename",  "user_nicename",
+        "bigint",
+        "PRIMARY",
+        "ID",
+        "varchar",
+        "user_email",
+        "user_email",
+        "varchar",
+        "user_login_key",
+        "user_login",
+        "varchar",
+        "user_nicename",
+        "user_nicename",
     };
     static const char *const with_union_column[] = {"name"};
     static const char *const with_union_values[] = {
@@ -336,8 +320,7 @@ static int test_information_schema_core_queries(void) {
                    "CAST(DATA_LENGTH / 1024 / 1024 AS UNSIGNED) AS data "
                    "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't' ORDER BY name ASC",
             .column_names = table_computed_columns,
-            .column_count =
-                sizeof(table_computed_columns) / sizeof(table_computed_columns[0]),
+            .column_count = sizeof(table_computed_columns) / sizeof(table_computed_columns[0]),
             .values = table_computed_values,
             .row_count = 1U,
             .context = "tables computed data length projection",
@@ -358,10 +341,9 @@ static int test_information_schema_core_queries(void) {
             .column_count =
                 sizeof(indexed_column_join_columns) / sizeof(indexed_column_join_columns[0]),
             .values = indexed_column_join_values,
-            .row_count = sizeof(indexed_column_join_values) /
-                         sizeof(indexed_column_join_values[0]) /
-                         (sizeof(indexed_column_join_columns) /
-                          sizeof(indexed_column_join_columns[0])),
+            .row_count =
+                sizeof(indexed_column_join_values) / sizeof(indexed_column_join_values[0]) /
+                (sizeof(indexed_column_join_columns) / sizeof(indexed_column_join_columns[0])),
             .context = "columns statistics join bridge rows",
         }
     );

@@ -889,11 +889,8 @@ static int test_create_table_foreign_key_statements(void) {
     statement = parser_test_child_at(result.root, 0U);
     items = parser_test_child_at(statement, 1U);
     column = parser_test_child_at(items, 0U);
-    failures += parser_test_expect_child_count(
-        column,
-        2U,
-        "ignored inline reference column child count"
-    );
+    failures +=
+        parser_test_expect_child_count(column, 2U, "ignored inline reference column child count");
     failures += parser_test_expect_span_text(
         parser_test_child_at(column, 0U),
         "parent_id",
@@ -1241,11 +1238,8 @@ static int test_drop_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "DROP INDEX PRIMARY ON drop_idx;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("DROP INDEX PRIMARY ON drop_idx;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
     failures += parser_test_expect_span_text(
         parser_test_child_at(statement, 0U),

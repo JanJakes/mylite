@@ -961,9 +961,24 @@ static int test_catalog_v33_scalar_expression_migration(void) {
 
 static int test_string_defaults_diagnostics(void) {
     static const char *const numeric_character_show_columns_rows[] = {
-        "v", "varchar(3)", "YES", "", "0", "",
-        "c", "char(3)",    "YES", "", "1", "",
-        "f", "varchar(5)", "YES", "", "0", "",
+        "v",
+        "varchar(3)",
+        "YES",
+        "",
+        "0",
+        "",
+        "c",
+        "char(3)",
+        "YES",
+        "",
+        "1",
+        "",
+        "f",
+        "varchar(5)",
+        "YES",
+        "",
+        "0",
+        "",
     };
     static const char *const numeric_character_show_create_rows[] = {
         "numeric_character_defaults",

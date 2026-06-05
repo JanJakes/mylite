@@ -361,12 +361,11 @@ static int test_insert_select_success_persistence_and_visibility(void) {
 
 static int test_insert_select_dual_source_values_and_diagnostics(void) {
     static const char *const inserted_rows[] = {
-        "1",  "dual",        "7", "2",  "nosource",     "7", "3",  "exists-app", "7",
-        "5",  "not-exists",  "7", "7",  "literal-true", "7", "10", "comparison", "7",
-        "11", "null-safe",   "7", "12", "logical",      "7", "13", "is-true",    "7",
-        "14", "is-false",    "7", "15", "is-null",      "7", "16", "is-unknown", "7",
-        "17", "is-not-true", "7", "18", "xor",          "7",
-        "21", "subquery-null", "7",
+        "1",  "dual",        "7", "2",  "nosource",     "7", "3",  "exists-app",    "7",
+        "5",  "not-exists",  "7", "7",  "literal-true", "7", "10", "comparison",    "7",
+        "11", "null-safe",   "7", "12", "logical",      "7", "13", "is-true",       "7",
+        "14", "is-false",    "7", "15", "is-null",      "7", "16", "is-unknown",    "7",
+        "17", "is-not-true", "7", "18", "xor",          "7", "21", "subquery-null", "7",
     };
     static const char *const select_visible[] = {"visible"};
     static const char *const zero_rows[] = {"0"};

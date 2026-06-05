@@ -9,7 +9,7 @@ function(mylite_add_developer_tool_targets)
   )
   list(SORT mylite_first_party_c_files)
 
-  find_program(MYLITE_CLANG_FORMAT_EXECUTABLE NAMES clang-format)
+  find_program(MYLITE_CLANG_FORMAT_EXECUTABLE NAMES clang-format-19 clang-format)
   if(MYLITE_CLANG_FORMAT_EXECUTABLE)
     add_custom_target(format
       COMMAND "${MYLITE_CLANG_FORMAT_EXECUTABLE}" -i ${mylite_first_party_c_files}
@@ -36,7 +36,7 @@ function(mylite_add_developer_tool_targets)
     )
   endif()
 
-  find_program(MYLITE_RUN_CLANG_TIDY_EXECUTABLE NAMES run-clang-tidy)
+  find_program(MYLITE_RUN_CLANG_TIDY_EXECUTABLE NAMES run-clang-tidy-19 run-clang-tidy)
   if(MYLITE_RUN_CLANG_TIDY_EXECUTABLE)
     set(mylite_run_clang_tidy_args
       -p "${CMAKE_BINARY_DIR}"

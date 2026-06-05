@@ -53,7 +53,7 @@ jobs:
         run: cmake --build --preset dev
 
       - name: Test
-        run: ctest --preset dev
+        run: ctest --preset dev --output-on-failure
 
   clang-tools:
     name: clang-format and clang-tidy
@@ -65,7 +65,7 @@ jobs:
       - name: Install clang tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang clang-format clang-tidy ninja-build
+          sudo apt-get install -y clang-19 clang-format-19 clang-tidy-19 ninja-build
 
       - name: Configure
         env:
@@ -116,8 +116,11 @@ jobs:
           free -h
           docker version
 
+      - name: Build WordPress PHPUnit environment
+        run: tools/wordpress-phpunit-mysqli-mylite build
+
       - name: Run WordPress PHPUnit test suite
-        run: tools/wordpress-phpunit-mysqli-mylite --filter 'Tests_DB::test_check_connection_returns_true_when_there_is_a_connection'
+        run: tools/wordpress-phpunit-mysqli-mylite test
 
       - name: Show generated artifact sizes
         if: always()

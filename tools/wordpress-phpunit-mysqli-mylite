@@ -44,7 +44,7 @@ COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 DOCKERFILE
 }
 
-run_suite() {
+run_container() {
   docker run --rm -i \
     --user "$(id -u):$(id -g)" \
     -e HOME=/tmp/mylite-home \
@@ -60,6 +60,10 @@ run_suite() {
     bash -s -- "$@" <<'CONTAINER'
 set -euo pipefail
 
+container_phase="${1:-run}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 php_wrapper="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}/mylite-wordpress-php"
 mylite_extension="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}/packages/php-ext-mylite/mylite.so"
 mysqli_extension="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}/packages/php-ext-mysqli-mylite/mysqli.so"
@@ -76,65 +80,16 @@ seconds_since() {
   echo "$((end - start))"
 }
 
-mkdir -p "${HOME}" "$(dirname "${MYLITE_WORDPRESS_DIR}")" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}"
-
-phase "Fetch WordPress develop"
-fetch_start="$(date +%s)"
-if [ ! -d "${MYLITE_WORDPRESS_DIR}/.git" ]; then
-  git init "${MYLITE_WORDPRESS_DIR}"
-  git -C "${MYLITE_WORDPRESS_DIR}" remote add origin "${MYLITE_WORDPRESS_REPO}"
-fi
-git -C "${MYLITE_WORDPRESS_DIR}" fetch --depth 1 origin "${MYLITE_WORDPRESS_REF}"
-git -C "${MYLITE_WORDPRESS_DIR}" checkout --detach FETCH_HEAD
-wordpress_sha="$(git -C "${MYLITE_WORDPRESS_DIR}" rev-parse HEAD)"
-echo "wordpress_sha=${wordpress_sha}"
-echo "wordpress_fetch_seconds=$(seconds_since "${fetch_start}")"
-
-phase "Build MyLite PHP extensions"
-build_start="$(date +%s)"
-cmake -S . -B "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}" -G Ninja \
-  -DMYLITE_WARNINGS_AS_ERRORS=ON \
-  -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
-  -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \
-  -DMYLITE_PHP_EXECUTABLE=/usr/local/bin/php
-cmake --build "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}"
-mkdir -p "${php_ini_dir}"
-cat > "${php_ini_dir}/mylite.ini" <<INI
-extension=${mylite_extension}
-extension=${mysqli_extension}
-INI
-cat > "${php_wrapper}" <<PHP
-#!/usr/bin/env sh
-export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${php_ini_dir}"
-exec /usr/local/bin/php "\$@"
-PHP
-chmod +x "${php_wrapper}"
-"${php_wrapper}" -r 'if (!extension_loaded("mylite") || !extension_loaded("mysqli") || !function_exists("mysqli_connect")) { exit(1); }'
-echo "mylite_build_seconds=$(seconds_since "${build_start}")"
-
-phase "Install WordPress PHPUnit dependencies"
-deps_start="$(date +%s)"
-composer --working-dir="${MYLITE_WORDPRESS_DIR}" install --no-interaction --no-progress --prefer-dist
-if [ ! -x "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" ]; then
-  composer --working-dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}" require --no-interaction --no-progress --prefer-dist phpunit/phpunit:^9.6
-fi
-echo "wordpress_dependency_seconds=$(seconds_since "${deps_start}")"
-
-phase "Prepare MyLite database"
-rm -f "${MYLITE_WORDPRESS_DB_PATH}"
-"${php_wrapper}" -r '
-$db = mysqli_connect($argv[1]);
-if (!$db) {
-    fwrite(STDERR, "connect failed: " . (mysqli_connect_error() ?? "") . PHP_EOL);
-    exit(1);
+require_executable() {
+  if [ ! -x "$1" ]; then
+    printf '%s\n' "missing executable: $1" >&2
+    printf '%s\n' "run tools/wordpress-phpunit-mysqli-mylite build first" >&2
+    exit 1
+  fi
 }
-if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
-    fwrite(STDERR, "create database failed: " . mysqli_error($db) . PHP_EOL);
-    exit(1);
-}
-' "${MYLITE_WORDPRESS_DB_PATH}"
 
-cat > "${MYLITE_WORDPRESS_DIR}/wp-tests-config.php" <<PHP
+write_wordpress_config() {
+  cat > "${MYLITE_WORDPRESS_DIR}/wp-tests-config.php" <<PHP
 <?php
 define( 'ABSPATH', __DIR__ . '/src/' );
 define( 'WP_DEFAULT_THEME', 'default' );
@@ -160,25 +115,133 @@ define( 'WP_TESTS_TITLE', 'Test Blog' );
 define( 'WP_PHP_BINARY', '${php_wrapper}' );
 define( 'WPLANG', '' );
 PHP
+}
 
-phase "Run WordPress PHPUnit"
-suite_start="$(date +%s)"
-set +e
-(
-  cd "${MYLITE_WORDPRESS_DIR}"
-  "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" "$@"
-)
-suite_status="$?"
-set -e
-echo "wordpress_phpunit_seconds=$(seconds_since "${suite_start}")"
-exit "${suite_status}"
+build_wordpress_phpunit_environment() {
+  mkdir -p "${HOME}" "$(dirname "${MYLITE_WORDPRESS_DIR}")" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}"
+
+  phase "Fetch WordPress develop"
+  fetch_start="$(date +%s)"
+  if [ ! -d "${MYLITE_WORDPRESS_DIR}/.git" ]; then
+    git init "${MYLITE_WORDPRESS_DIR}"
+    git -C "${MYLITE_WORDPRESS_DIR}" remote add origin "${MYLITE_WORDPRESS_REPO}"
+  fi
+  git -C "${MYLITE_WORDPRESS_DIR}" fetch --depth 1 origin "${MYLITE_WORDPRESS_REF}"
+  git -C "${MYLITE_WORDPRESS_DIR}" checkout --detach FETCH_HEAD
+  wordpress_sha="$(git -C "${MYLITE_WORDPRESS_DIR}" rev-parse HEAD)"
+  echo "wordpress_sha=${wordpress_sha}"
+  echo "wordpress_fetch_seconds=$(seconds_since "${fetch_start}")"
+
+  phase "Build MyLite PHP extensions"
+  build_start="$(date +%s)"
+  cmake -S . -B "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}" -G Ninja \
+    -DMYLITE_WARNINGS_AS_ERRORS=ON \
+    -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
+    -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \
+    -DMYLITE_PHP_EXECUTABLE=/usr/local/bin/php
+  cmake --build "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}"
+  mkdir -p "${php_ini_dir}"
+  cat > "${php_ini_dir}/mylite.ini" <<INI
+extension=${mylite_extension}
+extension=${mysqli_extension}
+INI
+  cat > "${php_wrapper}" <<PHP
+#!/usr/bin/env sh
+export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${php_ini_dir}"
+exec /usr/local/bin/php "\$@"
+PHP
+  chmod +x "${php_wrapper}"
+  "${php_wrapper}" -r 'if (!extension_loaded("mylite") || !extension_loaded("mysqli") || !function_exists("mysqli_connect")) { exit(1); }'
+  echo "mylite_build_seconds=$(seconds_since "${build_start}")"
+
+  phase "Install WordPress PHPUnit dependencies"
+  deps_start="$(date +%s)"
+  composer --working-dir="${MYLITE_WORDPRESS_DIR}" install --no-interaction --no-progress --prefer-dist
+  if [ ! -x "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" ]; then
+    composer --working-dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}" require --no-interaction --no-progress --prefer-dist phpunit/phpunit:^9.6
+  fi
+  echo "wordpress_dependency_seconds=$(seconds_since "${deps_start}")"
+
+  write_wordpress_config
+}
+
+run_wordpress_phpunit_suite() {
+  require_executable "${php_wrapper}"
+  require_executable "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit"
+
+  phase "Prepare MyLite database"
+  rm -f "${MYLITE_WORDPRESS_DB_PATH}"
+  "${php_wrapper}" -r '
+$db = mysqli_connect($argv[1]);
+if (!$db) {
+    fwrite(STDERR, "connect failed: " . (mysqli_connect_error() ?? "") . PHP_EOL);
+    exit(1);
+}
+if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
+    fwrite(STDERR, "create database failed: " . mysqli_error($db) . PHP_EOL);
+    exit(1);
+}
+' "${MYLITE_WORDPRESS_DB_PATH}"
+
+  write_wordpress_config
+
+  phase "Run WordPress PHPUnit"
+  suite_start="$(date +%s)"
+  set +e
+  (
+    cd "${MYLITE_WORDPRESS_DIR}"
+    "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" "$@"
+  )
+  suite_status="$?"
+  set -e
+  echo "wordpress_phpunit_seconds=$(seconds_since "${suite_start}")"
+  return "${suite_status}"
+}
+
+case "${container_phase}" in
+  build)
+    build_wordpress_phpunit_environment
+    ;;
+  test)
+    run_wordpress_phpunit_suite "$@"
+    ;;
+  *)
+    printf 'unknown WordPress PHPUnit phase: %s\n' "${container_phase}" >&2
+    exit 2
+    ;;
+esac
 CONTAINER
 }
 
+command="run"
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    build|test|run)
+      command="$1"
+      shift
+      ;;
+  esac
+fi
+
 overall_start="$(date +%s)"
-build_image
 set +e
-run_suite "$@"
+case "${command}" in
+  build)
+    build_image
+    run_container build
+    ;;
+  test)
+    run_container test "$@"
+    ;;
+  run)
+    build_image
+    run_container build && run_container test "$@"
+    ;;
+  *)
+    printf 'unknown command: %s\n' "${command}" >&2
+    false
+    ;;
+esac
 overall_status="$?"
 set -e
 overall_end="$(date +%s)"

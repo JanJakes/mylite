@@ -28,6 +28,7 @@ enum regexp_token_kind {
     REGEXP_TOKEN_ANY = 1,
     REGEXP_TOKEN_CLASS = 2,
     REGEXP_TOKEN_END_ANCHOR = 3,
+    REGEXP_TOKEN_OPTIONAL_LITERAL_SEQUENCE = 4,
 };
 
 enum regexp_quantifier {
@@ -49,6 +50,8 @@ struct regexp_token {
     bool class_is_negated;
     size_t range_start;
     size_t range_count;
+    size_t literal_sequence_start;
+    size_t literal_sequence_length;
 };
 
 struct mylite_regexp_program {
@@ -58,6 +61,8 @@ struct mylite_regexp_program {
     size_t token_count;
     struct regexp_class_range *ranges;
     size_t range_count;
+    unsigned char *literal_sequence_bytes;
+    size_t literal_sequence_length;
 };
 
 enum regexp_sqlite_function_kind {
@@ -238,6 +243,13 @@ static enum mylite_regexp_compile_status compile_atom_token(
     size_t *index,
     struct regexp_token *out_token
 );
+static enum mylite_regexp_compile_status compile_optional_literal_group_token(
+    struct mylite_regexp_program *program,
+    const char *pattern,
+    size_t pattern_length,
+    size_t *index,
+    struct regexp_token *out_token
+);
 static enum mylite_regexp_compile_status compile_class_token(
     struct mylite_regexp_program *program,
     const char *pattern,
@@ -251,11 +263,23 @@ static enum mylite_regexp_compile_status parse_class_byte(
     size_t *index,
     unsigned char *out_byte
 );
+static enum mylite_regexp_compile_status parse_literal_group_byte(
+    const char *pattern,
+    size_t pattern_length,
+    size_t *index,
+    unsigned char *out_byte
+);
 static enum mylite_regexp_compile_status parse_escaped_literal(
     const char *pattern,
     size_t pattern_length,
     size_t *index,
     unsigned char *out_byte
+);
+static enum mylite_regexp_compile_status parse_fixed_repetition_count(
+    const char *pattern,
+    size_t pattern_length,
+    size_t *index,
+    size_t *out_count
 );
 static bool is_supported_literal_escape(unsigned char byte);
 static bool is_supported_class_escape(unsigned char byte);
@@ -278,10 +302,19 @@ static enum mylite_regexp_compile_status append_token(
     struct mylite_regexp_program *program,
     struct regexp_token token
 );
+static enum mylite_regexp_compile_status append_repeated_token(
+    struct mylite_regexp_program *program,
+    struct regexp_token token,
+    size_t count
+);
 static enum mylite_regexp_compile_status append_class_range(
     struct mylite_regexp_program *program,
     unsigned char first,
     unsigned char last
+);
+static enum mylite_regexp_compile_status append_literal_sequence_byte(
+    struct mylite_regexp_program *program,
+    unsigned char byte
 );
 static unsigned char normalize_ascii_byte(
     const struct mylite_regexp_program *program,
@@ -303,6 +336,11 @@ static bool match_span_from(
 );
 static bool match_span_advance(
     const struct regexp_match_span_context *context,
+    struct regexp_match_span_position *position
+);
+static bool match_span_advance_optional_literal_sequence(
+    const struct regexp_match_span_context *context,
+    const struct regexp_token *token,
     struct regexp_match_span_position *position
 );
 static bool match_span_advance_one(
@@ -351,10 +389,26 @@ static bool match_token_suffix_from(
     size_t value_index,
     const unsigned char *matches
 );
+static bool match_optional_literal_sequence_suffix_from(
+    const struct mylite_regexp_program *program,
+    const struct regexp_token *token,
+    const unsigned char *value,
+    size_t value_length,
+    size_t token_index,
+    size_t value_index,
+    const unsigned char *matches
+);
 static bool token_matches_byte(
     const struct mylite_regexp_program *program,
     const struct regexp_token *token,
     unsigned char byte
+);
+static bool literal_sequence_matches_at(
+    const struct mylite_regexp_program *program,
+    const struct regexp_token *token,
+    const unsigned char *value,
+    size_t value_length,
+    size_t value_index
 );
 static bool regexp_byte_is_line_terminator(unsigned char byte);
 static bool class_contains_byte(
@@ -543,6 +597,7 @@ void mylite_regexp_program_free(void *program) {
 
     free(regexp_program->tokens);
     free(regexp_program->ranges);
+    free(regexp_program->literal_sequence_bytes);
     free(regexp_program);
 }
 
@@ -1540,6 +1595,14 @@ static enum mylite_regexp_compile_status compile_next_token(
         ++(*index);
         return append_token(program, token);
     }
+    if (byte == '(') {
+        status =
+            compile_optional_literal_group_token(program, pattern, pattern_length, index, &token);
+        if (status != MYLITE_REGEXP_COMPILE_OK) {
+            return status;
+        }
+        return append_token(program, token);
+    }
 
     status = compile_atom_token(program, pattern, pattern_length, index, &token);
     if (status != MYLITE_REGEXP_COMPILE_OK) {
@@ -1559,6 +1622,15 @@ static enum mylite_regexp_compile_status compile_next_token(
             token.quantifier = REGEXP_QUANTIFIER_ONE_OR_MORE;
             ++(*index);
             break;
+        case '{': {
+            size_t count = 0U;
+
+            status = parse_fixed_repetition_count(pattern, pattern_length, index, &count);
+            if (status != MYLITE_REGEXP_COMPILE_OK) {
+                return status;
+            }
+            return append_repeated_token(program, token, count);
+        }
         default:
             break;
         }
@@ -1602,6 +1674,45 @@ static enum mylite_regexp_compile_status compile_atom_token(
     out_token->kind = REGEXP_TOKEN_LITERAL;
     out_token->literal = normalize_ascii_byte(program, byte);
     ++(*index);
+    return MYLITE_REGEXP_COMPILE_OK;
+}
+
+static enum mylite_regexp_compile_status compile_optional_literal_group_token(
+    struct mylite_regexp_program *program,
+    const char *pattern,
+    size_t pattern_length,
+    size_t *index,
+    struct regexp_token *out_token
+) {
+    const size_t sequence_start = program->literal_sequence_length;
+    enum mylite_regexp_compile_status status = MYLITE_REGEXP_COMPILE_OK;
+
+    ++(*index);
+    if (*index >= pattern_length || pattern[*index] == ')') {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+
+    while (*index < pattern_length && pattern[*index] != ')') {
+        unsigned char byte = 0U;
+
+        status = parse_literal_group_byte(pattern, pattern_length, index, &byte);
+        if (status != MYLITE_REGEXP_COMPILE_OK) {
+            return status;
+        }
+        status = append_literal_sequence_byte(program, normalize_ascii_byte(program, byte));
+        if (status != MYLITE_REGEXP_COMPILE_OK) {
+            return status;
+        }
+    }
+    if (*index >= pattern_length || pattern[*index] != ')' || *index + 1U >= pattern_length ||
+        pattern[*index + 1U] != '?') {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+    *index += 2U;
+
+    out_token->kind = REGEXP_TOKEN_OPTIONAL_LITERAL_SEQUENCE;
+    out_token->literal_sequence_start = sequence_start;
+    out_token->literal_sequence_length = program->literal_sequence_length - sequence_start;
     return MYLITE_REGEXP_COMPILE_OK;
 }
 
@@ -1699,6 +1810,31 @@ static enum mylite_regexp_compile_status parse_class_byte(
     return MYLITE_REGEXP_COMPILE_OK;
 }
 
+static enum mylite_regexp_compile_status parse_literal_group_byte(
+    const char *pattern,
+    size_t pattern_length,
+    size_t *index,
+    unsigned char *out_byte
+) {
+    unsigned char byte = 0U;
+
+    if (*index >= pattern_length) {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+    byte = (unsigned char)pattern[*index];
+    if (byte == '\\') {
+        return parse_escaped_literal(pattern, pattern_length, index, out_byte);
+    }
+    if (byte > ascii_max || byte == '.' || byte == '^' || byte == '$' || byte == '[' ||
+        is_quantifier_byte(byte) || is_unsupported_regex_metacharacter(byte)) {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+
+    *out_byte = byte;
+    ++(*index);
+    return MYLITE_REGEXP_COMPILE_OK;
+}
+
 static enum mylite_regexp_compile_status parse_escaped_literal(
     const char *pattern,
     size_t pattern_length,
@@ -1716,6 +1852,41 @@ static enum mylite_regexp_compile_status parse_escaped_literal(
     }
     *out_byte = byte;
     *index += 2U;
+    return MYLITE_REGEXP_COMPILE_OK;
+}
+
+static enum mylite_regexp_compile_status parse_fixed_repetition_count(
+    const char *pattern,
+    size_t pattern_length,
+    size_t *index,
+    size_t *out_count
+) {
+    size_t count = 0U;
+    bool saw_digit = false;
+
+    if (*index >= pattern_length || pattern[*index] != '{') {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+    ++(*index);
+    while (*index < pattern_length && pattern[*index] >= '0' && pattern[*index] <= '9') {
+        const size_t digit = (size_t)(pattern[*index] - '0');
+
+        saw_digit = true;
+        if (count > (regexp_pattern_length_max - digit) / 10U) {
+            return MYLITE_REGEXP_COMPILE_TOO_LARGE;
+        }
+        count = (count * 10U) + digit;
+        ++(*index);
+    }
+    if (!saw_digit || *index >= pattern_length || pattern[*index] != '}') {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+    ++(*index);
+    if (count > regexp_pattern_length_max) {
+        return MYLITE_REGEXP_COMPILE_TOO_LARGE;
+    }
+
+    *out_count = count;
     return MYLITE_REGEXP_COMPILE_OK;
 }
 
@@ -1795,6 +1966,21 @@ static enum mylite_regexp_compile_status append_token(
     return MYLITE_REGEXP_COMPILE_OK;
 }
 
+static enum mylite_regexp_compile_status append_repeated_token(
+    struct mylite_regexp_program *program,
+    struct regexp_token token,
+    size_t count
+) {
+    for (size_t index = 0U; index < count; ++index) {
+        enum mylite_regexp_compile_status status = append_token(program, token);
+
+        if (status != MYLITE_REGEXP_COMPILE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_REGEXP_COMPILE_OK;
+}
+
 static enum mylite_regexp_compile_status append_class_range(
     struct mylite_regexp_program *program,
     unsigned char first,
@@ -1814,6 +2000,28 @@ static enum mylite_regexp_compile_status append_class_range(
     program->ranges[program->range_count] =
         (struct regexp_class_range){.first = first, .last = last};
     ++program->range_count;
+    return MYLITE_REGEXP_COMPILE_OK;
+}
+
+static enum mylite_regexp_compile_status append_literal_sequence_byte(
+    struct mylite_regexp_program *program,
+    unsigned char byte
+) {
+    unsigned char *bytes = NULL;
+
+    if (program->literal_sequence_length == SIZE_MAX / sizeof(*program->literal_sequence_bytes)) {
+        return MYLITE_REGEXP_COMPILE_TOO_LARGE;
+    }
+    bytes = (unsigned char *)realloc(
+        program->literal_sequence_bytes,
+        (program->literal_sequence_length + 1U) * sizeof(*program->literal_sequence_bytes)
+    );
+    if (bytes == NULL) {
+        return MYLITE_REGEXP_COMPILE_NOMEM;
+    }
+    program->literal_sequence_bytes = bytes;
+    program->literal_sequence_bytes[program->literal_sequence_length] = byte;
+    ++program->literal_sequence_length;
     return MYLITE_REGEXP_COMPILE_OK;
 }
 
@@ -1920,6 +2128,9 @@ static bool match_span_advance(
         ++position->token_index;
         return true;
     }
+    if (token->kind == REGEXP_TOKEN_OPTIONAL_LITERAL_SEQUENCE) {
+        return match_span_advance_optional_literal_sequence(context, token, position);
+    }
 
     if (position->value_index < context->value_length) {
         current_byte_matches =
@@ -1937,6 +2148,41 @@ static bool match_span_advance(
         return match_span_advance_repeated(context, token, true, position);
     }
     return false;
+}
+
+static bool match_span_advance_optional_literal_sequence(
+    const struct regexp_match_span_context *context,
+    const struct regexp_token *token,
+    struct regexp_match_span_position *position
+) {
+    if (literal_sequence_matches_at(
+            context->program,
+            token,
+            context->value,
+            context->value_length,
+            position->value_index
+        ) &&
+        match_table_get(
+            context->matches,
+            context->value_length,
+            position->token_index + 1U,
+            position->value_index + token->literal_sequence_length
+        )) {
+        ++position->token_index;
+        position->value_index += token->literal_sequence_length;
+        return true;
+    }
+    if (!match_table_get(
+            context->matches,
+            context->value_length,
+            position->token_index + 1U,
+            position->value_index
+        )) {
+        return false;
+    }
+
+    ++position->token_index;
+    return true;
 }
 
 static bool match_span_advance_one(
@@ -2091,6 +2337,17 @@ static bool match_token_suffix_from(
         }
         return match_table_get(matches, value_length, token_index + 1U, value_index);
     }
+    if (token->kind == REGEXP_TOKEN_OPTIONAL_LITERAL_SEQUENCE) {
+        return match_optional_literal_sequence_suffix_from(
+            program,
+            token,
+            value,
+            value_length,
+            token_index,
+            value_index,
+            matches
+        );
+    }
 
     if (value_index < value_length) {
         current_byte_matches = token_matches_byte(program, token, value[value_index]);
@@ -2130,6 +2387,29 @@ static bool match_token_suffix_from(
     return false;
 }
 
+static bool match_optional_literal_sequence_suffix_from(
+    const struct mylite_regexp_program *program,
+    const struct regexp_token *token,
+    const unsigned char *value,
+    size_t value_length,
+    size_t token_index,
+    size_t value_index,
+    const unsigned char *matches
+) {
+    if (match_table_get(matches, value_length, token_index + 1U, value_index)) {
+        return true;
+    }
+    if (!literal_sequence_matches_at(program, token, value, value_length, value_index)) {
+        return false;
+    }
+    return match_table_get(
+        matches,
+        value_length,
+        token_index + 1U,
+        value_index + token->literal_sequence_length
+    );
+}
+
 static bool token_matches_byte(
     const struct mylite_regexp_program *program,
     const struct regexp_token *token,
@@ -2149,9 +2429,31 @@ static bool token_matches_byte(
     case REGEXP_TOKEN_CLASS:
         return class_contains_byte(program, token, normalize_ascii_byte(program, byte));
     case REGEXP_TOKEN_END_ANCHOR:
+    case REGEXP_TOKEN_OPTIONAL_LITERAL_SEQUENCE:
         break;
     }
     return false;
+}
+
+static bool literal_sequence_matches_at(
+    const struct mylite_regexp_program *program,
+    const struct regexp_token *token,
+    const unsigned char *value,
+    size_t value_length,
+    size_t value_index
+) {
+    if (value_index > value_length || token->literal_sequence_length > value_length - value_index) {
+        return false;
+    }
+    for (size_t index = 0U; index < token->literal_sequence_length; ++index) {
+        const unsigned char sequence_byte =
+            program->literal_sequence_bytes[token->literal_sequence_start + index];
+
+        if (normalize_ascii_byte(program, value[value_index + index]) != sequence_byte) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool regexp_byte_is_line_terminator(unsigned char byte) {

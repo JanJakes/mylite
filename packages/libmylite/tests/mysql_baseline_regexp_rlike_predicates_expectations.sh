@@ -152,7 +152,7 @@ expect_output \
 
 run_mysql \
     "DROP TABLE strings; "\
-"CREATE TABLE strings (id INT, v VARCHAR(16)); "\
+"CREATE TABLE strings (id INT, v VARCHAR(64)); "\
 "INSERT INTO strings VALUES (1, '1+2'), (2, '12'), (3, '1++2');" \
     "$DATABASE" >/dev/null
 
@@ -169,7 +169,11 @@ expect_output \
     "$DATABASE"
 
 run_mysql \
-    "INSERT INTO strings VALUES (4, 'ac'), (5, 'abc'), (6, 'abbc'), (7, 'a\\nb'), (8, 'axb');" \
+    "INSERT INTO strings VALUES (4, 'ac'), (5, 'abc'), (6, 'abbc'), (7, 'a\\nb'), (8, 'axb'), "\
+"(9, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), "\
+"(10, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_ts'), "\
+"(11, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_t'), "\
+"(12, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tsx');" \
     "$DATABASE" >/dev/null
 
 expect_output \
@@ -194,6 +198,12 @@ expect_output \
     "regex dot does not match line terminators by default" \
     "8" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^a.b$';" \
+    "$DATABASE"
+
+expect_output \
+    "regex fixed repeat and optional literal group" \
+    "9,10" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^rss_[0-9a-f]{32}(_ts)?$';" \
     "$DATABASE"
 
 expect_error \

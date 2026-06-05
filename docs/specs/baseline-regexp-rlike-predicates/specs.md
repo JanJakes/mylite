@@ -64,8 +64,9 @@ MySQL 8.4.9 behavior used for this slice:
 - `CHAR` values follow MySQL's trimmed readback/comparison shape in the
   verified subset; a `CHAR(8)` value inserted as `abc  ` matches `^abc$`.
 - The verified baseline pattern atoms include ordinary ASCII literals, `.`,
-  `^`, `$`, bracket classes/ranges, negated bracket classes, and the `*`, `+`,
-  and `?` quantifiers.
+  `^`, `$`, bracket classes/ranges, negated bracket classes, the `*`, `+`, and
+  `?` quantifiers, fixed `{n}` repetition, and one-level optional literal
+  groups such as `(_ts)?`.
 - Without match-control flags, `.` does not match line terminators.
 - SQL string-literal decoding happens before regular-expression matching. To
   pass a literal regex backslash in default SQL mode, the SQL text must contain
@@ -182,12 +183,16 @@ Supported regex pattern syntax after SQL string decoding:
 - `$` as the last pattern item;
 - bracket classes such as `[abc]` and `[a-z]`;
 - negated bracket classes such as `[^0-9]`;
-- `*`, `+`, and `?` after one literal, `.`, or bracket class atom.
+- `*`, `+`, and `?` after one literal, `.`, or bracket class atom;
+- fixed repetition `{n}` after one literal, `.`, or bracket class atom;
+- one-level optional literal groups such as `(_ts)?`, where the group contents
+  are ordinary literal ASCII bytes or escaped literal metacharacters.
 
 Unsupported in this slice:
 
-- grouping and alternation;
-- counted repetition `{m,n}`;
+- grouping outside one-level optional literal groups, nested groups, and
+  alternation;
+- variable counted repetition such as `{m,n}`;
 - lookaround, inline mode controls, backreferences, word-boundary escapes,
   shorthand classes, named classes, equivalence classes, and collating symbols;
 - non-ASCII pattern bytes;
@@ -196,8 +201,8 @@ Unsupported in this slice:
   expressions.
 
 This scope is intentionally compatible with the WordPress-style anchored
-prefix/suffix patterns currently targeted, but it is not MySQL's full ICU regex
-syntax.
+prefix/suffix patterns currently targeted, including
+`^rss_[0-9a-f]{32}(_ts)?$`, but it is not MySQL's full ICU regex syntax.
 
 ## Semantics
 
@@ -234,6 +239,9 @@ Supported comparison semantics:
 - `.` matches one byte other than `\n` or `\r` in the admitted ASCII baseline.
 - Bracket classes/ranges and negated classes are evaluated over ASCII bytes
   with the same case-insensitive folding as literals.
+- Fixed `{n}` repetition repeats exactly `n` occurrences of the preceding atom.
+- One-level optional literal groups match either the full literal sequence or
+  no bytes; individual bytes inside the group are not independently optional.
 - MySQL returns `NULL` when either regex operand is `NULL`, but this MyLite
   slice admits only string-literal pattern operands; `NULL` column values return
   `NULL` after the admitted non-`NULL` pattern has been validated.

@@ -305,17 +305,22 @@ static int test_regexp_pattern_operators(void) {
     static const char *const zero_or_one_ids[] = {"4", "5"};
     static const char *const backtracking_ids[] = {"5", "6"};
     static const char *const dot_ids[] = {"8"};
+    static const char *const fixed_repeat_optional_group_ids[] = {"9", "10"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "operators", path, sizeof(path));
-    failures += execute_ok(database, "CREATE TABLE strings (id INT, v VARCHAR(16))", NULL);
+    failures += execute_ok(database, "CREATE TABLE strings (id INT, v VARCHAR(64))", NULL);
     failures += execute_ok(
         database,
         "INSERT INTO strings VALUES "
         "(1, '1+2'), (2, '12'), (3, '1++2'), (4, 'ac'), (5, 'abc'), (6, 'abbc'), "
-        "(7, 'a\\nb'), (8, 'axb')",
+        "(7, 'a\\nb'), (8, 'axb'), "
+        "(9, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), "
+        "(10, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_ts'), "
+        "(11, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_t'), "
+        "(12, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tsx')",
         NULL
     );
     failures += expect_query_values(
@@ -376,6 +381,17 @@ static int test_regexp_pattern_operators(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "REGEXP dot does not match line terminators by default",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v REGEXP "
+                   "'^rss_[0-9a-f]{32}(_ts)?$' ORDER BY id",
+            .values = fixed_repeat_optional_group_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "REGEXP fixed repeat with optional literal group",
         }
     );
 

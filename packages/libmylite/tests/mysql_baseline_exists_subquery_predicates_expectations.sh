@@ -97,6 +97,14 @@ run_mysql \
      CREATE TABLE empty_orders (
          id INT PRIMARY KEY
      );
+     CREATE TABLE term_relationships (
+         object_id INT,
+         term_taxonomy_id INT
+     );
+     CREATE TABLE term_taxonomy (
+         term_taxonomy_id INT PRIMARY KEY,
+         taxonomy VARCHAR(20)
+     );
      INSERT INTO users VALUES
          (1, 'Ann', 1),
          (2, 'Bob', 2),
@@ -106,7 +114,14 @@ run_mysql \
          (10, 1, 'open', 50),
          (11, 1, 'closed', 20),
          (12, 2, 'open', 30),
-         (13, NULL, 'open', 99);" \
+         (13, NULL, 'open', 99);
+     INSERT INTO term_taxonomy VALUES
+         (100, 'post_format'),
+         (101, 'category');
+     INSERT INTO term_relationships VALUES
+         (1, 100),
+         (2, 101),
+         (4, 100);" \
     "$DATABASE" >/dev/null
 
 expect_output \
@@ -242,6 +257,16 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "unqualified missing inner names fall back to outer names" \
+    "1,2" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users AS u
+     WHERE EXISTS (
+         SELECT 1 FROM orders AS o WHERE o.user_id = group_id
+     );" \
+    "$DATABASE"
+
+expect_output \
     "schema qualified outer and inner tables" \
     "1
 2
@@ -250,6 +275,40 @@ expect_output \
     "SELECT id
      FROM ${DATABASE}.users
      WHERE EXISTS (SELECT 1 FROM ${DATABASE}.orders);"
+
+expect_output \
+    "joined inner not exists predicate" \
+    "2,3" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users AS u
+     WHERE NOT EXISTS (
+         SELECT 1
+         FROM term_relationships AS tr
+         INNER JOIN term_taxonomy AS tt
+         ON tt.term_taxonomy_id = tr.term_taxonomy_id
+         WHERE tt.taxonomy = 'post_format'
+         AND tr.object_id = u.id
+     );" \
+    "$DATABASE"
+
+expect_output \
+    "grouped joined inner not exists predicate" \
+    "2
+3" \
+    "SELECT SQL_CALC_FOUND_ROWS u.id
+     FROM users AS u
+     WHERE NOT EXISTS (
+         SELECT 1
+         FROM term_relationships AS tr
+         INNER JOIN term_taxonomy AS tt
+         ON tt.term_taxonomy_id = tr.term_taxonomy_id
+         WHERE tt.taxonomy = 'post_format'
+         AND tr.object_id = u.id
+     )
+     GROUP BY u.id
+     ORDER BY u.id
+     LIMIT 0, 5;" \
+    "$DATABASE"
 
 expect_error \
     "missing default schema for unqualified exists" \

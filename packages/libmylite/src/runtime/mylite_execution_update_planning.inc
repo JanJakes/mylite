@@ -212,11 +212,22 @@ static int validate_update_subquery_predicate_node_source(
     if (node == NULL) {
         return MYLITE_OK;
     }
-    if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS && node->exists_subquery != NULL &&
-        node->exists_subquery->has_table_source &&
-        node->exists_subquery->source.table.table_id == plan->table.table_id) {
-        set_update_table_used_error(database, plan->target.table_name);
-        return MYLITE_ERROR;
+    if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS && node->exists_subquery != NULL) {
+        const struct planned_exists_subquery *subquery = node->exists_subquery;
+
+        if (subquery->source_count > 0U) {
+            for (size_t source_index = 0U; source_index < subquery->source_count; ++source_index) {
+                if (subquery->sources[source_index].table.table_id == plan->table.table_id) {
+                    set_update_table_used_error(database, plan->target.table_name);
+                    return MYLITE_ERROR;
+                }
+            }
+        } else if (
+            subquery->has_table_source && subquery->source.table.table_id == plan->table.table_id
+        ) {
+            set_update_table_used_error(database, plan->target.table_name);
+            return MYLITE_ERROR;
+        }
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_IN && node->in_subquery != NULL &&
         node->in_subquery->source.table.table_id == plan->table.table_id) {

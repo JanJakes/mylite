@@ -2086,6 +2086,7 @@ struct select_predicate_plan_options {
     bool allow_same_scope_column_reference_rhs;
     bool allow_date_format_numeric_predicate;
     size_t exists_inner_source_index;
+    size_t exists_inner_source_count;
     const struct select_source_context *outer_source_context;
     const struct mylite_catalog_column_descriptor *outer_columns;
     size_t outer_column_count;
@@ -2280,6 +2281,11 @@ struct planned_exists_subquery {
     bool has_table_source;
     size_t inner_source_index;
     struct planned_select_source source;
+    struct planned_select_source *sources;
+    size_t source_count;
+    enum mylite_sql_ast_join_kind *join_kinds;
+    struct planned_select_join_condition *join_conditions;
+    size_t join_count;
     struct planned_select_predicate predicate;
     struct planned_select_limit limit;
 };
@@ -19326,6 +19332,15 @@ static int plan_exists_table_source(
     const struct mylite_sql_ast_node *from_clause,
     struct planned_exists_subquery *out_subquery
 );
+static int plan_exists_join_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_exists_subquery *out_subquery
+);
+static int validate_exists_join_source(
+    struct mylite_db *database,
+    const struct planned_exists_subquery *subquery
+);
 static int validate_exists_select_list(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -19380,9 +19395,25 @@ static int resolve_exists_column_reference_in_source(
     size_t *out_source_index,
     bool *out_resolved
 );
+static int resolve_exists_column_reference_in_joined_source(
+    struct mylite_db *database,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const char *column_name,
+    const struct select_source_context *source_context,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index,
+    bool *out_resolved
+);
 static bool exists_correlated_column_comparison_is_supported(
     const struct planned_select_predicate_node *node,
-    size_t inner_source_index
+    size_t inner_source_index,
+    size_t inner_source_count
+);
+static bool exists_source_index_is_inner(
+    size_t source_index,
+    size_t inner_source_index,
+    size_t inner_source_count
 );
 static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator operator_kind);
@@ -24990,6 +25021,17 @@ static int append_select_exists_predicate_sql(
 static int append_exists_subquery_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_exists_subquery *subquery
+);
+static int append_exists_subquery_join_from_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t *next_parameter
+);
+static int append_exists_subquery_join_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t join_index,
+    size_t *next_parameter
 );
 static int append_descriptor_value_sql_for_source(
     struct mylite_dynamic_string *string,

@@ -190,6 +190,17 @@ static void planned_exists_subquery_deinit(struct planned_exists_subquery *subqu
     }
 
     planned_select_source_deinit_shallow(&subquery->source);
+    for (size_t source_index = 0U; source_index < subquery->source_count; ++source_index) {
+        planned_select_source_deinit_shallow(&subquery->sources[source_index]);
+    }
+    free(subquery->sources);
+    free(subquery->join_kinds);
+    if (subquery->join_conditions != NULL) {
+        for (size_t join_index = 0U; join_index < subquery->join_count; ++join_index) {
+            planned_select_join_condition_deinit(&subquery->join_conditions[join_index]);
+        }
+    }
+    free(subquery->join_conditions);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_exists_subquery){.has_table_source = false};
 }
@@ -268,8 +279,7 @@ static int merge_select_predicate_with_and(
     if (rc == MYLITE_OK) {
         target->root_index = node_index;
         target->has_root = true;
-        target->qualify_column_references =
-            target->qualify_column_references || addition_qualifies;
+        target->qualify_column_references = target->qualify_column_references || addition_qualifies;
     }
     return rc;
 }

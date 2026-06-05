@@ -31,6 +31,7 @@ struct expected_query {
     size_t column_count;
     const char *const *values;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -79,6 +80,7 @@ static int test_exists_values_and_persistence(void) {
     static const char *const unmatched_user_ids[] = {"3", "4"};
     static const char *const closed_user_id[] = {"1"};
     static const char *const null_safe_user_ids[] = {"1", "2", "4"};
+    static const char *const joined_not_exists_user_ids[] = {"2", "3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -236,6 +238,19 @@ static int test_exists_values_and_persistence(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT u.id FROM users AS u "
+                   "WHERE EXISTS (SELECT 1 FROM orders AS o WHERE o.user_id = group_id) "
+                   "ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = matched_user_ids,
+            .row_count = 2U,
+            .context = "unqualified missing inner names fall back to outer names",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM app.users "
                    "WHERE EXISTS (SELECT 1 FROM app.orders) ORDER BY id",
             .columns = id_column,
@@ -243,6 +258,41 @@ static int test_exists_values_and_persistence(void) {
             .values = all_user_ids,
             .row_count = 4U,
             .context = "schema qualified outer and inner tables",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT u.id FROM users AS u "
+                   "WHERE NOT EXISTS ("
+                   "SELECT 1 FROM term_relationships AS tr "
+                   "INNER JOIN term_taxonomy AS tt "
+                   "ON tt.term_taxonomy_id = tr.term_taxonomy_id "
+                   "WHERE tt.taxonomy = 'post_format' AND tr.object_id = u.id"
+                   ") ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = joined_not_exists_user_ids,
+            .row_count = 2U,
+            .context = "joined inner not exists predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SQL_CALC_FOUND_ROWS u.id FROM users AS u "
+                   "WHERE NOT EXISTS ("
+                   "SELECT 1 FROM term_relationships AS tr "
+                   "INNER JOIN term_taxonomy AS tt "
+                   "ON tt.term_taxonomy_id = tr.term_taxonomy_id "
+                   "WHERE tt.taxonomy = 'post_format' AND tr.object_id = u.id"
+                   ") GROUP BY u.id ORDER BY u.id LIMIT 0, 5",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = joined_not_exists_user_ids,
+            .row_count = 2U,
+            .warning_count = 1U,
+            .context = "grouped joined inner not exists predicate",
         }
     );
 
@@ -415,6 +465,22 @@ static int seed_exists_tables(mylite_db *database) {
     failures += execute_ok(database, "CREATE TABLE empty_orders (id INT PRIMARY KEY)", NULL);
     failures += execute_ok(
         database,
+        "CREATE TABLE term_relationships ("
+        "object_id INT, "
+        "term_taxonomy_id INT"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE term_taxonomy ("
+        "term_taxonomy_id INT PRIMARY KEY, "
+        "taxonomy VARCHAR(20)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
         "INSERT INTO users VALUES "
         "(1, 'Ann', 1), "
         "(2, 'Bob', 2), "
@@ -429,6 +495,21 @@ static int seed_exists_tables(mylite_db *database) {
         "(11, 1, 'closed', 20), "
         "(12, 2, 'open', 30), "
         "(13, NULL, 'open', 99)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO term_taxonomy VALUES "
+        "(100, 'post_format'), "
+        "(101, 'category')",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO term_relationships VALUES "
+        "(1, 100), "
+        "(2, 101), "
+        "(4, 100)",
         NULL
     );
 
@@ -479,7 +560,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

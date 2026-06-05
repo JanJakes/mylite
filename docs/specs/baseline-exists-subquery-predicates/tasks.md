@@ -11,6 +11,8 @@
 - [x] Add parser/AST support for `EXISTS (select_statement)` predicate atoms.
 - [x] Add descriptor-driven analyzer/planner support for tableless, `DUAL`,
       and one-table inner `EXISTS` subqueries.
+- [x] Extend SELECT predicate planning to WordPress-style descriptor-backed
+      joined inner `EXISTS` sources with equality `INNER JOIN` conditions.
 - [x] Add limited correlated integer column comparison planning inside inner
       `WHERE` predicates.
 - [x] Generate quoted SQLite `EXISTS` SQL with stable source aliases and bound

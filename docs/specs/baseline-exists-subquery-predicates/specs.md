@@ -22,8 +22,8 @@ SQLite only as the physical row executor over MyLite-generated SQL.
 
 This is not full MySQL subquery support. The supported outer statement is a
 single-table descriptor-backed `SELECT` filter. The supported inner query is
-either tableless/`DUAL` or one descriptor-backed persistent base table with an
-optional alias, optional limited predicate, and optional `LIMIT row_count`.
+either tableless/`DUAL`, one descriptor-backed persistent base table, or a
+limited descriptor-backed `INNER JOIN` chain with equality `ON` conditions.
 Simple correlated equality predicates are supported only inside the inner
 `WHERE` clause.
 
@@ -152,6 +152,23 @@ exists_select:
     [LIMIT row_count]
 ```
 
+Supported inner joined table subquery:
+
+```sql
+exists_select:
+    SELECT exists_select_list
+    FROM table_name [table_alias]
+    INNER JOIN table_name [table_alias]
+      ON inner_join_column = inner_join_column
+    [WHERE exists_inner_predicate]
+    [LIMIT row_count]
+```
+
+The implementation uses the existing descriptor joined-source planner and can
+represent `INNER JOIN` chains. The MySQL-runtime and WordPress-verified
+coverage for this extension is the two-source taxonomy-exclusion shape used by
+WordPress canonical/feed queries.
+
 Supported inner tableless subquery:
 
 ```sql
@@ -169,12 +186,15 @@ Supported `exists_select_list` forms:
 
 The selected values are ignored for existence, but every non-wildcard selected
 column must resolve successfully. Unknown selected columns fail in the field
-list like MySQL.
+list like MySQL. For joined inner sources, descriptor selected columns resolve
+against the joined source context and ambiguous unqualified names are rejected.
 
 Supported `exists_inner_predicate` forms:
 
 - the current baseline descriptor-backed predicate subset over inner source
   columns and literal right operands;
+- for joined inner sources, the same limited predicate subset over any joined
+  inner source column;
 - existing logical composition with `NOT`, `AND`, `XOR`, `OR`, and
   parentheses;
 - one simple correlated comparison atom:
@@ -185,11 +205,11 @@ Supported `exists_inner_predicate` forms:
 
 Correlated column comparisons are limited to compatible MyLite integer-family
 descriptors within the current physical integer range. At least one side must
-resolve to the inner source and the other side must resolve to the directly
+resolve to an inner source and the other side must resolve to the directly
 containing outer source. Unqualified names inside the inner predicate resolve
-to the inner source before outer sources, matching MySQL's inside-out rule.
-Applications that need deterministic outer references should use a table or
-alias qualifier.
+to joined inner sources before outer sources, matching MySQL's inside-out
+rule. Applications that need deterministic outer references should use a table
+or alias qualifier.
 
 Supported inner limit:
 
@@ -211,7 +231,13 @@ exists_select ::=
     SELECT exists_select_item_list
   | SELECT exists_select_item_list FROM DUAL
   | SELECT exists_select_item_list FROM table_name table_alias_opt
+    where_clause_opt exists_limit_opt
+  | SELECT exists_select_item_list FROM exists_join_source
     where_clause_opt exists_limit_opt.
+
+exists_join_source ::=
+    table_name table_alias_opt INNER JOIN table_name table_alias_opt
+    ON qualified_identifier EQ qualified_identifier.
 
 exists_select_item ::=
     STAR
@@ -244,22 +270,24 @@ Planning:
    order columns, and limit values through existing descriptor-backed `SELECT`
    planning.
 3. For each `EXISTS` atom, validate that the inner statement is one supported
-   `SELECT` block. Reject inner joins, derived tables, CTEs, set operations,
-   grouping, aggregates, locking clauses, select modifiers, `ORDER BY`,
-   offset limits, nested subqueries, and arbitrary expressions.
+   `SELECT` block. Reject derived tables, non-inner joins, CTEs, set
+   operations, grouping, aggregates, locking clauses, select modifiers,
+   `ORDER BY`, offset limits, nested subqueries, and arbitrary expressions.
 4. For tableless and `DUAL` inner subqueries, validate the select list and plan
    a constant one-row subquery unless `LIMIT 0` is present.
-5. For table-backed inner subqueries, resolve the inner table through
-   descriptors and reject unsupported object kinds once non-base-table
-   descriptors exist.
+5. For table-backed inner subqueries, resolve the inner table or joined inner
+   tables through descriptors and reject unsupported object kinds once
+   non-base-table descriptors exist.
 6. Validate every non-wildcard inner selected descriptor column. The value is
    not used, but MySQL still performs name resolution.
 7. Resolve inner predicate names using inside-out scoping: inner source first,
-   then the immediately containing outer source. Ambiguous or unsupported
-   references receive deterministic diagnostics.
+   then the immediately containing outer source. For joined inner sources,
+   unqualified names must match exactly one inner source column before the
+   outer source is considered. Ambiguous or unsupported references receive
+   deterministic diagnostics.
 8. Admit correlated column comparisons only when one side resolves to the inner
-   source, the other side resolves to the outer source, and both descriptors
-   are compatible integer-family descriptors.
+   source range, the other side resolves to the outer source, and both
+   descriptors are compatible integer-family descriptors.
 
 Execution:
 
@@ -268,8 +296,9 @@ Execution:
 2. Lower an admitted tableless or `DUAL` subquery to `EXISTS (SELECT 1)` or a
    false constant when an admitted `LIMIT 0` is present.
 3. Lower an admitted table-backed subquery to a SQLite `EXISTS` predicate over
-   the generated physical table name. Inner and outer physical table aliases
-   are stable MyLite aliases such as `_mylite_s0` and `_mylite_s1`.
+   the generated physical table name or generated joined-source SQL. Inner and
+   outer physical table aliases are stable MyLite aliases such as `_mylite_s0`
+   and `_mylite_s1`.
 4. Bind all inner literal predicate values and limits with the same prepared
    statement that executes the outer query. Correlated column comparisons emit
    quoted physical column references, not literal interpolation.
@@ -317,6 +346,20 @@ WHERE EXISTS (
 )
 ```
 
+Joined inner sources use the same source aliasing and descriptor-resolved join
+conditions:
+
+```sql
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM "_mylite_user_table_<rel_id>" AS "_mylite_s1"
+    JOIN "_mylite_user_table_<tax_id>" AS "_mylite_s2"
+      ON "_mylite_s2"."term_taxonomy_id" = "_mylite_s1"."term_taxonomy_id"
+    WHERE "_mylite_s2"."taxonomy" = ?1
+      AND "_mylite_s1"."object_id" = "_mylite_s0"."ID"
+)
+```
+
 Identifier quoting uses the existing generated identifier quoting helpers.
 Logical names are never interpolated into generated physical SQL before
 descriptor resolution. Reserved `_mylite_*` logical names are rejected before
@@ -344,17 +387,16 @@ Deferred until later slices:
   condition, `UPDATE` / `DELETE` predicate, `SET`, or `DO` operand;
 - `IN (subquery)`, `ANY`, `SOME`, `ALL`, row subqueries, derived tables, CTEs,
   `TABLE` / `VALUES` subqueries, set operations, and nested subqueries;
-- inner joins, aliases on more than one source, index hints, partitions,
-  select modifiers, `DISTINCT`, grouping, aggregates, windows, locking clauses,
-  `ORDER BY`, and offset limits inside the `EXISTS` subquery;
+- outer joins, right joins, cross joins, comma sources, derived joined sources,
+  row-scalar join operands, aliases or joins outside the descriptor-backed
+  inner `INNER JOIN` subset, index hints, partitions, select modifiers,
+  `DISTINCT`, grouping, aggregates, windows, locking clauses, `ORDER BY`, and
+  offset limits inside the `EXISTS` subquery;
 - arbitrary inner projection expressions, functions, parameters, user
   variables, arithmetic, casts, collations, and row constructors;
 - correlated references outside the inner `WHERE` clause;
 - correlated comparisons over string, decimal, approximate, binary, enum, set,
   JSON, temporal, or collation-sensitive descriptors;
-- outer-table fallback for unqualified names when the inner table lacks that
-  name, unless the implementation explicitly proves and tests that resolution
-  path in a later slice;
 - arbitrary SQLite SQL pass-through or SQLite fork patches.
 
 ## Diagnostics
@@ -395,7 +437,11 @@ Add MySQL-runtime expectation coverage for:
 - correlated `EXISTS` and `NOT EXISTS` using integer equality;
 - correlated `<=>` with nullable integer values;
 - inner literal predicates combined with correlated predicates through `AND`;
+- joined inner `INNER JOIN` taxonomy-exclusion predicates with correlated
+  integer equality to the outer row;
 - inner unqualified name resolution preferring the inner source;
+- unqualified correlated names falling back to the outer source when no inner
+  source column matches;
 - `LIMIT 0`, `LIMIT 1`, and row counts larger than the matching set;
 - schema-qualified outer and inner tables;
 - missing default schema, unknown inner table, unknown selected column, unknown
@@ -416,8 +462,9 @@ Add C runtime tests under `packages/libmylite/tests/`, preferably a new
 - correlated equality and null-safe equality over integer-family descriptors;
 - `LIMIT 0` false behavior and accepted positive row-count limits;
 - deterministic unsupported diagnostics for projection `EXISTS`, DML
-  predicates, inner joins, derived tables, nested subqueries, functions,
-  expression projections, `ORDER BY`, offset limits, parameters, and
+  predicates, unsupported joined-source shapes, derived tables, nested
+  subqueries, functions, expression projections, `ORDER BY`, offset limits,
+  parameters, and
   unsupported correlated descriptor families;
 - no catalog mutation, descriptor generation change, or file-format preamble
   change for file-backed reads;

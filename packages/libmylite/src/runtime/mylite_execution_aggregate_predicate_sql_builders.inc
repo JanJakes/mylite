@@ -368,7 +368,11 @@ static int append_grouped_group_key_sql(
         if (next_parameter == NULL) {
             return MYLITE_ERROR;
         }
-        return append_row_scalar_expression_sql(string, &group->row_scalar_expression, next_parameter);
+        return append_row_scalar_expression_sql(
+            string,
+            &group->row_scalar_expression,
+            next_parameter
+        );
     }
     return append_descriptor_value_sql_for_source(
         string,
@@ -386,7 +390,15 @@ static int append_grouped_aggregate_from_sql(
     struct planned_select source_plan = {0};
 
     if (plan->source_count == 0U) {
-        return mylite_dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+        int rc = mylite_dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+
+        if (rc == MYLITE_OK && plan->predicate.qualify_column_references) {
+            rc = mylite_dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK && plan->predicate.qualify_column_references) {
+            rc = append_select_source_alias(string, 0U);
+        }
+        return rc;
     }
     source_plan.sources = plan->sources;
     source_plan.source_count = plan->source_count;
@@ -1285,6 +1297,10 @@ static int append_exists_subquery_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_exists_subquery *subquery
 ) {
+    if (subquery->source_count > 0U) {
+        return append_exists_subquery_join_from_sql(string, subquery, NULL);
+    }
+
     int rc = mylite_dynamic_string_append_quoted_identifier(
         string,
         subquery->source.table.physical_name
@@ -1298,6 +1314,73 @@ static int append_exists_subquery_from_sql(
     }
 
     return rc;
+}
+
+static int append_exists_subquery_join_from_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL || subquery->source_count == 0U ||
+        subquery->join_count != subquery->source_count - 1U || subquery->join_kinds == NULL ||
+        subquery->join_conditions == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = append_select_source_sql(
+        string,
+        &subquery->sources[0],
+        subquery->inner_source_index,
+        next_parameter
+    );
+    for (size_t join_index = 0U; rc == MYLITE_OK && join_index < subquery->join_count;
+         ++join_index) {
+        size_t right_source_index = join_index + 1U;
+
+        if (subquery->join_kinds[join_index] != MYLITE_SQL_AST_JOIN_KIND_INNER) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, " JOIN ");
+        if (rc == MYLITE_OK) {
+            rc = append_select_source_sql(
+                string,
+                &subquery->sources[right_source_index],
+                subquery->inner_source_index + right_source_index,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_exists_subquery_join_condition_sql(
+                string,
+                subquery,
+                join_index,
+                next_parameter
+            );
+        }
+    }
+    return rc;
+}
+
+static int append_exists_subquery_join_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t join_index,
+    size_t *next_parameter
+) {
+    struct planned_select_join_condition condition = {0};
+
+    if (subquery == NULL || join_index >= subquery->join_count) {
+        return MYLITE_ERROR;
+    }
+    condition = subquery->join_conditions[join_index];
+    if (condition.right_value_is_row_scalar_expression) {
+        return MYLITE_ERROR;
+    }
+    condition.left_source_index += subquery->inner_source_index;
+    condition.right_source_index += subquery->inner_source_index;
+    return append_select_join_condition_sql(string, &condition, next_parameter);
 }
 
 static int append_descriptor_value_sql_for_source(

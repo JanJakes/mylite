@@ -55,15 +55,6 @@ static int execute_create_temporary_table_statement(
         set_nomem_error(database);
         return rc;
     }
-    if (database->session.user_transaction_active) {
-        set_unsupported_error(
-            database,
-            "Temporary table DDL inside an active transaction is not supported"
-        );
-        mylite_result_free(result);
-        return MYLITE_ERROR;
-    }
-
     rc = plan_create_table(database, statement, &plan);
     if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan)) {
         set_temporary_fulltext_index_error(database);
@@ -159,15 +150,6 @@ static int execute_create_temporary_table_like_statement(
         set_nomem_error(database);
         return rc;
     }
-    if (database->session.user_transaction_active) {
-        set_unsupported_error(
-            database,
-            "Temporary table DDL inside an active transaction is not supported"
-        );
-        mylite_result_free(result);
-        return MYLITE_ERROR;
-    }
-
     rc = plan_create_table_like(database, statement, &plan);
     if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan.create_table)) {
         set_temporary_fulltext_index_error(database);
@@ -265,15 +247,6 @@ static int execute_create_temporary_table_select_statement(
         set_nomem_error(database);
         return rc;
     }
-    if (database->session.user_transaction_active) {
-        set_unsupported_error(
-            database,
-            "Temporary table DDL inside an active transaction is not supported"
-        );
-        mylite_result_free(result);
-        return MYLITE_ERROR;
-    }
-
     rc = plan_create_table_select(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = maybe_finish_create_temporary_if_not_exists_noop(

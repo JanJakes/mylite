@@ -517,7 +517,11 @@ static int test_temporary_table_dml_transactions(void) {
         "INSERT INTO p_tx VALUES (1)",
         (struct expected_statement){1, 0U}
     );
-    failures += expect_error(database, "CREATE TEMPORARY TABLE tx_bad (id INT)", mysql_error_parse);
+    failures += expect_statement(
+        database,
+        "CREATE TEMPORARY TABLE tx_created (id INT)",
+        (struct expected_statement){0, 0U}
+    );
     failures += expect_statement(database, "ROLLBACK", (struct expected_statement){0, 0U});
     failures += expect_query_values(
         database,
@@ -526,7 +530,17 @@ static int test_temporary_table_dml_transactions(void) {
             .values = zero_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "rejected temporary create does not commit active transaction",
+            .context = "temporary create does not commit active transaction",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM tx_created",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "temporary create survives rollback without rows",
         }
     );
     failures += expect_statement(
@@ -540,7 +554,11 @@ static int test_temporary_table_dml_transactions(void) {
         "INSERT INTO p_tx VALUES (2)",
         (struct expected_statement){1, 0U}
     );
-    failures += expect_error(database, "DROP TEMPORARY TABLE tx_drop", mysql_error_parse);
+    failures += expect_statement(
+        database,
+        "DROP TEMPORARY TABLE tx_drop",
+        (struct expected_statement){0, 0U}
+    );
     failures += expect_statement(database, "ROLLBACK", (struct expected_statement){0, 0U});
     failures += expect_query_values(
         database,
@@ -549,19 +567,11 @@ static int test_temporary_table_dml_transactions(void) {
             .values = zero_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "rejected temporary drop does not commit active transaction",
+            .context = "temporary drop does not commit active transaction",
         }
     );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT COUNT(*) FROM tx_drop",
-            .values = zero_rows,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "rejected temporary drop keeps temporary table",
-        }
-    );
+    failures +=
+        expect_error(database, "SELECT COUNT(*) FROM tx_drop", mysql_error_table_does_not_exist);
 
     mylite_close(database);
     remove_related_files(path);

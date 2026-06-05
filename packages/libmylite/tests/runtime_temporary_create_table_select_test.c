@@ -400,13 +400,22 @@ static int test_temporary_create_table_select_resolution_and_diagnostics(void) {
     );
     failures += expect_statement(database, "USE app", (struct expected_statement){0, 0U});
     failures += expect_statement(database, "START TRANSACTION", (struct expected_statement){0, 0U});
-    failures += expect_error(
+    failures += expect_statement(
         database,
         "CREATE TEMPORARY TABLE tx_tmp AS SELECT id FROM src",
-        mysql_error_parse,
-        "Temporary table DDL inside an active transaction is not supported"
+        (struct expected_statement){3, 0U}
     );
     failures += expect_statement(database, "ROLLBACK", (struct expected_statement){0, 0U});
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM tx_tmp",
+            .values = empty_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "temporary ctas survives rollback without copied rows",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);

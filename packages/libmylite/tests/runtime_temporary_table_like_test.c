@@ -593,13 +593,22 @@ static int test_temporary_like_diagnostics(void) {
         "temporary like skips foreign-key constraint"
     );
     failures += expect_statement(database, "START TRANSACTION", (struct expected_statement){0, 0U});
-    failures += expect_error(
+    failures += expect_statement(
         database,
         "CREATE TEMPORARY TABLE tx_tmp LIKE src",
-        mysql_error_parse,
-        "Temporary table DDL inside an active transaction is not supported"
+        (struct expected_statement){0, 0U}
     );
     failures += expect_statement(database, "ROLLBACK", (struct expected_statement){0, 0U});
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM tx_tmp",
+            .values = zero_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "temporary like survives rollback without rows",
+        }
+    );
     failures += expect_error(
         database,
         "CREATE TEMPORARY TABLE mixed_like (LIKE src, extra INT)",

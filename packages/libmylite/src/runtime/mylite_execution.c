@@ -3855,6 +3855,57 @@ static int execute_start_transaction_statement(
 );
 static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result);
+static int reconcile_temporary_physical_tables_after_user_rollback(struct mylite_db *database);
+static int temporary_physical_table_exists(
+    struct mylite_db *database,
+    const char *physical_name,
+    bool *out_exists
+);
+static int rebuild_temporary_physical_table(
+    struct mylite_db *database,
+    const struct mylite_temporary_catalog_table *table
+);
+static int rebuild_temporary_create_table_plan(
+    struct mylite_db *database,
+    const struct mylite_temporary_catalog_table *table,
+    struct planned_create_table *out_plan
+);
+static int rebuild_temporary_create_table_columns(
+    struct mylite_db *database,
+    const struct mylite_temporary_catalog_table *table,
+    struct planned_create_table *out_plan
+);
+static int rebuild_temporary_create_table_indexes(
+    struct mylite_db *database,
+    const struct mylite_temporary_catalog_table *table,
+    struct planned_create_table *out_plan
+);
+static int rebuild_temporary_create_table_primary_index(
+    struct mylite_db *database,
+    const struct mylite_temporary_catalog_table *table,
+    const struct mylite_catalog_index_descriptor *index,
+    struct planned_create_table *out_plan
+);
+static int rebuild_temporary_create_table_secondary_index(
+    struct mylite_db *database,
+    const struct mylite_temporary_catalog_table *table,
+    const struct mylite_catalog_index_descriptor *index,
+    struct planned_create_table *out_plan
+);
+static size_t temporary_index_part_count(
+    const struct mylite_temporary_catalog_table *table,
+    int64_t index_id
+);
+static const struct mylite_catalog_index_column_descriptor *temporary_index_part_by_ordinal(
+    const struct mylite_temporary_catalog_table *table,
+    int64_t index_id,
+    int64_t ordinal_position
+);
+static bool temporary_column_index_by_id(
+    const struct mylite_temporary_catalog_table *table,
+    int64_t column_id,
+    size_t *out_column_index
+);
 static int execute_savepoint_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -4909,7 +4960,6 @@ static int execute_drop_table_from_plan(
     struct mylite_db *database,
     const struct planned_drop_table *plan
 );
-static bool planned_drop_table_has_temporary_targets(const struct planned_drop_table *plan);
 static bool planned_drop_table_has_persistent_targets(const struct planned_drop_table *plan);
 static int delete_drop_table_persistent_catalog_rows(
     struct mylite_db *database,
@@ -11152,12 +11202,8 @@ static int plan_joined_select_extra_on_predicate(
     struct planned_select_join_condition *out_condition
 );
 static bool joined_select_on_node_is_and(const struct mylite_sql_ast_node *node);
-static bool joined_select_on_node_is_descriptor_equality(
-    const struct mylite_sql_ast_node *node
-);
-static bool joined_select_on_node_is_primary_condition(
-    const struct mylite_sql_ast_node *node
-);
+static bool joined_select_on_node_is_descriptor_equality(const struct mylite_sql_ast_node *node);
+static bool joined_select_on_node_is_primary_condition(const struct mylite_sql_ast_node *node);
 static bool join_condition_columns_are_compatible(
     const struct mylite_catalog_column_descriptor *left,
     const struct mylite_catalog_column_descriptor *right

@@ -93,10 +93,9 @@ records the runtime probes for this feature. Observed behavior:
   error wins.
 - A temporary source table shadows a persistent source with the same effective
   name.
-- MySQL permits `CREATE TEMPORARY TABLE ... SELECT` inside a transaction, but
-  rollback emits warning `1751` and does not restore the copied rows. MyLite
-  deliberately keeps the existing temporary-DDL-in-transaction rejection until
-  temporary DDL transaction semantics are modeled explicitly.
+- MySQL permits `CREATE TEMPORARY TABLE ... SELECT` inside a transaction.
+  Rollback preserves the created temporary table definition and rolls back the
+  copied rows.
 
 ## Scope
 
@@ -394,7 +393,8 @@ Add a focused runtime C test, preferably
 - independent file-backed handles;
 - catalog generation staying unchanged and SQLite schema generation changing
   only on successful temporary creation;
-- temporary DDL rejection inside active user transactions;
+- active user transaction support where rollback preserves the temporary target
+  descriptor and rolls copied rows back;
 - zero-initialized cleanup for new planner objects;
 - no public API changes.
 

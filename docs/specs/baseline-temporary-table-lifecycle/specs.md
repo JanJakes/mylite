@@ -10,10 +10,10 @@ resolution for the temporary tables through the already supported single-table
 DML and introspection paths.
 
 The original lifecycle feature was intentionally not full MySQL temporary-table
-support. Later slices add temporary `LIKE`, temporary auto-increment, and
-temporary `CREATE TABLE ... SELECT`; temporary ALTER/RENAME/TRUNCATE,
-temporary DDL inside an active user transaction, and privilege behavior remain
-outside this lifecycle slice.
+support. Later slices add temporary `LIKE`, temporary auto-increment, temporary
+`CREATE TABLE ... SELECT`, and active user transaction support for current
+create/drop forms; temporary ALTER/RENAME/TRUNCATE beyond the documented subset
+and privilege behavior remain outside this lifecycle slice.
 
 ## Sources
 
@@ -69,10 +69,11 @@ The implementation must add:
   views continuing to list only durable descriptors;
 - `DROP TABLE` selecting a temporary table first when one shadows a persistent
   table, while `DROP TEMPORARY TABLE` selects only temporary tables;
+- current temporary create/drop DDL forms inside active user transactions
+  without committing persistent DML; rollback preserves temporary descriptor
+  changes while rolling back temporary and persistent row changes;
 - close-time cleanup of all session temporary descriptors, with no durable
-  catalog mutation and no `.mylite` file-format change;
-- deterministic unsupported diagnostics for temporary DDL in an active MyLite
-  user transaction.
+  catalog mutation and no `.mylite` file-format change.
 
 ## Non-Goals
 
@@ -82,7 +83,6 @@ This feature must not implement:
 - `CREATE TEMPORARY TABLE ... SELECT`;
 - temporary-table `ALTER TABLE`, `RENAME TABLE`, `TRUNCATE TABLE`,
   standalone `CREATE INDEX`, or standalone `DROP INDEX`;
-- temporary DDL inside an active user transaction;
 - temporary views, stored routines, triggers, foreign keys, cascades,
   generated columns, check constraints, privilege checks, metadata locks,
   binary logging, replication behavior, or optimizer statistics;
@@ -259,7 +259,6 @@ The implementation must provide deterministic diagnostics for:
 - reserved `_mylite_*` schema or table names;
 - unsupported temporary auto-increment definitions in the initial lifecycle
   slice before `baseline-temporary-auto-increment`;
-- unsupported temporary DDL in an active user transaction;
 - unsupported object kinds once non-base-table durable descriptors exist;
 - unsupported temporary ALTER, RENAME, TRUNCATE, standalone index DDL,
   triggers, cascades, foreign keys, privileges, and metadata locks;

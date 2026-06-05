@@ -45,7 +45,7 @@
 - [x] Render temporary `SHOW CREATE TABLE` with `CREATE TEMPORARY TABLE`.
 - [x] Keep `SHOW TABLES`, `SHOW TABLE STATUS`, and `INFORMATION_SCHEMA` output
   durable-only.
-- [x] Reject temporary DDL while a user transaction is active.
+- [x] Allow current temporary create/drop DDL while a user transaction is active.
 
 ## Tests and Documentation
 

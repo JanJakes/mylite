@@ -319,7 +319,6 @@ The implementation must provide deterministic diagnostics for:
 - unsupported source object kind such as a view once view descriptors exist;
 - unsupported source descriptor families;
 - temporary target with `FULLTEXT` or check-constraint source descriptors;
-- temporary DDL inside an active user transaction;
 - physical SQLite failures;
 - allocation failures.
 

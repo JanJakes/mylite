@@ -13,14 +13,6 @@ static int execute_drop_table_statement(
     }
 
     rc = plan_drop_table(database, statement, false, &plan);
-    if (rc == MYLITE_OK && plan.temporary_existing_count != 0U &&
-        database->session.user_transaction_active) {
-        set_unsupported_error(
-            database,
-            "Temporary table DDL inside an active transaction is not supported"
-        );
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK && drop_table_plan_requires_implicit_commit(&plan)) {
         rc = commit_active_user_transaction_for_ddl(database);
     }
@@ -55,15 +47,6 @@ static int execute_drop_temporary_table_statement(
         set_nomem_error(database);
         return rc;
     }
-    if (database->session.user_transaction_active) {
-        set_unsupported_error(
-            database,
-            "Temporary table DDL inside an active transaction is not supported"
-        );
-        mylite_result_free(result);
-        return MYLITE_ERROR;
-    }
-
     rc = plan_drop_table(database, statement, true, &plan);
     if (rc == MYLITE_OK && plan.missing_count != 0U && !drop_table_has_if_exists(statement)) {
         rc = finish_drop_table_missing_targets(database, &plan);
@@ -459,7 +442,6 @@ static int execute_drop_table_from_plan(
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
     bool has_persistent_targets = planned_drop_table_has_persistent_targets(plan);
-    bool has_temporary_targets = planned_drop_table_has_temporary_targets(plan);
     int rc = MYLITE_OK;
 
     if (plan->existing_count == 0U) {
@@ -475,13 +457,6 @@ static int execute_drop_table_from_plan(
     }
     if (rc != MYLITE_OK) {
         return rc;
-    }
-    if (has_temporary_targets && database->session.user_transaction_active) {
-        set_unsupported_error(
-            database,
-            "Temporary table DDL inside an active transaction is not supported"
-        );
-        return MYLITE_ERROR;
     }
     if (has_persistent_targets) {
         rc = commit_active_user_transaction_for_ddl(database);
@@ -516,16 +491,6 @@ static int execute_drop_table_from_plan(
     ++database->session.sqlite_schema_generation;
 
     return MYLITE_OK;
-}
-
-static bool planned_drop_table_has_temporary_targets(const struct planned_drop_table *plan) {
-    if (plan == NULL) {
-        return false;
-    }
-    if (plan->temporary_existing_count != 0U) {
-        return true;
-    }
-    return false;
 }
 
 static bool planned_drop_table_has_persistent_targets(const struct planned_drop_table *plan) {

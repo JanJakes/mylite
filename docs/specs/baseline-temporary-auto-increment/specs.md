@@ -132,7 +132,6 @@ This feature must not implement:
 - temporary `FULLTEXT`, `FOREIGN KEY`, or `CHECK` runtime support;
 - temporary `ALTER TABLE`, `RENAME TABLE`, `TRUNCATE TABLE`, standalone
   `CREATE INDEX`, or standalone `DROP INDEX`;
-- temporary DDL inside an active user transaction;
 - `AUTO_INCREMENT` support beyond the current persistent subset, including
   generated invisible primary keys, unsupported types, multiple columns,
   unsupported indexes, `LAST_INSERT_ID(expr)`, full mixed-mode multi-row gap
@@ -201,8 +200,7 @@ Deferred forms remain syntax errors or deterministic unsupported diagnostics
 through existing grammar and planner rules: expression table options, signed
 negative options, non-integer auto-increment columns, missing key backing,
 multiple auto-increment columns, auto-increment defaults, temporary fulltext,
-temporary foreign keys, temporary checks, temporary alter/rename/truncate, and
-temporary DDL in active user transactions.
+temporary foreign keys, temporary checks, and temporary alter/rename/truncate.
 
 ## Schema and Name Resolution
 
@@ -298,7 +296,6 @@ The implementation must provide deterministic diagnostics for:
 - duplicate temporary table names;
 - reserved `_mylite_*` schema or table names;
 - unsupported temporary fulltext, foreign-key, and check-constraint tables;
-- unsupported temporary DDL in active user transactions;
 - unsupported auto-increment types, missing key backing, multiple
   auto-increment columns, explicit defaults, and nullable primary-key parts via
   the existing persistent auto-increment diagnostics;

@@ -286,3 +286,12 @@ expect_error \
     "Duplicate column name 'id'" \
     "USE ${DATABASE};
      CREATE TEMPORARY TABLE duplicate_columns AS SELECT id, id FROM src;"
+
+expect_output \
+    "temporary ctas survives rollback upstream" \
+    "0" \
+    "USE ${DATABASE};
+     START TRANSACTION;
+     CREATE TEMPORARY TABLE tx_tmp AS SELECT id FROM src;
+     ROLLBACK;
+     SELECT COUNT(*) FROM tx_tmp;"

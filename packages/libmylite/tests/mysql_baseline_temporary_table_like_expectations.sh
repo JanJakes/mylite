@@ -299,3 +299,13 @@ expect_contains \
      CREATE TABLE checked_source(value INT CHECK (value > 0)) ENGINE=InnoDB;
      CREATE TEMPORARY TABLE checked_tmp LIKE checked_source;
      SHOW CREATE TABLE checked_tmp;"
+
+expect_output \
+    "temporary like survives rollback upstream" \
+    "0" \
+    "USE ${DATABASE};
+     START TRANSACTION;
+     CREATE TEMPORARY TABLE tx_like LIKE src;
+     INSERT INTO tx_like VALUES (4, 'cc');
+     ROLLBACK;
+     SELECT COUNT(*) FROM tx_like;"

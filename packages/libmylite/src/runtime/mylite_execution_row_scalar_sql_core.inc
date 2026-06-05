@@ -227,6 +227,7 @@ static int append_row_scalar_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         return append_row_scalar_rand_expression_sql(string, expression, next_parameter);
@@ -465,6 +466,7 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     }
@@ -612,6 +614,7 @@ static int append_row_scalar_conversion_base_expression_sql(
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -745,6 +748,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
@@ -959,6 +963,7 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
         return append_row_scalar_char_expression_sql(string, expression, next_parameter);
@@ -1064,6 +1069,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:

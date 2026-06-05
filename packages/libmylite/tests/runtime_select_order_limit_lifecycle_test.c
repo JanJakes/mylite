@@ -131,6 +131,8 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     static const char *const multi_n_id_desc_limit[] = {"3", "1", "4"};
     static const char *const multi_bool_id[] = {"4", "2", "3", "1"};
     static const char *const like_title_nn_desc[] = {"3", "1", "4", "2"};
+    static const char *const case_title_id[] = {"3", "1", "2", "4"};
+    static const char *const case_logical_title_id[] = {"3", "1", "2", "4"};
     static const char *const multi_copy_ids[] = {"1", "3", "4"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -534,6 +536,34 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .values = like_title_nn_desc,
             .value_count = sizeof(like_title_nn_desc) / sizeof(like_title_nn_desc[0]),
             .context = "like predicate order key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers "
+                   "ORDER BY CASE "
+                   "WHEN title LIKE '%food%' THEN 1 "
+                   "WHEN title LIKE '%foo%' THEN 2 "
+                   "ELSE 3 END, id",
+            .values = case_title_id,
+            .value_count = sizeof(case_title_id) / sizeof(case_title_id[0]),
+            .context = "searched CASE order key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers "
+                   "ORDER BY CASE "
+                   "WHEN title LIKE '%food%' THEN 1 "
+                   "WHEN title LIKE '%foo%' AND title LIKE '%old%' THEN 2 "
+                   "WHEN title LIKE '%bar%' OR title LIKE '%qux%' THEN 3 "
+                   "ELSE 4 END, id",
+            .values = case_logical_title_id,
+            .value_count =
+                sizeof(case_logical_title_id) / sizeof(case_logical_title_id[0]),
+            .context = "searched CASE logical order key",
         }
     );
 

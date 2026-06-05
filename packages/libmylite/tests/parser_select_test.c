@@ -1733,6 +1733,39 @@ static int test_select_order_limit_clauses(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle "
+        "ORDER BY (CASE WHEN title LIKE '%foo%' THEN 1 ELSE 2 END), created DESC;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    order_items = parser_test_child_at(order_clause, 0U);
+    order_item = parser_test_child_at(order_items, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(order_item, 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "searched case order key"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(order_item, 0U), 0U),
+        MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION,
+        "searched case order child"
+    );
+    order_item = parser_test_child_at(order_items, 1U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_item, 0U),
+        "created",
+        "searched case order tiebreaker"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "searched case order tiebreaker direction"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle LIMIT 0;",
         MYLITE_SQL_PARSE_OK,
         &result

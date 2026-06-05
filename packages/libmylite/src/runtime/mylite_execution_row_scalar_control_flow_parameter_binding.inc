@@ -70,6 +70,7 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
             return row_scalar_control_flow_bind_stack_push_arguments(
                 stack,
                 expression,
@@ -166,6 +167,7 @@ static int bind_row_scalar_control_flow_frame_parameters(
             );
         case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
             return row_scalar_control_flow_bind_stack_push_arguments(
                 stack,
                 expression,

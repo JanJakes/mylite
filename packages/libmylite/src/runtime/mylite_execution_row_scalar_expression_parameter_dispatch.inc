@@ -376,6 +376,7 @@ static int bind_row_scalar_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return bind_row_scalar_control_flow_expression_parameters(
             statement,
             expression,

@@ -8,7 +8,11 @@
 - [x] Lower supported expressions to quoted, parameterized SQLite SQL without
   row-set materialization.
 - [x] Add fast runtime tests for supported projections and deterministic
-  unsupported forms.
+      unsupported forms.
+- [x] Extend the supported row envelope to searched `CASE` order keys and add
+      MySQL/runtime coverage.
+- [x] Support `AND`/`OR` composition over searched `CASE` order-key `LIKE`
+      conditions for WordPress search ranking.
 - [x] Update compatibility docs for the exact supported subset.
 - [x] Run focused runtime tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.

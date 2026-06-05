@@ -2443,8 +2443,9 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY = 81,
     PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE = 82,
     PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE = 83,
-    PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR = 84,
-    PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 85,
+    PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION = 84,
+    PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR = 85,
+    PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 86,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -19936,6 +19937,9 @@ static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast
 static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items);
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key);
+static bool select_order_key_is_searched_case_expression(
+    const struct mylite_sql_ast_node *order_key
+);
 static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key);
 static int plan_select_order_field_expression(
     struct mylite_db *database,
@@ -21978,6 +21982,24 @@ static int plan_row_scalar_like_predicate_expression(
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_leaf_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_logical_condition_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_leaf_logical_condition_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -24732,6 +24754,16 @@ static int append_row_scalar_like_predicate_expression_sql(
     size_t *next_parameter
 );
 static int append_row_scalar_leaf_like_predicate_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_logical_condition_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_leaf_logical_condition_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter

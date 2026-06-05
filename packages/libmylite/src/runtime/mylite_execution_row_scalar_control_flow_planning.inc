@@ -519,6 +519,116 @@ static int plan_row_scalar_leaf_like_predicate_expression(
     return rc;
 }
 
+static bool row_scalar_control_flow_logical_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
+
+static int plan_row_scalar_logical_condition_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (!row_scalar_control_flow_logical_operator_is_supported(operator_kind)) {
+        set_unsupported_error(database, "row-scalar CASE WHEN supports only AND/OR logic");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION;
+    out_expression->argument_count = 2U;
+    out_expression->arithmetic_operator = operator_kind;
+    out_expression->field_domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+
+    rc = plan_row_scalar_control_flow_condition_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_control_flow_condition_argument(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_leaf_logical_condition_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (!row_scalar_control_flow_logical_operator_is_supported(operator_kind)) {
+        set_unsupported_error(database, "nested row-scalar CASE WHEN supports only AND/OR logic");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION;
+    out_expression->argument_count = 2U;
+    out_expression->arithmetic_operator = operator_kind;
+    out_expression->field_domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+
+    rc = plan_row_scalar_control_flow_leaf_condition_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_control_flow_leaf_condition_argument(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
 static bool row_scalar_control_flow_comparison_operator_is_supported(
     enum mylite_sql_ast_operator operator_kind
 );
@@ -609,6 +719,59 @@ static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
         return mylite_sql_ast_node_operator(expression);
     }
     return MYLITE_SQL_AST_OPERATOR_NONE;
+}
+
+static bool row_scalar_control_flow_logical_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+        break;
+    }
+    return false;
 }
 
 static bool row_scalar_control_flow_comparison_operator_is_supported(
@@ -1412,6 +1575,17 @@ static int plan_row_scalar_control_flow_condition_argument(
             out_expression
         );
     }
+    if (row_scalar_control_flow_logical_operator_is_supported(operator_kind)) {
+        return plan_row_scalar_logical_condition_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_NONE) {
         return plan_row_scalar_integer_comparison_predicate_expression(
             database,
@@ -1585,6 +1759,17 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
     operator_kind = row_scalar_control_flow_condition_operator(expression);
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         return plan_row_scalar_leaf_like_predicate_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (row_scalar_control_flow_logical_operator_is_supported(operator_kind)) {
+        return plan_row_scalar_leaf_logical_condition_expression(
             database,
             expression,
             has_source,
@@ -1798,6 +1983,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
         return expression->field_domain;
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;

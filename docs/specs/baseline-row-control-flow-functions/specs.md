@@ -11,13 +11,15 @@ IFNULL(value, fallback)
 COALESCE(value[, ...])
 NULLIF(left_value, right_value)
 ISNULL(value)
+CASE WHEN condition THEN value [WHEN condition THEN value ...] [ELSE value] END
 ```
 
 The scope is intentionally limited to projection in the current row-scalar
-`SELECT` envelope. It does not add control-flow functions to `WHERE`, `ORDER
-BY`, `GROUP BY`, `HAVING`, DML assignment values, defaults, generated columns,
-or arbitrary expression positions. It also does not make MyLite's expression
-metadata general.
+`SELECT` envelope, plus a searched-`CASE` hidden order key in the same
+single-table envelope. It does not add other control-flow functions to `WHERE`,
+`ORDER BY`, `GROUP BY`, `HAVING`, DML assignment values, defaults, generated
+columns, or arbitrary expression positions. It also does not make MyLite's
+expression metadata general.
 
 The main architectural goal is to move common application projection patterns
 such as `IFNULL(option_value, '')` and `COALESCE(col, fallback)` onto the
@@ -70,9 +72,9 @@ Runtime probes establish the behavior used by this phase:
   'a')` returns `NULL`.
 - Successful supported projections produce no warnings for the admitted value
   shapes and make a following `ROW_COUNT()` return `-1`.
-- MySQL also supports these functions in predicates, ordering, DML assignments,
-  grouping, subqueries, generated expressions, and broad expression trees. Those
-  positions remain outside this baseline.
+- MySQL also supports these functions in predicates, broader ordering, DML
+  assignments, grouping, subqueries, generated expressions, and broad
+  expression trees. Those positions remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -114,7 +116,8 @@ least one row control-flow expression:
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column [ASC | DESC]
+        | searched_case_expr [ASC | DESC] [, descriptor_column [ASC | DESC] ...]]
 [LIMIT row_count]
 ```
 
@@ -128,6 +131,13 @@ row_scalar_expr:
   | COALESCE ( row_scalar_value_list )
   | NULLIF ( row_scalar_value , row_scalar_value )
   | ISNULL ( row_scalar_value )
+  | searched_case_expr
+
+searched_case_expr:
+    CASE WHEN row_condition THEN row_scalar_value
+         [WHEN row_condition THEN row_scalar_value ...]
+         [ELSE row_scalar_value]
+    END
   | ( row_scalar_expr )
 
 row_scalar_value:
@@ -153,6 +163,9 @@ row_condition:
   | FALSE
   | NULL
   | ISNULL ( row_scalar_value )
+  | row_scalar_value LIKE row_scalar_value
+  | row_condition AND row_condition
+  | row_condition OR row_condition
   | ( row_condition )
 
 nested_row_control_expr:
@@ -171,6 +184,9 @@ nested_row_condition:
   | TRUE
   | FALSE
   | NULL
+  | row_scalar_leaf_value LIKE row_scalar_leaf_value
+  | nested_row_condition AND nested_row_condition
+  | nested_row_condition OR nested_row_condition
   | ( nested_row_condition )
 
 row_scalar_leaf_value:
@@ -251,6 +267,9 @@ row_condition(A) ::= TRUE(T).
 row_condition(A) ::= FALSE(T).
 row_condition(A) ::= NULL(T).
 row_condition(A) ::= ISNULL(T) LPAREN row_scalar_value(V) RPAREN(R).
+row_condition(A) ::= row_scalar_value(L) LIKE(T) row_scalar_value(R).
+row_condition(A) ::= row_condition(L) AND(T) row_condition(R).
+row_condition(A) ::= row_condition(L) OR(T) row_condition(R).
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
@@ -275,6 +294,9 @@ Function semantics:
 
 - `IF()` tests the condition with the admitted integer truth rule: nonzero and
   not `NULL` selects the true branch; zero or `NULL` selects the false branch.
+- Searched `CASE` and `IF()` row conditions admit `LIKE`, `AND`, and `OR` over
+  the supported row-condition atoms; `LIKE` uses the current backslash-escape
+  SQL mode decision already used by MyLite row predicates.
 - `IFNULL()` and `COALESCE()` use the first non-`NULL` admitted argument.
 - `NULLIF()` compares the two admitted arguments. When the planned argument
   domain is nonbinary text, comparison uses MyLite's registered ASCII
@@ -338,6 +360,9 @@ Add MySQL-runtime expectation coverage for:
 - case-insensitive ASCII string comparison for `NULLIF()` under the default
   collation;
 - `WHERE`, descriptor `ORDER BY`, and `LIMIT` row-envelope preservation;
+- searched `CASE` as a hidden single-table `ORDER BY` key, including
+  `LIKE`-predicate conditions, `AND`/`OR` condition composition, and a
+  descriptor tie-breaker;
 - result labels and aliases;
 - `ROW_COUNT()` and `@@warning_count` after successful projections.
 
@@ -347,6 +372,7 @@ Add fast C runtime coverage for:
 - nullable and nonnullable descriptor values;
 - qualified column references with table aliases;
 - existing row-envelope reuse;
+- hidden searched-`CASE` order keys in the single-table row envelope;
 - unknown columns inside function arguments;
 - unsupported expression positions: `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`,
   and `UPDATE` assignment;

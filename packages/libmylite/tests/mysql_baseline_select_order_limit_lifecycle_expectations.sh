@@ -276,6 +276,35 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "searched case order key" \
+    "3
+1
+2
+4" \
+    "SELECT id FROM numbers
+     ORDER BY CASE
+         WHEN title LIKE '%food%' THEN 1
+         WHEN title LIKE '%foo%' THEN 2
+         ELSE 3
+     END, id;" \
+    "$DATABASE"
+
+expect_output \
+    "searched case logical order key" \
+    "3
+1
+2
+4" \
+    "SELECT id FROM numbers
+     ORDER BY CASE
+         WHEN title LIKE '%food%' THEN 1
+         WHEN title LIKE '%foo%' AND title LIKE '%old%' THEN 2
+         WHEN title LIKE '%bar%' OR title LIKE '%qux%' THEN 3
+         ELSE 4
+     END, id;" \
+    "$DATABASE"
+
+expect_output \
     "integer alias ordered limit" \
     "1" \
     "SELECT id FROM integer_aliases ORDER BY ii LIMIT 1;" \

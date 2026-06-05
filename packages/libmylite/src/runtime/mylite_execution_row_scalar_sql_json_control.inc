@@ -231,6 +231,7 @@ static int append_row_scalar_json_extract_document_argument_sql(
         return append_row_scalar_json_set_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -338,6 +339,7 @@ static int append_row_scalar_json_introspection_argument_sql(
         return append_row_scalar_json_extract_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -649,6 +651,7 @@ static int append_row_scalar_json_set_document_argument_sql(
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -877,6 +880,12 @@ static int append_row_scalar_control_flow_expression_sql(
         return append_row_scalar_searched_case_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_like_predicate_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
+        return append_row_scalar_logical_condition_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -988,6 +997,12 @@ static int append_row_scalar_nested_control_flow_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_leaf_like_predicate_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
+        return append_row_scalar_leaf_logical_condition_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -1468,6 +1483,104 @@ static int append_row_scalar_leaf_like_predicate_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_logical_condition_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    const char *operator_sql = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION ||
+        expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    operator_kind = expression->arithmetic_operator;
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
+        operator_sql = " AND ";
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+               operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+        operator_sql = " OR ";
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_control_flow_argument_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, operator_sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_control_flow_argument_sql(
+            string,
+            &expression->arguments[1],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_leaf_logical_condition_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    const char *operator_sql = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION ||
+        expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    operator_kind = expression->arithmetic_operator;
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
+        operator_sql = " AND ";
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+               operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+        operator_sql = " OR ";
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_control_flow_leaf_condition_argument_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, operator_sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_control_flow_leaf_condition_argument_sql(
+            string,
+            &expression->arguments[1],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_nested_if_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -1653,6 +1766,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return append_row_scalar_nested_control_flow_expression_sql(
             string,
             expression,
@@ -1767,6 +1881,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
         return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -1868,6 +1983,12 @@ static int append_row_scalar_control_flow_leaf_condition_argument_sql(
         return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_leaf_like_predicate_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
+        return append_row_scalar_leaf_logical_condition_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:

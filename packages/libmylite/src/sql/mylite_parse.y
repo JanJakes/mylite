@@ -4596,6 +4596,18 @@ select_order_key(A) ::= select_field_order_expression(K). {
 select_order_key(A) ::= select_rand_order_expression(K). {
     A = K;
 }
+select_order_key(A) ::= select_searched_case_order_expression(K). {
+    A = K;
+}
+
+select_searched_case_order_expression(A) ::=
+    CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
+    A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
+}
+select_searched_case_order_expression(A) ::=
+    LPAREN(L) select_searched_case_order_expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
 
 select_field_order_expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(

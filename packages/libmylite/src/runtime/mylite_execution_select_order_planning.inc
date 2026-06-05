@@ -210,6 +210,7 @@ static int plan_select_order_ast_item(
     }
     if ((row_scalar_conversion_kind_from_expression(item_nodes.order_key) !=
          PLANNED_ROW_SCALAR_CONVERSION_NONE) ||
+        select_order_key_is_searched_case_expression(item_nodes.order_key) ||
         select_order_key_is_like_predicate(item_nodes.order_key)) {
         if (select_source_context_is_joined(source_context)) {
             set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
@@ -354,6 +355,13 @@ static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *
         return true;
     }
     return false;
+}
+
+static bool select_order_key_is_searched_case_expression(
+    const struct mylite_sql_ast_node *order_key
+) {
+    order_key = unwrap_parenthesized_expression(order_key);
+    return order_key != NULL && order_key->kind == MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION;
 }
 
 static int plan_select_order_field_expression(

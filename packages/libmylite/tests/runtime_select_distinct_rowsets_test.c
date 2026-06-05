@@ -73,6 +73,7 @@ static int test_distinct_rowset_success_and_reopen(void) {
     static const char *const columns_ab[] = {"a", "b"};
     static const char *const values_ab[] = {NULL, "11", "1", "10", "1", "11"};
     static const char *const columns_a[] = {"a"};
+    static const char *const values_a[] = {NULL, "1"};
     static const char *const values_a_non_selected_order[] = {"1", NULL};
     static const char *const columns_b[] = {"b"};
     static const char *const values_b_joined_non_selected_order[] = {"10", "11"};
@@ -120,6 +121,17 @@ static int test_distinct_rowset_success_and_reopen(void) {
             .values = values_ab,
             .row_count = 3U,
             .context = "multi-column integer distinct",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT(t.a) FROM t ORDER BY a",
+            .columns = columns_a,
+            .column_count = 1U,
+            .values = values_a,
+            .row_count = 2U,
+            .context = "parenthesized qualified integer distinct",
         }
     );
     failures += expect_query(

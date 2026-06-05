@@ -94,6 +94,7 @@ run_mysql \
      CREATE TABLE all_null_t(id INT NOT NULL, n INT NULL, b BIGINT NULL) ENGINE=InnoDB;
      CREATE TABLE overflow_t(b BIGINT NOT NULL, bu BIGINT UNSIGNED NOT NULL) ENGINE=InnoDB;
      CREATE TABLE quoted_t(\`weird name\` INT NULL, \`double\"quote\` INT NULL) ENGINE=InnoDB;
+     CREATE TABLE options(option_value TEXT NULL, autoload VARCHAR(20) NULL) ENGINE=InnoDB;
      INSERT INTO t VALUES
        (1, -2147483648, 0, -9223372036854775808, 0, NULL, 10,
         -128, 0, -32768, -8388608, FALSE, TRUE),
@@ -105,7 +106,10 @@ run_mysql \
      INSERT INTO overflow_t VALUES
        (9223372036854775807, 9223372036854775807),
        (1, 9223372036854775807);
-     INSERT INTO quoted_t VALUES (1, 1), (NULL, 2), (3, NULL);" >/dev/null
+     INSERT INTO quoted_t VALUES (1, 1), (NULL, 2), (3, NULL);
+     INSERT INTO options VALUES
+       ('abc','yes'),('de','on'),('ignored','no'),('', 'auto'),(NULL,'auto-on');" \
+    >/dev/null
 
 core=$(run_mysql \
     "USE ${DATABASE};
@@ -169,6 +173,13 @@ expect_value \
     "unsigned bigint supported max sum" \
     "9223372036854775807" \
     "$(printf '%s\n' "$where_sums" | sed -n '17p')"
+
+length_sum=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT SUM(LENGTH(option_value)) FROM options
+     WHERE autoload IN ('yes','on','auto-on','auto');"
+)
+expect_value "string length expression sum" "5" "$length_sum"
 
 headers_output=$(run_mysql_with_headers \
     "USE ${DATABASE};

@@ -293,7 +293,14 @@ static int bind_column_aggregate_parameters(
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    if (plan->has_separator) {
+    if (plan->aggregate_uses_row_scalar_expression) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &plan->aggregate_row_scalar_expression,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && plan->has_separator) {
         rc = bind_planned_value_parameter(statement, parameter_index, &plan->separator);
         if (rc == MYLITE_OK) {
             ++parameter_index;

@@ -2057,6 +2057,34 @@ static int test_sum_aggregate(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT SUM(LENGTH(option_value)) FROM options;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "sum length aggregate"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "SUM(LENGTH(option_value))",
+        "sum length span"
+    );
+    sum_argument = parser_test_child_at(first_expression, 0U);
+    failures +=
+        parser_test_expect_node(sum_argument, MYLITE_SQL_AST_LENGTH_FUNCTION, "sum length arg");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(sum_argument, 0U),
+        "option_value",
+        "sum length column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT (SUM(id));", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);

@@ -124,6 +124,17 @@ expect_output \
     "SELECT DISTINCT a, b FROM t ORDER BY a, b;" \
     "$DATABASE"
 
+parenthesized_column_expected=$(cat <<EXPECTED
+NULL
+1
+EXPECTED
+)
+expect_output \
+    "parenthesized qualified integer distinct" \
+    "$parenthesized_column_expected" \
+    "SELECT DISTINCT(t.a) FROM t ORDER BY a;" \
+    "$DATABASE"
+
 strings_expected=$(cat <<EXPECTED
 NULL
 Alpha

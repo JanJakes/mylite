@@ -3859,6 +3859,9 @@ selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN qualified_identifier(
 sum_aggregate_argument(A) ::= qualified_identifier(B). {
     A = B;
 }
+sum_aggregate_argument(A) ::= string_length_expression(B). {
+    A = B;
+}
 sum_aggregate_argument(A) ::= qualified_identifier(B) PLUS(T) qualified_identifier(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);

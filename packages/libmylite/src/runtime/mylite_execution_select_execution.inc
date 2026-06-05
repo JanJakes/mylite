@@ -100,6 +100,23 @@ static bool select_statement_is_row_scalar_projection_attempt(
     while (select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
+        expression = unwrap_parenthesized_expression(expression);
+        if (expression != NULL &&
+            (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION)) {
+            return false;
+        }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(expression) ||
              (has_table_source &&

@@ -68,7 +68,8 @@ MyLite supports:
   shadowing session temporary table behavior already used by descriptor
   `SELECT`;
 - optional table aliases on the single table source;
-- one or more explicit descriptor columns in the projection list;
+- one or more explicit descriptor columns in the projection list, including
+  parenthesized descriptor columns such as `DISTINCT(table.column)`;
 - descriptor-backed row-scalar projection expressions in the row-scalar
   execution path, including supported temporal extraction functions, constant
   expressions, and aliases;
@@ -103,7 +104,8 @@ This slice intentionally does not support:
   query blocks, grouped distinct, `SQL_CALC_FOUND_ROWS DISTINCT`, `UNION`
   branch changes, subqueries, CTEs, derived tables, or `TABLE`;
 - expression, literal, function, user-variable, system-variable, ordinal, or
-  string-literal projection items;
+  string-literal projection items, except for parenthesized descriptor-column
+  references that unwrap to the descriptor-column path;
 - `DISTINCT` over exact decimal, approximate numeric, binary string, BLOB,
   `BIT`, `ENUM`, `SET`, `JSON`, spatial, generated-expression, or unsupported
   descriptor families;
@@ -147,6 +149,7 @@ distinct_projection(A) ::= STAR.
 distinct_projection(A) ::= qualified_wildcard.
 
 distinct_column_item(A) ::= descriptor_column select_item_alias_opt.
+distinct_column_item(A) ::= LPAREN descriptor_column RPAREN select_item_alias_opt.
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
@@ -257,8 +260,9 @@ distinct rejection tests that become supported. Coverage must include:
 - `NULL` duplicate elimination;
 - integer, `YEAR`, temporal, and ASCII nonbinary string values;
 - case-insensitive ASCII string duplicate elimination;
-- aliases, selected-column `ORDER BY`, loose-mode non-selected descriptor
-  `ORDER BY`, and joined descriptor `DISTINCT`;
+- aliases, parenthesized descriptor-column projections, selected-column
+  `ORDER BY`, loose-mode non-selected descriptor `ORDER BY`, and joined
+  descriptor `DISTINCT`;
 - `WHERE`, `LIMIT`, and `OFFSET`;
 - close/reopen persistence;
 - unsupported scalar/`DUAL`, expression/literal projection, unsupported

@@ -2778,6 +2778,8 @@ struct planned_column_aggregate {
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor aggregate_column;
+    bool aggregate_uses_row_scalar_expression;
+    struct planned_row_scalar_expression aggregate_row_scalar_expression;
     struct planned_select_order aggregate_order;
     bool has_separator;
     struct planned_value separator;
@@ -12025,6 +12027,21 @@ static int plan_column_aggregate_column(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
+);
+static int plan_column_aggregate_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_column_aggregate *out_plan
+);
+static bool column_aggregate_sum_argument_is_row_scalar_expression(
+    const struct mylite_sql_ast_node *function
+);
+static bool column_aggregate_sum_argument_is_string_length_expression(
+    const struct mylite_sql_ast_node *argument
 );
 static int plan_column_group_concat_options(
     struct mylite_db *database,

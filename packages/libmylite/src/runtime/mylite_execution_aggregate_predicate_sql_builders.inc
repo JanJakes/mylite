@@ -121,6 +121,23 @@ static int append_column_aggregate_select_list_sql(
             next_parameter
         );
     }
+    if (plan->aggregate_uses_row_scalar_expression) {
+        rc = mylite_dynamic_string_append(string, column_aggregate_sql_function(plan->function));
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, '(');
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                &plan->aggregate_row_scalar_expression,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
     if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
         rc = mylite_dynamic_string_append(string, "SUM(");
         if (rc == MYLITE_OK) {

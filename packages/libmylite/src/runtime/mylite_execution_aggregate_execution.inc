@@ -877,6 +877,19 @@ static int plan_column_aggregate(
                 table_column_count,
                 out_plan
             );
+        } else if (
+            out_plan->function == PLANNED_COLUMN_AGGREGATE_SUM &&
+            column_aggregate_sum_argument_is_row_scalar_expression(expression)
+        ) {
+            rc = plan_column_aggregate_row_scalar_expression(
+                database,
+                expression,
+                &source_context,
+                &out_plan->table,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
         } else {
             rc = plan_column_aggregate_column(
                 database,
@@ -912,6 +925,7 @@ static void planned_column_aggregate_deinit(struct planned_column_aggregate *pla
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_order_deinit(&plan->aggregate_order);
     planned_value_deinit(&plan->separator);
+    planned_row_scalar_expression_deinit(&plan->aggregate_row_scalar_expression);
     *plan = (struct planned_column_aggregate){0};
 }
 
@@ -1100,6 +1114,68 @@ static int plan_column_aggregate_column(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_column_aggregate_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_column_aggregate *out_plan
+) {
+    const struct mylite_sql_ast_node *argument = child_at(function, 0U);
+    int rc = MYLITE_OK;
+
+    if (!column_aggregate_sum_argument_is_string_length_expression(argument)) {
+        set_unsupported_error(database, "SUM(expression) supports only string length expressions");
+        return MYLITE_ERROR;
+    }
+    rc = plan_row_scalar_expression(
+        database,
+        argument,
+        true,
+        source_context,
+        table,
+        table_columns,
+        table_column_count,
+        &out_plan->aggregate_row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        out_plan->aggregate_uses_row_scalar_expression = true;
+    }
+    return rc;
+}
+
+static bool column_aggregate_sum_argument_is_row_scalar_expression(
+    const struct mylite_sql_ast_node *function
+) {
+    const struct mylite_sql_ast_node *argument = child_at(function, 0U);
+
+    if (argument == NULL) {
+        return false;
+    }
+    return (argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
+            argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) != 0;
+}
+
+static bool column_aggregate_sum_argument_is_string_length_expression(
+    const struct mylite_sql_ast_node *argument
+) {
+    if (argument == NULL) {
+        return false;
+    }
+    switch (argument->kind) {
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int plan_column_group_concat_options(

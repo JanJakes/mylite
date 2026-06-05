@@ -2,18 +2,21 @@
 
 ## Status
 
-This feature specifies a narrow aggregate-function slice for `SUM(column)`.
+This feature specifies a narrow aggregate-function slice for `SUM(column)` and
+WordPress-shaped `SUM(string_length(column))`.
 It builds on `mylite_execute()`, statement context, the MyLite parser
 scaffold, durable catalog descriptors, schema/table lifecycle, integer/`NULL`
 row values, descriptor-driven single-table `SELECT`, the baseline `WHERE`
 predicate subset, and the existing `COUNT`, `MIN`, and `MAX` aggregate paths.
 
 This is not full numeric expression or decimal aggregate support. It admits
-exactly one aggregate select item, `SUM(column_name)`, over one persistent
-base table with an optional baseline `WHERE` predicate. It does not add
-literal/expression arguments, `DISTINCT`, grouping, having, ordering,
-limiting, window functions, joins, CTEs, subqueries, or MySQL's exact decimal
-result widening beyond MyLite's current signed-64 result envelope.
+exactly one aggregate select item, `SUM(column_name)` or
+`SUM(LENGTH(column_name))` and equivalent string-length aliases, over one
+persistent base table with an optional baseline `WHERE` predicate. It does not
+add literal/`NULL` arguments, `DISTINCT`, general expression arguments,
+grouping, having, ordering, limiting, window functions, joins, CTEs,
+subqueries, or MySQL's exact decimal result widening beyond MyLite's current
+signed-64 result envelope.
 
 ## Sources
 
@@ -68,10 +71,11 @@ records the runtime probes for this feature. Observed behavior:
 - `SELECT SUM(column)` and `SELECT SUM(column) FROM DUAL` fail with
   unknown-column error `1054`, SQLSTATE `42S22`, when the column name is not
   otherwise resolvable.
-- `SUM(1)`, `SUM(NULL)`, `SUM(DISTINCT column)`, and `SUM(table.column)` are
-  valid MySQL aggregate expressions. This MyLite slice supports descriptor
-  column arguments, including supported source-qualified descriptor columns,
-  but defers literal, `NULL`, `DISTINCT`, and general expression arguments.
+- `SUM(1)`, `SUM(NULL)`, `SUM(DISTINCT column)`, `SUM(table.column)`, and
+  `SUM(LENGTH(column))` are valid MySQL aggregate expressions. This MyLite
+  slice supports descriptor column arguments, supported source-qualified
+  descriptor columns, and the limited string-length expression form, but
+  defers literal, `NULL`, `DISTINCT`, and other general expression arguments.
 - MySQL returns exact decimal results for integer `SUM`; for example, summing
   two signed-64-range `BIGINT` values can return `9223372036854775808`, and
   summing two supported-range `BIGINT UNSIGNED` values can return
@@ -92,10 +96,16 @@ records the runtime probes for this feature. Observed behavior:
 
 The implementation must add:
 
-- parser and AST support for no-space `SUM(qualified_identifier)`;
+- parser and AST support for no-space `SUM(qualified_identifier)` and
+  `SUM(string_length_expression)`;
 - `SUM` as a nonreserved identifier where identifier grammar admits it;
 - descriptor-driven
   `SELECT SUM(column_name) [AS alias] FROM table_name [WHERE predicate]`;
+- descriptor-driven
+  `SELECT SUM(LENGTH(column_name)) [AS alias] FROM table_name [WHERE predicate]`
+  and equivalent `OCTET_LENGTH`, `BIT_LENGTH`, `CHAR_LENGTH`, and
+  `CHARACTER_LENGTH` arguments over the existing row-scalar string-length
+  envelope;
 - optional source table aliases matching the existing single-table aggregate
   source policy;
 - unqualified and schema-qualified table-name resolution using the existing
@@ -127,10 +137,10 @@ Existing `COUNT`, `MIN`, and `MAX` behavior must remain unchanged.
 
 This feature must not implement:
 
-- standalone `SUM(expr)` for literals, `NULL`, arithmetic, functions,
-  parenthesized expression arguments, `DISTINCT`, or general expression
-  arguments; the narrow grouped `SUM(column + column)` metadata bridge is
-  specified by the grouped aggregate slice;
+- standalone `SUM(expr)` for literals, `NULL`, arithmetic, functions outside
+  the string-length family, parenthesized expression arguments, `DISTINCT`, or
+  general expression arguments; the narrow grouped `SUM(column + column)`
+  metadata bridge is specified by the grouped aggregate slice;
 - no-source or `FROM DUAL` aggregate evaluation;
 - multiple aggregate select items, mixed projections, aggregate comparisons,
   aggregate arithmetic, or nested aggregates;
@@ -179,6 +189,7 @@ Supported subset:
 
 ```sql
 SELECT SUM(column_name) [AS alias] FROM table_name [WHERE predicate]
+SELECT SUM(string_length_expression) [AS alias] FROM table_name [WHERE predicate]
 ```
 
 `table_name` uses the existing table lifecycle subset:
@@ -189,13 +200,23 @@ table_name:
   | identifier.identifier
 ```
 
-The aggregate argument is one descriptor column reference:
+The aggregate argument is one descriptor column reference or one supported
+string-length expression over the existing row-scalar string-length operand
+envelope:
 
 ```sql
 sum_argument:
     column_name
   | table_name.column_name
   | schema_name.table_name.column_name
+  | string_length_expression
+
+string_length_expression:
+    LENGTH(expression)
+  | OCTET_LENGTH(expression)
+  | BIT_LENGTH(expression)
+  | CHAR_LENGTH(expression)
+  | CHARACTER_LENGTH(expression)
 ```
 
 The supported predicate subset is exactly the subset from
@@ -217,15 +238,16 @@ MyLite Lemon-syntax grammar snippets:
 ```lemon
 expression ::= SUM LPAREN sum_aggregate_argument RPAREN.
 sum_aggregate_argument ::= qualified_identifier.
+sum_aggregate_argument ::= string_length_expression.
 sum_aggregate_argument ::= qualified_identifier PLUS qualified_identifier.
 ```
 
-The parser may admit `SUM(column)` anywhere the expression grammar is
-currently shared, and may admit the grouped metadata bridge
-`SUM(column + column)`, but the analyzer accepts only the statement shapes
-documented by the standalone and grouped aggregate slices. `SUM` remains usable
-as an ordinary unquoted identifier in identifier positions where the parser
-admits nonreserved keywords. Bare `SUM` is not an aggregate call.
+The parser may admit `SUM(column)` and `SUM(string_length_expression)` anywhere
+the expression grammar is currently shared, and may admit the grouped metadata
+bridge `SUM(column + column)`, but the analyzer accepts only the statement
+shapes documented by the standalone and grouped aggregate slices. `SUM`
+remains usable as an ordinary unquoted identifier in identifier positions where
+the parser admits nonreserved keywords. Bare `SUM` is not an aggregate call.
 
 ## Runtime Semantics
 
@@ -282,6 +304,7 @@ MyLite generates descriptor-built SQL shaped as:
 
 ```sql
 SELECT SUM("physical_column") FROM "physical_table" [WHERE "physical_column" op ?]
+SELECT SUM(<row-scalar-string-length-sql>) FROM "physical_table" [WHERE ...]
 ```
 
 All generated identifiers are quoted. The physical table name comes from the
@@ -312,6 +335,7 @@ MyLite-specific unsupported messages:
 | unsupported optional select clauses | `SUM(column) supports only WHERE` |
 | no descriptor table source | `SUM(column) supports only descriptor-backed table reads` |
 | unsupported aggregate argument after parsing | `SUM(column) supports only descriptor columns` |
+| unsupported aggregate expression after parsing | `SUM(expression) supports only string length expressions` |
 | aggregate result exceeds signed-64 range | `SUM(column) result exceeds MyLite signed 64-bit range` |
 
 ## Tests
@@ -320,7 +344,8 @@ The implementation tests must cover:
 
 - parser acceptance for `SUM(column)`, lower/mixed case, whitespace/comments
   inside the argument list, quoted identifiers, qualified arguments,
-  parenthesized aggregates, and `SUM` as an ordinary identifier;
+  string-length arguments, parenthesized aggregates, and `SUM` as an ordinary
+  identifier;
 - parser rejection for `SUM (column)`, `SUM/**/(column)`, `SUM()`,
   `SUM(*)`, `SUM(1)`, `SUM(NULL)`, `SUM(DISTINCT column)`, multi-argument
   `SUM`, literal/function/non-column arithmetic arguments, and malformed
@@ -328,6 +353,8 @@ The implementation tests must cover:
 - successful `SUM(column)` over `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`,
   `INTEGER`, `BIGINT`, unsigned integer forms that remain within signed 64
   bits, and `BOOL`/`BOOLEAN` aliases;
+- successful WordPress-shaped `SUM(LENGTH(text_column))` with a descriptor
+  `WHERE ... IN (...)` filter;
 - nullable, all-`NULL`, empty-table, no-match predicate, `IS NULL`, and
   `IS NOT NULL` behavior;
 - baseline comparison predicate reuse, including equality, inequality, range,
@@ -361,7 +388,7 @@ Before marking done:
 
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-aggregate.md`, and
 `docs/compatibility/sql-query-expressions.md` to mark only the exact limited
-`SUM(column)` aggregate subset as supported. Do not claim full `SUM(expr)`,
-`DISTINCT`, decimal result widening, grouping, having, ordering, limiting,
-windows, joins, expression arguments, literals, collations, or protocol-grade
-metadata.
+`SUM(column)` and narrow `SUM(string_length(column))` aggregate subsets as
+supported. Do not claim full `SUM(expr)`, `DISTINCT`, decimal result widening,
+grouping, having, ordering, limiting, windows, joins, other expression
+arguments, literals, collations, or protocol-grade metadata.

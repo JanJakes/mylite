@@ -423,6 +423,7 @@ static int select_item_column_reference(
     const struct mylite_sql_ast_node *expression = child_at(item, 0U);
 
     *out_column = NULL;
+    expression = unwrap_parenthesized_expression(expression);
     if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
         (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
          expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {

@@ -115,6 +115,14 @@ static int test_sum_values_persistence_rename_and_drop(void) {
     failures += execute_ok(database, "ALTER TABLE numbers ALTER COLUMN tie SET INVISIBLE", &result);
     mylite_result_free(result);
     result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE options (option_value TEXT, autoload VARCHAR(20))", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO options VALUES "
+        "('abc','yes'),('de','on'),('ignored','no'),('', 'auto'),(NULL,'auto-on')",
+        NULL
+    );
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -249,6 +257,16 @@ static int test_sum_values_persistence_rename_and_drop(void) {
             .column = "SUM(n)",
             .value = "70",
             .context = "nullable integer sum ignores nulls",
+        }
+    );
+    failures += expect_sum_query(
+        database,
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(LENGTH(option_value)) FROM options "
+                   "WHERE autoload IN ('yes','on','auto-on','auto')",
+            .column = "SUM(LENGTH(option_value))",
+            .value = "5",
+            .context = "wordpress autoloaded option length sum",
         }
     );
     failures += expect_sum_query(

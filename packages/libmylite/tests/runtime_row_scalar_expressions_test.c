@@ -191,6 +191,15 @@ static int test_table_backed_concat(void) {
     static const char *const values_multi_order[] = {":3", "a:1", "b:2"};
     static const char *const columns_labels[] = {"CONCAT(v, '-', id)", "alias_name"};
     static const char *const values_labels[] = {"a-1", "xapp"};
+    static const char *const columns_distinct_date_parts[] = {"year", "month"};
+    static const char *const values_distinct_date_parts[] = {
+        "2024",
+        "2",
+        "2024",
+        "1",
+        "2023",
+        "12",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -292,6 +301,42 @@ static int test_table_backed_concat(void) {
             .values = values_labels,
             .row_count = 1U,
             .context = "concat labels",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "SET sql_mode = ''",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE posts(id INT, post_date DATETIME, post_type VARCHAR(20), "
+        "post_status VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO posts VALUES "
+        "(1, '2024-01-10 10:00:00', 'foo', 'publish'), "
+        "(2, '2024-01-20 10:00:00', 'foo', 'publish'), "
+        "(3, '2024-02-01 10:00:00', 'foo', 'publish'), "
+        "(4, '2023-12-31 10:00:00', 'foo', 'publish'), "
+        "(5, '2024-03-01 10:00:00', 'foo', 'trash'), "
+        "(6, '2024-02-02 10:00:00', 'bar', 'publish')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT YEAR(post_date) AS year, MONTH(post_date) AS month "
+                   "FROM posts WHERE post_type = 'foo' AND post_status != 'auto-draft' "
+                   "AND post_status != 'trash' ORDER BY post_date DESC",
+            .columns = columns_distinct_date_parts,
+            .column_count = sizeof(columns_distinct_date_parts) /
+                            sizeof(columns_distinct_date_parts[0]),
+            .values = values_distinct_date_parts,
+            .row_count = 3U,
+            .context = "distinct row-scalar temporal parts",
         }
     );
 

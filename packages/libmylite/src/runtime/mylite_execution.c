@@ -2616,6 +2616,7 @@ struct planned_row_scalar_exists_filter {
 
 struct planned_row_scalar_select {
     bool has_source;
+    bool has_distinct;
     struct table_name_resolution source;
     char source_alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct mylite_catalog_table_descriptor table;

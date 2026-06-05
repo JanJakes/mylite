@@ -1596,8 +1596,7 @@ static int plan_row_scalar_select(
 
     *out_plan = (struct planned_row_scalar_select){false};
     if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
-        set_unsupported_error(database, "row-scalar SELECT projection does not support DISTINCT");
-        return MYLITE_ERROR;
+        out_plan->has_distinct = true;
     }
     if (mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
         set_unsupported_error(

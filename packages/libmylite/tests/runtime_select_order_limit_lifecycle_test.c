@@ -1466,13 +1466,13 @@ static int test_order_limit_diagnostics(void) {
             .message_part = "SELECT DISTINCT supports ORDER BY only on selected columns",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT DISTINCT 1 FROM ordered_numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT projection does not support DISTINCT",
+        (struct expected_query){
+            .sql = "SELECT DISTINCT 1 FROM ordered_numbers",
+            .values = alias_first,
+            .value_count = sizeof(alias_first) / sizeof(alias_first[0]),
+            .context = "constant row-scalar distinct",
         }
     );
     failures += execute_error(

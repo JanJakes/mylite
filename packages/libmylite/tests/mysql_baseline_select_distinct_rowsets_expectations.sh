@@ -251,6 +251,12 @@ expect_output \
     "SELECT DISTINCT a, b FROM t ORDER BY a, b; SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
+expect_output \
+    "descriptor-backed constant row-scalar distinct" \
+    "1" \
+    "SELECT DISTINCT 1 FROM t;" \
+    "$DATABASE"
+
 expect_upstream_accepts \
     "MySQL accepts scalar distinct, deferred in MyLite" \
     "SELECT DISTINCT 1;" \

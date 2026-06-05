@@ -126,11 +126,11 @@ SELECT row_scalar_item[, row_scalar_item ...]
 SELECT row_scalar_item[, row_scalar_item ...] FROM DUAL
 ```
 
-Descriptor-backed table forms, with at least one `row_scalar_item` containing
-`CONCAT()`:
+Descriptor-backed table forms, optionally using `DISTINCT` for duplicate-row
+elimination over the projected row-scalar values:
 
 ```sql
-SELECT row_scalar_item[, row_scalar_item ...]
+SELECT [DISTINCT | DISTINCTROW] row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
 [ORDER BY descriptor_column [ASC | DESC]]
@@ -242,6 +242,10 @@ Planning proceeds as follows:
    before execution.
 6. Reuse existing descriptor-driven `WHERE`, `ORDER BY`, and `LIMIT` planning
    for the table row envelope.
+7. For descriptor-backed `DISTINCT` row-scalar projections, emit `SELECT
+   DISTINCT` and let SQLite perform streaming duplicate elimination over the
+   generated projection expressions. MyLite still owns expression planning,
+   descriptor resolution, result-column metadata, and parameter binding.
 
 `CONCAT()` semantics:
 
@@ -295,8 +299,8 @@ Supported diagnostics include:
 - unknown descriptor columns using MySQL-compatible unknown-column diagnostics
   in field-list context;
 - deterministic unsupported diagnostics for unsupported scalar expressions,
-  unsupported descriptor column types, unsupported source clauses, `DISTINCT`,
-  `SQL_CALC_FOUND_ROWS`, joins, subqueries, casts, date functions, expression
+  unsupported descriptor column types, unsupported source clauses,
+  `SQL_CALC_FOUND_ROWS`, joins, subqueries, unsupported casts, expression
   defaults, and DML expression assignments;
 - allocation failures through existing `MYLITE_NOMEM` and diagnostics;
 - physical SQLite failures through existing physical row diagnostics.

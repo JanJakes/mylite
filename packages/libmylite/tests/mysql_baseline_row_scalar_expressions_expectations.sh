@@ -175,6 +175,33 @@ b:2" \
     "SELECT CONCAT(v, ':', id) FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
     "$DATABASE"
 
+run_mysql \
+    "CREATE TABLE posts(id INT, post_date DATETIME, post_type VARCHAR(20), "\
+"post_status VARCHAR(20)); "\
+"INSERT INTO posts VALUES "\
+"(1, '2024-01-10 10:00:00', 'foo', 'publish'), "\
+"(2, '2024-01-20 10:00:00', 'foo', 'publish'), "\
+"(3, '2024-02-01 10:00:00', 'foo', 'publish'), "\
+"(4, '2023-12-31 10:00:00', 'foo', 'publish'), "\
+"(5, '2024-03-01 10:00:00', 'foo', 'trash'), "\
+"(6, '2024-02-02 10:00:00', 'bar', 'publish');" \
+    "$DATABASE" >/dev/null
+
+distinct_date_parts_expected=$(cat <<\EXPECTED
+2024	2
+2024	1
+2023	12
+EXPECTED
+)
+expect_output \
+    "distinct row-scalar temporal parts" \
+    "$distinct_date_parts_expected" \
+    "SET sql_mode = ''; "\
+"SELECT DISTINCT YEAR(post_date) AS year, MONTH(post_date) AS month "\
+"FROM posts WHERE post_type = 'foo' AND post_status != 'auto-draft' "\
+"AND post_status != 'trash' ORDER BY post_date DESC;" \
+    "$DATABASE"
+
 labels_expected=$(cat <<EXPECTED
 CONCAT(v, '-', id)	alias_name
 a-1	x${DATABASE}

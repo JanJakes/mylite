@@ -69,6 +69,9 @@ MyLite supports:
   `SELECT`;
 - optional table aliases on the single table source;
 - one or more explicit descriptor columns in the projection list;
+- descriptor-backed row-scalar projection expressions in the row-scalar
+  execution path, including supported temporal extraction functions, constant
+  expressions, and aliases;
 - visible `*` wildcard projection;
 - visible qualified wildcard projection for the one source:
   `table.*`, `schema.table.*`, or `alias.*` according to the existing
@@ -214,8 +217,6 @@ Use existing MyLite diagnostics unless listed otherwise:
   columns: existing descriptor `SELECT` diagnostics;
 - scalar/tableless or `DUAL` distinct:
   `SELECT DISTINCT supports only descriptor-backed table reads`;
-- unsupported row-scalar distinct:
-  `row-scalar SELECT projection does not support DISTINCT`;
 - unsupported selected descriptor family:
   `SELECT DISTINCT supports only integer, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or nonbinary string descriptor columns`;
 - unsupported default-mode distinct order key:

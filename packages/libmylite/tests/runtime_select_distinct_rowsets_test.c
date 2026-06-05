@@ -279,6 +279,8 @@ static int test_distinct_rowset_success_and_reopen(void) {
 }
 
 static int test_distinct_rowset_diagnostics(void) {
+    static const char *const columns_one[] = {"1"};
+    static const char *const values_one[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -306,13 +308,15 @@ static int test_distinct_rowset_diagnostics(void) {
             .message_part = "SELECT DISTINCT supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT DISTINCT 1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT projection does not support DISTINCT",
+        (struct expected_query){
+            .sql = "SELECT DISTINCT 1 FROM t",
+            .columns = columns_one,
+            .column_count = 1U,
+            .values = values_one,
+            .row_count = 1U,
+            .context = "constant row-scalar distinct",
         }
     );
     failures += execute_error(

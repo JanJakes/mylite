@@ -498,6 +498,9 @@ static int build_row_scalar_select_sql(
     mylite_dynamic_string_init(&string);
 
     rc = mylite_dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK && plan->has_distinct) {
+        rc = mylite_dynamic_string_append(&string, "DISTINCT ");
+    }
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
         if (item_index != 0U) {
             rc = mylite_dynamic_string_append(&string, ", ");

@@ -44,6 +44,17 @@ COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 DOCKERFILE
 }
 
+usage() {
+  cat <<USAGE
+usage: tools/wordpress-phpunit-mysqli-mylite [build|test|run] [phpunit-args...]
+
+Commands:
+  build  Build the Docker image, WordPress test checkout, PHP extensions, and PHPUnit dependencies.
+  test   Run the WordPress PHPUnit test suite against the prepared MyLite PHP extensions.
+  run    Build the environment, then run the WordPress PHPUnit test suite.
+USAGE
+}
+
 run_container() {
   docker run --rm -i \
     --user "$(id -u):$(id -g)" \
@@ -139,7 +150,7 @@ build_wordpress_phpunit_environment() {
     -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
     -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \
     -DMYLITE_PHP_EXECUTABLE=/usr/local/bin/php
-  cmake --build "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}"
+  cmake --build "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}" --target mylite_php_mysqli_extension
   mkdir -p "${php_ini_dir}"
   cat > "${php_ini_dir}/mylite.ini" <<INI
 extension=${mylite_extension}
@@ -185,7 +196,7 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
 
   write_wordpress_config
 
-  phase "Run WordPress PHPUnit"
+  phase "Run WordPress PHPUnit test suite"
   suite_start="$(date +%s)"
   set +e
   (
@@ -219,6 +230,15 @@ if [ "$#" -gt 0 ]; then
     build|test|run)
       command="$1"
       shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'unknown command: %s\n' "$1" >&2
+      usage >&2
+      exit 2
       ;;
   esac
 fi

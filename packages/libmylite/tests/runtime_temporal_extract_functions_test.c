@@ -522,6 +522,8 @@ static int test_temporal_extract_predicates(void) {
     static const char *const values_null[] = {"4"};
     static const char *const values_not_null[] = {"1", "2", "3"};
     static const char *const values_order_limit[] = {"3", "2"};
+    static const char *const values_joined_year[] = {"1", "2"};
+    static const char *const values_joined_grouped_left[] = {"2"};
     static const char *const values_invalid_null[] = {"2", "3"};
     static const char *const columns_warnings[] = {"Level", "Code", "Message"};
     static const char *const values_invalid_warnings[] = {
@@ -556,6 +558,8 @@ static int test_temporal_extract_predicates(void) {
         "(4,NULL,NULL,NULL,NULL)",
         NULL
     );
+    failures += execute_ok(database, "CREATE TABLE other(id INT, tag INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO other VALUES (1,5),(2,7),(3,5),(5,5)", NULL);
     failures += expect_query(
         database,
         (struct expected_query){
@@ -832,6 +836,31 @@ static int test_temporal_extract_predicates(void) {
             .context = "EXTRACT predicate",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t.id FROM t JOIN other ON t.id = other.id "
+                   "WHERE YEAR(t.d) = 2008 ORDER BY t.id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_joined_year,
+            .row_count = 2U,
+            .context = "joined temporal extract predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t.id FROM t LEFT JOIN other ON t.id = other.id "
+                   "WHERE YEAR(t.d) = 2008 AND MONTH(t.dt) = 2 AND other.tag IN (7) "
+                   "GROUP BY t.id ORDER BY t.id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_joined_grouped_left,
+            .row_count = 1U,
+            .context = "joined grouped temporal extract predicates",
+        }
+    );
 
     failures += execute_ok(database, "CREATE TABLE bad(id INT, txt VARCHAR(32))", NULL);
     failures += execute_ok(
@@ -912,19 +941,6 @@ static int test_temporal_extract_predicates(void) {
             .message_part = "Unknown column 'missing'",
         }
     );
-    failures += execute_ok(database, "CREATE TABLE other(id INT, d DATE NULL)", NULL);
-    failures += execute_ok(database, "INSERT INTO other VALUES (1,'2008-01-02')", NULL);
-    failures += execute_error(
-        database,
-        "SELECT t.id FROM t JOIN other ON t.id = other.id WHERE YEAR(t.d) = 2008",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "temporal extract function predicates support only one descriptor table source",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

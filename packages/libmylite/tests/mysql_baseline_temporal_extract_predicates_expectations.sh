@@ -71,6 +71,8 @@ predicate_expected=$(cat <<EXPECTED
 1,2,3
 3
 2
+1,2
+2
 0
 EXPECTED
 )
@@ -84,6 +86,8 @@ expect_output \
 "(2,'2008-02-03','2008-02-03 00:42:00','00:42:00','2008-02-03 00:42:00'),"\
 "(3,'0000-00-00','0000-00-00 01:02:03','-13:29:17','0000-00-00 01:02:03'),"\
 "(4,NULL,NULL,NULL,NULL); "\
+"CREATE TABLE other(id INT, tag INT); "\
+"INSERT INTO other VALUES (1,5),(2,7),(3,5),(5,5); "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE YEAR(d) = 2008; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE MONTH(dt) = 1 AND DAYOFMONTH(dt) = 2; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE HOUR(tm) = 0 OR MINUTE(dt) = 29; "\
@@ -108,6 +112,11 @@ expect_output \
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE YEAR(d) IS NULL; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE YEAR(d) IS NOT NULL ORDER BY id; "\
 "SELECT id FROM t WHERE QUARTER(d) <= 1 ORDER BY id DESC LIMIT 2; "\
+"SELECT GROUP_CONCAT(t.id ORDER BY t.id) FROM t JOIN other ON t.id = other.id "\
+"WHERE YEAR(t.d) = 2008; "\
+"SELECT GROUP_CONCAT(t.id ORDER BY t.id) FROM t LEFT JOIN other ON t.id = other.id "\
+"WHERE YEAR(t.d) = 2008 AND MONTH(t.dt) = 2 AND other.tag IN (7) "\
+"GROUP BY t.id ORDER BY t.id; "\
 "SHOW WARNINGS; SELECT @@warning_count;" \
     "$DATABASE"
 

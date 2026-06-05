@@ -6,16 +6,16 @@ This phase admits a narrow predicate surface for existing MyLite temporal
 extractor functions:
 
 ```sql
-SELECT ... FROM table_name
+SELECT ... FROM table_name_or_joined_source
 WHERE YEAR(column) = 2008
 ```
 
-The slice is intentionally limited to one descriptor-backed table source and to
-numeric temporal extractor results compared with integer-domain literals. It
-reuses the existing MyLite row-scalar temporal extractor planner and registered
-SQLite scalar function so SQLite still performs the table scan, filtering,
-ordering, and limiting. MyLite does not materialize rows to evaluate these
-predicates.
+The slice is intentionally limited to descriptor-backed `SELECT` source
+envelopes and to numeric temporal extractor results compared with
+integer-domain literals. It reuses the existing MyLite row-scalar temporal
+extractor planner and registered SQLite scalar function so SQLite still
+performs the table scan, joining, filtering, grouping, ordering, and limiting.
+MyLite does not materialize rows to evaluate these predicates.
 
 ## Sources And Evidence
 
@@ -63,16 +63,17 @@ Runtime probes establish the behavior used by this phase:
   `1292`, preserving the existing extractor warning text.
 - Successful valid in-range predicates produce no warnings.
 - MySQL accepts broader shapes such as string comparison operands, arithmetic
-  operands, function calls on either side, `IN`, `BETWEEN`, grouping, joins, and
-  expression ordering. This phase defers those shapes.
+  operands, function calls on either side, `IN`, `BETWEEN`, expression ordering,
+  and source envelopes outside MyLite's current descriptor-backed `SELECT`
+  joins. This phase defers those shapes.
 
 ## Supported SQL
 
-Single-table descriptor-backed `SELECT` using the existing row envelope:
+Descriptor-backed `SELECT` using the existing row and joined-source envelopes:
 
 ```sql
 SELECT select_item[, ...]
-FROM table_name [AS alias]
+FROM table_name_or_joined_source
 WHERE temporal_extract_predicate
 [ORDER BY descriptor_column [ASC | DESC]]
 [LIMIT row_count]
@@ -140,9 +141,9 @@ This slice intentionally does not support:
 - `IN`, `BETWEEN`, `LIKE`, `REGEXP`, arithmetic, scalar functions, casts,
   `CASE`, `IF()`, control-flow, aggregate, window, grouping, or having
   predicates around extractor results;
-- joined table sources, multi-table predicates, CTEs, subqueries, DML
-  assignments, defaults, generated columns, constraints, expression indexes, or
-  arbitrary SQLite pass-through;
+- source envelopes outside the current descriptor-backed `SELECT` table/join
+  support, CTEs, subqueries, DML assignments, defaults, generated columns,
+  constraints, expression indexes, or arbitrary SQLite pass-through;
 - full MySQL numeric coercion for quoted strings or approximate values.
 
 ## Grammar
@@ -167,14 +168,13 @@ Planning:
 
 1. Detect top-level or parenthesized numeric temporal extractor calls in
    `WHERE`, comparison-left, and `IS [NOT] NULL` predicate positions.
-2. Reject joined source contexts for this baseline predicate slice.
-3. Reuse `plan_row_scalar_temporal_extract_expression()` with
-   `COLUMN_REFERENCE_WHERE` so descriptor names, aliases, and unknown-column
-   diagnostics stay consistent with other predicate expressions.
-4. Convert comparison literals with the existing signed-64 integer-domain
+2. Reuse `plan_row_scalar_temporal_extract_expression()` with the active
+   source context so descriptor names, aliases, and unknown-column diagnostics
+   stay consistent with other predicate expressions.
+3. Convert comparison literals with the existing signed-64 integer-domain
    parser used by similar function predicate slices. `TRUE` maps to `1`,
    `FALSE` maps to `0`, and `NULL` stays `NULL`.
-5. Generate SQLite `WHERE` SQL that calls MyLite's registered
+4. Generate SQLite `WHERE` SQL that calls MyLite's registered
    `_mylite_temporal_extract(...)` function. All literal and discriminator
    values are bound parameters.
 
@@ -194,8 +194,6 @@ Required diagnostics:
 
 - unsupported text-returning temporal function predicate:
   `temporal extract predicates support only numeric temporal extractor functions`;
-- joined source:
-  `temporal extract function predicates support only one descriptor table source`;
 - unsupported comparison literal:
   `temporal extract predicates support only integer, boolean, and NULL comparison literals`;
 - out-of-range comparison literal:
@@ -219,15 +217,16 @@ temporal extractor test binary:
 - invalid temporal strings in predicate evaluation, including warning count and
   warnings;
 - qualified column and alias resolution;
+- joined-source and grouped joined-source filtering;
 - order/limit envelope preservation;
-- deterministic diagnostics for joined sources, unknown columns, unsupported
-  text-returning extractors, unsupported comparison operands, and out-of-range
-  literals;
+- deterministic diagnostics for unknown columns, unsupported text-returning
+  extractors, unsupported comparison operands, and out-of-range literals;
 - MySQL 8.4.9 expectation script covering the same user-visible behavior.
 
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-temporal.md`, and
-`docs/compatibility/sql-query-expressions.md` to state that only limited
-single-table numeric temporal extractor predicates are supported. Do not
-overclaim general expression predicates or full temporal coercion.
+`docs/compatibility/functions-temporal.md` to state that only limited numeric
+temporal extractor predicates over the current descriptor-backed `SELECT`
+source envelopes are supported. Do not overclaim general expression predicates
+or full temporal coercion.

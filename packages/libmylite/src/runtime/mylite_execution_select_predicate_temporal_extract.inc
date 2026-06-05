@@ -171,14 +171,6 @@ static int plan_temporal_extract_predicate_expression(
     int mode = 0;
     int rc = MYLITE_OK;
 
-    if (select_source_context_is_joined(source_context)) {
-        set_unsupported_error(
-            database,
-            "temporal extract function predicates support only one descriptor table source"
-        );
-        return MYLITE_ERROR;
-    }
-
     rc = mylite_execution_resolve_temporal_extract_call(
         database,
         expression,

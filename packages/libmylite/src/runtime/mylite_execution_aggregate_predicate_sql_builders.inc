@@ -336,12 +336,7 @@ static int append_grouped_aggregate_query_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_descriptor_value_sql_for_source(
-                string,
-                &plan->groups[group_index].column,
-                plan->groups[group_index].column_source_index,
-                plan->source_count > 0U
-            );
+            rc = append_grouped_group_key_sql(string, plan, group_index, next_parameter);
         }
     }
     if (rc == MYLITE_OK) {
@@ -355,6 +350,32 @@ static int append_grouped_aggregate_query_sql(
     }
 
     return rc;
+}
+
+static int append_grouped_group_key_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t group_index,
+    size_t *next_parameter
+) {
+    const struct planned_grouped_key *group = NULL;
+
+    if (group_index >= plan->group_count) {
+        return MYLITE_ERROR;
+    }
+    group = &plan->groups[group_index];
+    if (group->uses_row_scalar_expression) {
+        if (next_parameter == NULL) {
+            return MYLITE_ERROR;
+        }
+        return append_row_scalar_expression_sql(string, &group->row_scalar_expression, next_parameter);
+    }
+    return append_descriptor_value_sql_for_source(
+        string,
+        &group->column,
+        group->column_source_index,
+        plan->source_count > 0U
+    );
 }
 
 static int append_grouped_aggregate_from_sql(
@@ -389,11 +410,11 @@ static int append_grouped_aggregate_select_list_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_descriptor_column_name_sql_for_source(
+            rc = append_grouped_projection_sql(
                 string,
-                &plan->projections[projection_index].column,
-                plan->projections[projection_index].column_source_index,
-                qualify
+                &plan->projections[projection_index],
+                qualify,
+                next_parameter
             );
         }
     }
@@ -414,6 +435,30 @@ static int append_grouped_aggregate_select_list_sql(
     }
 
     return rc;
+}
+
+static int append_grouped_projection_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_projection *projection,
+    bool qualify,
+    size_t *next_parameter
+) {
+    if (projection->uses_row_scalar_expression) {
+        if (next_parameter == NULL) {
+            return MYLITE_ERROR;
+        }
+        return append_row_scalar_expression_sql(
+            string,
+            &projection->row_scalar_expression,
+            next_parameter
+        );
+    }
+    return append_descriptor_column_name_sql_for_source(
+        string,
+        &projection->column,
+        projection->column_source_index,
+        qualify
+    );
 }
 
 static int append_grouped_aggregate_select_item_sql(

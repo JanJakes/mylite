@@ -578,7 +578,8 @@ static int plan_row_scalar_temporal_extract_column(
     enum mylite_temporal_extract_input_kind *out_input_kind
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int rc = resolve_descriptor_column_reference(
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         source_context,
@@ -586,7 +587,8 @@ static int plan_row_scalar_temporal_extract_column(
         "row-scalar SELECT temporal extract functions support only descriptor columns",
         table_columns,
         table_column_count,
-        &column
+        &column,
+        &source_index
     );
 
     if (rc != MYLITE_OK) {
@@ -623,6 +625,8 @@ static int plan_row_scalar_temporal_extract_column(
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 

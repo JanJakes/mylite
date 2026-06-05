@@ -64,6 +64,16 @@ static int resolve_grouped_aggregate_group_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (grouped_expression_is_temporal_group_key(group_key)) {
+        return resolve_grouped_aggregate_group_temporal_expression(
+            database,
+            group_key,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_key
+        );
+    }
     if (source_column_match_count == 0U) {
         const struct grouped_alias_group_resolution alias_resolution = {
             .select_list = select_list,
@@ -103,6 +113,31 @@ static int resolve_grouped_aggregate_group_column(
         out_key->alias = NULL;
     }
 
+    return rc;
+}
+
+static int resolve_grouped_aggregate_group_temporal_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *group_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_key *out_key
+) {
+    int rc = plan_grouped_temporal_row_scalar_expression(
+        database,
+        group_key,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_key->row_scalar_expression
+    );
+
+    if (rc == MYLITE_OK) {
+        out_key->expression = group_key;
+        out_key->alias = NULL;
+        out_key->uses_row_scalar_expression = true;
+    }
     return rc;
 }
 
@@ -165,6 +200,16 @@ static int resolve_grouped_select_alias_group_column(
 
     matched_expression = child_at(matched_item, 0U);
     matched_alias = child_at(matched_item, 1U);
+    if (grouped_expression_is_temporal_group_key(matched_expression)) {
+        return resolve_grouped_select_alias_group_temporal_expression(
+            database,
+            resolution,
+            matched_expression,
+            matched_alias,
+            out_key,
+            out_matched
+        );
+    }
     rc = select_item_column_reference(matched_item, &matched_expression);
     if (rc != MYLITE_OK) {
         set_unsupported_error(
@@ -194,6 +239,32 @@ static int resolve_grouped_select_alias_group_column(
         *out_matched = true;
     }
 
+    return rc;
+}
+
+static int resolve_grouped_select_alias_group_temporal_expression(
+    struct mylite_db *database,
+    const struct grouped_alias_group_resolution *resolution,
+    const struct mylite_sql_ast_node *matched_expression,
+    const struct mylite_sql_ast_node *matched_alias,
+    struct planned_grouped_key *out_key,
+    bool *out_matched
+) {
+    int rc = plan_grouped_temporal_row_scalar_expression(
+        database,
+        matched_expression,
+        resolution->source_context,
+        resolution->table_columns,
+        resolution->table_column_count,
+        &out_key->row_scalar_expression
+    );
+
+    if (rc == MYLITE_OK) {
+        out_key->expression = matched_expression;
+        out_key->alias = matched_alias;
+        out_key->uses_row_scalar_expression = true;
+        *out_matched = true;
+    }
     return rc;
 }
 
@@ -263,5 +334,38 @@ static int validate_grouped_aggregate_group_column(
         column,
         "GROUP BY supports only integer and nonbinary string descriptor group columns",
         &range
+    );
+}
+
+static bool grouped_expression_is_temporal_group_key(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    return expression != NULL &&
+           (expression->kind == MYLITE_SQL_AST_YEAR_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_MONTH_FUNCTION);
+}
+
+static int plan_grouped_temporal_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    if (!grouped_expression_is_temporal_group_key(expression)) {
+        set_unsupported_error(database, "GROUP BY supports only YEAR() and MONTH() expressions");
+        return MYLITE_ERROR;
+    }
+    return plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        out_expression
     );
 }

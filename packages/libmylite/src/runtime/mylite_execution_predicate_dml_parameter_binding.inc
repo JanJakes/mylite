@@ -335,6 +335,7 @@ static int bind_grouped_aggregate_parameters_with_limit(
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
+    rc = bind_grouped_projection_parameters(statement, plan, &parameter_index);
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
@@ -353,6 +354,9 @@ static int bind_grouped_aggregate_parameters_with_limit(
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_grouped_key_parameters(statement, plan, &parameter_index);
     }
     if (rc == MYLITE_OK && plan->having.kind != PLANNED_GROUPED_HAVING_NONE &&
         plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE) {
@@ -394,6 +398,29 @@ static int bind_grouped_aggregate_parameters_with_limit(
     return rc;
 }
 
+static int bind_grouped_projection_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t projection_index = 0U; rc == MYLITE_OK && projection_index < plan->projection_count;
+         ++projection_index) {
+        const struct planned_grouped_projection *projection = &plan->projections[projection_index];
+
+        if (!projection->uses_row_scalar_expression) {
+            continue;
+        }
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &projection->row_scalar_expression,
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_grouped_aggregate_row_scalar_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate_item *item,
@@ -407,6 +434,29 @@ static int bind_grouped_aggregate_row_scalar_expression_parameters(
         &item->aggregate_row_scalar_expression,
         parameter_index
     );
+}
+
+static int bind_grouped_key_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t group_index = 0U; rc == MYLITE_OK && group_index < plan->group_count;
+         ++group_index) {
+        const struct planned_grouped_key *group = &plan->groups[group_index];
+
+        if (!group->uses_row_scalar_expression) {
+            continue;
+        }
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &group->row_scalar_expression,
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan) {

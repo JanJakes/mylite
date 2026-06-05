@@ -343,6 +343,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const count_having_literal_values[] = {"T"};
     static const char *const count_having_name_columns[] = {"name"};
     static const char *const count_having_name_values[] = {"a"};
+    static const char *const temporal_group_columns[] = {"year", "month", "posts"};
+    static const char *const temporal_group_values[] = {
+        "2024",
+        "2",
+        "1",
+        "2024",
+        "1",
+        "2",
+        "2023",
+        "12",
+        "1",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -379,6 +391,26 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     );
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE grouped_posts("
+        "ID INT, post_date DATETIME, post_type VARCHAR(20), post_status VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO grouped_posts VALUES "
+        "(1,'2024-01-10 12:00:00','post','publish'),"
+        "(2,'2024-01-20 09:00:00','post','publish'),"
+        "(3,'2024-02-05 12:00:00','post','publish'),"
+        "(4,'2023-12-31 23:00:00','post','publish'),"
+        "(5,'2024-02-07 12:00:00','page','publish')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -400,6 +432,26 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "count star grouped by nullable key",
         }
     );
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT YEAR(post_date) AS `year`, MONTH(post_date) AS `month`, "
+                   "COUNT(ID) AS posts FROM grouped_posts WHERE post_type = 'post' "
+                   "AND post_status = 'publish' GROUP BY YEAR(post_date), MONTH(post_date) "
+                   "ORDER BY post_date DESC",
+            .columns = temporal_group_columns,
+            .column_count = 3U,
+            .values = temporal_group_values,
+            .row_count = 3U,
+            .context = "temporal extract grouped archive query",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = DEFAULT", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){

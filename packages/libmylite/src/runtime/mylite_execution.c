@@ -2823,6 +2823,8 @@ struct planned_grouped_aggregate_item {
 struct planned_grouped_key {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
+    bool uses_row_scalar_expression;
+    struct planned_row_scalar_expression row_scalar_expression;
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
 };
@@ -2838,6 +2840,8 @@ struct grouped_alias_group_resolution {
 struct planned_grouped_projection {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
+    bool uses_row_scalar_expression;
+    struct planned_row_scalar_expression row_scalar_expression;
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
 };
@@ -11552,9 +11556,25 @@ static int resolve_grouped_aggregate_group_column(
     size_t table_column_count,
     struct planned_grouped_key *out_key
 );
+static int resolve_grouped_aggregate_group_temporal_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *group_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_key *out_key
+);
 static int resolve_grouped_select_alias_group_column(
     struct mylite_db *database,
     const struct grouped_alias_group_resolution *resolution,
+    struct planned_grouped_key *out_key,
+    bool *out_matched
+);
+static int resolve_grouped_select_alias_group_temporal_expression(
+    struct mylite_db *database,
+    const struct grouped_alias_group_resolution *resolution,
+    const struct mylite_sql_ast_node *matched_expression,
+    const struct mylite_sql_ast_node *matched_alias,
     struct planned_grouped_key *out_key,
     bool *out_matched
 );
@@ -11570,6 +11590,15 @@ static size_t grouped_aggregate_group_key_count(const struct mylite_sql_ast_node
 static int validate_grouped_aggregate_group_column(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
+);
+static bool grouped_expression_is_temporal_group_key(const struct mylite_sql_ast_node *expression);
+static int plan_grouped_temporal_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
 );
 static int plan_grouped_aggregate_projection_columns(
     struct mylite_db *database,
@@ -11587,6 +11616,22 @@ static int append_grouped_projection_column(
     size_t source_index,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
+);
+static int append_grouped_projection_row_scalar_expression(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    struct planned_row_scalar_expression *row_scalar_expression,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+);
+static int plan_grouped_aggregate_temporal_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
 );
 static int plan_grouped_aggregate_wildcard_projection_columns(
     struct mylite_db *database,
@@ -11646,6 +11691,14 @@ static bool grouped_projection_column_is_allowed(
     const struct mylite_catalog_column_descriptor *column,
     size_t source_index,
     int *out_rc
+);
+static bool grouped_row_scalar_projection_is_allowed(
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_row_scalar_expression *expression
+);
+static bool planned_grouped_row_scalar_expressions_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
 );
 static int plan_grouped_aggregate_functions(
     struct mylite_db *database,
@@ -24775,6 +24828,12 @@ static int append_grouped_aggregate_select_list_sql(
     const struct planned_grouped_aggregate *plan,
     size_t *next_parameter
 );
+static int append_grouped_projection_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_projection *projection,
+    bool qualify,
+    size_t *next_parameter
+);
 static int append_grouped_aggregate_select_item_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
@@ -24785,6 +24844,12 @@ static int append_grouped_aggregate_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
     const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+);
+static int append_grouped_group_key_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t group_index,
     size_t *next_parameter
 );
 static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function);
@@ -26235,9 +26300,19 @@ static int bind_grouped_aggregate_parameters_with_limit(
     const struct planned_grouped_aggregate *plan,
     bool include_limit
 );
+static int bind_grouped_projection_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    int *parameter_index
+);
 static int bind_grouped_aggregate_row_scalar_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate_item *item,
+    int *parameter_index
+);
+static int bind_grouped_key_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
     int *parameter_index
 );
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);

@@ -3754,11 +3754,23 @@ group_clause_opt(A) ::= GROUP(G) BY group_key_list(K). {
     A = mylite_sql_parser_make_group_by_clause(state, G, K);
 }
 
-group_key_list(A) ::= qualified_identifier(K). {
+group_key_list(A) ::= group_key(K). {
     A = mylite_sql_parser_make_group_by_key_list(state, K);
 }
-group_key_list(A) ::= group_key_list(L) COMMA qualified_identifier(K). {
+group_key_list(A) ::= group_key_list(L) COMMA group_key(K). {
     A = mylite_sql_parser_append_group_by_key(state, L, K);
+}
+
+group_key(A) ::= qualified_identifier(K). {
+    A = K;
+}
+group_key(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);
+}
+group_key(A) ::= MONTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MONTH_FUNCTION, B, R);
 }
 
 having_clause_opt(A) ::= . {

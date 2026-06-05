@@ -93,6 +93,21 @@ run_mysql \
        (7, 2, 2, 'bob', 'C', 50),
        (8, 2, 2, 'carol', 'C', 60);" >/dev/null
 
+run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE grouped_posts(
+       ID INT,
+       post_date DATETIME,
+       post_type VARCHAR(20),
+       post_status VARCHAR(20)
+     ) ENGINE=InnoDB;
+     INSERT INTO grouped_posts VALUES
+       (1, '2024-01-10 12:00:00', 'post', 'publish'),
+       (2, '2024-01-20 09:00:00', 'post', 'publish'),
+       (3, '2024-02-05 12:00:00', 'post', 'publish'),
+       (4, '2023-12-31 23:00:00', 'post', 'publish'),
+       (5, '2024-02-07 12:00:00', 'page', 'publish');" >/dev/null
+
 core=$(run_mysql \
     "USE ${DATABASE};
      DO 0;
@@ -120,6 +135,19 @@ expect_value "string alice b tuple" "alice	B	1	30" "$(printf '%s\n' "$core" | se
 expect_value "string bob b tuple" "bob	B	2	40" "$(printf '%s\n' "$core" | sed -n '10p')"
 expect_value "string bob c tuple" "bob	C	1	50" "$(printf '%s\n' "$core" | sed -n '11p')"
 expect_value "string carol c tuple" "carol	C	1	60" "$(printf '%s\n' "$core" | sed -n '12p')"
+
+temporal=$(run_mysql \
+    "USE ${DATABASE};
+     SET SESSION sql_mode = '';
+     SELECT YEAR(post_date) AS \`year\`, MONTH(post_date) AS \`month\`, COUNT(ID) AS posts
+       FROM grouped_posts
+      WHERE post_type = 'post' AND post_status = 'publish'
+      GROUP BY YEAR(post_date), MONTH(post_date)
+      ORDER BY post_date DESC;"
+)
+expect_value "temporal group first" "2024	2	1" "$(printf '%s\n' "$temporal" | sed -n '1p')"
+expect_value "temporal group second" "2024	1	2" "$(printf '%s\n' "$temporal" | sed -n '2p')"
+expect_value "temporal group third" "2023	12	1" "$(printf '%s\n' "$temporal" | sed -n '3p')"
 
 filters=$(run_mysql \
     "USE ${DATABASE};

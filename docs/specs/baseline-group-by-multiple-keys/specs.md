@@ -63,9 +63,15 @@ admitted subset:
   not one of the grouped columns fails with `1055 / 42000`.
 - `HAVING` can refer to selected aggregate aliases and aggregate expressions.
   MySQL also accepts broader grouped-column and alias forms than this phase.
-- `ORDER BY` can sort by grouped columns or selected aggregate aliases. `ASC`
-  is the default, and `NULL` sorts before non-`NULL` ascending and after
+- `ORDER BY` can sort by grouped columns or selected aggregate aliases. With
+  `ONLY_FULL_GROUP_BY` disabled, MySQL also accepts ordering by a
+  nonaggregated descriptor column that is neither grouped nor selected; the
+  chosen row value is nondeterministic when a group contains multiple values.
+  `ASC` is the default, and `NULL` sorts before non-`NULL` ascending and after
   non-`NULL` descending.
+- With `sql_mode=''`, WordPress-style archive queries that select
+  `YEAR(post_date)`, `MONTH(post_date)`, and `COUNT(ID)`, group by the same
+  `YEAR()` / `MONTH()` expressions, and order by `post_date` are accepted.
 - Successful grouped result statements leave `@@warning_count = 0` and make
   `ROW_COUNT()` return `-1`.
 
@@ -81,6 +87,12 @@ MyLite supports:
 - the existing one-key grouped aggregate behavior unchanged;
 - selected group columns as an ordered prefix that must match the `GROUP BY`
   key list exactly by descriptor and source;
+- selected `YEAR(descriptor_temporal_column)` and
+  `MONTH(descriptor_temporal_column)` expression group keys as an ordered
+  prefix that must match the `GROUP BY` key list exactly by temporal function
+  and descriptor source;
+- selected `YEAR()` / `MONTH()` expression aliases as group keys when no source
+  descriptor column shadows the alias name;
 - at least one and at most sixteen selected aggregate results after the group
   key prefix;
 - group-key descriptor families already admitted by the grouped path:
@@ -96,9 +108,10 @@ MyLite supports:
   nonbinary string column or its alias using `IS NULL` / `IS NOT NULL`, or one
   selected supported aggregate result using the existing aggregate `HAVING`
   subset;
-- optional `ORDER BY` on one selected grouped column, one unique selected
-  grouped-column alias, or one unique selected `COUNT`, `MIN`, `MAX`, or `SUM`
-  aggregate alias;
+- optional `ORDER BY` on one selected grouped descriptor column, one unique
+  selected grouped descriptor-column alias, or one unique selected `COUNT`,
+  `MIN`, `MAX`, or `SUM` aggregate alias; when `ONLY_FULL_GROUP_BY` is disabled,
+  one descriptor column order key outside those strict forms is also admitted;
 - optional `ASC` and `DESC`, with omitted direction meaning ascending;
 - optional `LIMIT` and `OFFSET` using the existing grouped `SELECT` limit
   subset;
@@ -114,8 +127,10 @@ This phase does not add:
 
 - unselected grouping keys;
 - group-key order independent from selected group-column order;
-- grouping aliases, ordinals, literals, expressions, function calls, or
-  parenthesized expression keys;
+- grouping aliases outside the selected descriptor-column and selected
+  `YEAR()` / `MONTH()` expression alias subsets, ordinals, literals,
+  general expressions, function calls outside the `YEAR()` / `MONTH()` temporal
+  archive subset, or parenthesized expression keys;
 - expression or multi-key `ORDER BY` for grouped results;
 - aggregate expression `ORDER BY`, selected `AVG`, bitwise aggregate, or
   `GROUP_CONCAT()` alias ordering;
@@ -157,11 +172,21 @@ group_clause_opt(A) ::= GROUP(G) BY group_key_list(K). {
     A = mylite_sql_parser_make_group_by_clause(parser, G, K);
 }
 
-group_key_list(A) ::= qualified_identifier(K). {
+group_key_list(A) ::= group_key(K). {
     A = mylite_sql_parser_make_group_by_key_list(parser, K);
 }
-group_key_list(A) ::= group_key_list(L) COMMA qualified_identifier(K). {
+group_key_list(A) ::= group_key_list(L) COMMA group_key(K). {
     A = mylite_sql_parser_append_group_by_key(parser, L, K);
+}
+
+group_key(A) ::= qualified_identifier(K). { A = K; }
+group_key(A) ::= YEAR(T) LPAREN expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        parser, T, MYLITE_SQL_AST_YEAR_FUNCTION, E, R);
+}
+group_key(A) ::= MONTH(T) LPAREN expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        parser, T, MYLITE_SQL_AST_MONTH_FUNCTION, E, R);
 }
 ```
 
@@ -172,9 +197,10 @@ select-list shape.
 
 Group keys resolve through the existing descriptor source context. For the
 supported multiple-key path, MyLite requires the first `N` select items to be
-descriptor columns that match the `N` `GROUP BY` keys in order. Each selected
-group column may have an alias. Aggregate select items start after the selected
-group-key prefix.
+descriptor columns or selected `YEAR()` / `MONTH()` temporal expressions that
+match the `N` `GROUP BY` keys in order. Each selected group column or selected
+temporal group expression may have an alias. Aggregate select items start after
+the selected group-key prefix.
 
 String group keys use MyLite's registered ASCII `utf8mb4_0900_ai_ci`
 collation in generated grouping and grouped ordering expressions. Integer keys
@@ -185,10 +211,12 @@ For `HAVING`, unqualified grouped descriptor names are checked before selected
 group aliases, preserving the existing grouped path's descriptor-first
 behavior. Aggregate aliases keep the existing unique-alias requirement.
 
-For grouped `ORDER BY`, a grouped-column alias must be unique among selected
-group aliases. Aggregate alias ordering keeps the existing unique selected
-aggregate alias requirement and remains limited to `COUNT`, `MIN`, `MAX`, and
-`SUM`.
+For grouped `ORDER BY`, a grouped descriptor-column alias must be unique among
+selected group aliases. Aggregate alias ordering keeps the existing unique
+selected aggregate alias requirement and remains limited to `COUNT`, `MIN`,
+`MAX`, and `SUM`. When `ONLY_FULL_GROUP_BY` is disabled, MyLite accepts one
+descriptor order key outside those strict forms to match MySQL's relaxed mode
+for application query shapes such as WordPress archives.
 
 ## SQLite Handling
 
@@ -204,10 +232,21 @@ GROUP BY "group_column_1", "group_column_2"
 [LIMIT ? [OFFSET ?]]
 ```
 
+For the admitted temporal archive subset, selected and grouped `YEAR()` /
+`MONTH()` expressions lower through MyLite's temporal extraction SQL function
+with bound discriminator parameters:
+
+```sql
+SELECT _mylite_temporal_extract("post_date", ?, ?, ?), COUNT("ID")
+FROM "_mylite_user_table_<table_id>"
+GROUP BY _mylite_temporal_extract("post_date", ?, ?, ?)
+```
+
 For string group keys, the `GROUP BY`, grouped-column `HAVING`, and grouped
 `ORDER BY` expressions use the registered MyLite ASCII collation expression.
 Every generated SQLite identifier is quoted. Predicate, `HAVING`, aggregate
-separator, limit, and offset values remain bound parameters.
+separator, temporal extraction discriminators, limit, and offset values remain
+bound parameters.
 
 No SQLite fork patch is required.
 
@@ -231,6 +270,8 @@ Required diagnostics include:
   MySQL-compatible column diagnostics for the matching clause;
 - unsupported group-key descriptor type:
   `GROUP BY supports only integer and nonbinary string descriptor group columns`;
+- selected `YEAR()` / `MONTH()` expression that is not also a grouped key:
+  `GROUP BY supports selected YEAR() and MONTH() expressions only when grouped`;
 - unsupported `HAVING` operand shape, unsupported grouped string comparison,
   unselected aggregate predicate, bitwise aggregate predicate, or
   `GROUP_CONCAT()` predicate: existing grouped `HAVING` diagnostics;

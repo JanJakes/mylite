@@ -10,6 +10,8 @@
       key prefixes.
 - [x] Extend grouped `HAVING`, grouped `ORDER BY`, SQL generation, result
       metadata, and row readback for multiple selected group keys.
+- [x] Add the WordPress archive subset for selected and grouped `YEAR()` /
+      `MONTH()` temporal expressions with relaxed-mode descriptor ordering.
 - [x] Add fast C runtime/parser tests for successful multiple-key grouping and
       deterministic diagnostics.
 - [x] Update compatibility documentation for the exact supported subset.

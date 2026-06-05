@@ -41,12 +41,14 @@ static int plan_grouped_aggregate_order(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!out_plan->order_uses_aggregate && !find_matching_grouped_key(
-                                               out_plan,
-                                               &out_plan->order.column,
-                                               out_plan->order.column_source_index,
-                                               &group_order_index
-                                           )) {
+    if (!out_plan->order_uses_aggregate &&
+        session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
+        !find_matching_grouped_key(
+            out_plan,
+            &out_plan->order.column,
+            out_plan->order.column_source_index,
+            &group_order_index
+        )) {
         int dependency_rc = MYLITE_OK;
 
         if (!grouped_projection_column_is_allowed(
@@ -109,6 +111,13 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_alias) {
+        if (out_plan->projections[matched_index].uses_row_scalar_expression) {
+            set_unsupported_error(
+                database,
+                "GROUP BY does not support ORDER BY on selected scalar group aliases"
+            );
+            return MYLITE_ERROR;
+        }
         out_plan->order.column = out_plan->projections[matched_index].column;
         out_plan->order.column_source_index =
             out_plan->projections[matched_index].column_source_index;
@@ -126,6 +135,13 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_alias) {
+        if (out_plan->groups[matched_index].uses_row_scalar_expression) {
+            set_unsupported_error(
+                database,
+                "GROUP BY does not support ORDER BY on selected scalar group aliases"
+            );
+            return MYLITE_ERROR;
+        }
         out_plan->order.column = out_plan->groups[matched_index].column;
         out_plan->order.column_source_index = out_plan->groups[matched_index].column_source_index;
         return MYLITE_OK;

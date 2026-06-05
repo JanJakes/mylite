@@ -173,20 +173,6 @@ static int execute_select_statement(
             out_result
         );
     }
-    rc = execute_scalar_or_row_scalar_select_if_needed(
-        database,
-        statement,
-        apply_sql_select_limit,
-        out_result,
-        &projected_statement_handled
-    );
-    if (projected_statement_handled || rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = reject_bare_native_function_identifier_lookup_if_needed(database, statement);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     if (select_statement_has_group_by_clause(statement)) {
         return execute_grouped_select_statement(
             database,
@@ -202,6 +188,20 @@ static int execute_select_statement(
             apply_sql_select_limit,
             out_result
         );
+    }
+    rc = execute_scalar_or_row_scalar_select_if_needed(
+        database,
+        statement,
+        apply_sql_select_limit,
+        out_result,
+        &projected_statement_handled
+    );
+    if (projected_statement_handled || rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = reject_bare_native_function_identifier_lookup_if_needed(database, statement);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     if (select_statement_has_count_expression_aggregate(statement)) {
         return execute_count_expression_aggregate_select_statement(

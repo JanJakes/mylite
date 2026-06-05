@@ -185,6 +185,15 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
         planned_select_order_deinit(&plan->aggregates[aggregate_index].aggregate_order);
         planned_value_deinit(&plan->aggregates[aggregate_index].separator);
     }
+    for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
+        planned_row_scalar_expression_deinit(&plan->groups[group_index].row_scalar_expression);
+    }
+    for (size_t projection_index = 0U; projection_index < plan->projection_count;
+         ++projection_index) {
+        planned_row_scalar_expression_deinit(
+            &plan->projections[projection_index].row_scalar_expression
+        );
+    }
     free(plan->aggregates);
     free(plan->projections);
     free(plan->groups);

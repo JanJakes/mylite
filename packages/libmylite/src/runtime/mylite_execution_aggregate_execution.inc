@@ -102,13 +102,24 @@ static int append_grouped_aggregate_result_columns(
 
     for (size_t projection_index = 0U; rc == MYLITE_OK && projection_index < plan->projection_count;
          ++projection_index) {
-        const char *projection_column_name = plan->projections[projection_index].column.name;
+        const struct planned_grouped_projection *projection = &plan->projections[projection_index];
+        const char *projection_column_name = projection->column.name;
         char *projection_alias_text = NULL;
 
-        if (plan->projections[projection_index].alias != NULL) {
+        if (projection->alias != NULL) {
             rc = copy_select_item_alias_text(
                 database,
-                plan->projections[projection_index].alias,
+                projection->alias,
+                &projection_alias_text
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            projection_column_name = projection_alias_text;
+        } else if (projection->uses_row_scalar_expression) {
+            rc = copy_scalar_projection_column_name(
+                database,
+                projection->expression,
                 &projection_alias_text
             );
             if (rc != MYLITE_OK) {
@@ -1466,6 +1477,17 @@ static int append_grouped_aggregate_projection_cell(
 ) {
     if (projection_index >= plan->projection_count) {
         return MYLITE_ERROR;
+    }
+    if (plan->projections[projection_index].uses_row_scalar_expression) {
+        return append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            projection_index,
+            NULL,
+            buffer,
+            buffer_size,
+            out_cell
+        );
     }
     return append_selected_sqlite_row_value_with_descriptor(
         database,

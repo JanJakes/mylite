@@ -1569,6 +1569,41 @@ static int copy_default_collation_for_charset(
     return MYLITE_OK;
 }
 
+static int copy_binary_collation_for_charset(
+    struct mylite_db *database,
+    const char *charset_name,
+    char *binary_collation,
+    size_t binary_collation_size
+) {
+    const struct mylite_execution_catalog_character_set *charset =
+        character_set_by_name(charset_name);
+    const struct mylite_execution_catalog_collation *collation = NULL;
+    char candidate[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int written = 0;
+
+    if (charset == NULL) {
+        set_unknown_character_set_error(database, charset_name);
+        return MYLITE_ERROR;
+    }
+    written = snprintf(candidate, sizeof(candidate), "%s_bin", charset->name);
+    if (written < 0 || (size_t)written >= sizeof(candidate)) {
+        set_runtime_error(database, "schema collation descriptor is too small");
+        return MYLITE_ERROR;
+    }
+    collation = collation_by_name(candidate);
+    if (collation == NULL || strcmp(collation->character_set, charset->name) != 0) {
+        set_unknown_collation_error(database, candidate);
+        return MYLITE_ERROR;
+    }
+    if (strlen(collation->name) >= binary_collation_size) {
+        set_runtime_error(database, "schema collation descriptor is too small");
+        return MYLITE_ERROR;
+    }
+
+    memcpy(binary_collation, collation->name, strlen(collation->name) + 1U);
+    return MYLITE_OK;
+}
+
 static int copy_normalized_charset_name(
     struct mylite_db *database,
     const char *charset_name,

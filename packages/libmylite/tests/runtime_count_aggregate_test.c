@@ -1075,6 +1075,19 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .context = "schema-qualified aliased target count",
         }
     );
+    failures += execute_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'", NULL);
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) AS \"expression\" FROM "
+                   "(SELECT 1 AS \"expression\" FROM app.numbers \"t\" "
+                   "WHERE \"t\".\"id\" >= 2) \"subquery\"",
+            .column = "expression",
+            .value = "3",
+            .context = "Drupal-style derived count wrapper",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
     failures += expect_count_query(
         database,
         (struct expected_count_query){

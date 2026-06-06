@@ -3381,6 +3381,7 @@ struct information_schema_truth_stack {
 enum information_schema_projection_kind {
     INFORMATION_SCHEMA_PROJECTION_COLUMN = 0,
     INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION = 1,
+    INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL = 2,
 };
 
 struct information_schema_query {
@@ -7565,6 +7566,13 @@ static int information_schema_unsigned_projection_expression_value(
     size_t buffer_size,
     const char **out_value
 );
+static int information_schema_integer_literal_projection_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+);
 static int information_schema_numeric_projection_expression_value(
     struct mylite_db *database,
     const struct information_schema_query *query,
@@ -7947,6 +7955,12 @@ static int information_schema_append_projection(
     const struct mylite_sql_ast_node *alias
 );
 static int information_schema_append_expression_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+);
+static int information_schema_append_integer_literal_projection(
     struct mylite_db *database,
     struct information_schema_query *query,
     const struct mylite_sql_ast_node *expression,
@@ -8819,6 +8833,12 @@ static int copy_default_collation_for_charset(
     const char *charset_name,
     char *default_collation,
     size_t default_collation_size
+);
+static int copy_binary_collation_for_charset(
+    struct mylite_db *database,
+    const char *charset_name,
+    char *binary_collation,
+    size_t binary_collation_size
 );
 static int copy_normalized_charset_name(
     struct mylite_db *database,
@@ -12307,6 +12327,12 @@ static int plan_count_table_source(
     const struct planned_count_source_nodes *nodes,
     struct planned_count *out_plan
 );
+static int plan_count_derived_table_source(
+    struct mylite_db *database,
+    const struct planned_count_source_nodes *nodes,
+    struct planned_count *out_plan
+);
+static bool count_derived_select_list_is_supported(const struct mylite_sql_ast_node *select_list);
 static int validate_count_order_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
@@ -16260,6 +16286,9 @@ static bool column_charset_collation_requests_binary(
     bool has_collation,
     const char *collation_name
 );
+static bool column_collation_attribute_is_binary_shorthand(
+    const struct mylite_sql_ast_node *collation_attribute
+);
 static int apply_column_binary_charset_collation_attributes(
     struct mylite_db *database,
     struct planned_column *column,
@@ -19654,6 +19683,10 @@ static int plan_comparison_predicate_like_value(
     size_t table_column_count,
     struct planned_select_predicate_node *node
 );
+static int validate_like_escape_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node
+);
 static bool comparison_predicate_rhs_requires_row_scalar_value(
     const struct mylite_sql_ast_node *predicate_node,
     const struct planned_select_predicate_node *node
@@ -22597,6 +22630,22 @@ static int plan_row_scalar_concat_operator_expression(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
+);
+static int count_row_scalar_concat_function_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t *inout_argument_count
+);
+static int plan_row_scalar_concat_function_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
 );
 static int count_row_scalar_concat_operator_arguments(
     struct mylite_db *database,

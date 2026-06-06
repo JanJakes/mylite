@@ -535,6 +535,11 @@ static int test_ascii_column_charset_collation_metadata(void) {
         "10",
         "10",
     };
+    static const char *const ascii_binary_attr_metadata[] = {
+        "b",
+        "ascii",
+        "ascii_bin",
+    };
     static const char *const ascii_values[] = {"A", "B", "text", "bin"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -579,6 +584,22 @@ static int test_ascii_column_charset_collation_metadata(void) {
         database,
         "SHOW CREATE TABLE ascii_attrs",
         "`vc` varchar(10) CHARACTER SET ascii COLLATE ascii_bin"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ascii_binary_attr(b VARCHAR(10) CHARACTER SET ascii BINARY)"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ascii_binary_attr",
+        "`b` varchar(10) CHARACTER SET ascii COLLATE ascii_bin"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "ascii_binary_attr",
+        ascii_binary_attr_metadata,
+        1U,
+        "ascii binary attribute metadata"
     );
     failures += expect_column_character_metadata(
         database,

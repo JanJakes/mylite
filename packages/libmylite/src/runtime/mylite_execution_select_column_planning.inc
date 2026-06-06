@@ -1405,7 +1405,7 @@ static int copy_select_item_identifier_alias_text(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (source[0] == '`') {
+    if (source[0] == '`' || source[0] == '"') {
         rc = copy_quoted_identifier_text(source, source_size, identifier, sizeof(identifier));
     } else {
         rc = copy_unquoted_identifier_text(source, source_size, identifier, sizeof(identifier));

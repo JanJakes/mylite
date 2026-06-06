@@ -960,6 +960,8 @@ static int test_concat_diagnostics(void) {
     static const char *const arithmetic_values[] = {"1"};
     static const char *const control_flow_columns[] = {"IFNULL(1 + 2, 3)"};
     static const char *const control_flow_values[] = {"3"};
+    static const char *const nested_concat_columns[] = {"CONCAT(CONCAT('a', 'b'))"};
+    static const char *const nested_concat_values[] = {"ab"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -985,13 +987,15 @@ static int test_concat_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CONCAT(CONCAT('a', 'b')) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT CONCAT() does not support nested CONCAT()",
+        (struct expected_query){
+            .sql = "SELECT CONCAT(CONCAT('a', 'b')) FROM t",
+            .columns = nested_concat_columns,
+            .column_count = sizeof(nested_concat_columns) / sizeof(nested_concat_columns[0]),
+            .values = nested_concat_values,
+            .row_count = 1U,
+            .context = "nested concat",
         }
     );
     failures += expect_query(

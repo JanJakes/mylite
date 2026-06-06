@@ -372,6 +372,16 @@ static int apply_column_charset_collation_attributes(
             sizeof(collation_name)
         );
     }
+    if (rc == MYLITE_OK && has_charset && has_collation && !charset_name_is_binary(charset_name) &&
+        collation_name_is_binary(collation_name) &&
+        column_collation_attribute_is_binary_shorthand(collation_attribute)) {
+        rc = copy_binary_collation_for_charset(
+            database,
+            charset_name,
+            collation_name,
+            sizeof(collation_name)
+        );
+    }
     if (rc == MYLITE_OK && column_charset_collation_requests_binary(
                                has_charset,
                                charset_name,
@@ -441,6 +451,24 @@ static bool column_charset_collation_requests_binary(
 ) {
     return ((has_charset && charset_name_is_binary(charset_name)) ||
             (has_collation && collation_name_is_binary(collation_name))) != 0;
+}
+
+static bool column_collation_attribute_is_binary_shorthand(
+    const struct mylite_sql_ast_node *collation_attribute
+) {
+    static const char binary_text[] = "BINARY";
+
+    if (collation_attribute == NULL || collation_attribute->span.text == NULL ||
+        collation_attribute->span.length != sizeof(binary_text) - 1U) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(binary_text) - 1U; ++index) {
+        if (ascii_lower((unsigned char)collation_attribute->span.text[index]) !=
+            ascii_lower((unsigned char)binary_text[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int apply_column_binary_charset_collation_attributes(

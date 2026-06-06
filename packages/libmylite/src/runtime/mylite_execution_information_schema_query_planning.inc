@@ -107,11 +107,20 @@ static int information_schema_plan_select_item_projection(
             child_at(item, 1U)
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return information_schema_append_integer_literal_projection(
+            database,
+            out_query,
+            expression,
+            child_at(item, 1U)
+        );
+    }
 
     set_unsupported_error(
         database,
-        "INFORMATION_SCHEMA SELECT supports only metadata columns, COUNT(*), and "
-        "CAST(numeric metadata expression AS UNSIGNED)"
+        "INFORMATION_SCHEMA SELECT supports only metadata columns, COUNT(*), integer literals, "
+        "and CAST(numeric metadata expression AS UNSIGNED)"
     );
     return MYLITE_ERROR;
 }
@@ -151,6 +160,24 @@ static int information_schema_append_expression_projection(
         &(const struct information_schema_projection_slot_request){
             .column_index = 0U,
             .kind = INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION,
+            .expression = expression,
+            .alias = alias,
+        }
+    );
+}
+
+static int information_schema_append_integer_literal_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+) {
+    return information_schema_append_projection_slot(
+        database,
+        query,
+        &(const struct information_schema_projection_slot_request){
+            .column_index = 0U,
+            .kind = INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL,
             .expression = expression,
             .alias = alias,
         }

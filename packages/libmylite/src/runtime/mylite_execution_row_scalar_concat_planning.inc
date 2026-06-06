@@ -7,18 +7,13 @@ static int plan_row_scalar_concat_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
-    const struct mylite_sql_ast_node *argument = NULL;
     size_t argument_count = 0U;
-    int rc = MYLITE_OK;
+    size_t next_argument = 0U;
+    int rc = count_row_scalar_concat_function_arguments(database, expression, &argument_count);
 
-    if (mylite_sql_ast_node_child_count(expression) != 1U || arguments == NULL ||
-        arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
-        set_unsupported_error(database, "CONCAT() requires one or more arguments");
-        return MYLITE_ERROR;
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-
-    argument_count = mylite_sql_ast_node_child_count(arguments);
     if (argument_count == 0U || argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -32,73 +27,190 @@ static int plan_row_scalar_concat_expression(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_CONCAT;
     out_expression->argument_count = argument_count;
 
-    argument = child_at(arguments, 0U);
-    for (size_t argument_index = 0U;
-         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
-         ++argument_index) {
-        const struct mylite_sql_ast_node *unwrapped_argument =
-            unwrap_parenthesized_expression(argument);
-
-        if (unwrapped_argument == NULL) {
-            set_parse_error(database, NULL);
-            rc = MYLITE_ERROR;
-        } else if (unwrapped_argument->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
-            set_unsupported_error(
-                database,
-                "row-scalar SELECT CONCAT() does not support nested CONCAT()"
-            );
-            rc = MYLITE_ERROR;
-        } else {
-            if (mylite_execution_string_length_function_kind(unwrapped_argument->kind) !=
-                PLANNED_STRING_LENGTH_FUNCTION_NONE) {
-                rc = plan_row_scalar_string_length_expression(
-                    database,
-                    argument,
-                    has_source,
-                    source_context,
-                    table_columns,
-                    table_column_count,
-                    COLUMN_REFERENCE_FIELD,
-                    &out_expression->arguments[argument_index]
-                );
-            } else if (
-                mylite_execution_string_slice_function_kind(unwrapped_argument->kind) !=
-                PLANNED_STRING_SLICE_FUNCTION_NONE
-            ) {
-                rc = plan_row_scalar_string_slice_expression(
-                    database,
-                    argument,
-                    has_source,
-                    source_context,
-                    table_columns,
-                    table_column_count,
-                    COLUMN_REFERENCE_FIELD,
-                    &out_expression->arguments[argument_index]
-                );
-            } else {
-                rc = plan_row_scalar_non_concat_expression(
-                    database,
-                    argument,
-                    has_source,
-                    source_context,
-                    table_columns,
-                    table_column_count,
-                    true,
-                    &out_expression->arguments[argument_index]
-                );
-            }
-        }
-        argument = argument->next_sibling;
-    }
+    rc = plan_row_scalar_concat_function_arguments(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression->arguments,
+        argument_count,
+        &next_argument
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (argument != NULL) {
+    if (next_argument != argument_count) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
     return MYLITE_OK;
+}
+
+static int count_row_scalar_concat_function_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t *inout_argument_count
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || inout_argument_count == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        if (current == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        } else if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+            const struct mylite_sql_ast_node *arguments = child_at(current, 0U);
+            size_t argument_count = 0U;
+
+            if (mylite_sql_ast_node_child_count(current) != 1U || arguments == NULL ||
+                arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+                set_unsupported_error(database, "CONCAT() requires one or more arguments");
+                rc = MYLITE_ERROR;
+                break;
+            }
+            argument_count = mylite_sql_ast_node_child_count(arguments);
+            if (argument_count == 0U) {
+                set_unsupported_error(database, "CONCAT() requires one or more arguments");
+                rc = MYLITE_ERROR;
+                break;
+            }
+            for (size_t index = 0U; index < argument_count; ++index) {
+                const struct mylite_sql_ast_node *argument =
+                    child_at(arguments, argument_count - index - 1U);
+
+                if (!scalar_arithmetic_node_stack_push(&stack, argument)) {
+                    set_nomem_error(database);
+                    rc = MYLITE_NOMEM;
+                    break;
+                }
+            }
+        } else {
+            if (*inout_argument_count == SIZE_MAX) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            } else {
+                ++(*inout_argument_count);
+            }
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int plan_row_scalar_concat_function_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || arguments == NULL || inout_next_argument == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        if (current == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+            const struct mylite_sql_ast_node *concat_arguments = child_at(current, 0U);
+            size_t concat_argument_count = mylite_sql_ast_node_child_count(concat_arguments);
+
+            for (size_t index = 0U; index < concat_argument_count; ++index) {
+                const struct mylite_sql_ast_node *argument =
+                    child_at(concat_arguments, concat_argument_count - index - 1U);
+
+                if (!scalar_arithmetic_node_stack_push(&stack, argument)) {
+                    set_nomem_error(database);
+                    rc = MYLITE_NOMEM;
+                    break;
+                }
+            }
+            continue;
+        }
+        if (*inout_next_argument >= argument_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (mylite_execution_string_length_function_kind(current->kind) !=
+            PLANNED_STRING_LENGTH_FUNCTION_NONE) {
+            rc = plan_row_scalar_string_length_expression(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                COLUMN_REFERENCE_FIELD,
+                &arguments[*inout_next_argument]
+            );
+        } else if (
+            mylite_execution_string_slice_function_kind(current->kind) !=
+            PLANNED_STRING_SLICE_FUNCTION_NONE
+        ) {
+            rc = plan_row_scalar_string_slice_expression(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                COLUMN_REFERENCE_FIELD,
+                &arguments[*inout_next_argument]
+            );
+        } else {
+            rc = plan_row_scalar_non_concat_expression(
+                database,
+                current,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                true,
+                &arguments[*inout_next_argument]
+            );
+        }
+        if (rc == MYLITE_OK) {
+            ++(*inout_next_argument);
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
 }
 
 static int plan_row_scalar_concat_operator_expression(

@@ -1462,6 +1462,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
     enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_ast_node *right
 );
+
+struct mylite_sql_parser_like_comparison_predicate_request {
+    struct mylite_sql_ast_node *left;
+    struct mylite_sql_token operator_token;
+    enum mylite_sql_ast_operator operator_kind;
+    struct mylite_sql_ast_node *right;
+    struct mylite_sql_ast_node *escape;
+};
+struct mylite_sql_ast_node *mylite_sql_parser_make_like_comparison_predicate(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_parser_like_comparison_predicate_request *request
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,

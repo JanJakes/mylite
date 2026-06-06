@@ -879,6 +879,11 @@ static int plan_comparison_predicate_like_value(
         &database->session,
         MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
     );
+    int rc = validate_like_escape_clause(database, predicate_node);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (child_at(predicate_node, 1U) != NULL &&
         child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL) {
         return convert_predicate_string_pattern_literal(
@@ -895,6 +900,40 @@ static int plan_comparison_predicate_like_value(
         table_column_count,
         node
     );
+}
+
+static int validate_like_escape_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *escape_node = child_at(predicate_node, 2U);
+    char *escape_text = NULL;
+    size_t escape_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (escape_node == NULL) {
+        return MYLITE_OK;
+    }
+    if (escape_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(escape_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "LIKE ESCAPE supports only string literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        escape_node,
+        "LIKE ESCAPE supports only string literals",
+        "LIKE ESCAPE does not support NUL bytes",
+        &escape_text,
+        &escape_length
+    );
+    if (rc == MYLITE_OK && (escape_length != 1U || escape_text[0] != '\\')) {
+        set_unsupported_error(database, "LIKE ESCAPE supports only the backslash escape character");
+        rc = MYLITE_ERROR;
+    }
+    free(escape_text);
+    return rc;
 }
 
 static bool comparison_predicate_rhs_requires_row_scalar_value(

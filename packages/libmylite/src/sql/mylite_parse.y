@@ -3872,15 +3872,31 @@ having_predicate_atom(A) ::= having_operand(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
-having_predicate_atom(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+having_predicate_atom(A) ::=
+    qualified_identifier(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = E,
+        });
 }
-having_predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
+having_predicate_atom(A) ::=
+    qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
-        mylite_sql_parser_make_comparison_predicate(
-            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
+        mylite_sql_parser_make_like_comparison_predicate(
+            state,
+            &(const struct mylite_sql_parser_like_comparison_predicate_request){
+                .left = C,
+                .operator_token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+                .right = P,
+                .escape = E,
+            }));
 }
 
 having_operand(A) ::= qualified_identifier(B). {
@@ -4163,15 +4179,31 @@ predicate_atom(A) ::= cast_convert_expression(C) predicate_comparison_operator(O
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
-predicate_atom(A) ::= cast_convert_expression(C) LIKE(O) predicate_like_pattern(P). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+predicate_atom(A) ::=
+    cast_convert_expression(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = E,
+        });
 }
-predicate_atom(A) ::= cast_convert_expression(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
+predicate_atom(A) ::=
+    cast_convert_expression(C) NOT(N) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
-        mylite_sql_parser_make_comparison_predicate(
-            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
+        mylite_sql_parser_make_like_comparison_predicate(
+            state,
+            &(const struct mylite_sql_parser_like_comparison_predicate_request){
+                .left = C,
+                .operator_token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+                .right = P,
+                .escape = E,
+            }));
 }
 predicate_atom(A) ::= cast_convert_expression(C) BETWEEN(B)
         predicate_range_value(L) AND predicate_range_value(U). {
@@ -4399,25 +4431,58 @@ predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_compari
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+predicate_atom(A) ::=
+    qualified_identifier(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = E,
+        });
 }
-predicate_atom(A) ::= qualified_identifier(C) LIKE(O) BINARY predicate_like_pattern(P). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE_BINARY, P);
+predicate_atom(A) ::=
+    qualified_identifier(C) LIKE(O) BINARY predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE_BINARY,
+            .right = P,
+            .escape = E,
+        });
 }
-predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
+predicate_atom(A) ::=
+    qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
-        mylite_sql_parser_make_comparison_predicate(
-            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
+        mylite_sql_parser_make_like_comparison_predicate(
+            state,
+            &(const struct mylite_sql_parser_like_comparison_predicate_request){
+                .left = C,
+                .operator_token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+                .right = P,
+                .escape = E,
+            }));
 }
-predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) BINARY predicate_like_pattern(P). {
+predicate_atom(A) ::=
+    qualified_identifier(C) NOT(N) LIKE(O) BINARY predicate_like_pattern(P)
+    predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
-        mylite_sql_parser_make_comparison_predicate(
-            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE_BINARY, P));
+        mylite_sql_parser_make_like_comparison_predicate(
+            state,
+            &(const struct mylite_sql_parser_like_comparison_predicate_request){
+                .left = C,
+                .operator_token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE_BINARY,
+                .right = P,
+                .escape = E,
+            }));
 }
 predicate_like_pattern(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
@@ -4428,6 +4493,12 @@ predicate_like_pattern(A) ::= NULL(T). {
 predicate_like_pattern(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
+predicate_like_escape_opt(A) ::= . {
+    A = NULL;
+}
+predicate_like_escape_opt(A) ::= ESCAPE STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 predicate_atom(A) ::= qualified_identifier(C) REGEXP(O) STRING(T). {
     A = mylite_sql_parser_make_comparison_predicate(
@@ -4735,9 +4806,17 @@ select_order_key(A) ::= qualified_identifier(B) PLUS(T) INTEGER(C). {
 select_order_key(A) ::= cast_convert_expression(K). {
     A = K;
 }
-select_order_key(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+select_order_key(A) ::=
+    qualified_identifier(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = E,
+        });
 }
 select_order_key(A) ::= select_field_order_expression(K). {
     A = K;
@@ -7809,9 +7888,17 @@ count_nullif_predicate(A) ::= qualified_identifier(C) EQUAL(O) predicate_compari
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
 }
-count_nullif_predicate(A) ::= qualified_identifier(C) LIKE(O) predicate_like_pattern(P). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+count_nullif_predicate(A) ::=
+    qualified_identifier(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = E,
+        });
 }
 expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
@@ -8334,6 +8421,9 @@ identifier(A) ::= DATEDIFF(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONVERT_TZ(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ESCAPE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= PERIOD_ADD(T). {
@@ -9443,8 +9533,33 @@ column_attribute_list_opt(A) ::= column_attribute_list(B). {
 column_attribute_list(A) ::= column_attribute(B). {
     A = mylite_sql_parser_make_column_attribute_list(state, B);
 }
+column_attribute_list(A) ::= CHARACTER(C) SET option_name(N) BINARY(B). {
+    A = mylite_sql_parser_make_column_attribute_list(
+        state,
+        mylite_sql_parser_make_column_charset_attribute(state, C, N));
+    A = mylite_sql_parser_append_column_attribute(
+        state,
+        A,
+        mylite_sql_parser_make_column_collation_attribute(
+            state,
+            B,
+            mylite_sql_parser_make_identifier(state, B)));
+}
 column_attribute_list(A) ::= column_attribute_list(B) column_attribute(C). {
     A = mylite_sql_parser_append_column_attribute(state, B, C);
+}
+column_attribute_list(A) ::= column_attribute_list(L) CHARACTER(C) SET option_name(N) BINARY(B). {
+    A = mylite_sql_parser_append_column_attribute(
+        state,
+        L,
+        mylite_sql_parser_make_column_charset_attribute(state, C, N));
+    A = mylite_sql_parser_append_column_attribute(
+        state,
+        A,
+        mylite_sql_parser_make_column_collation_attribute(
+            state,
+            B,
+            mylite_sql_parser_make_identifier(state, B)));
 }
 
 column_attribute(A) ::= nullability(B). {

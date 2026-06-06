@@ -865,7 +865,7 @@ static int test_select_where_predicates(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id LIKE '1%' ESCAPE '#';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

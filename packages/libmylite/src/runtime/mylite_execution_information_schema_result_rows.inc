@@ -198,6 +198,15 @@ static int information_schema_projection_value(
             out_value
         );
     }
+    if (query->projection_kinds[projection_index] == INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL) {
+        return information_schema_integer_literal_projection_value(
+            database,
+            query->projection_expressions[projection_index],
+            buffer,
+            buffer_size,
+            out_value
+        );
+    }
 
     set_runtime_error(database, "invalid INFORMATION_SCHEMA projection descriptor");
     return MYLITE_ERROR;
@@ -249,6 +258,27 @@ static int information_schema_unsigned_projection_expression_value(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
+    *out_value = buffer;
+    return MYLITE_OK;
+}
+
+static int information_schema_integer_literal_projection_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        expression->span.text == NULL || expression->span.length == 0U ||
+        expression->span.length >= buffer_size) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA integer literal projection");
+        return MYLITE_ERROR;
+    }
+
+    memcpy(buffer, expression->span.text, expression->span.length);
+    buffer[expression->span.length] = '\0';
     *out_value = buffer;
     return MYLITE_OK;
 }

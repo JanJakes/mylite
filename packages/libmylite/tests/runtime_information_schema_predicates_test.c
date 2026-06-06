@@ -56,6 +56,7 @@ static int test_information_schema_predicates(void) {
     static const char *const table_name_column[] = {"TABLE_NAME"};
     static const char *const column_name_column[] = {"COLUMN_NAME"};
     static const char *const count_column[] = {"COUNT(*)"};
+    static const char *const literal_column[] = {"1"};
     static const char *const id_value[] = {"id"};
     static const char *const t_value[] = {"t"};
     static const char *const wp_options_value[] = {"wp_options"};
@@ -67,6 +68,7 @@ static int test_information_schema_predicates(void) {
     static const char *const after_reopen_t_values[] = {"after_reopen", "t"};
     static const char *const count_zero[] = {"0"};
     static const char *const count_one[] = {"1"};
+    static const char *const literal_one[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -101,6 +103,19 @@ static int test_information_schema_predicates(void) {
             .values = wp_options_value,
             .row_count = 1U,
             .context = "like escaped wildcard",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME LIKE 'wp\\\\_%' "
+                   "ESCAPE '\\\\' ORDER BY TABLE_NAME",
+            .column_names = table_name_column,
+            .column_count = 1U,
+            .values = wp_options_value,
+            .row_count = 1U,
+            .context = "like explicit backslash escape",
         }
     );
     failures += expect_query(
@@ -310,6 +325,19 @@ static int test_information_schema_predicates(void) {
             .context = "or true with unknown side",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 FROM information_schema.tables "
+                   "WHERE table_schema = 'app' AND table_name = 't' "
+                   "AND table_type = 'BASE TABLE'",
+            .column_names = literal_column,
+            .column_count = 1U,
+            .values = literal_one,
+            .row_count = 1U,
+            .context = "integer literal projection",
+        }
+    );
     mylite_close(database);
     database = NULL;
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen information schema db");
@@ -366,7 +394,7 @@ static int test_information_schema_predicates(void) {
                    "WHERE TABLE_NAME LIKE 't%' ESCAPE '!'",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'ESCAPE'",
+            .message_part = "LIKE ESCAPE supports only the backslash escape character",
         }
     );
     failures += expect_error(

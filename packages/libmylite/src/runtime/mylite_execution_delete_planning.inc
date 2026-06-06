@@ -1590,7 +1590,7 @@ static int copy_identifier_text(
         return MYLITE_ERROR;
     }
 
-    if (source[0] == '`') {
+    if (source[0] == '`' || source[0] == '"') {
         rc = copy_quoted_identifier_text(source, source_size, destination, destination_size);
     } else {
         rc = copy_unquoted_identifier_text(source, source_size, destination, destination_size);
@@ -1610,8 +1610,13 @@ static int copy_quoted_identifier_text(
     size_t destination_size
 ) {
     size_t destination_index = 0U;
+    char quote = '\0';
 
-    if (source_size < 2U || source[source_size - 1U] != '`') {
+    if (source_size > 0U) {
+        quote = source[0];
+    }
+
+    if ((quote != '`' && quote != '"') || source_size < 2U || source[source_size - 1U] != quote) {
         return MYLITE_ERROR;
     }
 
@@ -1619,8 +1624,8 @@ static int copy_quoted_identifier_text(
         if (destination_index + 1U >= destination_size) {
             return MYLITE_ERROR;
         }
-        if (source[source_index] == '`' && source[source_index + 1U] == '`') {
-            destination[destination_index] = '`';
+        if (source[source_index] == quote && source[source_index + 1U] == quote) {
+            destination[destination_index] = quote;
             ++source_index;
         } else {
             destination[destination_index] = source[source_index];

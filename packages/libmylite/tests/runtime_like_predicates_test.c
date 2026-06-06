@@ -129,6 +129,7 @@ static int test_like_predicate_queries(void) {
     static const char *const escaped_underscore_ids[] = {"4"};
     static const char *const escaped_percent_ids[] = {"5"};
     static const char *const concat_escaped_underscore_ids[] = {"4"};
+    static const char *const escape_identifier_value[] = {"ab_1"};
     static const char *const joined_concat_ids[] = {"1", "8"};
     static const char *const visible_having_names[] = {"visible_1", "visible_2"};
     static const char *const not_like_ab_ids[] = {"8"};
@@ -239,6 +240,28 @@ static int test_like_predicate_queries(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "default LIKE backslash escapes underscore",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab\\_%' ESCAPE '\\\\' ORDER BY id",
+            .values = escaped_underscore_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "explicit LIKE backslash escape",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE escape (escape VARCHAR(8))", NULL);
+    failures += execute_ok(database, "INSERT INTO escape VALUES ('ab_1')", NULL);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT escape FROM escape WHERE escape LIKE 'ab\\_%' ESCAPE '\\\\'",
+            .values = escape_identifier_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "ESCAPE remains available as an unquoted identifier",
         }
     );
     failures += expect_query_values(
@@ -588,7 +611,7 @@ static int test_like_predicate_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'ESCAPE'",
+            .message_part = "LIKE ESCAPE supports only the backslash escape character",
         }
     );
     mylite_close(database);

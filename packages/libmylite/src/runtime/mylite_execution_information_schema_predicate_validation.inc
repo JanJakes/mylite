@@ -121,11 +121,14 @@ static int information_schema_validate_comparison_predicate(
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
 
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
-            rc = information_schema_predicate_like_pattern_text(
-                database,
-                child_at(predicate_node, 1U),
-                &right
-            );
+            rc = validate_like_escape_clause(database, predicate_node);
+            if (rc == MYLITE_OK) {
+                rc = information_schema_predicate_like_pattern_text(
+                    database,
+                    child_at(predicate_node, 1U),
+                    &right
+                );
+            }
         } else {
             rc = information_schema_predicate_value_text(
                 database,

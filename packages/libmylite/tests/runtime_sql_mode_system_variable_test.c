@@ -640,6 +640,7 @@ static int test_sql_mode_assignment_and_effects(void) {
     static const char *const double_string_values[] = {"literal"};
     static const char *const ansi_identifier_columns[] = {"id"};
     static const char *const ansi_identifier_values[] = {"7"};
+    static const char *const ansi_schema_identifier_values[] = {"11"};
     static const char *const auto_zero_columns[] = {"id", "v"};
     static const char *const auto_zero_values[] = {"0", "20"};
     static const char *const auto_next_values[] = {"1", "30"};
@@ -953,6 +954,24 @@ static int test_sql_mode_assignment_and_effects(void) {
             .context = "ANSI_QUOTES identifier parsing",
         }
     );
+    failures += execute_statement_ok(database, "CREATE DATABASE \"ansi_mode_schema\"");
+    failures += execute_statement_ok(database, "USE \"ansi_mode_schema\"");
+    failures += execute_statement_ok(database, "CREATE TABLE \"ansi_schema_table\" (\"id\" INT)");
+    failures +=
+        execute_statement_ok(database, "INSERT INTO \"ansi_schema_table\" (\"id\") VALUES (11)");
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += execute_statement_ok(database, "USE `ansi_mode_schema`");
+    failures += expect_query_result(
+        database,
+        "SELECT id FROM `ansi_schema_table`",
+        (struct expected_result){
+            .columns = ansi_identifier_columns,
+            .values = ansi_schema_identifier_values,
+            .count = sizeof(ansi_identifier_columns) / sizeof(ansi_identifier_columns[0]),
+            .context = "ANSI_QUOTES schema identifiers are unquoted",
+        }
+    );
+    failures += execute_statement_ok(database, "USE app");
 
     failures += execute_statement_ok(database, "SET sql_mode = ''");
     failures += execute_statement_ok(database, "CREATE TABLE double_quote_strings (v VARCHAR(20))");

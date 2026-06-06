@@ -5111,6 +5111,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_like_comparison_predicate(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_parser_like_comparison_predicate_request *request
+) {
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    if (request == NULL) {
+        return NULL;
+    }
+
+    predicate = mylite_sql_parser_make_comparison_predicate(
+        state,
+        request->left,
+        request->operator_token,
+        request->operator_kind,
+        request->right
+    );
+
+    if (predicate == NULL || request->escape == NULL) {
+        return predicate;
+    }
+
+    predicate->span = span_join(predicate->span, request->escape->span);
+    mylite_sql_ast_node_append_child(predicate, request->escape);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -8292,6 +8319,7 @@ static bool map_keyword_token(
         {"CAST", MYLITE_SQL_PARSE_CAST},
         {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
         {"CONVERT_TZ", MYLITE_SQL_PARSE_CONVERT_TZ},
+        {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXCEPT", MYLITE_SQL_PARSE_EXCEPT},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"INTERSECT", MYLITE_SQL_PARSE_INTERSECT},

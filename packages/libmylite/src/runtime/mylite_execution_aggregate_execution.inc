@@ -228,6 +228,9 @@ static int plan_count(
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         return plan_count_without_source(database, &source_nodes, out_plan);
     }
+    if (from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        return plan_count_derived_table_source(database, &source_nodes, out_plan);
+    }
     if (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, count_descriptor_table_message(out_plan->function));
         return MYLITE_ERROR;
@@ -293,6 +296,97 @@ static int plan_count_without_source(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_count_derived_table_source(
+    struct mylite_db *database,
+    const struct planned_count_source_nodes *nodes,
+    struct planned_count *out_plan
+) {
+    const struct mylite_sql_ast_node *source = nodes->from_clause;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    struct planned_count_source_nodes inner_nodes = {0};
+
+    if (out_plan->function != PLANNED_COUNT_STAR) {
+        set_unsupported_error(database, count_descriptor_table_message(out_plan->function));
+        return MYLITE_ERROR;
+    }
+    if (nodes->where_clause != NULL || nodes->order_clause != NULL) {
+        set_unsupported_error(database, "COUNT(*) derived table supports only inner WHERE");
+        return MYLITE_ERROR;
+    }
+    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED) {
+        set_unsupported_error(database, "COUNT(*) derived table supports only plain inner SELECT");
+        return MYLITE_ERROR;
+    }
+    statement = child_at(source, 0U);
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "COUNT(*) derived table supports only plain inner SELECT");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(database, "COUNT(*) derived table does not support inner modifiers");
+        return MYLITE_ERROR;
+    }
+
+    select_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    optional_clause = child_at(statement, 2U);
+    if (!count_derived_select_list_is_supported(select_list)) {
+        set_unsupported_error(
+            database,
+            "COUNT(*) derived table supports only integer literal inner projections"
+        );
+        return MYLITE_ERROR;
+    }
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(
+            database,
+            "COUNT(*) derived table supports only descriptor-backed inner table reads"
+        );
+        return MYLITE_ERROR;
+    }
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "COUNT(*) derived table supports only inner WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    inner_nodes = (struct planned_count_source_nodes){
+        .from_clause = from_clause,
+        .where_clause = where_clause,
+        .order_clause = NULL,
+        .count_expression = nodes->count_expression,
+    };
+    return plan_count_table_source(database, &inner_nodes, out_plan);
+}
+
+static bool count_derived_select_list_is_supported(const struct mylite_sql_ast_node *select_list) {
+    const struct mylite_sql_ast_node *select_item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        mylite_sql_ast_node_child_count(select_list) != 1U) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        return false;
+    }
+
+    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
+    return expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL &&
+           mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_INTEGER;
 }
 
 static int plan_count_table_source(

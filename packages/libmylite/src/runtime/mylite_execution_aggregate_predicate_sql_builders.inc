@@ -6,12 +6,16 @@ static int build_select_found_rows_sql(const struct planned_select *plan, char *
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
-    if (rc == MYLITE_OK) {
-        rc = append_select_from_sql(&string, plan, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    if (plan->is_distinct) {
+        rc = append_select_distinct_found_rows_sql(&string, plan, &next_parameter);
+    } else {
+        rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+        if (rc == MYLITE_OK) {
+            rc = append_select_from_sql(&string, plan, &next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+        }
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -21,6 +25,41 @@ static int build_select_found_rows_sql(const struct planned_select *plan, char *
     }
 
     mylite_dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_select_distinct_found_rows_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select *plan,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "SELECT COUNT(*) FROM (SELECT DISTINCT ");
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_projection_column_sql(string, plan, column_index);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_from_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ") AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, "_mylite_found_rows");
+    }
 
     return rc;
 }

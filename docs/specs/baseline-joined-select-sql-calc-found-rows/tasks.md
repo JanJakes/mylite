@@ -16,3 +16,5 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review the final diff for architecture boundaries, descriptor authority,
   no MyLite-side materialization, warning behavior, scope control, and docs.
+- [x] Extend joined `DISTINCT SQL_CALC_FOUND_ROWS` to count distinct projected
+  rows before `LIMIT`.

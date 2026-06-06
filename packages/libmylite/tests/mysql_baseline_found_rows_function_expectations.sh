@@ -237,6 +237,10 @@ joined_calc=$(run_mysql \
        ORDER BY rights.id, lefts.id LIMIT 2;
      SHOW WARNINGS;
      SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT DISTINCT SQL_CALC_FOUND_ROWS lefts.id
+       FROM lefts JOIN rights ON lefts.k = rights.k
+       ORDER BY lefts.id LIMIT 1;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
      SELECT SQL_CALC_FOUND_ROWS lefts.id
        FROM lefts LEFT JOIN rights ON lefts.k = rights.k
        GROUP BY lefts.id ORDER BY lefts.id LIMIT 1;
@@ -308,34 +312,42 @@ expect_contains \
     "SQL_CALC_FOUND_ROWS is deprecated"
 expect_value "right joined sql calc found rows" "3	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '16p')"
 expect_value \
-    "grouped joined sql calc visible row" \
+    "distinct joined sql calc visible row" \
     "1" \
     "$(printf '%s\n' "$joined_calc" | sed -n '17p')"
+expect_value \
+    "distinct joined sql calc found rows" \
+    "1	1	-1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '18p')"
+expect_value \
+    "grouped joined sql calc visible row" \
+    "1" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '19p')"
 expect_contains \
     "grouped joined sql calc warning" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '18p')" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '20p')" \
     "SQL_CALC_FOUND_ROWS is deprecated"
-expect_value "grouped joined sql calc found rows" "3	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '19p')"
+expect_value "grouped joined sql calc found rows" "3	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '21p')"
 expect_value \
     "grouped joined not exists sql calc visible row" \
     "2" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '20p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '22p')"
 expect_contains \
     "grouped joined not exists sql calc warning" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '21p')" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '23p')" \
     "SQL_CALC_FOUND_ROWS is deprecated"
 expect_value \
     "grouped joined not exists sql calc found rows" \
     "2	1	-1" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '22p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '24p')"
 expect_value \
     "ordinary joined offset visible row" \
     "1	8" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '23p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '25p')"
 expect_value \
     "ordinary joined offset found rows" \
     "2	1	-1" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '24p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '26p')"
 
 non_select=$(run_mysql \
     "USE ${DATABASE};
@@ -355,13 +367,19 @@ deferred_shapes=$(run_mysql \
     "USE ${DATABASE};
      SELECT SQL_CALC_FOUND_ROWS DISTINCT n FROM t ORDER BY n LIMIT 1;
      SELECT FOUND_ROWS();
+     SELECT SQL_CALC_FOUND_ROWS DISTINCT lefts.id
+       FROM lefts JOIN rights ON lefts.k = rights.k
+       ORDER BY lefts.id LIMIT 1;
+     SELECT FOUND_ROWS();
      SELECT SQL_CALC_FOUND_ROWS n, COUNT(*) FROM t GROUP BY n ORDER BY n LIMIT 1;
      SELECT FOUND_ROWS();"
 )
 expect_value "mysql accepts distinct calc row" "NULL" "$(printf '%s\n' "$deferred_shapes" | sed -n '1p')"
 expect_value "mysql distinct calc found rows" "3" "$(printf '%s\n' "$deferred_shapes" | sed -n '2p')"
-expect_value "mysql accepts grouped calc first group" "NULL	1" "$(printf '%s\n' "$deferred_shapes" | sed -n '3p')"
-expect_value "mysql grouped calc found rows" "3" "$(printf '%s\n' "$deferred_shapes" | sed -n '4p')"
+expect_value "mysql accepts joined distinct calc row" "1" "$(printf '%s\n' "$deferred_shapes" | sed -n '3p')"
+expect_value "mysql joined distinct calc found rows" "1" "$(printf '%s\n' "$deferred_shapes" | sed -n '4p')"
+expect_value "mysql accepts grouped calc first group" "NULL	1" "$(printf '%s\n' "$deferred_shapes" | sed -n '5p')"
+expect_value "mysql grouped calc found rows" "3" "$(printf '%s\n' "$deferred_shapes" | sed -n '6p')"
 
 expect_error \
     "found rows one argument" \

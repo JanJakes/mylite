@@ -54,13 +54,6 @@ static int plan_select(
         allow_field_order = false;
     }
     out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
-    if (out_plan->calc_found_rows && out_plan->is_distinct) {
-        set_unsupported_error(
-            database,
-            "SQL_CALC_FOUND_ROWS supports only non-distinct descriptor-backed table SELECT"
-        );
-        return MYLITE_ERROR;
-    }
     if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JOIN) {
         const struct joined_select_ast joined_select = {
             .statement = statement,

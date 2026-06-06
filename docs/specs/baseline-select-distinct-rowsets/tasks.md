@@ -18,3 +18,5 @@
   workflow.
 - [x] Review the final diff for scope, descriptor authority, SQLite SQL shape,
   collation correctness, memory behavior, docs, and tests.
+- [x] Update the `DISTINCT SQL_CALC_FOUND_ROWS` contract from rejection to the
+  supported found-rows distinct-count path.

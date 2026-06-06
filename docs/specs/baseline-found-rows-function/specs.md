@@ -110,17 +110,18 @@ table_select_body:
 ```
 
 The first implementation supported `SQL_CALC_FOUND_ROWS` only for the existing
-non-distinct descriptor-backed base-table `SELECT` column-list and wildcard
-paths with optional source alias, baseline `WHERE`, one-column `ORDER BY`, and
-existing `LIMIT` / `OFFSET` forms. Later slices admit the current joined and
-grouped descriptor-backed `SELECT` envelopes, the current one-row aggregate-only
-envelopes, and source-backed row-scalar projection selects for descriptor
-columns, wildcard expansion, and supported scalar literal items. MyLite still
-does not admit or execute `SQL_CALC_FOUND_ROWS` on scalar/no-source selects,
-`FROM DUAL`, `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, `REPLACE ...
-SELECT`, `UNION`, `TABLE`, subqueries, CTEs, unsupported locking clauses, or
-other select modifiers outside the documented descriptor, aggregate, and
-source-backed row-scalar paths.
+descriptor-backed base-table `SELECT` column-list and wildcard paths with
+optional source alias, baseline `WHERE`, one-column `ORDER BY`, and existing
+`LIMIT` / `OFFSET` forms. Later slices admit the current descriptor
+`DISTINCT` rowsets, joined and grouped descriptor-backed `SELECT` envelopes,
+the current one-row aggregate-only envelopes, and source-backed row-scalar
+projection selects for descriptor columns, wildcard expansion, and supported
+scalar literal items. MyLite still does not admit or execute
+`SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`, `CREATE TABLE
+... SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, `UNION`, `TABLE`,
+subqueries, CTEs, unsupported locking clauses, or other select modifiers
+outside the documented descriptor, aggregate, and source-backed row-scalar
+paths.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -271,17 +272,16 @@ may run the same descriptor-built `SELECT COUNT(*)` shape used by
 memory.
 
 For admitted `SQL_CALC_FOUND_ROWS`, the baseline may run a second
-descriptor-built `SELECT COUNT(*)` over the same table source and `WHERE`
-predicate before or after the visible result query. This stays close to
+descriptor-built count query over the same table source and `WHERE` predicate
+before or after the visible result query. Non-distinct paths use `COUNT(*)`;
+descriptor `DISTINCT` paths count rows from a `SELECT DISTINCT` subquery so
+pre-limit accounting happens after duplicate elimination. This stays close to
 SQLite's optimized path and avoids materializing the full result in MyLite
 memory. It must use stable physical table names, quoted identifiers, prepared
 statements, and bound predicate values through existing descriptor-driven
 planning helpers. It must not remove the visible query's `LIMIT` or read all
-rows into MyLite just to count them.
-
-`DISTINCT`, grouping, and `UNION` found-row behavior are deferred partly
-because pre-limit row accounting there must count result rows after duplicate
-elimination or grouping, not base rows.
+rows into MyLite just to count them. `UNION` found-row behavior remains
+deferred.
 
 ## Tests
 
@@ -297,6 +297,8 @@ cover:
   `LIMIT row_count OFFSET offset`;
 - `FOUND_ROWS()` after `SELECT SQL_CALC_FOUND_ROWS ...` with no `LIMIT`,
   `LIMIT row_count`, `LIMIT 0`, and filtered `WHERE`;
+- `FOUND_ROWS()` after descriptor `SELECT DISTINCT SQL_CALC_FOUND_ROWS ...`,
+  including the joined descriptor source envelope;
 - `SQL_CALC_FOUND_ROWS` warning `1287`, result warning count, `SHOW WARNINGS`,
   and `ROW_COUNT() == -1`;
 - successful `FOUND_ROWS()` updating subsequent found-row state to `1`;
@@ -305,10 +307,10 @@ cover:
   schema policy;
 - unknown schema/table/column and unsupported object-kind diagnostics inherited
   from descriptor-backed SELECT;
-- unsupported modifier shapes: scalar selects, `FROM DUAL`, `DISTINCT`,
-  grouped aggregates, aggregate-only selects, `CREATE TABLE ... SELECT`,
-  `INSERT ... SELECT`, `REPLACE ... SELECT`, other select modifiers, joins,
-  `UNION`, subqueries, parameters, and lock clauses;
+- unsupported modifier shapes: scalar selects, `FROM DUAL`, `CREATE TABLE ...
+  SELECT`, `INSERT ... SELECT`, `REPLACE ... SELECT`, other unsupported select
+  modifiers, `UNION`, subqueries, parameters, and lock clauses outside the
+  admitted descriptor envelopes;
 - file-backed reopen behavior and independent handle state;
 - no catalog generation, descriptor, SQLite schema generation, file preamble,
   or VFS mutation caused by found-row tracking.
@@ -325,6 +327,7 @@ Run:
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-system.md`, and
 `docs/compatibility/sql-query-expressions.md` only for the exact limited
 `FOUND_ROWS()` and `SQL_CALC_FOUND_ROWS` subset. Do not claim full SELECT
-modifier support, full distinct/grouped found-row behavior, `UNION`, protocol
-metadata, replication behavior, `CLIENT_FOUND_ROWS`, joins, subqueries, or
-general expression support.
+modifier support, full distinct/grouped found-row behavior outside the
+documented descriptor envelopes, `UNION`, protocol metadata, replication
+behavior, `CLIENT_FOUND_ROWS`, joins beyond the admitted source envelopes,
+subqueries, or general expression support.

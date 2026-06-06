@@ -318,6 +318,7 @@ static int test_sql_calc_found_rows_selects(void) {
     static const char *const limit_rows[] = {"1", "2"};
     static const char *const filtered_rows[] = {"2"};
     static const char *const no_limit_rows[] = {"1", "2", "3", "4"};
+    static const char *const distinct_n_rows[] = {NULL};
     static const char *const count_rows[] = {"4"};
     static const char *const row_scalar_filtered_rows[][2] = {{"2", "1"}};
     static const char *const row_scalar_wildcard_rows[][3] = {{"1", NULL, "1"}, {"2", "20", "1"}};
@@ -396,6 +397,23 @@ static int test_sql_calc_found_rows_selects(void) {
         }
     );
 
+    failures += execute_ok(
+        database,
+        "SELECT DISTINCT SQL_CALC_FOUND_ROWS n FROM t ORDER BY n LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_single_column_rows(result, distinct_n_rows, 1U, 1U, "distinct sql calc rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_value(
+        database,
+        (struct expected_found_rows_value){
+            .expected = "3",
+            .context = "distinct sql calc found rows",
+        }
+    );
+
     failures += execute_ok(database, "SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM t", &result);
     failures += expect_single_column_rows(result, count_rows, 1U, 1U, "sql calc count rows");
     mylite_result_free(result);
@@ -461,6 +479,7 @@ static int test_sql_calc_found_rows_selects(void) {
 static int test_sql_calc_found_rows_joined_selects(void) {
     static const char *const inner_limit_rows[][2] = {{"1", "7"}};
     static const char *const multi_inner_limit_rows[][3] = {{"1", "7", "30"}};
+    static const char *const distinct_inner_limit_rows[] = {"1"};
     static const char *const cartesian_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const left_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const right_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
@@ -532,6 +551,32 @@ static int test_sql_calc_found_rows_joined_selects(void) {
             .warning_count = "1",
             .row_count = "-1",
             .context = "multi-source joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT DISTINCT SQL_CALC_FOUND_ROWS lefts.id "
+        "FROM lefts JOIN rights ON lefts.k = rights.k "
+        "ORDER BY lefts.id LIMIT 1",
+        &result
+    );
+    failures += expect_single_column_rows(
+        result,
+        distinct_inner_limit_rows,
+        1U,
+        1U,
+        "distinct joined sql calc rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "1",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "distinct joined sql calc found rows",
         }
     );
 

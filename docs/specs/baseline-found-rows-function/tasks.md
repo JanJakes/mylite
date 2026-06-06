@@ -31,3 +31,6 @@
       continue to the next baseline slice.
 - [x] Extend the documented MySQL 8.4.9 evidence and runtime coverage for
       `SQL_CALC_FOUND_ROWS` on one-row aggregate selects.
+- [x] Extend descriptor `DISTINCT SQL_CALC_FOUND_ROWS` support to count
+      distinct projected rows before `LIMIT`, including the joined descriptor
+      source envelope.

@@ -6,8 +6,9 @@ This phase extends the existing deprecated `SQL_CALC_FOUND_ROWS` and
 `FOUND_ROWS()` slice to the current descriptor-backed two-source joined
 `SELECT` envelope.
 
-Supported statements are the already admitted non-distinct two-source joined
-selects with `SQL_CALC_FOUND_ROWS`:
+Supported statements are the already admitted two-source joined selects with
+`SQL_CALC_FOUND_ROWS`, including the current descriptor `DISTINCT` projection
+subset:
 
 ```sql
 SELECT SQL_CALC_FOUND_ROWS select_list
@@ -107,8 +108,9 @@ Observed expectations:
   the independent `SQL_CALC_FOUND_ROWS` select flag on joined select statements.
 - Analyzer/planner: remove the current joined-select rejection and keep all
   existing joined-source, projection, predicate, ordering, and limit planning
-  rules. The planner must still reject `SQL_CALC_FOUND_ROWS DISTINCT ...`
-  before joined planning.
+  rules. Joined `DISTINCT SQL_CALC_FOUND_ROWS` keeps the existing joined
+  distinct projection rules and counts distinct projected rows through the
+  found-rows count path.
 - Catalog: table and column descriptors remain authoritative. The feature does
   not read SQLite schema text for logical names and does not mutate descriptors,
   catalog generation, table status, or schema generation.
@@ -174,6 +176,8 @@ it, but ordering does not change the found-row count.
 For inner joins and comma joins, the count is the number of matching joined
 rows. For left outer joins, unmatched left-side rows count as one row each when
 they survive the optional `WHERE` predicate, matching MySQL's observed behavior.
+For joined `DISTINCT SQL_CALC_FOUND_ROWS`, the count is the number of distinct
+projected result rows before `LIMIT`, not the number of raw joined rows.
 
 The visible row set is still produced by the ordinary joined `SELECT` plan and
 then limited by the existing `LIMIT` / `OFFSET` handling. Without

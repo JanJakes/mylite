@@ -567,15 +567,6 @@ static int test_unsupported_modifier_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DISTINCT SQL_CALC_FOUND_ROWS id FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL_CALC_FOUND_ROWS supports only non-distinct",
-        }
-    );
-    failures += execute_error(
-        database,
         "CREATE TABLE calc_copy AS SELECT SQL_CALC_FOUND_ROWS id FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,

@@ -101,8 +101,8 @@ descriptor planner and result builder, not from SQLite column-name inference.
 This slice intentionally does not support:
 
 - scalar/tableless `SELECT DISTINCT`, `FROM DUAL` distinct, aggregate distinct
-  query blocks, grouped distinct, `SQL_CALC_FOUND_ROWS DISTINCT`, `UNION`
-  branch changes, subqueries, CTEs, derived tables, or `TABLE`;
+  query blocks, grouped distinct, `UNION` branch changes, subqueries, CTEs,
+  derived tables, or `TABLE`;
 - expression, literal, function, user-variable, system-variable, ordinal, or
   string-literal projection items, except for parenthesized descriptor-column
   references that unwrap to the descriptor-column path;
@@ -171,8 +171,8 @@ Planning:
    resolve to one selected descriptor column or selected-column alias, matching
    MySQL 8.4.9's selected-expression restriction for `DISTINCT` query blocks
    while keeping expression order keys deferred.
-7. Reject `SQL_CALC_FOUND_ROWS` with `DISTINCT`; existing `FOUND_ROWS()` state
-   is not changed by this unsupported combination.
+7. When `SQL_CALC_FOUND_ROWS` is combined with `DISTINCT`, use the found-rows
+   slice to count the distinct projected rows before `LIMIT`.
 
 Execution:
 
@@ -224,8 +224,6 @@ Use existing MyLite diagnostics unless listed otherwise:
   `SELECT DISTINCT supports only integer, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or nonbinary string descriptor columns`;
 - unsupported default-mode distinct order key:
   `SELECT DISTINCT supports ORDER BY only on selected columns`;
-- `SQL_CALC_FOUND_ROWS` with distinct:
-  `SQL_CALC_FOUND_ROWS supports only non-distinct descriptor-backed table SELECT`;
 - allocation failure: existing out-of-memory diagnostic;
 - physical SQLite failure: existing SQLite-to-MyLite execution diagnostic.
 
@@ -266,8 +264,7 @@ distinct rejection tests that become supported. Coverage must include:
 - `WHERE`, `LIMIT`, and `OFFSET`;
 - close/reopen persistence;
 - unsupported scalar/`DUAL`, expression/literal projection, unsupported
-  descriptor families, default-mode non-selected order keys, and
-  `SQL_CALC_FOUND_ROWS DISTINCT`;
+  descriptor families, and default-mode non-selected order keys;
 - MySQL 8.4.9 expectation script for the user-visible behavior admitted by this
   phase.
 

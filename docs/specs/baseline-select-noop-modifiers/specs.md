@@ -173,9 +173,10 @@ The no-op modifiers are admitted on existing MyLite-supported `SELECT` shapes:
   `SQL_CALC_FOUND_ROWS` remains rejected for those source forms.
 
 `SQL_CALC_FOUND_ROWS` is admitted only where the previous found-rows slice
-admits it: non-distinct descriptor-backed column-list and wildcard table
-selects with the existing `WHERE`, `ORDER BY`, and `LIMIT` subset. Combining
-`SQL_NO_CACHE` with admitted `SQL_CALC_FOUND_ROWS` emits both warnings.
+admits it: descriptor-backed column-list, wildcard, and limited `DISTINCT`
+table selects with the existing `WHERE`, `ORDER BY`, and `LIMIT` subset.
+Combining `SQL_NO_CACHE` with admitted `SQL_CALC_FOUND_ROWS` emits both
+warnings.
 
 ## Semantics
 

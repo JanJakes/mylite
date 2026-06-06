@@ -359,17 +359,6 @@ static int test_distinct_rowset_diagnostics(void) {
             .message_part = "SELECT ORDER BY supports only descriptor columns",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT DISTINCT SQL_CALC_FOUND_ROWS a FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "SQL_CALC_FOUND_ROWS supports only non-distinct descriptor-backed table SELECT",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

@@ -52,6 +52,14 @@ jobs:
       - name: Build
         run: cmake --build --preset dev
 
+      - name: Prepare test temp directory
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $workspaceRoot = (Get-Location).Drive.Root
+          New-Item -ItemType Directory -Force -Path (Join-Path $workspaceRoot 'tmp') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:SystemDrive 'tmp') | Out-Null
+
       - name: Test
         run: ctest --preset dev --output-on-failure
 

@@ -133,7 +133,8 @@ static int plan_select_predicate_leaf_node(
             );
         } else if (
             row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
-            PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+            PLANNED_ROW_SCALAR_CONVERSION_NONE
+        ) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -320,7 +321,8 @@ static int plan_select_predicate_leaf_node_without_exists(
             );
         } else if (
             row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
-            PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+            PLANNED_ROW_SCALAR_CONVERSION_NONE
+        ) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -613,6 +615,8 @@ static int plan_scalar_count_subquery_comparison_predicate(
     return MYLITE_OK;
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): table columns and outer sources are distinct
+// count domains.
 static int plan_scalar_count_subquery(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *scalar_subquery,
@@ -678,6 +682,8 @@ static int plan_scalar_count_subquery(
     return rc;
 }
 
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
 static int validate_scalar_count_subquery_select_list(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
@@ -713,9 +719,8 @@ static bool scalar_count_subquery_select_expression_is_supported(
     const struct mylite_sql_ast_node *expression
 ) {
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
-    return expression != NULL &&
-           (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION);
+    return expression != NULL && (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
+                                  expression->kind == MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION);
 }
 
 static int plan_scalar_literal_or_literal_column_comparison_predicate(
@@ -1587,8 +1592,7 @@ static int plan_where_scalar_exact_integer_string_literal_value(
         &magnitude,
         &is_negative
     );
-    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID &&
-        value_start == value_end) {
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID && value_start == value_end) {
         parse_result = MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK;
         magnitude = 0U;
         is_negative = false;
@@ -1735,9 +1739,8 @@ static bool predicate_row_scalar_cast_expression_decimal_scale(
     bool convert_syntax = false;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL ||
-        (expression->kind != MYLITE_SQL_AST_CAST_CHAR_EXPRESSION &&
-         expression->kind != MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION)) {
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_CAST_CHAR_EXPRESSION &&
+                               expression->kind != MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION)) {
         return false;
     }
 

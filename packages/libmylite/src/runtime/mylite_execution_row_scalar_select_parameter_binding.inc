@@ -70,7 +70,9 @@ static int bind_select_parameter_work_item(
         return bind_compound_select_parameters_at(statement, item->compound_plan, parameter_index);
     case SELECT_PARAMETER_BIND_SOURCE_LIST:
         return push_select_source_list_parameter_work(stack, item->sources, item->source_count);
-    case SELECT_PARAMETER_BIND_SOURCE:
+    case SELECT_PARAMETER_BIND_SOURCE: {
+        enum select_parameter_bind_item_kind kind = SELECT_PARAMETER_BIND_PLAN;
+
         if (item->source == NULL || !item->source->is_derived) {
             return MYLITE_OK;
         }
@@ -79,19 +81,21 @@ static int bind_select_parameter_work_item(
             item->source->derived_compound_select == NULL) {
             return MYLITE_ERROR;
         }
+        if (item->source->derived_compound_select != NULL) {
+            kind = SELECT_PARAMETER_BIND_COMPOUND_SELECT;
+        } else if (item->source->derived_select == NULL) {
+            kind = SELECT_PARAMETER_BIND_GROUPED_AGGREGATE;
+        }
         return select_parameter_bind_stack_push(
             stack,
             (struct select_parameter_bind_item){
-                .kind = item->source->derived_compound_select != NULL
-                            ? SELECT_PARAMETER_BIND_COMPOUND_SELECT
-                            : (item->source->derived_select == NULL
-                                   ? SELECT_PARAMETER_BIND_GROUPED_AGGREGATE
-                                   : SELECT_PARAMETER_BIND_PLAN),
+                .kind = kind,
                 .plan = item->source->derived_select,
                 .grouped_plan = item->source->derived_grouped_aggregate,
                 .compound_plan = item->source->derived_compound_select,
             }
         );
+    }
     case SELECT_PARAMETER_BIND_JOIN_CONDITION:
         return bind_select_join_condition_parameters(
             statement,

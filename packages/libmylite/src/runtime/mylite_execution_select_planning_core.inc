@@ -1113,9 +1113,8 @@ static int plan_derived_compound_select_source_child(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    out_source->derived_compound_select->branch_count = compound_select_branch_count(
-        compound_statement
-    );
+    out_source->derived_compound_select->branch_count =
+        compound_select_branch_count(compound_statement);
     if (out_source->derived_compound_select->branch_count >
         SIZE_MAX / sizeof(*out_source->derived_compound_select->branches)) {
         set_nomem_error(database);
@@ -1183,7 +1182,10 @@ static int validate_derived_compound_select_terms(
          term = term->next_sibling) {
         if (mylite_sql_ast_node_set_operator_kind(term) != MYLITE_SQL_AST_SET_OPERATOR_UNION ||
             mylite_sql_ast_node_union_modifier(term) != MYLITE_SQL_AST_UNION_MODIFIER_ALL) {
-            set_unsupported_error(database, "derived table compound sources support only UNION ALL");
+            set_unsupported_error(
+                database,
+                "derived table compound sources support only UNION ALL"
+            );
             return MYLITE_ERROR;
         }
     }
@@ -1210,11 +1212,8 @@ static int validate_derived_compound_select_branch_shape(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *branch
 ) {
-    int rc = reject_compound_select_branch_shape(
-        database,
-        branch,
-        MYLITE_SQL_AST_SET_OPERATOR_UNION
-    );
+    int rc =
+        reject_compound_select_branch_shape(database, branch, MYLITE_SQL_AST_SET_OPERATOR_UNION);
 
     if (rc == MYLITE_OK && select_statement_has_group_by_clause(branch)) {
         set_unsupported_error(
@@ -1802,16 +1801,15 @@ static int plan_joined_select_condition_with_extra_predicate(
     const struct mylite_sql_ast_node *extra_node = NULL;
     int rc = MYLITE_OK;
 
-    if (joined_select_on_node_is_descriptor_equality(left_node)) {
+    if (joined_select_on_node_is_descriptor_equality(left_node) ||
+        (!joined_select_on_node_is_descriptor_equality(right_node) &&
+         joined_select_on_node_is_primary_condition(left_node))) {
         primary_node = left_node;
         extra_node = right_node;
-    } else if (joined_select_on_node_is_descriptor_equality(right_node)) {
-        primary_node = right_node;
-        extra_node = left_node;
-    } else if (joined_select_on_node_is_primary_condition(left_node)) {
-        primary_node = left_node;
-        extra_node = right_node;
-    } else if (joined_select_on_node_is_primary_condition(right_node)) {
+    } else if (
+        joined_select_on_node_is_descriptor_equality(right_node) ||
+        joined_select_on_node_is_primary_condition(right_node)
+    ) {
         primary_node = right_node;
         extra_node = left_node;
     } else {

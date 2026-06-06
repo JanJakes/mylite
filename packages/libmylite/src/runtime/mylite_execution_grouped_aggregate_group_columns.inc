@@ -242,6 +242,8 @@ static int resolve_grouped_select_alias_group_column(
     return rc;
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): matched expression and alias are distinct SQL
+// nodes.
 static int resolve_grouped_select_alias_group_temporal_expression(
     struct mylite_db *database,
     const struct grouped_alias_group_resolution *resolution,
@@ -267,6 +269,8 @@ static int resolve_grouped_select_alias_group_temporal_expression(
     }
     return rc;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int count_grouped_source_columns_by_unqualified_name(
     struct mylite_db *database,
@@ -337,15 +341,12 @@ static int validate_grouped_aggregate_group_column(
     );
 }
 
-static bool grouped_expression_is_temporal_group_key(
-    const struct mylite_sql_ast_node *expression
-) {
+static bool grouped_expression_is_temporal_group_key(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
-    return expression != NULL &&
-           (expression->kind == MYLITE_SQL_AST_WEEK_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_YEAR_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_MONTH_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_DAYOFMONTH_FUNCTION);
+    return expression != NULL && (expression->kind == MYLITE_SQL_AST_WEEK_FUNCTION ||
+                                  expression->kind == MYLITE_SQL_AST_YEAR_FUNCTION ||
+                                  expression->kind == MYLITE_SQL_AST_MONTH_FUNCTION ||
+                                  expression->kind == MYLITE_SQL_AST_DAYOFMONTH_FUNCTION);
 }
 
 static int plan_grouped_temporal_row_scalar_expression(

@@ -633,6 +633,8 @@ static int plan_in_subquery_predicate(
     return MYLITE_OK;
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): outer columns and sources are distinct count
+// domains.
 static int plan_in_subquery(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -704,6 +706,8 @@ static int plan_in_subquery(
 
     return rc;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int plan_in_subquery_table_source(
     struct mylite_db *database,

@@ -1460,6 +1460,7 @@ static enum mylite_sql_ast_operator date_format_numeric_comparison_invert_operat
     }
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): SQL comparison order is left/right.
 static bool date_format_numeric_comparison_truth(
     double left,
     double right,
@@ -1482,6 +1483,8 @@ static bool date_format_numeric_comparison_truth(
         return false;
     }
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int date_format_numeric_literal_value(
     struct mylite_db *database,

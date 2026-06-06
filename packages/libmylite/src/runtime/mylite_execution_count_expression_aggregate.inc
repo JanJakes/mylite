@@ -514,7 +514,8 @@ static const struct mylite_sql_ast_node *count_expression_aggregate_predicate_no
 
 static bool count_expression_aggregate_select_item_is_supported(
     const struct mylite_sql_ast_node *select_item,
-    bool *inout_has_expression_count,
+    bool *inout_has_expression_count, // NOLINT(bugprone-easily-swappable-parameters): paired COUNT
+                                      // flags.
     bool *inout_has_count_star
 ) {
     const struct mylite_sql_ast_node *expression = NULL;

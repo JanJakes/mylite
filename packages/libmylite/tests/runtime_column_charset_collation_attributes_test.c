@@ -25,6 +25,7 @@ enum {
     ascii_varchar_display_length = 10,
     ascii_char_display_length = 5,
     ascii_text_display_length = 65535,
+    wordpress_legacy_column_count = 5,
     binary_attrs_column_count = 9,
     binary_attrs_projection_count = 7,
     binary_alter_projection_count = 8,
@@ -710,7 +711,7 @@ static int test_wordpress_legacy_charset_metadata(void) {
         database,
         "wp_legacy",
         legacy_metadata,
-        5U,
+        wordpress_legacy_column_count,
         "wordpress legacy column charset metadata"
     );
     failures += expect_show_create_contains(

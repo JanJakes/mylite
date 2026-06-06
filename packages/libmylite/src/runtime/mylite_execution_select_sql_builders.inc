@@ -275,9 +275,16 @@ static int append_select_sql_work_source(
         return MYLITE_ERROR;
     }
     if (source->is_derived) {
+        enum select_sql_work_item_kind query_kind = SELECT_SQL_WORK_QUERY;
+
         if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL &&
             source->derived_compound_select == NULL) {
             return MYLITE_ERROR;
+        }
+        if (source->derived_compound_select != NULL) {
+            query_kind = SELECT_SQL_WORK_COMPOUND_QUERY;
+        } else if (source->derived_select == NULL) {
+            query_kind = SELECT_SQL_WORK_GROUPED_QUERY;
         }
         rc = mylite_dynamic_string_append_char(string, '(');
         if (rc == MYLITE_OK) {
@@ -302,10 +309,7 @@ static int append_select_sql_work_source(
             rc = select_sql_work_stack_push(
                 stack,
                 (struct select_sql_work_item){
-                    .kind = source->derived_compound_select != NULL
-                                ? SELECT_SQL_WORK_COMPOUND_QUERY
-                                : (source->derived_select == NULL ? SELECT_SQL_WORK_GROUPED_QUERY
-                                                                  : SELECT_SQL_WORK_QUERY),
+                    .kind = query_kind,
                     .plan = source->derived_select,
                     .grouped_plan = source->derived_grouped_aggregate,
                     .compound_plan = source->derived_compound_select,

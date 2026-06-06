@@ -17,6 +17,7 @@ enum {
     test_path_suffix_capacity = 16U,
     sql_capacity = 1024,
     qualified_left_join_column_count = 5,
+    wordpress_post_fixture_row_count = 8,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_column_ambiguous = 1052,
@@ -463,7 +464,7 @@ static int test_left_join_derived_grouped_source(void) {
         "(10,1,'post','publish'),(11,1,'post','publish'),"
         "(12,2,'post','publish'),(13,2,'post','publish'),(14,2,'post','publish'),"
         "(15,3,'post','publish'),(16,3,'page','publish'),(17,3,'post','draft')",
-        (struct expected_statement){8, 0U}
+        (struct expected_statement){wordpress_post_fixture_row_count, 0U}
     );
     failures += expect_query_values(
         database,

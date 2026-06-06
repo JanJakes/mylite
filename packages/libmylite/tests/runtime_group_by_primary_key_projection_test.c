@@ -16,6 +16,7 @@ enum {
     test_path_capacity = 1024,
     small_posts_sql_capacity = 256,
     wildcard_projection_column_count = 5,
+    relaxed_outer_join_projection_column_count = 6,
     mysql_error_not_group_by = 1055,
     mysql_error_parse = 1064,
 };
@@ -308,7 +309,7 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
                    "FROM comments AS c LEFT JOIN posts AS p ON p.id = c.post_id "
                    "WHERE c.post_id IN (1, 2) GROUP BY p.id ORDER BY p.id",
             .columns = relaxed_columns,
-            .column_count = 6U,
+            .column_count = relaxed_outer_join_projection_column_count,
             .values = relaxed_values,
             .row_count = 2U,
             .context = "relaxed mode admits WordPress-style grouped outer join projection",

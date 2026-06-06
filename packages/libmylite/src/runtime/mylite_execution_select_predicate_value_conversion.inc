@@ -45,12 +45,7 @@ static int convert_predicate_integer_literal(
                 );
                 return MYLITE_ERROR;
             }
-            return convert_predicate_integer_string_literal(
-                database,
-                literal,
-                column,
-                out_value
-            );
+            return convert_predicate_integer_string_literal(database, literal, column, out_value);
         }
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
@@ -120,14 +115,12 @@ static int convert_predicate_integer_string_literal(
         &magnitude,
         &is_negative
     );
-    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID &&
-        value_start == value_end) {
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID && value_start == value_end) {
         parse_result = MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK;
         magnitude = 0U;
         is_negative = false;
     }
-    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID &&
-        value_start != value_end) {
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID && value_start != value_end) {
         rc = scan_predicate_integer_string_prefix(
             text + value_start,
             value_end - value_start,
@@ -149,8 +142,10 @@ static int convert_predicate_integer_string_literal(
             "WHERE supports only integer, boolean, and exact quoted integer predicate literals"
         );
         rc = MYLITE_ERROR;
-    } else if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
-               parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
+    } else if (
+        parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
+        parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
+    ) {
         set_predicate_out_of_range_error(database, column->name);
         rc = MYLITE_ERROR;
     }
@@ -201,10 +196,10 @@ static int scan_predicate_integer_string_prefix(
     while (index < text_length && text[index] >= '0' && text[index] <= '9') {
         uint64_t digit = (uint64_t)(text[index] - '0');
 
-        if (magnitude > (UINT64_MAX - digit) / 10U) {
+        if (magnitude > (UINT64_MAX - digit) / decimal_base) {
             return MYLITE_ERROR;
         }
-        magnitude = (magnitude * 10U) + digit;
+        magnitude = (magnitude * decimal_base) + digit;
         *out_has_digits = true;
         ++index;
     }
@@ -794,9 +789,9 @@ static int convert_predicate_regexp_pattern_literal(
         return MYLITE_ERROR;
     }
 
-    enum mylite_regexp_compile_status status = case_sensitive
-        ? mylite_regexp_compile_ascii_cs(text, text_length, &program)
-        : mylite_regexp_compile_ascii_ci(text, text_length, &program);
+    enum mylite_regexp_compile_status status =
+        case_sensitive ? mylite_regexp_compile_ascii_cs(text, text_length, &program)
+                       : mylite_regexp_compile_ascii_ci(text, text_length, &program);
     mylite_regexp_program_free(program);
     if (status != MYLITE_REGEXP_COMPILE_OK) {
         free(text);

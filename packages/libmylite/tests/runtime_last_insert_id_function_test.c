@@ -22,7 +22,10 @@ enum {
     connection_id_text_capacity = 32,
     mixed_scalar_column_count = 9,
     ordered_expression_column_count = 9,
+    explicit_insert_result_id = 10,
     generated_insert_start_id = 11,
+    explicit_after_generated_result_id = 21,
+    explicit_after_generated_row_count = 5,
     mysql_error_parse = 1064,
     mysql_error_native_function_parameter_count = 1582,
 };
@@ -527,7 +530,7 @@ static int test_last_insert_id_expression_values(void) {
         result,
         (struct expected_non_query_result){
             .affected_rows = 1,
-            .insert_id = 10U,
+            .insert_id = explicit_insert_result_id,
             .context = "explicit insert result id",
         }
     );
@@ -585,7 +588,7 @@ static int test_last_insert_id_expression_values(void) {
         result,
         (struct expected_non_query_result){
             .affected_rows = 2,
-            .insert_id = 21U,
+            .insert_id = explicit_after_generated_result_id,
             .context = "explicit after generated insert result id",
         }
     );
@@ -607,7 +610,7 @@ static int test_last_insert_id_expression_values(void) {
     failures += expect_single_column_rows(
         result,
         explicit_after_generated_rows,
-        5U,
+        explicit_after_generated_row_count,
         "explicit after generated row ids"
     );
     mylite_result_free(result);

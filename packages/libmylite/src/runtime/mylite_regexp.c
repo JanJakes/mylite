@@ -21,6 +21,7 @@ enum {
     ascii_upper_a = 'A',
     ascii_upper_z = 'Z',
     ascii_lower_delta = 'a' - 'A',
+    decimal_radix = 10,
 };
 
 enum regexp_token_kind {
@@ -112,6 +113,23 @@ struct regexp_match_span_context {
 struct regexp_match_span_position {
     size_t token_index;
     size_t value_index;
+};
+
+struct regexp_parse_cursor {
+    const char *pattern;
+    size_t pattern_length;
+    size_t index;
+};
+
+struct regexp_alternation_scan_state {
+    bool in_class;
+    bool escaped;
+};
+
+struct regexp_find_input {
+    const char *value;
+    size_t value_length;
+    size_t start_offset;
 };
 
 static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -239,6 +257,19 @@ static enum mylite_regexp_compile_status regexp_compile_ascii_alternatives(
     size_t alternative_count,
     struct mylite_regexp_program **out_program
 );
+static bool regexp_alternation_split_at(
+    const char *pattern,
+    size_t pattern_length,
+    size_t index,
+    struct regexp_alternation_scan_state *state
+);
+static enum mylite_regexp_compile_status regexp_compile_ascii_alternative_branch(
+    const char *pattern,
+    size_t branch_start,
+    size_t branch_end,
+    bool case_sensitive,
+    struct mylite_regexp_program **out_branch
+);
 static enum mylite_regexp_compile_status regexp_compile_ascii_sequence(
     const char *pattern,
     size_t pattern_length,
@@ -296,9 +327,7 @@ static enum mylite_regexp_compile_status parse_escaped_literal(
     unsigned char *out_byte
 );
 static enum mylite_regexp_compile_status parse_fixed_repetition_count(
-    const char *pattern,
-    size_t pattern_length,
-    size_t *index,
+    struct regexp_parse_cursor *cursor,
     size_t *out_count
 );
 static bool is_supported_literal_escape(unsigned char byte);
@@ -318,13 +347,27 @@ static enum mylite_regexp_match_status regexp_program_find_ascii(
     size_t start_offset,
     struct mylite_regexp_match *out_match
 );
+static enum mylite_regexp_match_status regexp_program_find_sequence_ascii(
+    const struct mylite_regexp_program *program,
+    const struct regexp_find_input *input,
+    struct mylite_regexp_match *out_match
+);
 static enum mylite_regexp_match_status regexp_program_find_alternatives_ascii(
     const struct mylite_regexp_program *program,
-    const char *value,
-    size_t value_length,
+    const struct regexp_find_input *input,
+    struct mylite_regexp_match *out_match
+);
+static void regexp_program_find_anchored_sequence_ascii(
+    const struct regexp_match_span_context *span_context,
     size_t start_offset,
     struct mylite_regexp_match *out_match
 );
+static void regexp_program_find_unanchored_sequence_ascii(
+    const struct regexp_match_span_context *span_context,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+);
+static void regexp_program_free_shallow(struct mylite_regexp_program *program);
 static enum mylite_regexp_compile_status append_token(
     struct mylite_regexp_program *program,
     struct regexp_token token
@@ -623,13 +666,20 @@ void mylite_regexp_program_free(void *program) {
     }
 
     for (size_t index = 0U; index < regexp_program->alternative_count; ++index) {
-        mylite_regexp_program_free(regexp_program->alternatives[index]);
+        regexp_program_free_shallow(regexp_program->alternatives[index]);
     }
-    free(regexp_program->alternatives);
-    free(regexp_program->tokens);
-    free(regexp_program->ranges);
-    free(regexp_program->literal_sequence_bytes);
-    free(regexp_program);
+    free((void *)regexp_program->alternatives);
+    regexp_program_free_shallow(regexp_program);
+}
+
+static void regexp_program_free_shallow(struct mylite_regexp_program *program) {
+    if (program == NULL) {
+        return;
+    }
+    free(program->tokens);
+    free(program->ranges);
+    free(program->literal_sequence_bytes);
+    free(program);
 }
 
 enum mylite_regexp_match_status mylite_regexp_program_match_ascii_ci(
@@ -707,8 +757,10 @@ static enum mylite_regexp_compile_status regexp_compile_ascii_alternatives(
     struct mylite_regexp_program *program = NULL;
     size_t branch_start = 0U;
     size_t branch_index = 0U;
-    bool in_class = false;
-    bool escaped = false;
+    struct regexp_alternation_scan_state scan_state = {
+        .in_class = false,
+        .escaped = false,
+    };
 
     program = (struct mylite_regexp_program *)calloc(1U, sizeof(*program));
     if (program == NULL) {
@@ -724,49 +776,28 @@ static enum mylite_regexp_compile_status regexp_compile_ascii_alternatives(
     }
 
     for (size_t index = 0U; index <= pattern_length; ++index) {
-        bool split = false;
+        enum mylite_regexp_compile_status status = MYLITE_REGEXP_COMPILE_OK;
 
-        if (index == pattern_length) {
-            split = true;
-        } else {
-            const unsigned char byte = (unsigned char)pattern[index];
-
-            if (escaped) {
-                escaped = false;
-            } else if (byte == '\\') {
-                escaped = true;
-            } else if (in_class) {
-                if (byte == ']') {
-                    in_class = false;
-                }
-            } else if (byte == '[') {
-                in_class = true;
-            } else if (byte == '|') {
-                split = true;
-            }
+        if (!regexp_alternation_split_at(pattern, pattern_length, index, &scan_state)) {
+            continue;
         }
-
-        if (split) {
-            const size_t branch_length = index - branch_start;
-            enum mylite_regexp_compile_status status = MYLITE_REGEXP_COMPILE_OK;
-
-            if (branch_length == 0U || branch_index >= alternative_count) {
-                mylite_regexp_program_free(program);
-                return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
-            }
-            status = regexp_compile_ascii_sequence(
-                pattern + branch_start,
-                branch_length,
-                case_sensitive,
-                &program->alternatives[branch_index]
-            );
-            if (status != MYLITE_REGEXP_COMPILE_OK) {
-                mylite_regexp_program_free(program);
-                return status;
-            }
-            ++branch_index;
-            branch_start = index + 1U;
+        if (branch_index >= alternative_count) {
+            mylite_regexp_program_free(program);
+            return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
         }
+        status = regexp_compile_ascii_alternative_branch(
+            pattern,
+            branch_start,
+            index,
+            case_sensitive,
+            &program->alternatives[branch_index]
+        );
+        if (status != MYLITE_REGEXP_COMPILE_OK) {
+            mylite_regexp_program_free(program);
+            return status;
+        }
+        ++branch_index;
+        branch_start = index + 1U;
     }
 
     if (branch_index != alternative_count) {
@@ -776,6 +807,58 @@ static enum mylite_regexp_compile_status regexp_compile_ascii_alternatives(
 
     *out_program = program;
     return MYLITE_REGEXP_COMPILE_OK;
+}
+
+static bool regexp_alternation_split_at(
+    const char *pattern,
+    size_t pattern_length,
+    size_t index,
+    struct regexp_alternation_scan_state *state
+) {
+    const unsigned char byte = index < pattern_length ? (unsigned char)pattern[index] : 0U;
+
+    if (index == pattern_length) {
+        return true;
+    }
+    if (state->escaped) {
+        state->escaped = false;
+        return false;
+    }
+    if (byte == '\\') {
+        state->escaped = true;
+        return false;
+    }
+    if (state->in_class) {
+        if (byte == ']') {
+            state->in_class = false;
+        }
+        return false;
+    }
+    if (byte == '[') {
+        state->in_class = true;
+        return false;
+    }
+    return byte == '|';
+}
+
+static enum mylite_regexp_compile_status regexp_compile_ascii_alternative_branch(
+    const char *pattern,
+    size_t branch_start,
+    size_t branch_end,
+    bool case_sensitive,
+    struct mylite_regexp_program **out_branch
+) {
+    const size_t branch_length = branch_end - branch_start;
+
+    if (branch_length == 0U) {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+    return regexp_compile_ascii_sequence(
+        pattern + branch_start,
+        branch_length,
+        case_sensitive,
+        out_branch
+    );
 }
 
 static enum mylite_regexp_compile_status regexp_compile_ascii_sequence(
@@ -885,8 +968,11 @@ static enum mylite_regexp_match_status regexp_program_find_ascii(
     size_t start_offset,
     struct mylite_regexp_match *out_match
 ) {
-    unsigned char *matches = NULL;
-    size_t cell_count = 0U;
+    const struct regexp_find_input input = {
+        .value = value,
+        .value_length = value_length,
+        .start_offset = start_offset,
+    };
 
     if (program == NULL || value == NULL || out_match == NULL) {
         return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
@@ -903,65 +989,45 @@ static enum mylite_regexp_match_status regexp_program_find_ascii(
         return MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE;
     }
     if (program->alternative_count > 0U) {
-        return regexp_program_find_alternatives_ascii(
-            program,
-            value,
-            value_length,
-            start_offset,
-            out_match
-        );
+        return regexp_program_find_alternatives_ascii(program, &input, out_match);
     }
-    if ((program->token_count + 1U) > SIZE_MAX / (value_length + 1U)) {
+    return regexp_program_find_sequence_ascii(program, &input, out_match);
+}
+
+static enum mylite_regexp_match_status regexp_program_find_sequence_ascii(
+    const struct mylite_regexp_program *program,
+    const struct regexp_find_input *input,
+    struct mylite_regexp_match *out_match
+) {
+    unsigned char *matches = NULL;
+    size_t cell_count = 0U;
+    struct regexp_match_span_context span_context = {
+        .program = program,
+        .value = (const unsigned char *)input->value,
+        .value_length = input->value_length,
+        .matches = NULL,
+    };
+
+    if ((program->token_count + 1U) > SIZE_MAX / (input->value_length + 1U)) {
         return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
     }
 
-    cell_count = (program->token_count + 1U) * (value_length + 1U);
+    cell_count = (program->token_count + 1U) * (input->value_length + 1U);
     matches = (unsigned char *)calloc(cell_count, sizeof(*matches));
     if (matches == NULL) {
         return MYLITE_REGEXP_MATCH_NOMEM;
     }
 
-    fill_match_table(program, (const unsigned char *)value, value_length, matches);
+    fill_match_table(program, (const unsigned char *)input->value, input->value_length, matches);
+    span_context.matches = matches;
     if (program->anchored_start) {
-        if (start_offset == 0U && match_table_get(matches, value_length, 0U, 0U)) {
-            const struct regexp_match_span_context span_context = {
-                .program = program,
-                .value = (const unsigned char *)value,
-                .value_length = value_length,
-                .matches = matches,
-            };
-            const struct regexp_match_span_position position = {
-                .token_index = 0U,
-                .value_index = 0U,
-            };
-
-            out_match->matched = match_span_from(&span_context, position, &out_match->end);
-            out_match->start = 0U;
-        }
+        regexp_program_find_anchored_sequence_ascii(&span_context, input->start_offset, out_match);
     } else {
-        const struct regexp_match_span_context span_context = {
-            .program = program,
-            .value = (const unsigned char *)value,
-            .value_length = value_length,
-            .matches = matches,
-        };
-
-        if (start_offset <= value_length) {
-            for (size_t start = start_offset; start <= value_length; ++start) {
-                if (match_table_get(matches, value_length, 0U, start)) {
-                    const struct regexp_match_span_position position = {
-                        .token_index = 0U,
-                        .value_index = start,
-                    };
-
-                    out_match->matched = match_span_from(&span_context, position, &out_match->end);
-                    out_match->start = start;
-                    if (out_match->matched) {
-                        break;
-                    }
-                }
-            }
-        }
+        regexp_program_find_unanchored_sequence_ascii(
+            &span_context,
+            input->start_offset,
+            out_match
+        );
     }
 
     free(matches);
@@ -970,9 +1036,7 @@ static enum mylite_regexp_match_status regexp_program_find_ascii(
 
 static enum mylite_regexp_match_status regexp_program_find_alternatives_ascii(
     const struct mylite_regexp_program *program,
-    const char *value,
-    size_t value_length,
-    size_t start_offset,
+    const struct regexp_find_input *input,
     struct mylite_regexp_match *out_match
 ) {
     bool matched = false;
@@ -983,11 +1047,9 @@ static enum mylite_regexp_match_status regexp_program_find_alternatives_ascii(
             .start = 0U,
             .end = 0U,
         };
-        enum mylite_regexp_match_status status = regexp_program_find_ascii(
+        enum mylite_regexp_match_status status = regexp_program_find_sequence_ascii(
             program->alternatives[index],
-            value,
-            value_length,
-            start_offset,
+            input,
             &alternative_match
         );
 
@@ -1004,6 +1066,50 @@ static enum mylite_regexp_match_status regexp_program_find_alternatives_ascii(
     }
 
     return MYLITE_REGEXP_MATCH_OK;
+}
+
+static void regexp_program_find_anchored_sequence_ascii(
+    const struct regexp_match_span_context *span_context,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+) {
+    const struct regexp_match_span_position position = {
+        .token_index = 0U,
+        .value_index = 0U,
+    };
+
+    if (start_offset != 0U ||
+        !match_table_get(span_context->matches, span_context->value_length, 0U, 0U)) {
+        return;
+    }
+
+    out_match->matched = match_span_from(span_context, position, &out_match->end);
+    out_match->start = 0U;
+}
+
+static void regexp_program_find_unanchored_sequence_ascii(
+    const struct regexp_match_span_context *span_context,
+    size_t start_offset,
+    struct mylite_regexp_match *out_match
+) {
+    if (start_offset > span_context->value_length) {
+        return;
+    }
+    for (size_t start = start_offset; start <= span_context->value_length; ++start) {
+        const struct regexp_match_span_position position = {
+            .token_index = 0U,
+            .value_index = start,
+        };
+
+        if (!match_table_get(span_context->matches, span_context->value_length, 0U, start)) {
+            continue;
+        }
+        out_match->matched = match_span_from(span_context, position, &out_match->end);
+        out_match->start = start;
+        if (out_match->matched) {
+            return;
+        }
+    }
 }
 
 static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -1849,8 +1955,14 @@ static enum mylite_regexp_compile_status compile_next_token(
             break;
         case '{': {
             size_t count = 0U;
+            struct regexp_parse_cursor cursor = {
+                .pattern = pattern,
+                .pattern_length = pattern_length,
+                .index = *index,
+            };
 
-            status = parse_fixed_repetition_count(pattern, pattern_length, index, &count);
+            status = parse_fixed_repetition_count(&cursor, &count);
+            *index = cursor.index;
             if (status != MYLITE_REGEXP_COMPILE_OK) {
                 return status;
             }
@@ -2081,32 +2193,33 @@ static enum mylite_regexp_compile_status parse_escaped_literal(
 }
 
 static enum mylite_regexp_compile_status parse_fixed_repetition_count(
-    const char *pattern,
-    size_t pattern_length,
-    size_t *index,
+    struct regexp_parse_cursor *cursor,
     size_t *out_count
 ) {
     size_t count = 0U;
     bool saw_digit = false;
 
-    if (*index >= pattern_length || pattern[*index] != '{') {
+    if (cursor == NULL || out_count == NULL || cursor->index >= cursor->pattern_length ||
+        cursor->pattern[cursor->index] != '{') {
         return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
     }
-    ++(*index);
-    while (*index < pattern_length && pattern[*index] >= '0' && pattern[*index] <= '9') {
-        const size_t digit = (size_t)(pattern[*index] - '0');
+    ++cursor->index;
+    while (cursor->index < cursor->pattern_length && cursor->pattern[cursor->index] >= '0' &&
+           cursor->pattern[cursor->index] <= '9') {
+        const size_t digit = (size_t)(cursor->pattern[cursor->index] - '0');
 
         saw_digit = true;
-        if (count > (regexp_pattern_length_max - digit) / 10U) {
+        if (count > (regexp_pattern_length_max - digit) / decimal_radix) {
             return MYLITE_REGEXP_COMPILE_TOO_LARGE;
         }
-        count = (count * 10U) + digit;
-        ++(*index);
+        count = (count * decimal_radix) + digit;
+        ++cursor->index;
     }
-    if (!saw_digit || *index >= pattern_length || pattern[*index] != '}') {
+    if (!saw_digit || cursor->index >= cursor->pattern_length ||
+        cursor->pattern[cursor->index] != '}') {
         return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
     }
-    ++(*index);
+    ++cursor->index;
     if (count > regexp_pattern_length_max) {
         return MYLITE_REGEXP_COMPILE_TOO_LARGE;
     }

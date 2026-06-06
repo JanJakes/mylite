@@ -21,6 +21,8 @@ enum {
     mysql_warning_cast_complement = 1105,
     decimal_base = 10,
     utf8_ascii_max = 0x7f,
+    big5_lead_byte_min = 0x81,
+    big5_lead_byte_max = 0xfe,
 };
 
 enum mylite_cast_integer_target {
@@ -379,7 +381,7 @@ static int big5_left_byte_count(const unsigned char *text, int text_length, int6
 }
 
 static bool big5_byte_is_lead(unsigned char byte) {
-    return byte >= 0x81U && byte <= 0xfeU;
+    return byte >= big5_lead_byte_min && byte <= big5_lead_byte_max;
 }
 
 static int big5_complete_prefix_byte_count(const unsigned char *text, int text_length) {

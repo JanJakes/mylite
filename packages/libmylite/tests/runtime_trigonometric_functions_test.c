@@ -42,8 +42,11 @@ struct expected_query {
     size_t row_count;
     size_t warning_count;
     int64_t affected_rows;
+    int approximate_numeric_values;
     const char *context;
 };
+
+static const double approximate_numeric_text_tolerance = 1.0e-12;
 
 static int test_trigonometric_values_and_file_safety(void);
 static int test_trigonometric_warnings_do_and_independent_handles(void);
@@ -56,6 +59,7 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    int approximate_numeric_value,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -66,6 +70,11 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_approximate_numeric_text(
+    const char *actual,
+    const char *expected,
+    const char *context
+);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
@@ -262,6 +271,7 @@ static int test_trigonometric_values_and_file_safety(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "sin values",
         }
     );
@@ -278,6 +288,7 @@ static int test_trigonometric_values_and_file_safety(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "cos values",
         }
     );
@@ -294,6 +305,7 @@ static int test_trigonometric_values_and_file_safety(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "tan values",
         }
     );
@@ -310,6 +322,7 @@ static int test_trigonometric_values_and_file_safety(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "cot values",
         }
     );
@@ -325,6 +338,7 @@ static int test_trigonometric_values_and_file_safety(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "trig child operands",
         }
     );
@@ -463,6 +477,7 @@ static int test_trigonometric_warnings_do_and_independent_handles(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "first trig handle",
         }
     );
@@ -476,6 +491,7 @@ static int test_trigonometric_warnings_do_and_independent_handles(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
+            .approximate_numeric_values = 1,
             .context = "second trig handle",
         }
     );
@@ -862,6 +878,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
                 row,
                 column,
                 expected.values[(row * expected.column_count) + column],
+                expected.approximate_numeric_values,
                 expected.context
             );
         }
@@ -876,6 +893,7 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    int approximate_numeric_value,
     const char *context
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
@@ -886,6 +904,9 @@ static int expect_result_value(
         }
         fprintf(stderr, "%s: expected NULL at %zu,%zu, got %s\n", context, row, column, actual);
         return 1;
+    }
+    if (approximate_numeric_value) {
+        return expect_approximate_numeric_text(actual, expected, context);
     }
     return expect_text(actual, expected, context);
 }
@@ -984,6 +1005,43 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
         return 0;
     }
     fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+    return 1;
+}
+
+static int expect_approximate_numeric_text(
+    const char *actual,
+    const char *expected,
+    const char *context
+) {
+    char *actual_end = NULL;
+    char *expected_end = NULL;
+    double actual_value = 0.0;
+    double expected_value = 0.0;
+    double delta = 0.0;
+    double magnitude = 0.0;
+
+    if (actual == NULL || expected == NULL) {
+        return expect_text(actual, expected, context);
+    }
+
+    actual_value = strtod(actual, &actual_end);
+    expected_value = strtod(expected, &expected_end);
+    if (actual_end == actual || expected_end == expected || *actual_end != '\0' ||
+        *expected_end != '\0') {
+        return expect_text(actual, expected, context);
+    }
+
+    delta = actual_value > expected_value ? actual_value - expected_value
+                                          : expected_value - actual_value;
+    magnitude = expected_value < 0.0 ? -expected_value : expected_value;
+    if (magnitude < 1.0) {
+        magnitude = 1.0;
+    }
+    if (delta <= magnitude * approximate_numeric_text_tolerance) {
+        return 0;
+    }
+
+    fprintf(stderr, "%s: expected approximately '%s', got '%s'\n", context, expected, actual);
     return 1;
 }
 

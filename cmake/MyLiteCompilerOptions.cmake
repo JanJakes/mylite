@@ -10,8 +10,11 @@ function(mylite_configure_c_target target)
     C_VISIBILITY_PRESET hidden
   )
 
-  if(MSVC)
+  if(WIN32)
     target_compile_definitions("${target}" PRIVATE _CRT_SECURE_NO_WARNINGS)
+  endif()
+
+  if(MSVC)
     target_compile_options("${target}" PRIVATE /W4)
     if(MYLITE_WARNINGS_AS_ERRORS)
       target_compile_options("${target}" PRIVATE /WX)

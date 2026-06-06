@@ -12,7 +12,7 @@
 #endif
 
 #ifndef P_tmpdir
-#  define P_tmpdir "/tmp"
+#  define P_tmpdir "."
 #endif
 
 #define ARRAY_COUNT(items) (sizeof(items) / sizeof((items)[0]))

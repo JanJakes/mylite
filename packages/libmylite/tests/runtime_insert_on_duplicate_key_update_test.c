@@ -8,7 +8,7 @@
 #include <string.h>
 
 #ifndef P_tmpdir
-#  define P_tmpdir "/tmp"
+#  define P_tmpdir "."
 #endif
 
 #ifdef _WIN32

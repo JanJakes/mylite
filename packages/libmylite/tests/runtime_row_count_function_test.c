@@ -13,7 +13,7 @@
 #endif
 
 #ifndef P_tmpdir
-#  define P_tmpdir "/tmp"
+#  define P_tmpdir "."
 #endif
 
 enum {

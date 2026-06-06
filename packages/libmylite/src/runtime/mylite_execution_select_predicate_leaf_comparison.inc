@@ -131,6 +131,18 @@ static int plan_select_predicate_leaf_node(
                 out_predicate,
                 &node_index
             );
+        } else if (
+            row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
+            PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+            rc = plan_row_scalar_expression_between_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate,
+                &node_index
+            );
         } else {
             rc = plan_between_predicate(
                 database,
@@ -298,6 +310,18 @@ static int plan_select_predicate_leaf_node_without_exists(
     } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
         if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
             rc = plan_temporal_extract_between_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate,
+                &node_index
+            );
+        } else if (
+            row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
+            PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+            rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
                 source_context,
@@ -801,6 +825,7 @@ static int plan_comparison_predicate_value(
         return convert_predicate_regexp_pattern_literal(
             database,
             child_at(predicate_node, 1U),
+            false,
             &node->value
         );
     }
@@ -1103,6 +1128,12 @@ static int plan_row_scalar_expression_comparison_predicate(
     };
     int rc = MYLITE_OK;
 
+    node.row_scalar_compare_as_real = predicate_row_scalar_cast_expression_decimal_scale(
+        child_at(predicate_node, 0U),
+        &node.row_scalar_decimal_scale
+    );
+    node.row_scalar_regexp_case_sensitive =
+        predicate_row_scalar_cast_expression_is_binary(child_at(predicate_node, 0U));
     node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
     if (node.row_scalar_expression == NULL) {
         set_nomem_error(database);
@@ -1120,13 +1151,112 @@ static int plan_row_scalar_expression_comparison_predicate(
         node.row_scalar_expression
     );
     if (rc == MYLITE_OK) {
-        rc = plan_where_scalar_literal_value(database, child_at(predicate_node, 1U), &node.value);
+        if (comparison_operator_is_like(node.operator_kind)) {
+            rc = plan_comparison_predicate_like_value(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                &node
+            );
+        } else if (comparison_operator_is_regexp(node.operator_kind)) {
+            rc = convert_predicate_regexp_pattern_literal(
+                database,
+                child_at(predicate_node, 1U),
+                node.row_scalar_regexp_case_sensitive,
+                &node.value
+            );
+        } else if (node.row_scalar_compare_as_real) {
+            rc = plan_where_scalar_decimal_literal_value(
+                database,
+                child_at(predicate_node, 1U),
+                &node.value
+            );
+        } else {
+            rc = plan_where_scalar_literal_value(
+                database,
+                child_at(predicate_node, 1U),
+                &node.value
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
     }
     if (rc != MYLITE_OK) {
         planned_value_deinit(&node.value);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_expression_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    node.row_scalar_compare_as_real = predicate_row_scalar_cast_expression_decimal_scale(
+        child_at(predicate_node, 0U),
+        &node.row_scalar_decimal_scale
+    );
+    node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
+    if (node.row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        child_at(predicate_node, 0U),
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node.row_scalar_expression
+    );
+    if (rc == MYLITE_OK && node.row_scalar_compare_as_real) {
+        rc = plan_where_scalar_decimal_literal_value(
+            database,
+            child_at(predicate_node, 1U),
+            &node.value
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(database, child_at(predicate_node, 1U), &node.value);
+    }
+    if (rc == MYLITE_OK && node.row_scalar_compare_as_real) {
+        rc = plan_where_scalar_decimal_literal_value(
+            database,
+            child_at(predicate_node, 2U),
+            &node.upper_value
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(
+            database,
+            child_at(predicate_node, 2U),
+            &node.upper_value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
         planned_row_scalar_expression_deinit(node.row_scalar_expression);
         free(node.row_scalar_expression);
     }
@@ -1493,6 +1623,150 @@ static int plan_where_scalar_exact_integer_string_literal_value(
         out_value->integer = (int64_t)magnitude;
     }
     return MYLITE_OK;
+}
+
+static int plan_where_scalar_decimal_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal =
+        mylite_execution_unwrap_parenthesized_expression(expression);
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal(
+            database,
+            literal,
+            "WHERE decimal cast predicates support only decimal string literals",
+            "WHERE decimal cast predicate literals do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!where_decimal_string_literal_is_supported(text, text_length)) {
+            free(text);
+            set_unsupported_error(
+                database,
+                "WHERE decimal cast predicates support only finite decimal string literals"
+            );
+            return MYLITE_ERROR;
+        }
+        return assign_text_value(database, text, text_length, out_value);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_DECIMAL) {
+        if (!where_decimal_span_is_supported(&literal->span)) {
+            set_unsupported_error(
+                database,
+                "WHERE decimal cast predicates support only finite decimal literals"
+            );
+            return MYLITE_ERROR;
+        }
+        text = (char *)malloc(literal->span.length + 1U);
+        if (text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(text, literal->span.text, literal->span.length);
+        text[literal->span.length] = '\0';
+        return assign_text_value(database, text, literal->span.length, out_value);
+    }
+
+    return plan_where_scalar_literal_value(database, expression, out_value);
+}
+
+static bool where_decimal_string_literal_is_supported(const char *text, size_t text_length) {
+    struct mylite_sql_source_span span = {
+        .text = text,
+        .length = text_length,
+    };
+
+    return where_decimal_span_is_supported(&span);
+}
+
+static bool where_decimal_span_is_supported(const struct mylite_sql_source_span *span) {
+    size_t index = 0U;
+    size_t end = 0U;
+    bool saw_digit = false;
+    bool saw_decimal_point = false;
+
+    if (span == NULL || span->text == NULL) {
+        return false;
+    }
+
+    end = span->length;
+    while (index < end &&
+           predicate_integer_string_ascii_whitespace((unsigned char)span->text[index])) {
+        ++index;
+    }
+    while (end > index &&
+           predicate_integer_string_ascii_whitespace((unsigned char)span->text[end - 1U])) {
+        --end;
+    }
+    if (index < end && (span->text[index] == '+' || span->text[index] == '-')) {
+        ++index;
+    }
+    while (index < end) {
+        unsigned char byte = (unsigned char)span->text[index];
+
+        if (byte >= '0' && byte <= '9') {
+            saw_digit = true;
+        } else if (byte == '.' && !saw_decimal_point) {
+            saw_decimal_point = true;
+        } else {
+            return false;
+        }
+        ++index;
+    }
+    return saw_digit;
+}
+
+static bool predicate_row_scalar_cast_expression_decimal_scale(
+    const struct mylite_sql_ast_node *expression,
+    size_t *out_scale
+) {
+    struct scalar_placeholder_cast_info info = {0};
+    bool convert_syntax = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_CAST_CHAR_EXPRESSION &&
+         expression->kind != MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION)) {
+        return false;
+    }
+
+    convert_syntax = expression->kind == MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION;
+    if (parse_scalar_placeholder_cast_info(
+            expression,
+            SCALAR_PLACEHOLDER_CAST_TEXT,
+            convert_syntax,
+            &info
+        ) != MYLITE_OK) {
+        return false;
+    }
+    if (info.target != SCALAR_PLACEHOLDER_CAST_DECIMAL) {
+        return false;
+    }
+    if (out_scale != NULL) {
+        *out_scale = info.has_decimal_scale ? info.decimal_scale : decimal_default_scale;
+    }
+    return true;
+}
+
+static bool predicate_row_scalar_cast_expression_is_binary(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum planned_row_scalar_conversion_kind kind =
+        row_scalar_conversion_kind_from_expression(expression);
+
+    return kind == PLANNED_ROW_SCALAR_CONVERSION_BINARY ||
+           kind == PLANNED_ROW_SCALAR_CONVERSION_USING_BINARY;
 }
 
 static bool predicate_node_is_scalar_literal_expression(

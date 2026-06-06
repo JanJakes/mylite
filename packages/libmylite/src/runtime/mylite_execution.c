@@ -2057,6 +2057,9 @@ struct planned_select_predicate_node {
     size_t value_count;
     bool compare_date_as_datetime;
     bool compare_string_as_integer;
+    bool row_scalar_compare_as_real;
+    size_t row_scalar_decimal_scale;
+    bool row_scalar_regexp_case_sensitive;
     size_t left_index;
     size_t right_index;
     bool like_uses_escape;
@@ -19110,6 +19113,15 @@ static int plan_row_scalar_expression_comparison_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_row_scalar_expression_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_scalar_literal_truth_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -19169,6 +19181,20 @@ static int plan_where_scalar_exact_integer_string_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     struct planned_value *out_value
+);
+static int plan_where_scalar_decimal_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+);
+static bool where_decimal_string_literal_is_supported(const char *text, size_t text_length);
+static bool where_decimal_span_is_supported(const struct mylite_sql_source_span *span);
+static bool predicate_row_scalar_cast_expression_decimal_scale(
+    const struct mylite_sql_ast_node *expression,
+    size_t *out_scale
+);
+static bool predicate_row_scalar_cast_expression_is_binary(
+    const struct mylite_sql_ast_node *expression
 );
 static bool predicate_node_is_scalar_literal_expression(
     const struct mylite_sql_ast_node *predicate_node
@@ -20019,6 +20045,7 @@ static int convert_predicate_string_pattern_literal(
 static int convert_predicate_regexp_pattern_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    bool case_sensitive,
     struct planned_value *out_value
 );
 static int convert_predicate_date_literal(
@@ -25347,6 +25374,30 @@ static int append_select_predicate_column_term_sql_without_subqueries(
 static int append_select_row_scalar_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_row_scalar_regexp_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_row_scalar_decimal_text_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_row_scalar_comparison_rhs_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_row_scalar_between_predicate_term_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_row_scalar_decimal_parameter_sql(
+    struct mylite_dynamic_string *string,
     size_t *next_parameter
 );
 static int append_select_scalar_subquery_in_predicate_sql(

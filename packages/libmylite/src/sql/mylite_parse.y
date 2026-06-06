@@ -4129,6 +4129,69 @@ predicate_atom(A) ::= cast_convert_expression(C) predicate_comparison_operator(O
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
+predicate_atom(A) ::= cast_convert_expression(C) LIKE(O) predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P);
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) LIKE(O) predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_LIKE, P));
+}
+predicate_atom(A) ::= cast_convert_expression(C) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
+predicate_atom(A) ::= cast_convert_expression(C) REGEXP(O) STRING(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+predicate_atom(A) ::= cast_convert_expression(C) RLIKE(O) STRING(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+predicate_atom(A) ::= cast_convert_expression(C) REGEXP(O) BINARY STRING(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+predicate_atom(A) ::= cast_convert_expression(C) RLIKE(O) BINARY STRING(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) REGEXP(O) STRING(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+            mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) RLIKE(O) STRING(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+            mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) REGEXP(O) BINARY STRING(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+            mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) RLIKE(O) BINARY STRING(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+            mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+}
 predicate_atom(A) ::= find_in_set_expression(C) EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);

@@ -649,6 +649,7 @@ static int convert_predicate_string_pattern_literal(
 static int convert_predicate_regexp_pattern_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    bool case_sensitive,
     struct planned_value *out_value
 ) {
     struct mylite_regexp_program *program = NULL;
@@ -682,8 +683,9 @@ static int convert_predicate_regexp_pattern_literal(
         return MYLITE_ERROR;
     }
 
-    enum mylite_regexp_compile_status status =
-        mylite_regexp_compile_ascii_ci(text, text_length, &program);
+    enum mylite_regexp_compile_status status = case_sensitive
+        ? mylite_regexp_compile_ascii_cs(text, text_length, &program)
+        : mylite_regexp_compile_ascii_ci(text, text_length, &program);
     mylite_regexp_program_free(program);
     if (status != MYLITE_REGEXP_COMPILE_OK) {
         free(text);

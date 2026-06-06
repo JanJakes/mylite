@@ -3460,6 +3460,16 @@ static int test_where_scalar_literal_predicates(void) {
     static const char *const null_n_ids[] = {"1", "3"};
     static const char *const row_scalar_cast_ids[] = {"2", "3"};
     static const char *const string_row_scalar_cast_ids[] = {"2"};
+    static const char *const binary_regexp_ids[] = {"1", "5"};
+    static const char *const binary_not_regexp_ids[] = {"2", "3", "4"};
+    static const char *const signed_between_ids[] = {"1", "2"};
+    static const char *const signed_not_between_ids[] = {"3", "4"};
+    static const char *const decimal_equal_ids[] = {"3"};
+    static const char *const decimal_greater_ids[] = {"4"};
+    static const char *const decimal_less_equal_ids[] = {"1", "2", "3"};
+    static const char *const decimal_like_ids[] = {"1", "3"};
+    static const char *const decimal_not_like_ids[] = {"2", "4"};
+    static const char *const decimal_not_between_ids[] = {"1", "2", "4"};
     static const char *const update_rows[] = {"1", NULL, "2", "11", "3", NULL, "4", "9"};
     static const char *const delete_rows[] = {"2", "4"};
     static const char *const copy_rows[] = {"2", "1"};
@@ -3734,6 +3744,191 @@ static int test_where_scalar_literal_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "string row scalar cast quoted integer comparison",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE meta_keys (id INT NOT NULL, meta_key VARCHAR(64) NOT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO meta_keys VALUES (1, 'AAA_FOO_one'), (2, 'aaa_foo_two'), "
+        "(3, 'AAA_foo_three'), (4, 'BBB_FOO_four'), (5, 'AAA_FOO_five')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_keys WHERE CAST(meta_key AS BINARY) REGEXP BINARY "
+                   "'AAA_FOO_.*' ORDER BY id",
+            .values = binary_regexp_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar binary cast regexp predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_keys WHERE CAST(meta_key AS BINARY) NOT REGEXP BINARY "
+                   "'AAA_FOO_.*' ORDER BY id",
+            .values = binary_not_regexp_ids,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar binary cast not regexp predicate",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE meta_numbers (id INT NOT NULL, value VARCHAR(16) NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO meta_numbers VALUES (1, '1'), (2, '3'), (3, '4'), (4, '0'), (5, NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_numbers WHERE CAST(value AS SIGNED) BETWEEN '1' AND '3' "
+                   "ORDER BY id",
+            .values = signed_between_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar signed cast between quoted integer predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_numbers WHERE CAST(value AS SIGNED) NOT BETWEEN '1' "
+                   "AND '3' ORDER BY id",
+            .values = signed_not_between_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar signed cast not between quoted integer predicate",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE meta_decimals (id INT NOT NULL, value VARCHAR(16) NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO meta_decimals VALUES "
+        "(1, '-0.3'), (2, '0.0'), (3, '0.3'), (4, '0.4'), (5, NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,2)) = '.300'",
+            .values = decimal_equal_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast equality quoted decimal predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,2)) > '0.35'",
+            .values = decimal_greater_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast greater quoted decimal predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,2)) <= '0.3' "
+                   "ORDER BY id",
+            .values = decimal_less_equal_ids,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast less equal quoted decimal predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,2)) LIKE "
+                   "'%.3%' ORDER BY id",
+            .values = decimal_like_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast like predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,2)) NOT LIKE "
+                   "'%.3%' ORDER BY id",
+            .values = decimal_not_like_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast not like predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,10)) BETWEEN "
+                   "'0.23409845' AND '.31'",
+            .values = decimal_equal_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast between quoted decimal predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM meta_decimals WHERE CAST(value AS DECIMAL(10,10)) NOT BETWEEN "
+                   "'0.23409845' AND '.31' ORDER BY id",
+            .values = decimal_not_between_ids,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar decimal cast not between quoted decimal predicate",
         }
     );
     failures += execute_error(

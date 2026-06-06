@@ -1305,40 +1305,63 @@ static int append_select_row_scalar_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
-    int rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    bool decimal_like = node->row_scalar_compare_as_real &&
+                        comparison_operator_is_like(node->operator_kind);
+    int rc = MYLITE_OK;
+
+    if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
+        comparison_operator_is_regexp(node->operator_kind)) {
+        return append_select_row_scalar_regexp_predicate_sql(string, node, next_parameter);
+    }
+
+    if (decimal_like) {
+        rc = append_select_row_scalar_decimal_text_sql(string, node, next_parameter);
+    } else if (node->row_scalar_compare_as_real) {
+        rc = mylite_dynamic_string_append(string, "CAST(");
+    }
+    if (rc == MYLITE_OK && !decimal_like) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    }
+    if (rc == MYLITE_OK && node->row_scalar_compare_as_real && !decimal_like) {
+        rc = mylite_dynamic_string_append(string, " AS REAL)");
+    }
 
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH) {
         return MYLITE_OK;
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON) {
-        if (row_scalar_expression_uses_string_collation(node->row_scalar_expression)) {
+        if (!node->row_scalar_compare_as_real &&
+            row_scalar_expression_uses_string_collation(node->row_scalar_expression)) {
             rc = append_string_key_collation_sql(string);
         }
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON) {
-        rc = mylite_dynamic_string_append_char(string, ' ');
-        if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append(string, comparison_operator_sql(node->operator_kind));
-        }
-        if (rc == MYLITE_OK) {
+        if (comparison_operator_is_like(node->operator_kind)) {
+            if (rc == MYLITE_OK) {
+                rc = mylite_dynamic_string_append_char(string, ' ');
+            }
+            if (rc == MYLITE_OK) {
+                rc = append_select_like_predicate_term_sql(string, node, next_parameter);
+            }
+        } else {
             rc = mylite_dynamic_string_append_char(string, ' ');
-        }
-        if (rc == MYLITE_OK && node->row_scalar_value_expression != NULL) {
-            rc = append_row_scalar_expression_sql(
-                string,
-                node->row_scalar_value_expression,
-                next_parameter
-            );
-        } else if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, *next_parameter);
-        }
-        if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
-            ++(*next_parameter);
+            if (rc == MYLITE_OK) {
+                rc = mylite_dynamic_string_append(
+                    string,
+                    comparison_operator_sql(node->operator_kind)
+                );
+            }
+            if (rc == MYLITE_OK) {
+                rc = mylite_dynamic_string_append_char(string, ' ');
+            }
+            if (rc == MYLITE_OK) {
+                rc = append_select_row_scalar_comparison_rhs_sql(string, node, next_parameter);
+            }
         }
         return rc;
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
-        return append_select_between_predicate_term_sql(string, next_parameter);
+        return append_select_row_scalar_between_predicate_term_sql(string, node, next_parameter);
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL) {
         if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL) {
@@ -1350,6 +1373,147 @@ static int append_select_row_scalar_predicate_sql(
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_select_row_scalar_regexp_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    const char *function_name =
+        node->row_scalar_regexp_case_sensitive ? "_mylite_regexp_cs_ascii" :
+                                                 "_mylite_regexp_ci_ascii";
+    int rc = mylite_dynamic_string_append(string, function_name);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_select_row_scalar_decimal_text_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    char prefix[sizeof("printf('%.30f', CAST(")];
+    size_t scale = node->row_scalar_decimal_scale;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (scale > decimal_max_scale) {
+        scale = decimal_max_scale;
+    }
+
+    written = snprintf(prefix, sizeof(prefix), "printf('%%.%zuf', CAST(", scale);
+    if (written < 0 || (size_t)written >= sizeof(prefix)) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "CASE WHEN ");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NULL THEN NULL ELSE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, prefix);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS REAL)) END");
+    }
+    return rc;
+}
+
+static int append_select_row_scalar_comparison_rhs_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (node->row_scalar_value_expression != NULL) {
+        return append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_value_expression,
+            next_parameter
+        );
+    }
+    if (node->row_scalar_compare_as_real) {
+        return append_row_scalar_decimal_parameter_sql(string, next_parameter);
+    }
+
+    rc = append_numbered_parameter(string, *next_parameter);
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    return rc;
+}
+
+static int append_select_row_scalar_between_predicate_term_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, " BETWEEN ");
+
+    if (rc == MYLITE_OK && node->row_scalar_compare_as_real) {
+        rc = append_row_scalar_decimal_parameter_sql(string, next_parameter);
+    } else if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AND ");
+    }
+    if (rc == MYLITE_OK && node->row_scalar_compare_as_real) {
+        rc = append_row_scalar_decimal_parameter_sql(string, next_parameter);
+    } else if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    }
+    return rc;
+}
+
+static int append_row_scalar_decimal_parameter_sql(
+    struct mylite_dynamic_string *string,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "CAST(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS REAL)");
+    }
+    return rc;
 }
 
 static int append_select_scalar_subquery_in_predicate_sql(

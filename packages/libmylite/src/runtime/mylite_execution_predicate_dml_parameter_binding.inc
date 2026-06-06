@@ -175,11 +175,37 @@ static int bind_select_non_in_predicate_node_parameters(
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
+        bool row_scalar_decimal_like =
+            node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
+            node->row_scalar_compare_as_real && comparison_operator_is_like(node->operator_kind);
+
+        if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
+            comparison_operator_is_regexp(node->operator_kind)) {
+            rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
+            if (rc == MYLITE_OK) {
+                ++(*parameter_index);
+            }
+            if (rc == MYLITE_OK) {
+                rc = bind_row_scalar_expression_parameters(
+                    statement,
+                    node->row_scalar_expression,
+                    parameter_index
+                );
+            }
+            return rc;
+        }
         rc = bind_row_scalar_expression_parameters(
             statement,
             node->row_scalar_expression,
             parameter_index
         );
+        if (rc == MYLITE_OK && row_scalar_decimal_like) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                node->row_scalar_expression,
+                parameter_index
+            );
+        }
         if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON) {
             if (node->row_scalar_value_expression != NULL) {
                 rc = bind_row_scalar_expression_parameters(

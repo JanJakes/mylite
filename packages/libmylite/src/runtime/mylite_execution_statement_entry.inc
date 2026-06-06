@@ -197,6 +197,8 @@ static int execute_non_prepared_statement(
         return execute_create_temporary_table_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
         return execute_create_view_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT:
+        return execute_create_procedure_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
@@ -215,6 +217,8 @@ static int execute_non_prepared_statement(
         return execute_drop_temporary_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
         return execute_drop_view_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_DROP_PROCEDURE_STATEMENT:
+        return execute_drop_procedure_statement(database, statement, out_result);
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
         return execute_truncate_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
@@ -307,6 +311,8 @@ static int execute_non_prepared_statement(
         return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_VALUES_STATEMENT:
         return execute_values_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CALL_STATEMENT:
+        return execute_call_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT: {
         int rc = execute_select_statement(database, context, statement, true, out_result);
 
@@ -376,6 +382,8 @@ static int execute_non_prepared_statement(
         return execute_show_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
         return execute_show_create_view_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT:
+        return execute_show_create_procedure_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
         return execute_show_create_database_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:

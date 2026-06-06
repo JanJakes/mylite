@@ -4222,6 +4222,34 @@ static void remove_session_prepared_statement_at(
 );
 static void deinit_session_prepared_statement(struct mylite_session_prepared_statement *statement);
 static int ensure_session_prepared_statement_capacity(struct mylite_db *database);
+static int execute_create_procedure_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_drop_procedure_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_call_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static struct mylite_session_stored_procedure *find_session_stored_procedure(
+    struct mylite_session_state *session,
+    const char *schema_name,
+    const char *name
+);
+static size_t find_session_stored_procedure_index(
+    const struct mylite_session_state *session,
+    const char *schema_name,
+    const char *name
+);
+static void remove_session_stored_procedure_at(struct mylite_session_state *session, size_t index);
+static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure);
+static int ensure_session_stored_procedure_capacity(struct mylite_db *database);
 static void set_prepared_statement_argument_count_error(struct mylite_db *database);
 static void set_unknown_prepared_statement_error(
     struct mylite_db *database,
@@ -8291,6 +8319,11 @@ static int execute_show_create_table_statement(
     mylite_result **out_result
 );
 static int execute_show_create_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_create_procedure_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -28761,6 +28794,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_set_assignments.inc"
 
 #include "mylite_execution_prepared_statement_support.inc"
+
+#include "mylite_execution_stored_procedures.inc"
 
 #include "mylite_execution_set_session_snapshot.inc"
 

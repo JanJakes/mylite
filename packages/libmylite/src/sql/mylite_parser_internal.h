@@ -503,6 +503,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
     struct mylite_sql_ast_node *view_name,
     struct mylite_sql_ast_node *select_statement
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_procedure_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *procedure_name,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token end_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -668,6 +675,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_view_statement(
     struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *if_exists_clause,
     struct mylite_sql_ast_node *view_names
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_procedure_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *procedure_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
     struct mylite_sql_parser_state *state,
@@ -836,10 +849,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_view_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_ast_node *view_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_procedure_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *procedure_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
     struct mylite_sql_ast_node *schema_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_call_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token call_token,
+    struct mylite_sql_ast_node *procedure_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
     struct mylite_sql_parser_state *state,

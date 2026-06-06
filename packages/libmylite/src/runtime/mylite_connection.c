@@ -17,6 +17,7 @@ static int initialize_file_backed_catalog(struct mylite_db *database);
 static void destroy_database_handle(struct mylite_db *database);
 static int sqlite_status_to_mylite(int sqlite_status);
 static void initialize_session_state(struct mylite_session_state *session);
+static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure);
 static uint64_t allocate_session_connection_id(void);
 static void copy_session_text(char *destination, size_t destination_size, const char *source);
 
@@ -278,6 +279,13 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.prepared_statements = NULL;
     database->session.prepared_statement_count = 0U;
     database->session.prepared_statement_capacity = 0U;
+    for (size_t index = 0U; index < database->session.stored_procedure_count; ++index) {
+        deinit_session_stored_procedure(&database->session.stored_procedures[index]);
+    }
+    free(database->session.stored_procedures);
+    database->session.stored_procedures = NULL;
+    database->session.stored_procedure_count = 0U;
+    database->session.stored_procedure_capacity = 0U;
     free(database->session.auto_increment_high_waters);
     database->session.auto_increment_high_waters = NULL;
     database->session.auto_increment_high_water_count = 0U;
@@ -398,12 +406,25 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->prepared_statements = NULL;
     session->prepared_statement_count = 0U;
     session->prepared_statement_capacity = 0U;
+    session->stored_procedures = NULL;
+    session->stored_procedure_count = 0U;
+    session->stored_procedure_capacity = 0U;
     session->auto_increment_high_waters = NULL;
     session->auto_increment_high_water_count = 0U;
     session->auto_increment_high_water_capacity = 0U;
     session->has_timestamp_override = false;
     session->timestamp_override = 0;
     session->active_statement_time = 0;
+}
+
+static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure) {
+    if (procedure == NULL) {
+        return;
+    }
+
+    free(procedure->select_sql);
+    free(procedure->show_create_sql);
+    *procedure = (struct mylite_session_stored_procedure){0};
 }
 
 static uint64_t allocate_session_connection_id(void) {

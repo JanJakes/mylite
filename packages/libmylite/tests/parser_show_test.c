@@ -5,6 +5,7 @@ static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
 static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
+static int test_limited_stored_procedure_statements(void);
 static int test_show_processlist_introspection_statements(void);
 static int test_show_plugins_metadata_statement(void);
 static int test_show_engine_status_statement(void);
@@ -26,6 +27,7 @@ int main(void) {
     failures += test_show_events_empty_introspection_statements();
     failures += test_show_open_tables_empty_introspection_statements();
     failures += test_show_routine_status_empty_introspection_statements();
+    failures += test_limited_stored_procedure_statements();
     failures += test_show_processlist_introspection_statements();
     failures += test_show_plugins_metadata_statement();
     failures += test_show_engine_status_statement();
@@ -956,6 +958,87 @@ static int test_show_routine_status_empty_introspection_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_limited_stored_procedure_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "CREATE PROCEDURE app.sync_proc() BEGIN SELECT ID FROM posts LIMIT 1; END;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT,
+        "create procedure"
+    );
+    failures += parser_test_expect_child_count(statement, 2U, "create procedure child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app.sync_proc",
+        "create procedure name"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "create procedure select body"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SHOW CREATE PROCEDURE app.sync_proc;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT,
+        "show create procedure"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show create procedure child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app.sync_proc",
+        "show create procedure name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DROP PROCEDURE IF EXISTS app.sync_proc;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_DROP_PROCEDURE_STATEMENT,
+        "drop procedure"
+    );
+    failures += parser_test_expect_child_count(statement, 2U, "drop procedure child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app.sync_proc",
+        "drop procedure name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("CALL app.sync_proc;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_CALL_STATEMENT, "call");
+    failures += parser_test_expect_child_count(statement, 1U, "call child count");
+    failures +=
+        parser_test_expect_span_text(parser_test_child_at(statement, 0U), "app.sync_proc", "call");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("CALL app.sync_proc();", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_CALL_STATEMENT, "call parens");
+    failures += parser_test_expect_child_count(statement, 1U, "call parens child count");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

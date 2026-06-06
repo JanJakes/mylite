@@ -1469,6 +1469,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_procedure_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *procedure_name,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&create_token), span_from_token(&end_token));
+    struct mylite_sql_ast_node *statement =
+        make_node(state, MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, procedure_name);
+    mylite_sql_ast_node_append_child(statement, select_statement);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -2127,6 +2147,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_view_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_procedure_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *procedure_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&drop_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (procedure_name != NULL) {
+        span = span_join(span, procedure_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DROP_PROCEDURE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, procedure_name);
+    if (if_exists_clause != NULL) {
+        mylite_sql_ast_node_append_child(statement, if_exists_clause);
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *table_name
@@ -2731,6 +2776,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_view_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_procedure_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *procedure_name
+) {
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_show_create_table_statement(state, show_token, procedure_name);
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT;
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -2749,6 +2808,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statemen
     }
 
     mylite_sql_ast_node_append_child(statement, schema_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_call_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token call_token,
+    struct mylite_sql_ast_node *procedure_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&call_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (procedure_name != NULL) {
+        span = span_join(span, procedure_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_CALL_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, procedure_name);
     return statement;
 }
 
@@ -8319,6 +8399,7 @@ static bool map_keyword_token(
         {"OFFSET", MYLITE_SQL_PARSE_OFFSET},
         {"SPACE", MYLITE_SQL_PARSE_SPACE},
         {"USE", MYLITE_SQL_PARSE_USE},
+        {"CALL", MYLITE_SQL_PARSE_CALL},
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"VIEW", MYLITE_SQL_PARSE_VIEW},

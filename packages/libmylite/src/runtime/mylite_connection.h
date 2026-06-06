@@ -121,6 +121,19 @@ struct mylite_session_prepared_statement {
     size_t parameter_count;
 };
 
+struct mylite_session_stored_procedure {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *select_sql;
+    size_t select_sql_size;
+    char *show_create_sql;
+    size_t show_create_sql_size;
+    char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
+    char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char database_collation[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+};
+
 struct mylite_session_auto_increment_high_water {
     int64_t table_id;
     int64_t next_value;
@@ -171,6 +184,9 @@ struct mylite_session_state {
     struct mylite_session_prepared_statement *prepared_statements;
     size_t prepared_statement_count;
     size_t prepared_statement_capacity;
+    struct mylite_session_stored_procedure *stored_procedures;
+    size_t stored_procedure_count;
+    size_t stored_procedure_capacity;
     struct mylite_session_auto_increment_high_water *auto_increment_high_waters;
     size_t auto_increment_high_water_count;
     size_t auto_increment_high_water_capacity;

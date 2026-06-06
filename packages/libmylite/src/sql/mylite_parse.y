@@ -162,6 +162,9 @@ statement(A) ::= create_temporary_table_select_statement(B). {
 statement(A) ::= create_view_statement(B). {
     A = B;
 }
+statement(A) ::= create_procedure_statement(B). {
+    A = B;
+}
 statement(A) ::= create_index_statement(B). {
     A = B;
 }
@@ -178,6 +181,9 @@ statement(A) ::= drop_temporary_table_statement(B). {
     A = B;
 }
 statement(A) ::= drop_view_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_procedure_statement(B). {
     A = B;
 }
 statement(A) ::= drop_schema_statement(B). {
@@ -232,6 +238,9 @@ statement(A) ::= show_create_table_statement(B). {
     A = B;
 }
 statement(A) ::= show_create_view_statement(B). {
+    A = B;
+}
+statement(A) ::= show_create_procedure_statement(B). {
     A = B;
 }
 statement(A) ::= show_create_database_statement(B). {
@@ -391,6 +400,9 @@ statement(A) ::= insert_set_statement(B). {
     A = B;
 }
 statement(A) ::= load_data_infile_statement(B). {
+    A = B;
+}
+statement(A) ::= call_statement(B). {
     A = B;
 }
 statement(A) ::= delete_statement(B). {
@@ -957,6 +969,11 @@ create_view_statement(A) ::= CREATE(C) VIEW table_name(T) AS select_statement(S)
     A = mylite_sql_parser_make_create_view_statement(state, C, T, S);
 }
 
+create_procedure_statement(A) ::=
+    CREATE(C) PROCEDURE table_name(P) LPAREN RPAREN BEGIN select_statement(S) SEMICOLON END(E). {
+    A = mylite_sql_parser_make_create_procedure_statement(state, C, P, S, E);
+}
+
 create_index_statement(A) ::=
     CREATE(C) INDEX identifier(N) index_type_opt(Y) ON table_name(T) LPAREN
     secondary_index_part_list(L) RPAREN index_option_list_opt(O). {
@@ -1211,6 +1228,9 @@ drop_temporary_table_statement(A) ::=
 }
 drop_view_statement(A) ::= DROP(D) VIEW drop_if_exists_opt(E) table_name_list(T). {
     A = mylite_sql_parser_make_drop_view_statement(state, D, E, T);
+}
+drop_procedure_statement(A) ::= DROP(D) PROCEDURE drop_if_exists_opt(E) table_name(T). {
+    A = mylite_sql_parser_make_drop_procedure_statement(state, D, E, T);
 }
 
 drop_if_exists_opt(A) ::= . {
@@ -1545,6 +1565,10 @@ show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
 }
 show_create_view_statement(A) ::= SHOW(S) CREATE VIEW table_name(T). {
     A = mylite_sql_parser_make_show_create_view_statement(state, S, T);
+}
+
+show_create_procedure_statement(A) ::= SHOW(S) CREATE PROCEDURE table_name(T). {
+    A = mylite_sql_parser_make_show_create_procedure_statement(state, S, T);
 }
 
 show_create_database_statement(A) ::= SHOW(S) CREATE DATABASE identifier(D). {
@@ -2516,6 +2540,13 @@ load_data_ignore_lines(A) ::= IGNORE INTEGER(N) LINES. {
 }
 load_data_column_list(A) ::= LPAREN identifier_list(L) RPAREN. {
     A = L;
+}
+
+call_statement(A) ::= CALL(C) table_name(P). {
+    A = mylite_sql_parser_make_call_statement(state, C, P);
+}
+call_statement(A) ::= CALL(C) table_name(P) LPAREN RPAREN. {
+    A = mylite_sql_parser_make_call_statement(state, C, P);
 }
 
 delete_statement(A) ::=

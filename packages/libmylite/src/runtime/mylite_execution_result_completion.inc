@@ -2,6 +2,9 @@ static int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 ) {
+    if (statement != NULL && statement->kind == MYLITE_SQL_AST_CALL_STATEMENT) {
+        return 0;
+    }
     if (result != NULL && mylite_result_column_count(result) != 0U) {
         return -1;
     }
@@ -69,9 +72,11 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_DROP_PROCEDURE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
@@ -100,6 +105,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+    case MYLITE_SQL_AST_CALL_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
@@ -137,6 +143,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT:

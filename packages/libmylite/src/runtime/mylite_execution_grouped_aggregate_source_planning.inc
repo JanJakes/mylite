@@ -142,6 +142,10 @@ static int validate_grouped_projection_references(
             item = item->next_sibling;
             continue;
         }
+        if (grouped_expression_is_relaxed_row_scalar_projection(database, expression)) {
+            item = item->next_sibling;
+            continue;
+        }
         if (select_item_qualified_wildcard(item, &qualified_wildcard)) {
             rc = validate_grouped_qualified_wildcard_reference(
                 database,

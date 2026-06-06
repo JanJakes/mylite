@@ -3764,6 +3764,14 @@ group_key_list(A) ::= group_key_list(L) COMMA group_key(K). {
 group_key(A) ::= qualified_identifier(K). {
     A = K;
 }
+group_key(A) ::= WEEK(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_WEEK_FUNCTION, B, R);
+}
+group_key(A) ::= WEEK(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_WEEK_FUNCTION, B, C, R);
+}
 group_key(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);
@@ -3771,6 +3779,10 @@ group_key(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
 group_key(A) ::= MONTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_MONTH_FUNCTION, B, R);
+}
+group_key(A) ::= DAYOFMONTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYOFMONTH_FUNCTION, B, R);
 }
 
 having_clause_opt(A) ::= . {

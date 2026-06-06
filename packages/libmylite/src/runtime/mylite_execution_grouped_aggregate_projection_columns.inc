@@ -72,6 +72,16 @@ static int plan_grouped_aggregate_projection_columns(
                 table_column_count,
                 out_plan
             );
+        } else if (grouped_expression_is_relaxed_row_scalar_projection(database, expression)) {
+            rc = plan_grouped_aggregate_relaxed_row_scalar_projection(
+                database,
+                expression,
+                child_at(item, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
         } else {
             rc = select_item_column_reference(item, &column_node);
             if (rc != MYLITE_OK) {
@@ -216,7 +226,8 @@ static int plan_grouped_aggregate_temporal_projection(
         !grouped_row_scalar_projection_is_allowed(out_plan, &row_scalar_expression)) {
         set_unsupported_error(
             database,
-            "GROUP BY supports selected YEAR() and MONTH() expressions only when grouped"
+            "GROUP BY supports selected WEEK(), YEAR(), MONTH(), and DAYOFMONTH() expressions only "
+            "when grouped"
         );
         rc = MYLITE_ERROR;
     }
@@ -231,6 +242,98 @@ static int plan_grouped_aggregate_temporal_projection(
     }
     planned_row_scalar_expression_deinit(&row_scalar_expression);
     return rc;
+}
+
+static int plan_grouped_aggregate_relaxed_row_scalar_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    struct planned_row_scalar_expression row_scalar_expression = {0};
+    int rc = plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        &row_scalar_expression
+    );
+
+    if (rc == MYLITE_OK &&
+        !grouped_relaxed_row_scalar_projection_is_allowed(out_plan, &row_scalar_expression)) {
+        set_unsupported_error(
+            database,
+            "relaxed GROUP BY supports selected DATE_FORMAT() only for weekly archive grouping"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_projection_row_scalar_expression(
+            database,
+            out_plan,
+            &row_scalar_expression,
+            expression,
+            alias
+        );
+    }
+    planned_row_scalar_expression_deinit(&row_scalar_expression);
+    return rc;
+}
+
+static bool grouped_expression_is_relaxed_row_scalar_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    return !session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
+           expression != NULL &&
+           expression->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION;
+}
+
+static bool grouped_relaxed_row_scalar_projection_is_allowed(
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_row_scalar_expression *expression
+) {
+    static const char archive_day_format[] = "%Y-%m-%d";
+    const struct planned_row_scalar_expression *value_argument = NULL;
+    const struct planned_row_scalar_expression *format_argument = NULL;
+
+    if (plan == NULL || expression == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT ||
+        expression->argument_count != 3U || expression->arguments == NULL) {
+        return false;
+    }
+
+    value_argument = &expression->arguments[0];
+    format_argument = &expression->arguments[1];
+    if (value_argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
+        format_argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
+        format_argument->value.is_null || !format_argument->value.is_text ||
+        format_argument->value.text_length != sizeof(archive_day_format) - 1U ||
+        memcmp(
+            format_argument->value.text,
+            archive_day_format,
+            sizeof(archive_day_format) - 1U
+        ) != 0) {
+        return false;
+    }
+
+    return grouped_plan_has_temporal_key_on_column(
+               plan,
+               MYLITE_TEMPORAL_EXTRACT_WEEK,
+               value_argument
+           ) &&
+           grouped_plan_has_temporal_key_on_column(
+               plan,
+               MYLITE_TEMPORAL_EXTRACT_YEAR,
+               value_argument
+           );
 }
 
 static int plan_grouped_aggregate_wildcard_projection_columns(
@@ -554,6 +657,7 @@ static bool planned_grouped_row_scalar_expressions_match(
         left->kind != PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT ||
         right->kind != PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT ||
         left->temporal_extract_kind != right->temporal_extract_kind ||
+        left->argument_count != right->argument_count ||
         left->argument_count == 0U || right->argument_count == 0U ||
         left->arguments == NULL || right->arguments == NULL) {
         return false;
@@ -566,8 +670,94 @@ static bool planned_grouped_row_scalar_expressions_match(
         return false;
     }
 
-    return left_argument->column.column_id == right_argument->column.column_id &&
-           left_argument->column_has_source_index == right_argument->column_has_source_index &&
-           (!left_argument->column_has_source_index ||
-            left_argument->column_source_index == right_argument->column_source_index);
+    return planned_grouped_row_scalar_columns_match(left_argument, right_argument) &&
+           (left->argument_count <= 3U ||
+            planned_grouped_row_scalar_value_arguments_match(
+                &left->arguments[3],
+                &right->arguments[3]
+            ));
+}
+
+static bool grouped_plan_has_temporal_key_on_column(
+    const struct planned_grouped_aggregate *plan,
+    enum mylite_temporal_extract_kind temporal_extract_kind,
+    const struct planned_row_scalar_expression *column_argument
+) {
+    for (size_t group_index = 0U; plan != NULL && group_index < plan->group_count; ++group_index) {
+        const struct planned_grouped_key *group = &plan->groups[group_index];
+        const struct planned_row_scalar_expression *expression = &group->row_scalar_expression;
+
+        if (!group->uses_row_scalar_expression ||
+            expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT ||
+            expression->temporal_extract_kind != temporal_extract_kind ||
+            expression->argument_count < 1U || expression->arguments == NULL ||
+            !planned_grouped_row_scalar_columns_match(column_argument, &expression->arguments[0])) {
+            continue;
+        }
+        if (temporal_extract_kind == MYLITE_TEMPORAL_EXTRACT_WEEK &&
+            !planned_grouped_temporal_key_uses_week_mode_one(expression)) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool planned_grouped_temporal_key_uses_week_mode_one(
+    const struct planned_row_scalar_expression *expression
+) {
+    const struct planned_row_scalar_expression *mode = NULL;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT ||
+        expression->temporal_extract_kind != MYLITE_TEMPORAL_EXTRACT_WEEK ||
+        expression->argument_count <= 3U || expression->arguments == NULL) {
+        return false;
+    }
+
+    mode = &expression->arguments[3];
+    return mode->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE && !mode->value.is_null &&
+           !mode->value.is_text && !mode->value.is_blob && !mode->value.is_real &&
+           mode->value.integer == 1;
+}
+
+static bool planned_grouped_row_scalar_columns_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+) {
+    if (left == NULL || right == NULL ||
+        left->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
+        right->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return false;
+    }
+
+    return left->column.column_id == right->column.column_id &&
+           left->column_has_source_index == right->column_has_source_index &&
+           (!left->column_has_source_index ||
+            left->column_source_index == right->column_source_index);
+}
+
+static bool planned_grouped_row_scalar_value_arguments_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+) {
+    if (left->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
+        right->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
+        left->value.is_null != right->value.is_null ||
+        left->value.is_text != right->value.is_text ||
+        left->value.is_blob != right->value.is_blob ||
+        left->value.is_real != right->value.is_real) {
+        return false;
+    }
+    if (left->value.is_null) {
+        return true;
+    }
+    if (left->value.is_text || left->value.is_blob) {
+        return left->value.text_length == right->value.text_length &&
+               (left->value.text_length == 0U ||
+                memcmp(left->value.text, right->value.text, left->value.text_length) == 0);
+    }
+    if (left->value.is_real) {
+        return left->value.real == right->value.real;
+    }
+    return left->value.integer == right->value.integer;
 }

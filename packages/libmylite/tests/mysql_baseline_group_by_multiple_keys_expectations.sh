@@ -149,6 +149,50 @@ expect_value "temporal group first" "2024	2	1" "$(printf '%s\n' "$temporal" | se
 expect_value "temporal group second" "2024	1	2" "$(printf '%s\n' "$temporal" | sed -n '2p')"
 expect_value "temporal group third" "2023	12	1" "$(printf '%s\n' "$temporal" | sed -n '3p')"
 
+temporal_day=$(run_mysql \
+    "USE ${DATABASE};
+     SET SESSION sql_mode = '';
+     SELECT YEAR(post_date) AS \`year\`, MONTH(post_date) AS \`month\`,
+            DAYOFMONTH(post_date) AS \`dayofmonth\`, COUNT(ID) AS posts
+       FROM grouped_posts
+      WHERE post_type = 'post' AND post_status = 'publish'
+      GROUP BY YEAR(post_date), MONTH(post_date), DAYOFMONTH(post_date)
+      ORDER BY post_date DESC;
+     SELECT @@warning_count, ROW_COUNT();"
+)
+expect_value "temporal day group first" "2024	2	5	1" \
+    "$(printf '%s\n' "$temporal_day" | sed -n '1p')"
+expect_value "temporal day group second" "2024	1	20	1" \
+    "$(printf '%s\n' "$temporal_day" | sed -n '2p')"
+expect_value "temporal day group third" "2024	1	10	1" \
+    "$(printf '%s\n' "$temporal_day" | sed -n '3p')"
+expect_value "temporal day group fourth" "2023	12	31	1" \
+    "$(printf '%s\n' "$temporal_day" | sed -n '4p')"
+expect_value "temporal day group status" "0	-1" \
+    "$(printf '%s\n' "$temporal_day" | sed -n '5p')"
+
+temporal_week=$(run_mysql \
+    "USE ${DATABASE};
+     SET SESSION sql_mode = '';
+     SELECT DISTINCT WEEK(post_date, 1) AS \`week\`, YEAR(post_date) AS \`yr\`,
+            DATE_FORMAT(post_date, '%Y-%m-%d') AS \`yyyymmdd\`, COUNT(ID) AS posts
+       FROM grouped_posts
+      WHERE post_type = 'post' AND post_status = 'publish'
+      GROUP BY WEEK(post_date, 1), YEAR(post_date)
+      ORDER BY post_date DESC;
+     SELECT @@warning_count, ROW_COUNT();"
+)
+expect_value "temporal week group first" "6	2024	2024-02-05	1" \
+    "$(printf '%s\n' "$temporal_week" | sed -n '1p')"
+expect_value "temporal week group second" "3	2024	2024-01-20	1" \
+    "$(printf '%s\n' "$temporal_week" | sed -n '2p')"
+expect_value "temporal week group third" "2	2024	2024-01-10	1" \
+    "$(printf '%s\n' "$temporal_week" | sed -n '3p')"
+expect_value "temporal week group fourth" "52	2023	2023-12-31	1" \
+    "$(printf '%s\n' "$temporal_week" | sed -n '4p')"
+expect_value "temporal week group status" "0	-1" \
+    "$(printf '%s\n' "$temporal_week" | sed -n '5p')"
+
 filters=$(run_mysql \
     "USE ${DATABASE};
      SELECT a, b, COUNT(*) AS c, SUM(n) AS s

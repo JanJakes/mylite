@@ -342,8 +342,10 @@ static bool grouped_expression_is_temporal_group_key(
 ) {
     expression = unwrap_parenthesized_expression(expression);
     return expression != NULL &&
-           (expression->kind == MYLITE_SQL_AST_YEAR_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_MONTH_FUNCTION);
+           (expression->kind == MYLITE_SQL_AST_WEEK_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_YEAR_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_MONTH_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_DAYOFMONTH_FUNCTION);
 }
 
 static int plan_grouped_temporal_row_scalar_expression(
@@ -355,7 +357,10 @@ static int plan_grouped_temporal_row_scalar_expression(
     struct planned_row_scalar_expression *out_expression
 ) {
     if (!grouped_expression_is_temporal_group_key(expression)) {
-        set_unsupported_error(database, "GROUP BY supports only YEAR() and MONTH() expressions");
+        set_unsupported_error(
+            database,
+            "GROUP BY supports only WEEK(), YEAR(), MONTH(), and DAYOFMONTH() expressions"
+        );
         return MYLITE_ERROR;
     }
     return plan_row_scalar_expression(

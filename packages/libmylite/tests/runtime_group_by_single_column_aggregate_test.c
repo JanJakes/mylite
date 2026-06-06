@@ -355,6 +355,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const count_having_name_columns[] = {"name"};
     static const char *const count_having_name_values[] = {"a"};
     static const char *const temporal_group_columns[] = {"year", "month", "posts"};
+    static const char *const temporal_day_group_columns[] = {
+        "year",
+        "month",
+        "dayofmonth",
+        "posts",
+    };
+    static const char *const temporal_week_group_columns[] = {
+        "week",
+        "yr",
+        "yyyymmdd",
+        "posts",
+    };
     static const char *const temporal_group_values[] = {
         "2024",
         "2",
@@ -364,6 +376,42 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "2",
         "2023",
         "12",
+        "1",
+    };
+    static const char *const temporal_day_group_values[] = {
+        "2024",
+        "2",
+        "5",
+        "1",
+        "2024",
+        "1",
+        "20",
+        "1",
+        "2024",
+        "1",
+        "10",
+        "1",
+        "2023",
+        "12",
+        "31",
+        "1",
+    };
+    static const char *const temporal_week_group_values[] = {
+        "6",
+        "2024",
+        "2024-02-05",
+        "1",
+        "3",
+        "2024",
+        "2024-01-20",
+        "1",
+        "2",
+        "2024",
+        "2024-01-10",
+        "1",
+        "52",
+        "2023",
+        "2023-12-31",
         "1",
     };
     char path[test_path_capacity];
@@ -469,6 +517,49 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = temporal_group_values,
             .row_count = 3U,
             .context = "temporal extract grouped archive query",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT YEAR(post_date) AS `year`, MONTH(post_date) AS `month`, "
+                   "DAYOFMONTH(post_date) AS `dayofmonth`, COUNT(ID) AS posts "
+                   "FROM grouped_posts WHERE post_type = 'post' "
+                   "AND post_status = 'publish' GROUP BY YEAR(post_date), "
+                   "MONTH(post_date), DAYOFMONTH(post_date) ORDER BY post_date DESC",
+            .columns = temporal_day_group_columns,
+            .column_count = 4U,
+            .values = temporal_day_group_values,
+            .row_count = 4U,
+            .context = "temporal extract day-level grouped archive query",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT DISTINCT WEEK(post_date, 1) AS `week`, "
+                   "YEAR(post_date) AS `yr`, "
+                   "DATE_FORMAT(post_date, '%Y-%m-%d') AS `yyyymmdd`, "
+                   "COUNT(ID) AS posts FROM grouped_posts WHERE post_type = 'post' "
+                   "AND post_status = 'publish' GROUP BY WEEK(post_date, 1), "
+                   "YEAR(post_date) ORDER BY post_date DESC",
+            .columns = temporal_week_group_columns,
+            .column_count = 4U,
+            .values = temporal_week_group_values,
+            .row_count = 4U,
+            .context = "temporal extract week-level grouped archive query",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT WEEK(post_date, 1), YEAR(post_date), "
+        "DATE_FORMAT(post_date, '%Y'), COUNT(ID) FROM grouped_posts "
+        "GROUP BY WEEK(post_date, 1), YEAR(post_date)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "relaxed GROUP BY supports selected DATE_FORMAT() only for weekly archive grouping",
         }
     );
     failures += execute_ok(database, "SET SESSION sql_mode = DEFAULT", &result);

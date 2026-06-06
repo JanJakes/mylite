@@ -11794,6 +11794,23 @@ static int plan_grouped_aggregate_temporal_projection(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
+static int plan_grouped_aggregate_relaxed_row_scalar_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+);
+static bool grouped_expression_is_relaxed_row_scalar_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static bool grouped_relaxed_row_scalar_projection_is_allowed(
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_row_scalar_expression *expression
+);
 static int plan_grouped_aggregate_wildcard_projection_columns(
     struct mylite_db *database,
     size_t select_expression_index,
@@ -11858,6 +11875,22 @@ static bool grouped_row_scalar_projection_is_allowed(
     const struct planned_row_scalar_expression *expression
 );
 static bool planned_grouped_row_scalar_expressions_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+);
+static bool grouped_plan_has_temporal_key_on_column(
+    const struct planned_grouped_aggregate *plan,
+    enum mylite_temporal_extract_kind temporal_extract_kind,
+    const struct planned_row_scalar_expression *column_argument
+);
+static bool planned_grouped_temporal_key_uses_week_mode_one(
+    const struct planned_row_scalar_expression *expression
+);
+static bool planned_grouped_row_scalar_columns_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+);
+static bool planned_grouped_row_scalar_value_arguments_match(
     const struct planned_row_scalar_expression *left,
     const struct planned_row_scalar_expression *right
 );

@@ -70,8 +70,12 @@ admitted subset:
   `ASC` is the default, and `NULL` sorts before non-`NULL` ascending and after
   non-`NULL` descending.
 - With `sql_mode=''`, WordPress-style archive queries that select
-  `YEAR(post_date)`, `MONTH(post_date)`, and `COUNT(ID)`, group by the same
-  `YEAR()` / `MONTH()` expressions, and order by `post_date` are accepted.
+  `YEAR(post_date)`, `MONTH(post_date)`, optional `DAYOFMONTH(post_date)`, and
+  `COUNT(ID)`, group by the same temporal expressions, and order by
+  `post_date` are accepted. Weekly archive queries that select
+  `WEEK(post_date, 1)`, `YEAR(post_date)`, relaxed-mode
+  `DATE_FORMAT(post_date, '%Y-%m-%d')`, and `COUNT(ID)`, group by the
+  `WEEK()` / `YEAR()` expressions, and order by `post_date` are also accepted.
 - Successful grouped result statements leave `@@warning_count = 0` and make
   `ROW_COUNT()` return `-1`.
 
@@ -87,12 +91,16 @@ MyLite supports:
 - the existing one-key grouped aggregate behavior unchanged;
 - selected group columns as an ordered prefix that must match the `GROUP BY`
   key list exactly by descriptor and source;
-- selected `YEAR(descriptor_temporal_column)` and
-  `MONTH(descriptor_temporal_column)` expression group keys as an ordered
+- selected `WEEK(descriptor_temporal_column[, mode])`,
+  `YEAR(descriptor_temporal_column)`,
+  `MONTH(descriptor_temporal_column)`, and
+  `DAYOFMONTH(descriptor_temporal_column)` expression group keys as an ordered
   prefix that must match the `GROUP BY` key list exactly by temporal function
-  and descriptor source;
-- selected `YEAR()` / `MONTH()` expression aliases as group keys when no source
-  descriptor column shadows the alias name;
+  and descriptor source, including the literal `WEEK()` mode when present;
+- selected `WEEK()` / `YEAR()` / `MONTH()` / `DAYOFMONTH()` expression aliases
+  as group keys when no source descriptor column shadows the alias name;
+- relaxed-mode selected `DATE_FORMAT(descriptor_temporal_column, '%Y-%m-%d')`
+  projections in the WordPress weekly archive shape;
 - at least one and at most sixteen selected aggregate results after the group
   key prefix;
 - group-key descriptor families already admitted by the grouped path:
@@ -130,9 +138,9 @@ This phase does not add:
 - unselected grouping keys;
 - group-key order independent from selected group-column order;
 - grouping aliases outside the selected descriptor-column and selected
-  `YEAR()` / `MONTH()` expression alias subsets, ordinals, literals,
-  general expressions, function calls outside the `YEAR()` / `MONTH()` temporal
-  archive subset, or parenthesized expression keys;
+  `WEEK()` / `YEAR()` / `MONTH()` / `DAYOFMONTH()` expression alias subsets,
+  ordinals, literals, general expressions, function calls outside the admitted
+  temporal archive subset, or parenthesized expression keys;
 - general expression `ORDER BY` for grouped results beyond
   `CAST(descriptor_column AS CHAR)`;
 - aggregate expression `ORDER BY`, selected `AVG`, bitwise aggregate, or
@@ -183,6 +191,14 @@ group_key_list(A) ::= group_key_list(L) COMMA group_key(K). {
 }
 
 group_key(A) ::= qualified_identifier(K). { A = K; }
+group_key(A) ::= WEEK(T) LPAREN expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        parser, T, MYLITE_SQL_AST_WEEK_FUNCTION, E, R);
+}
+group_key(A) ::= WEEK(T) LPAREN expression(E) COMMA expression(M) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        parser, T, MYLITE_SQL_AST_WEEK_FUNCTION, E, M, R);
+}
 group_key(A) ::= YEAR(T) LPAREN expression(E) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         parser, T, MYLITE_SQL_AST_YEAR_FUNCTION, E, R);
@@ -190,6 +206,10 @@ group_key(A) ::= YEAR(T) LPAREN expression(E) RPAREN(R). {
 group_key(A) ::= MONTH(T) LPAREN expression(E) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         parser, T, MYLITE_SQL_AST_MONTH_FUNCTION, E, R);
+}
+group_key(A) ::= DAYOFMONTH(T) LPAREN expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        parser, T, MYLITE_SQL_AST_DAYOFMONTH_FUNCTION, E, R);
 }
 ```
 
@@ -200,10 +220,13 @@ select-list shape.
 
 Group keys resolve through the existing descriptor source context. For the
 supported multiple-key path, MyLite requires the first `N` select items to be
-descriptor columns or selected `YEAR()` / `MONTH()` temporal expressions that
-match the `N` `GROUP BY` keys in order. Each selected group column or selected
-temporal group expression may have an alias. Aggregate select items start after
-the selected group-key prefix.
+descriptor columns or selected `WEEK()` / `YEAR()` / `MONTH()` /
+`DAYOFMONTH()` temporal expressions that match the `N` `GROUP BY` keys in
+order. Each selected group column or selected temporal group expression may
+have an alias. Aggregate select items start after the selected group-key
+prefix, except for the relaxed-mode weekly archive shape, which may include
+one selected `DATE_FORMAT(post_date, '%Y-%m-%d')` row-scalar projection before
+the aggregate.
 
 String group keys use MyLite's registered ASCII `utf8mb4_0900_ai_ci`
 collation in generated grouping and grouped ordering expressions. Integer keys
@@ -237,9 +260,9 @@ GROUP BY "group_column_1", "group_column_2"
 [LIMIT ? [OFFSET ?]]
 ```
 
-For the admitted temporal archive subset, selected and grouped `YEAR()` /
-`MONTH()` expressions lower through MyLite's temporal extraction SQL function
-with bound discriminator parameters:
+For the admitted temporal archive subset, selected and grouped `WEEK()` /
+`YEAR()` / `MONTH()` / `DAYOFMONTH()` expressions lower through MyLite's
+temporal extraction SQL function with bound discriminator parameters:
 
 ```sql
 SELECT _mylite_temporal_extract("post_date", ?, ?, ?), COUNT("ID")
@@ -275,8 +298,9 @@ Required diagnostics include:
   MySQL-compatible column diagnostics for the matching clause;
 - unsupported group-key descriptor type:
   `GROUP BY supports only integer and nonbinary string descriptor group columns`;
-- selected `YEAR()` / `MONTH()` expression that is not also a grouped key:
-  `GROUP BY supports selected YEAR() and MONTH() expressions only when grouped`;
+- selected `WEEK()` / `YEAR()` / `MONTH()` / `DAYOFMONTH()` expression that is
+  not also a grouped key:
+  `GROUP BY supports selected WEEK(), YEAR(), MONTH(), and DAYOFMONTH() expressions only when grouped`;
 - unsupported `HAVING` operand shape, unsupported grouped string comparison,
   unselected aggregate predicate, bitwise aggregate predicate, or
   `GROUP_CONCAT()` predicate: existing grouped `HAVING` diagnostics;

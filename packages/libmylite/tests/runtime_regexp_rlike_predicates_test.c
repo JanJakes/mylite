@@ -306,6 +306,9 @@ static int test_regexp_pattern_operators(void) {
     static const char *const backtracking_ids[] = {"5", "6"};
     static const char *const dot_ids[] = {"8"};
     static const char *const fixed_repeat_optional_group_ids[] = {"9", "10"};
+    static const char *const role_alternation_ids[] = {"13", "14"};
+    static const char *const not_role_alternation_ids[] = {"15", "16"};
+    static const char *const escaped_alternation_ids[] = {"16"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -320,7 +323,11 @@ static int test_regexp_pattern_operators(void) {
         "(9, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), "
         "(10, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_ts'), "
         "(11, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_t'), "
-        "(12, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tsx')",
+        "(12, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tsx'), "
+        "(13, 'a:1:{s:13:\"administrator\";b:1;}'), "
+        "(14, 'a:1:{s:10:\"subscriber\";b:1;}'), "
+        "(15, 'a:1:{s:8:\"customer\";b:1;}'), "
+        "(16, 'role|literal')",
         NULL
     );
     failures += expect_query_values(
@@ -394,6 +401,40 @@ static int test_regexp_pattern_operators(void) {
             .context = "REGEXP fixed repeat with optional literal group",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v REGEXP "
+                   "'administrator|editor|author|contributor|subscriber|uploader' "
+                   "ORDER BY id",
+            .values = role_alternation_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "REGEXP top-level alternation matches WordPress role names",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE id >= 13 AND v NOT REGEXP "
+                   "'administrator|editor|author|contributor|subscriber|uploader' "
+                   "ORDER BY id",
+            .values = not_role_alternation_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "NOT REGEXP top-level alternation excludes role names",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v REGEXP 'role\\\\|literal' ORDER BY id",
+            .values = escaped_alternation_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "REGEXP escaped alternation operator matches literal pipe",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -463,7 +504,7 @@ static int test_regexp_predicate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP 'a|b'",
+        "SELECT id FROM strings WHERE v REGEXP '(a|b)'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

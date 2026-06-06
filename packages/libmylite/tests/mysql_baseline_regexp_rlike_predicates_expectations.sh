@@ -173,7 +173,11 @@ run_mysql \
 "(9, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), "\
 "(10, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_ts'), "\
 "(11, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_t'), "\
-"(12, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tsx');" \
+"(12, 'rss_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tsx'), "\
+"(13, 'a:1:{s:13:\"administrator\";b:1;}'), "\
+"(14, 'a:1:{s:10:\"subscriber\";b:1;}'), "\
+"(15, 'a:1:{s:8:\"customer\";b:1;}'), "\
+"(16, 'role|literal');" \
     "$DATABASE" >/dev/null
 
 expect_output \
@@ -204,6 +208,24 @@ expect_output \
     "regex fixed repeat and optional literal group" \
     "9,10" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^rss_[0-9a-f]{32}(_ts)?$';" \
+    "$DATABASE"
+
+expect_output \
+    "regex top-level alternation role names" \
+    "13,14" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP 'administrator|editor|author|contributor|subscriber|uploader';" \
+    "$DATABASE"
+
+expect_output \
+    "not regex top-level alternation role names" \
+    "15,16" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE id >= 13 AND v NOT REGEXP 'administrator|editor|author|contributor|subscriber|uploader';" \
+    "$DATABASE"
+
+expect_output \
+    "regex escaped alternation literal pipe" \
+    "16" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP 'role\\\\|literal';" \
     "$DATABASE"
 
 expect_error \

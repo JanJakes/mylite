@@ -65,8 +65,9 @@ MySQL 8.4.9 behavior used for this slice:
   verified subset; a `CHAR(8)` value inserted as `abc  ` matches `^abc$`.
 - The verified baseline pattern atoms include ordinary ASCII literals, `.`,
   `^`, `$`, bracket classes/ranges, negated bracket classes, the `*`, `+`, and
-  `?` quantifiers, fixed `{n}` repetition, and one-level optional literal
-  groups such as `(_ts)?`.
+  `?` quantifiers, fixed `{n}` repetition, one-level optional literal groups
+  such as `(_ts)?`, and top-level alternation such as
+  `administrator|editor|author`.
 - Without match-control flags, `.` does not match line terminators.
 - SQL string-literal decoding happens before regular-expression matching. To
   pass a literal regex backslash in default SQL mode, the SQL text must contain
@@ -177,7 +178,7 @@ Supported regex pattern syntax after SQL string decoding:
 
 - ordinary printable ASCII literal bytes except regex metacharacters;
 - escaped ASCII regex metacharacters `\.`, `\^`, `\$`, `\*`, `\+`, `\?`,
-  `\[`, `\]`, and `\\`;
+  `\[`, `\]`, `\|`, and `\\`;
 - `.` matching one non-line-terminator byte;
 - `^` as the first pattern item;
 - `$` as the last pattern item;
@@ -187,11 +188,13 @@ Supported regex pattern syntax after SQL string decoding:
 - fixed repetition `{n}` after one literal, `.`, or bracket class atom;
 - one-level optional literal groups such as `(_ts)?`, where the group contents
   are ordinary literal ASCII bytes or escaped literal metacharacters.
+- top-level alternation using `|`, where each nonempty branch is independently
+  limited to this baseline pattern subset.
 
 Unsupported in this slice:
 
-- grouping outside one-level optional literal groups, nested groups, and
-  alternation;
+- grouping outside one-level optional literal groups, nested groups, grouped
+  alternation, and empty alternation branches;
 - variable counted repetition such as `{m,n}`;
 - lookaround, inline mode controls, backreferences, word-boundary escapes,
   shorthand classes, named classes, equivalence classes, and collating symbols;
@@ -202,7 +205,9 @@ Unsupported in this slice:
 
 This scope is intentionally compatible with the WordPress-style anchored
 prefix/suffix patterns currently targeted, including
-`^rss_[0-9a-f]{32}(_ts)?$`, but it is not MySQL's full ICU regex syntax.
+`^rss_[0-9a-f]{32}(_ts)?$` and role-name alternation such as
+`administrator|editor|author|contributor|subscriber|uploader`, but it is not
+MySQL's full ICU regex syntax.
 
 ## Semantics
 
@@ -242,6 +247,10 @@ Supported comparison semantics:
 - Fixed `{n}` repetition repeats exactly `n` occurrences of the preceding atom.
 - One-level optional literal groups match either the full literal sequence or
   no bytes; individual bytes inside the group are not independently optional.
+- Top-level alternation evaluates each branch as an independent baseline
+  program. Boolean predicates match when any branch matches. Match-producing
+  scalar helpers choose the earliest matching byte position and preserve branch
+  order for equal start positions in the current limited subset.
 - MySQL returns `NULL` when either regex operand is `NULL`, but this MyLite
   slice admits only string-literal pattern operands; `NULL` column values return
   `NULL` after the admitted non-`NULL` pattern has been validated.

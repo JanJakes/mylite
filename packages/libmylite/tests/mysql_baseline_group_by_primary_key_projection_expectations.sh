@@ -129,6 +129,9 @@ core=$(run_mysql \
      SELECT a, b, v FROM cpk GROUP BY b, a ORDER BY v;
      SELECT title FROM posts GROUP BY id ORDER BY title;
      SELECT id, COUNT(*) AS c FROM posts GROUP BY id ORDER BY title;
+     SELECT p.id
+       FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
+       GROUP BY p.id ORDER BY p.title LIKE '%Beta%' DESC, p.created DESC;
      SELECT @@warning_count, ROW_COUNT();"
 )
 expect_value "single explicit first" "3	Gamma	2024-01-03 00:00:00	publish" \
@@ -167,7 +170,10 @@ expect_value "unselected group key order third" "Gamma" "$(printf '%s\n' "$core"
 expect_value "unselected fd order first" "1	1" "$(printf '%s\n' "$core" | sed -n '26p')"
 expect_value "unselected fd order second" "2	1" "$(printf '%s\n' "$core" | sed -n '27p')"
 expect_value "unselected fd order third" "3	1" "$(printf '%s\n' "$core" | sed -n '28p')"
-expect_value "status" "0	-1" "$(printf '%s\n' "$core" | sed -n '29p')"
+expect_value "primary-key-dependent LIKE order first" "2" "$(printf '%s\n' "$core" | sed -n '29p')"
+expect_value "primary-key-dependent LIKE order second" "3" "$(printf '%s\n' "$core" | sed -n '30p')"
+expect_value "primary-key-dependent LIKE order third" "1" "$(printf '%s\n' "$core" | sed -n '31p')"
+expect_value "status" "0	-1" "$(printf '%s\n' "$core" | sed -n '32p')"
 
 chained_left=$(run_mysql \
     "USE ${DATABASE};
@@ -243,6 +249,16 @@ expect_error \
      SELECT p.id, COUNT(c.id) AS c
        FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
        GROUP BY p.id ORDER BY c.body;"
+expect_error \
+    "nondependent LIKE order by" \
+    1055 \
+    "42000" \
+    "Expression #1 of ORDER BY clause is not in GROUP BY clause" \
+    "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';
+     USE ${DATABASE};
+     SELECT p.id, COUNT(c.id) AS c
+       FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id
+       GROUP BY p.id ORDER BY c.body LIKE '%c%' DESC;"
 
 cleanup
 

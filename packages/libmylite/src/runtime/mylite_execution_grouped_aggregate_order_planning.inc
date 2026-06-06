@@ -141,12 +141,17 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
     }
     if (!uses_aggregate && planned_item.kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR &&
         session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY)) {
-        set_unsupported_error(
+        rc = validate_grouped_order_row_scalar_expression(
             database,
-            "GROUP BY supports scalar ORDER BY expressions only with ONLY_FULL_GROUP_BY disabled"
+            out_plan,
+            table_columns,
+            table_column_count,
+            planned_item.expression
         );
-        planned_select_order_item_deinit(&planned_item);
-        return MYLITE_ERROR;
+        if (rc != MYLITE_OK) {
+            planned_select_order_item_deinit(&planned_item);
+            return rc;
+        }
     }
 
     rc = append_planned_grouped_order_item(out_plan, planned_item, uses_aggregate, aggregate_index);
@@ -154,6 +159,102 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
         planned_select_order_item_deinit(&planned_item);
     }
     return rc;
+}
+
+static int validate_grouped_order_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "GROUP BY supports scalar ORDER BY LIKE predicates only over grouped, "
+            "primary-key-dependent, or literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return validate_grouped_order_row_scalar_column(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            expression
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+        if (expression->argument_count != 2U || expression->arguments == NULL) {
+            set_unsupported_error(
+                database,
+                "GROUP BY supports scalar ORDER BY LIKE predicates only over grouped, "
+                "primary-key-dependent, or literal operands"
+            );
+            return MYLITE_ERROR;
+        }
+        for (size_t argument_index = 0U; argument_index < expression->argument_count;
+             ++argument_index) {
+            int rc = validate_grouped_order_row_scalar_expression(
+                database,
+                plan,
+                table_columns,
+                table_column_count,
+                &expression->arguments[argument_index]
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        }
+        return MYLITE_OK;
+    default:
+        set_unsupported_error(
+            database,
+            "GROUP BY supports scalar ORDER BY LIKE predicates only over grouped, "
+            "primary-key-dependent, or literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+}
+
+static int validate_grouped_order_row_scalar_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+) {
+    int dependency_rc = MYLITE_OK;
+    size_t source_index = expression->column_has_source_index ? expression->column_source_index : 0U;
+
+    if (grouped_projection_column_is_allowed(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            &expression->column,
+            source_index,
+            &dependency_rc
+        )) {
+        return MYLITE_OK;
+    }
+    if (dependency_rc != MYLITE_OK) {
+        return dependency_rc;
+    }
+
+    set_only_full_group_by_error(
+        database,
+        1U,
+        "ORDER BY clause",
+        planned_grouped_aggregate_source_resolution(plan, source_index),
+        &expression->column
+    );
+    return MYLITE_ERROR;
 }
 
 static int resolve_grouped_order_key(
@@ -267,7 +368,8 @@ static int resolve_grouped_order_key(
     }
 
     if (row_scalar_conversion_kind_from_expression(order_key) !=
-        PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+            PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+        select_order_key_is_like_predicate(order_key)) {
         rc = plan_select_order_row_scalar_expression(
             database,
             order_key,

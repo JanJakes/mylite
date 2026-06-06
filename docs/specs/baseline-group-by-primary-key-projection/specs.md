@@ -63,9 +63,13 @@ With default `ONLY_FULL_GROUP_BY` enabled:
   expands any visible column from a source that is not functionally determined.
 - `ORDER BY` may refer to a nonselected descriptor column that is functionally
   dependent on the grouping columns.
+- `ORDER BY p.title LIKE '%Beta%' DESC` is accepted when `p.title` is
+  functionally dependent on the grouped primary key, and secondary descriptor
+  sort keys are applied after the LIKE result.
 - A nondependent selected column fails with `1055 / 42000` and a SELECT-list
-  diagnostic. A nondependent `ORDER BY` column fails with `1055 / 42000` and an
-  ORDER BY diagnostic.
+  diagnostic. A nondependent `ORDER BY` column, including one inside the
+  admitted LIKE predicate subset, fails with `1055 / 42000` and an ORDER BY
+  diagnostic.
 - Successful in-range queries produce `warning_count = 0`.
 
 ## Supported SQL Surface
@@ -112,6 +116,9 @@ Where:
   - one selected nonaggregate descriptor projection or its unique alias;
   - one nonselected descriptor column that is either grouped or functionally
     dependent on the grouped primary key;
+  - a row-scalar LIKE predicate whose operands are literals and descriptor
+    columns that are grouped or functionally dependent on the grouped primary
+    key;
   - one existing selected aggregate alias supported by the grouped aggregate
     baseline.
 
@@ -125,9 +132,9 @@ Where:
 - `ANY_VALUE()`, grouping expressions, grouping aliases, grouping ordinals,
   `ROLLUP`, grouping sets, window functions, or deterministic selection of
   nondeterministic nondependent projection values.
-- Arbitrary expression projections, expression `ORDER BY`, ordinal `ORDER BY`,
-  multiple sort keys, full `HAVING` expressions, or unbounded aggregate
-  function coverage.
+- Arbitrary expression projections, expression `ORDER BY` outside the admitted
+  row-scalar LIKE predicate subset, ordinal `ORDER BY`, full `HAVING`
+  expressions, or unbounded aggregate function coverage.
 - Metadata or catalog mutation. This feature reads descriptors only.
 
 ## Ownership And Architecture
@@ -177,6 +184,12 @@ group_key_list ::= group_key_list COMMA qualified_identifier.
 order_by_opt ::= .
 order_by_opt ::= ORDER BY qualified_identifier order_direction_opt.
 order_by_opt ::= ORDER BY identifier order_direction_opt.
+order_by_opt ::= ORDER BY qualified_identifier LIKE string_literal order_direction_opt.
+order_by_opt ::= ORDER BY order_key_list.
+order_key_list ::= order_key.
+order_key_list ::= order_key_list COMMA order_key.
+order_key ::= qualified_identifier order_direction_opt.
+order_key ::= qualified_identifier LIKE string_literal order_direction_opt.
 ```
 
 These productions describe the MyLite subset. They are not copied from MySQL
@@ -220,10 +233,15 @@ grammar.
   unambiguous among selected nonaggregate projections.
 - `ORDER BY nonselected_dependent_column` is accepted when descriptor resolution
   identifies exactly one grouped or primary-key-determined source column.
+- `ORDER BY dependent_column LIKE string_literal [ASC|DESC]` is accepted for
+  the existing row-scalar LIKE expression planner when every descriptor operand
+  is grouped or primary-key-dependent for its own source. The LIKE result sorts
+  as MySQL's integer truth value, and additional supported sort keys are applied
+  left to right.
 - `ORDER BY nondependent_column` returns the MySQL-compatible `1055 / 42000`
   ORDER BY diagnostic for this slice.
 - Ties remain unspecified unless the user supplies additional supported sort
-  keys in a future phase. This slice does not add tie-breakers.
+  keys.
 
 ## Generated SQLite Shape
 
@@ -275,8 +293,9 @@ options, and limits continue to bind values through prepared statements.
   clause.
 - Nondependent selected descriptor column or wildcard-expanded column:
   `1055 / 42000` with `Expression #N of SELECT list ...`.
-- Nondependent `ORDER BY` descriptor column: `1055 / 42000` with
-  `Expression #N of ORDER BY clause ...`.
+- Nondependent `ORDER BY` descriptor column, including descriptor operands
+  inside an admitted LIKE order predicate: `1055 / 42000` with `Expression #N of
+  ORDER BY clause ...`.
 - Duplicate selected projection aliases in `ORDER BY`: deterministic MyLite
   unsupported diagnostic for nonunique selected projection aliases.
 - Allocation failures: existing out-of-memory diagnostics.

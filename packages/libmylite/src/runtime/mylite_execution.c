@@ -12204,6 +12204,20 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
+static int validate_grouped_order_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+);
+static int validate_grouped_order_row_scalar_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+);
 static int append_planned_grouped_order_item(
     struct planned_grouped_aggregate *plan,
     struct planned_select_order_item item,

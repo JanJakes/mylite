@@ -122,6 +122,8 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
     static const char *const aliased_pk_values[] = {"1", "Alpha", "2", "Beta", "3", "Gamma"};
     static const char *const order_columns[] = {"id", "c"};
     static const char *const order_values[] = {"1", "1", "2", "1", "3", "1"};
+    static const char *const like_order_columns[] = {"id"};
+    static const char *const like_order_values[] = {"2", "3", "1"};
     static const char *const relaxed_columns[] = {
         "post_id",
         "id",
@@ -268,6 +270,19 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
             .context = "unselected primary key dependent order column",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id "
+                   "FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id "
+                   "GROUP BY p.id ORDER BY p.title LIKE '%Beta%' DESC, p.created DESC",
+            .columns = like_order_columns,
+            .column_count = 1U,
+            .values = like_order_values,
+            .row_count = 3U,
+            .context = "primary key dependent grouped LIKE order expression",
+        }
+    );
     failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
     failures += expect_query(
         database,
@@ -374,6 +389,17 @@ static int test_group_by_primary_key_projection_diagnostics(void) {
         "SELECT p.id, COUNT(c.id) AS c "
         "FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id "
         "GROUP BY p.id ORDER BY c.body",
+        (struct expected_sql_error){
+            .code = mysql_error_not_group_by,
+            .sqlstate = "42000",
+            .message_part = "Expression #1 of ORDER BY clause is not in GROUP BY clause",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT p.id, COUNT(c.id) AS c "
+        "FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id "
+        "GROUP BY p.id ORDER BY c.body LIKE '%c%' DESC",
         (struct expected_sql_error){
             .code = mysql_error_not_group_by,
             .sqlstate = "42000",

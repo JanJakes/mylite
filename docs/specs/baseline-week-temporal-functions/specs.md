@@ -168,9 +168,10 @@ This slice intentionally does not support:
   truncation, ISO-like temporal strings, locale or time-zone coercion, or
   broader SQL-mode-sensitive temporal parsing;
 - `TIME` descriptor arguments;
-- use in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults,
-  generated columns, indexes, constraints, joins, CTEs, or arbitrary SQLite
-  pass-through;
+- use in `WHERE` beyond direct numeric extractor predicates and the narrow
+  `numeric_temporal_extract +/- integer_literal` comparison form, `ORDER BY`,
+  `GROUP BY`, `HAVING`, DML assignments, defaults, generated columns, indexes,
+  constraints, joins, CTEs, or arbitrary SQLite pass-through;
 - `DATE_FORMAT()` week format specifiers such as `%U`, `%u`, `%V`, `%v`, `%X`,
   and `%x`;
 - broader temporal functions such as `TO_DAYS()` or `TO_SECONDS()`, and
@@ -224,6 +225,15 @@ week_temporal_expr(A) ::= week_mode_name(T) LPAREN supported_date_value(V) COMMA
 week_temporal_name ::= WEEK | WEEKDAY | WEEKOFYEAR | YEARWEEK.
 week_mode_name ::= WEEK | YEARWEEK.
 
+numeric_temporal_extract_predicate(A) ::=
+    week_temporal_expr(B) comparison_operator predicate_integer_value(C).
+numeric_temporal_extract_predicate(A) ::=
+    week_temporal_expr(B) PLUS predicate_integer_value(C)
+    comparison_operator predicate_integer_value(D).
+numeric_temporal_extract_predicate(A) ::=
+    week_temporal_expr(B) MINUS predicate_integer_value(C)
+    comparison_operator predicate_integer_value(D).
+
 supported_date_value ::= NULL.
 supported_date_value ::= string_literal.
 supported_date_value ::= descriptor_date_column.
@@ -243,8 +253,9 @@ These snippets describe MyLite's supported subset, not MySQL's full grammar.
 
 Planning:
 
-1. Detect no-source/`DUAL` scalar expressions and row-scalar projection
-   attempts containing the admitted functions.
+1. Detect no-source/`DUAL` scalar expressions, row-scalar projection attempts,
+   and supported single-source numeric extractor predicates containing the
+   admitted functions.
 2. Resolve row sources through the existing selected/default schema policy.
 3. Resolve descriptor column arguments through MyLite catalog descriptors, not
    SQLite schema text.

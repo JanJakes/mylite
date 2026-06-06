@@ -1075,6 +1075,15 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
         return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+        rc = mylite_dynamic_string_append(string, "CAST(");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_temporal_extract_expression_sql(string, expression, next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " AS INTEGER)");
+        }
+        return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -1100,7 +1109,6 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:

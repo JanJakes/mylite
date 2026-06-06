@@ -193,6 +193,12 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+        return bind_row_scalar_temporal_extract_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -218,7 +224,6 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:

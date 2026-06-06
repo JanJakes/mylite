@@ -317,6 +317,17 @@ expect_output \
 "FROM t ORDER BY id; SHOW WARNINGS; SELECT @@warning_count;" \
     "$DATABASE"
 
+weekday_arithmetic_expected=$(cat <<EXPECTED
+1
+0
+EXPECTED
+)
+expect_output \
+    "week temporal weekday arithmetic predicate" \
+    "$weekday_arithmetic_expected" \
+    "SELECT id FROM t WHERE WEEKDAY(dt) + 1 = 3 ORDER BY id; SELECT @@warning_count;" \
+    "$DATABASE"
+
 do_expected=$(cat <<EXPECTED
 0	0
 EXPECTED

@@ -698,6 +698,17 @@ static int test_temporal_extract_predicates(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM t WHERE WEEKDAY(d) + 1 = 3 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_weekday,
+            .row_count = 1U,
+            .context = "temporal extract WEEKDAY arithmetic predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM t WHERE WEEKOFYEAR(d) = 1 ORDER BY id",
             .columns = columns_id,
             .column_count = sizeof(columns_id) / sizeof(columns_id[0]),

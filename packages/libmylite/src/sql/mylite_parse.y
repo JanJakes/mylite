@@ -4093,6 +4093,11 @@ predicate_atom(A) ::= temporal_extract_predicate_expression(C) predicate_compari
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
+predicate_atom(A) ::= temporal_extract_arithmetic_predicate_expression(C)
+        predicate_comparison_operator(O) predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
 predicate_atom(A) ::= temporal_extract_predicate_expression(C) BETWEEN(B)
         predicate_range_value(L) AND predicate_range_value(U). {
     A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
@@ -6364,6 +6369,16 @@ temporal_extract_predicate_expression(A) ::= SECOND(T) LPAREN expression(B) RPAR
 temporal_extract_predicate_expression(A) ::= MICROSECOND(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_MICROSECOND_FUNCTION, B, R);
+}
+temporal_extract_arithmetic_predicate_expression(A) ::=
+    temporal_extract_predicate_expression(B) PLUS(T) predicate_integer_value(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+temporal_extract_arithmetic_predicate_expression(A) ::=
+    temporal_extract_predicate_expression(B) MINUS(T) predicate_integer_value(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
 }
 expression(A) ::=
     SUBSTRING_INDEX(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {

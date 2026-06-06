@@ -1441,11 +1441,47 @@ static int plan_row_scalar_integer_arithmetic_frame(
             frame->out_expression
         );
     }
+    if (predicate_node_is_temporal_extract_expression(current)) {
+        enum mylite_temporal_extract_kind extract_kind = MYLITE_TEMPORAL_EXTRACT_DATE;
+        const struct mylite_sql_ast_node *argument = NULL;
+        int mode = 0;
+        int rc = mylite_execution_resolve_temporal_extract_call(
+            database,
+            current,
+            &extract_kind,
+            &argument,
+            &mode
+        );
+
+        (void)argument;
+        (void)mode;
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!temporal_extract_predicate_kind_is_numeric(extract_kind)) {
+            set_unsupported_error(
+                database,
+                "table-backed signed integer arithmetic projection supports only numeric "
+                "temporal extractor functions"
+            );
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_temporal_extract_expression(
+            database,
+            current,
+            true,
+            source_context,
+            table_columns,
+            table_column_count,
+            frame->out_expression
+        );
+    }
 
     set_unsupported_error(
         database,
         "table-backed signed integer arithmetic projection supports only descriptor columns, "
-        "integer literals, booleans, NULL, parentheses, and +, binary -, and * operators"
+        "integer literals, booleans, NULL, numeric temporal extractor functions, parentheses, "
+        "and +, binary -, and * operators"
     );
     return MYLITE_ERROR;
 }

@@ -208,7 +208,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
@@ -352,7 +352,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
@@ -454,7 +454,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
@@ -563,14 +563,20 @@ static int append_row_scalar_char_expression_sql(
     return rc;
 }
 
-static int append_row_scalar_date_format_numeric_equal_sql(
+static int append_row_scalar_date_format_numeric_comparison_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 ) {
+    const char *operator_sql = NULL;
     int rc = MYLITE_OK;
 
     if (expression == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    operator_sql = comparison_operator_sql(expression->operator_kind);
+    if (operator_sql == NULL || operator_sql[0] == '\0' ||
+        expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
         return MYLITE_ERROR;
     }
     rc = append_row_scalar_date_format_numeric_operand_sql(
@@ -579,7 +585,13 @@ static int append_row_scalar_date_format_numeric_equal_sql(
         next_parameter
     );
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " = ");
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, operator_sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
     }
     if (rc == MYLITE_OK) {
         rc = append_row_scalar_date_format_numeric_operand_sql(

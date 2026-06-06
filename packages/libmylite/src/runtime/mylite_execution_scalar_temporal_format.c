@@ -170,6 +170,17 @@ static int date_format_numeric_literal_value(
     double *out_value
 );
 static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_node *expression);
+static bool date_format_numeric_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
+static enum mylite_sql_ast_operator date_format_numeric_comparison_invert_operator(
+    enum mylite_sql_ast_operator operator_kind
+);
+static bool date_format_numeric_comparison_truth(
+    double left,
+    double right,
+    enum mylite_sql_ast_operator operator_kind
+);
 static int date_interval_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1209,13 +1220,14 @@ static int str_to_date_string_or_null_argument(
     return rc;
 }
 
-int mylite_execution_scalar_date_format_numeric_equal_value(
+int mylite_execution_scalar_date_format_numeric_comparison_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
     const struct mylite_sql_ast_node *date_format = NULL;
     const struct mylite_sql_ast_node *numeric = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
     char *value = NULL;
     char *format = NULL;
     char *formatted = NULL;
@@ -1234,11 +1246,16 @@ int mylite_execution_scalar_date_format_numeric_equal_value(
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
-    if (!mylite_execution_date_format_numeric_equal_sides(expression, &date_format, &numeric)) {
+    if (!mylite_execution_date_format_numeric_comparison_sides(
+            expression,
+            &date_format,
+            &numeric,
+            &operator_kind
+        )) {
         mylite_execution_set_unsupported_error(
             database,
-            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) = "
-            "numeric_literal"
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) "
+            "[=, <>, <, <=, >, >=] numeric_literal"
         );
         return MYLITE_ERROR;
     }
@@ -1254,11 +1271,14 @@ int mylite_execution_scalar_date_format_numeric_equal_value(
         &format_is_null
     );
     if (rc == MYLITE_OK && !format_is_null &&
-        !mylite_execution_date_format_numeric_equal_format_is_supported(format, format_length)) {
+        !mylite_execution_date_format_numeric_comparison_format_is_supported(
+            format,
+            format_length
+        )) {
         mylite_execution_set_unsupported_error(
             database,
-            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') = "
-            "numeric_literal"
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') "
+            "[=, <>, <, <=, >, >=] numeric_literal"
         );
         rc = MYLITE_ERROR;
     }
@@ -1307,7 +1327,7 @@ int mylite_execution_scalar_date_format_numeric_equal_value(
         out_cell->integer_text,
         sizeof(out_cell->integer_text),
         "%d",
-        left == right ? 1 : 0
+        date_format_numeric_comparison_truth(left, right, operator_kind) ? 1 : 0
     );
     if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
         mylite_execution_set_runtime_error(
@@ -1326,27 +1346,38 @@ int mylite_execution_scalar_date_format_numeric_equal_value(
     return MYLITE_OK;
 }
 
-bool mylite_execution_scalar_is_date_format_numeric_equal_expression(
+bool mylite_execution_scalar_is_date_format_numeric_comparison_expression(
     const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_ast_node *date_format = NULL;
     const struct mylite_sql_ast_node *numeric = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
-    return mylite_execution_date_format_numeric_equal_sides(expression, &date_format, &numeric);
+    return mylite_execution_date_format_numeric_comparison_sides(
+        expression,
+        &date_format,
+        &numeric,
+        &operator_kind
+    );
 }
 
-bool mylite_execution_date_format_numeric_equal_sides(
+bool mylite_execution_date_format_numeric_comparison_sides(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_date_format,
-    const struct mylite_sql_ast_node **out_numeric
+    const struct mylite_sql_ast_node **out_numeric,
+    enum mylite_sql_ast_operator *out_operator_kind
 ) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
-    if (out_date_format == NULL || out_numeric == NULL || expression == NULL ||
-        expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
-        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
+    if (out_date_format == NULL || out_numeric == NULL || out_operator_kind == NULL ||
+        expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (!date_format_numeric_comparison_operator_is_supported(operator_kind)) {
         return false;
     }
     left =
@@ -1357,12 +1388,14 @@ bool mylite_execution_date_format_numeric_equal_sides(
         date_format_numeric_literal_expression(right)) {
         *out_date_format = left;
         *out_numeric = right;
+        *out_operator_kind = operator_kind;
         return true;
     }
     if (right != NULL && right->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION &&
         date_format_numeric_literal_expression(left)) {
         *out_date_format = right;
         *out_numeric = left;
+        *out_operator_kind = date_format_numeric_comparison_invert_operator(operator_kind);
         return true;
     }
     return false;
@@ -1388,6 +1421,65 @@ static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_n
     }
     return (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER ||
             mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_DECIMAL) != 0;
+}
+
+static bool date_format_numeric_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static enum mylite_sql_ast_operator date_format_numeric_comparison_invert_operator(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return MYLITE_SQL_AST_OPERATOR_GREATER;
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL;
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return MYLITE_SQL_AST_OPERATOR_LESS;
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return MYLITE_SQL_AST_OPERATOR_LESS_EQUAL;
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return operator_kind;
+    default:
+        return MYLITE_SQL_AST_OPERATOR_NONE;
+    }
+}
+
+static bool date_format_numeric_comparison_truth(
+    double left,
+    double right,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return left == right;
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return left != right;
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return left < right;
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return left <= right;
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return left > right;
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return left >= right;
+    default:
+        return false;
+    }
 }
 
 static int date_format_numeric_literal_value(
@@ -1461,7 +1553,7 @@ static int date_format_numeric_literal_value(
     return rc;
 }
 
-bool mylite_execution_date_format_numeric_equal_format_is_supported(
+bool mylite_execution_date_format_numeric_comparison_format_is_supported(
     const char *format,
     size_t format_length
 ) {

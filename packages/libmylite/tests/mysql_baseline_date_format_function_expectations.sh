@@ -103,7 +103,7 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
 
 core_expected=$(cat <<EXPECTED
-2008|08|01|1|02|2|13|13|01|01|1|29|17|17|13:29:17|01:29:17 PM|PM|000000|%|q|%	2008-01-02 00:00:00	NULL	NULL	1	1	0	NULL	0
+2008|08|01|1|02|2|13|13|01|01|1|29|17|17|13:29:17|01:29:17 PM|PM|000000|%|q|%	2008-01-02 00:00:00	NULL	NULL	1	1	0	NULL	1	0
 -1	0
 EXPECTED
 )
@@ -117,7 +117,8 @@ expect_output \
 "DATE_FORMAT('2008-01-02 13:29:17','%H.%i') = 13.29, "\
 "DATE_FORMAT('2008-01-02 00:42:00','%H.%i') = 0.42, "\
 "DATE_FORMAT('2008-01-02 13:29:17','%H.%i') = 0.42, "\
-"DATE_FORMAT(NULL,'%H.%i') = 0.42, @@warning_count; "\
+"DATE_FORMAT(NULL,'%H.%i') = 0.42, "\
+"DATE_FORMAT('2008-01-02 13:29:17','%H.%i') >= 12, @@warning_count; "\
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 

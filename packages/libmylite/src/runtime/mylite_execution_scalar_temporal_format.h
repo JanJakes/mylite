@@ -42,20 +42,21 @@ int mylite_execution_scalar_str_to_date_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
-int mylite_execution_scalar_date_format_numeric_equal_value(
+int mylite_execution_scalar_date_format_numeric_comparison_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
-bool mylite_execution_scalar_is_date_format_numeric_equal_expression(
+bool mylite_execution_scalar_is_date_format_numeric_comparison_expression(
     const struct mylite_sql_ast_node *expression
 );
-bool mylite_execution_date_format_numeric_equal_sides(
+bool mylite_execution_date_format_numeric_comparison_sides(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_date_format,
-    const struct mylite_sql_ast_node **out_numeric
+    const struct mylite_sql_ast_node **out_numeric,
+    enum mylite_sql_ast_operator *out_operator_kind
 );
-bool mylite_execution_date_format_numeric_equal_format_is_supported(
+bool mylite_execution_date_format_numeric_comparison_format_is_supported(
     const char *format,
     size_t format_length
 );

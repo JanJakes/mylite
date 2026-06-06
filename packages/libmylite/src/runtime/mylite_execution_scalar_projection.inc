@@ -229,7 +229,7 @@ static bool is_json_scalar_function_projection_expression(
             is_json_quote_projection_expression(expression) ||
             is_json_set_projection_expression(expression) ||
             is_json_construction_projection_expression(expression) ||
-            mylite_execution_scalar_is_date_format_numeric_equal_expression(expression)) != 0;
+            mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) != 0;
 }
 
 static bool is_scalar_conversion_projection_expression(

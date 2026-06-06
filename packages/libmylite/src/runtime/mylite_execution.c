@@ -2380,7 +2380,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_CONCAT = 3,
     PLANNED_ROW_SCALAR_EXPRESSION_FIELD = 4,
     PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT = 5,
-    PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL = 6,
+    PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON = 6,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH = 7,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE = 8,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE = 9,
@@ -2559,6 +2559,7 @@ struct planned_row_scalar_expression {
     enum planned_row_scalar_conversion_kind conversion_kind;
     enum planned_window_function_kind window_function_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
+    enum mylite_sql_ast_operator operator_kind;
     enum mylite_sql_ast_operator arithmetic_operator;
     struct planned_value value;
     enum mylite_json_sql_value_kind json_value_kind;
@@ -22740,7 +22741,7 @@ static int plan_row_scalar_str_to_date_format_argument(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static int plan_row_scalar_date_format_numeric_equal_expression(
+static int plan_row_scalar_date_format_numeric_comparison_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -23166,13 +23167,13 @@ static enum planned_row_scalar_expression_kind temporal_constructor_planned_kind
     enum mylite_sql_ast_node_kind ast_kind
 );
 static bool is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind);
-static bool row_scalar_date_format_equal_attempt(const struct mylite_sql_ast_node *expression);
+static bool row_scalar_date_format_comparison_attempt(const struct mylite_sql_ast_node *expression);
 static int plan_row_scalar_date_format_numeric_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static bool planned_date_format_numeric_equal_format_is_supported(
+static bool planned_date_format_numeric_comparison_format_is_supported(
     const struct planned_row_scalar_expression *expression
 );
 static int plan_row_scalar_field_argument(
@@ -24635,7 +24636,7 @@ static int append_row_scalar_date_format_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
-static int append_row_scalar_date_format_numeric_equal_sql(
+static int append_row_scalar_date_format_numeric_comparison_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter

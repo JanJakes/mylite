@@ -5,7 +5,7 @@
 Add the narrow `DATE_FORMAT()` slice needed by common application SQL such as:
 
 ```sql
-SELECT DATE_FORMAT(option_value, '%H.%i') = 0.42
+SELECT DATE_FORMAT(option_value, '%H.%i') >= 12
 FROM options;
 ```
 
@@ -58,9 +58,9 @@ Runtime probes establish the behavior used by this baseline:
 - Table-backed `DATE_FORMAT(column, literal_format)` evaluates once per row and
   preserves the existing single-table row envelope for `WHERE`, `ORDER BY`, and
   `LIMIT`.
-- `DATE_FORMAT(value, '%H.%i') = 0.42` returns `1`, `0`, or `NULL` as a numeric
-  comparison. Invalid temporal values still return `NULL` and append the
-  temporal warning.
+- `DATE_FORMAT(value, '%H.%i')` returns `1`, `0`, or `NULL` as a numeric
+  comparison for `=`, `<>`, `<`, `<=`, `>`, and `>=`. Invalid temporal values
+  still return `NULL` and append the temporal warning.
 - Successful supported statements produce no warnings except for invalid
   temporal inputs. Successful `SELECT` makes a following `ROW_COUNT()` return
   `-1`; successful `DO` makes it return `0`.
@@ -92,16 +92,18 @@ MyLite supports:
   - `%a`, `%W`, `%b`, `%M`, `%D`, `%j`, `%w`;
   - `%%`, a trailing `%`, and unknown non-format percent sequences such as
     `%q` as MySQL-style literal output;
-- top-level row-scalar numeric equality of the exact form
-  `DATE_FORMAT(value, '%H.%i') = numeric_literal` or
-  `numeric_literal = DATE_FORMAT(value, '%H.%i')`, where `numeric_literal` is a
-  decimal integer or fixed decimal literal with optional unary sign;
+- top-level row-scalar numeric comparison of the exact form
+  `DATE_FORMAT(value, '%H.%i') comparison_operator numeric_literal` or
+  `numeric_literal comparison_operator DATE_FORMAT(value, '%H.%i')`, where
+  `comparison_operator` is `=`, `<>`, `!=`, `<`, `<=`, `>`, or `>=`, and
+  `numeric_literal` is a decimal integer or fixed decimal literal with optional
+  unary sign;
 - output text/`NULL` values through existing result APIs;
 - warning count `0` for supported valid in-range forms.
 
-The admitted row-scalar numeric equality is deliberately narrow. It exists for
-the common `DATE_FORMAT(..., '%H.%i') = 0.42` pattern and does not establish
-general table-backed expression comparison.
+The admitted row-scalar numeric comparison is deliberately narrow. It exists
+for common `DATE_FORMAT(..., '%H.%i')` comparison patterns and does not
+establish general table-backed expression comparison.
 
 ## Deferred Surface
 
@@ -119,8 +121,8 @@ This slice intentionally does not support:
 - format columns, format expressions, variables, parameters, subqueries,
   `GET_FORMAT()`, `TIME_FORMAT()`, `STR_TO_DATE()`, or arbitrary nesting;
 - table-backed expression projection outside flat `DATE_FORMAT()` and the
-  exact top-level numeric equality shape described above;
-- use in `WHERE` beyond the later `baseline-date-format-predicates` equality
+  exact top-level numeric comparison shape described above;
+- use in `WHERE` beyond the later `baseline-date-format-predicates` comparison
   slice, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, generated
   columns, indexes, constraints, joins, CTEs, or arbitrary SQLite pass-through.
 
@@ -167,12 +169,19 @@ date_format_value(A) ::= NULL(T).
 date_format_format(A) ::= string_literal(T).
 date_format_format(A) ::= NULL(T).
 
-date_format_numeric_equal(A) ::=
+date_format_numeric_comparison(A) ::=
     DATE_FORMAT LPAREN date_format_value COMMA hour_minute_decimal_format RPAREN
-    EQUAL numeric_literal(C).
-date_format_numeric_equal(A) ::=
-    numeric_literal(B) EQUAL
+    comparison_operator numeric_literal(C).
+date_format_numeric_comparison(A) ::=
+    numeric_literal(B) comparison_operator
     DATE_FORMAT LPAREN date_format_value COMMA hour_minute_decimal_format RPAREN.
+
+comparison_operator(A) ::= EQUAL.
+comparison_operator(A) ::= NOT_EQUAL.
+comparison_operator(A) ::= LESS.
+comparison_operator(A) ::= LESS_EQUAL.
+comparison_operator(A) ::= GREATER.
+comparison_operator(A) ::= GREATER_EQUAL.
 
 hour_minute_decimal_format(A) ::= string_literal_with_decoded_value_percent_H_dot_percent_i(T).
 ```
@@ -185,17 +194,17 @@ Planning:
 
 1. Detect no-source/`DUAL` scalar expressions and row-scalar projection
    attempts that contain a top-level or parenthesized `DATE_FORMAT()` call, or
-   the exact top-level numeric equality shape admitted above.
+   the exact top-level numeric comparison shape admitted above.
 2. Resolve row sources through the existing selected/default schema policy.
 3. Resolve descriptor column arguments through MyLite catalog descriptors, not
    SQLite schema text.
 4. Decode string literal arguments using the current statement SQL mode,
    including `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`.
 5. Validate the format literal for this slice. Known deferred week tokens fail
-   deterministically rather than returning wrong values. The numeric equality
-   form additionally requires the decoded format literal to be exactly
-   `%H.%i`, because other formatted strings need MySQL-compatible numeric
-   coercion and truncation warnings.
+   deterministically rather than returning wrong values. The numeric comparison
+   form additionally requires the decoded format literal to be exactly `%H.%i`,
+   because other formatted strings need MySQL-compatible numeric coercion and
+   truncation warnings.
 6. Generate SQLite projection SQL over stable physical table names and quoted
    physical column names. String literals and comparison literals are bound
    parameters.
@@ -222,16 +231,16 @@ _mylite_date_format(value_expr, format_expr, input_kind_expr)
 `input_kind_expr` is a bound MyLite-internal discriminator such as `string`,
 `date`, `datetime`, or `timestamp`. It is not user-visible.
 
-The row-backed generated SQL shape for the admitted `%H.%i` numeric equality is:
+The row-backed generated SQL shape for the admitted `%H.%i` numeric comparison is:
 
 ```sql
 CAST(_mylite_date_format(value_expr, format_expr, input_kind_expr) AS REAL)
-    = CAST(? AS REAL)
+    comparison_operator CAST(? AS REAL)
 ```
 
-or the same comparison with operands reversed. This is limited to top-level
-projection because MyLite is not yet claiming general table-backed comparison
-coercion.
+Reversed user input is normalized to the equivalent function-left comparison.
+This is limited to top-level projection because MyLite is not yet claiming
+general table-backed comparison coercion.
 
 ## Ownership Boundaries
 
@@ -248,7 +257,7 @@ coercion.
   descriptor rows, descriptor versions, descriptor caches, catalog generation,
   or `sqlite_schema_generation`.
 - Result builder: returns text/`NULL` for `DATE_FORMAT()` and `1`/`0`/`NULL`
-  text for the admitted numeric equality, using aliases or source spans for
+  text for the admitted numeric comparison, using aliases or source spans for
   labels.
 - Storage/VFS/file format: unchanged. `.mylite` preamble and shifted SQLite
   payload invariants are preserved.
@@ -305,8 +314,8 @@ Add MySQL-runtime expectation coverage for:
 - unquoted `date_format` identifier behavior;
 - table-backed `VARCHAR`, `DATE`, `DATETIME`, and `TIMESTAMP` values plus
   `NULL` values;
-- the user-shaped numeric equality
-  `DATE_FORMAT(option_value, '%H.%i') = 0.42`;
+- the user-shaped numeric comparison
+  `DATE_FORMAT(option_value, '%H.%i') >= 12`;
 - MySQL's truncation-warning behavior for broader formatted-string numeric
   comparisons, which MyLite defers instead of accepting silently;
 - wrong-arity diagnostics;

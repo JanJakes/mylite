@@ -892,7 +892,7 @@ static int plan_row_scalar_str_to_date_format_argument(
     return rc;
 }
 
-static int plan_row_scalar_date_format_numeric_equal_expression(
+static int plan_row_scalar_date_format_numeric_comparison_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,
@@ -903,13 +903,19 @@ static int plan_row_scalar_date_format_numeric_equal_expression(
 ) {
     const struct mylite_sql_ast_node *date_format = NULL;
     const struct mylite_sql_ast_node *numeric = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
     int rc = MYLITE_OK;
 
-    if (!mylite_execution_date_format_numeric_equal_sides(expression, &date_format, &numeric)) {
+    if (!mylite_execution_date_format_numeric_comparison_sides(
+            expression,
+            &date_format,
+            &numeric,
+            &operator_kind
+        )) {
         set_unsupported_error(
             database,
-            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) = "
-            "numeric_literal"
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) "
+            "[=, <>, <, <=, >, >=] numeric_literal"
         );
         return MYLITE_ERROR;
     }
@@ -919,8 +925,9 @@ static int plan_row_scalar_date_format_numeric_equal_expression(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL;
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON;
     out_expression->argument_count = 2U;
+    out_expression->operator_kind = operator_kind;
 
     rc = plan_row_scalar_date_format_expression(
         database,
@@ -932,11 +939,11 @@ static int plan_row_scalar_date_format_numeric_equal_expression(
         &out_expression->arguments[0]
     );
     if (rc == MYLITE_OK &&
-        !planned_date_format_numeric_equal_format_is_supported(&out_expression->arguments[0])) {
+        !planned_date_format_numeric_comparison_format_is_supported(&out_expression->arguments[0])) {
         set_unsupported_error(
             database,
-            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') = "
-            "numeric_literal"
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') "
+            "[=, <>, <, <=, >, >=] numeric_literal"
         );
         rc = MYLITE_ERROR;
     }
@@ -950,13 +957,26 @@ static int plan_row_scalar_date_format_numeric_equal_expression(
     return rc;
 }
 
-static bool row_scalar_date_format_equal_attempt(const struct mylite_sql_ast_node *expression) {
+static bool row_scalar_date_format_comparison_attempt(
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
-        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_EQUAL) {
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    switch (mylite_sql_ast_node_operator(expression)) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        break;
+    default:
         return false;
     }
     left = unwrap_parenthesized_expression(child_at(expression, 0U));
@@ -1012,7 +1032,7 @@ static int plan_row_scalar_date_format_numeric_literal(
     return assign_text_value(database, text, text_length, &out_expression->value);
 }
 
-static bool planned_date_format_numeric_equal_format_is_supported(
+static bool planned_date_format_numeric_comparison_format_is_supported(
     const struct planned_row_scalar_expression *expression
 ) {
     const struct planned_row_scalar_expression *format = NULL;
@@ -1028,7 +1048,7 @@ static bool planned_date_format_numeric_equal_format_is_supported(
         return false;
     }
 
-    return mylite_execution_date_format_numeric_equal_format_is_supported(
+    return mylite_execution_date_format_numeric_comparison_format_is_supported(
         format->value.text,
         format->value.text_length
     );

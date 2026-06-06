@@ -86,7 +86,7 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
         if (expression->argument_count != 2U) {
             return MYLITE_ERROR;
         }

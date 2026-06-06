@@ -29,7 +29,7 @@ static int plan_date_format_numeric_truth_predicate(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_date_format_numeric_equal_expression(
+    rc = plan_row_scalar_date_format_numeric_comparison_expression(
         database,
         predicate_node,
         true,

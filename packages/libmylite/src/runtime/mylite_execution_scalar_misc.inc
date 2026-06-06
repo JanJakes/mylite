@@ -200,8 +200,8 @@ static int session_binary_scalar_value(
     if (is_scalar_logical_projection_expression(expression)) {
         return scalar_logical_value(database, expression, out_cell);
     }
-    if (mylite_execution_scalar_is_date_format_numeric_equal_expression(expression)) {
-        return mylite_execution_scalar_date_format_numeric_equal_value(database, expression, out_cell);
+    if (mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) {
+        return mylite_execution_scalar_date_format_numeric_comparison_value(database, expression, out_cell);
     }
     if (is_scalar_comparison_operator(mylite_sql_ast_node_operator(expression))) {
         return scalar_comparison_value(database, expression, out_cell);

@@ -50,6 +50,11 @@ predicate_expected=$(cat <<EXPECTED
 1,5
 NULL
 2
+1,2,5
+2
+2
+2
+1,5
 1,2
 2
 2
@@ -80,6 +85,17 @@ expect_output \
 "WHERE DATE_FORMAT(option_value, '%H.%i') = -0.42; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
 "WHERE DATE_FORMAT(option_value, '%H.%i') = 13.29; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
+"WHERE DATE_FORMAT(option_value, '%H.%i') >= 0.42; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
+"WHERE DATE_FORMAT(option_value, '%H.%i') >= 9.00; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
+"WHERE DATE_FORMAT(option_value, '%H.%i') >= 9.00 "\
+"AND DATE_FORMAT(option_value, '%H.%i') <= 17.00; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
+"WHERE DATE_FORMAT(option_value, '%H.%i') <> 0.42; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
+"WHERE DATE_FORMAT(option_value, '%H.%i') < 1.00; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options WHERE DATE_FORMAT(d, '%H.%i') = 0.00; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options WHERE DATE_FORMAT(dt, '%H.%i') = 13.29; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options WHERE DATE_FORMAT(ts, '%H.%i') = 13.29; "\

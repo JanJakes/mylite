@@ -89,6 +89,7 @@ static int test_no_source_dual_and_do_date_format(void) {
         "DATE_FORMAT('2008-01-02', NULL)",
         "DATE_FORMAT('2008-01-02', '%Y-%m-%d %H:%i:%s')",
         "DATE_FORMAT('2008-01-02 00:42:00', '%H.%i') = 0.42",
+        "DATE_FORMAT('2008-01-02 13:29:17', '%H.%i') >= 12",
     };
     static const char *const values_tokens[] = {
         expected_tokens,
@@ -96,6 +97,7 @@ static int test_no_source_dual_and_do_date_format(void) {
         NULL,
         NULL,
         "2008-01-02 00:00:00",
+        "1",
         "1",
     };
     static const char *const columns_dual[] = {"DATE_FORMAT ('2008-01-02', '%Y')", "fmt"};
@@ -119,7 +121,8 @@ static int test_no_source_dual_and_do_date_format(void) {
                    "'%a|%W|%b|%M|%D|%j|%w') AS labels, "
                    "DATE_FORMAT(NULL, '%Y'), DATE_FORMAT('2008-01-02', NULL), "
                    "DATE_FORMAT('2008-01-02', '%Y-%m-%d %H:%i:%s'), "
-                   "DATE_FORMAT('2008-01-02 00:42:00', '%H.%i') = 0.42",
+                   "DATE_FORMAT('2008-01-02 00:42:00', '%H.%i') = 0.42, "
+                   "DATE_FORMAT('2008-01-02 13:29:17', '%H.%i') >= 12",
             .columns = columns_tokens,
             .column_count = sizeof(columns_tokens) / sizeof(columns_tokens[0]),
             .values = values_tokens,
@@ -262,7 +265,7 @@ static int test_table_backed_date_format(void) {
             .column_count = sizeof(columns_comparison) / sizeof(columns_comparison[0]),
             .values = values_comparison,
             .row_count = 3U,
-            .context = "table date_format numeric equality",
+            .context = "table date_format numeric comparison",
         }
     );
     failures += expect_query(
@@ -288,6 +291,7 @@ static int test_date_format_predicates(void) {
     static const char *const values_1_5[] = {"1", "5"};
     static const char *const values_2[] = {"2"};
     static const char *const values_1_2[] = {"1", "2"};
+    static const char *const values_1_2_5[] = {"1", "2", "5"};
     static const char *const values_5[] = {"5"};
     static const char *const warning_columns[] = {"Level", "Code", "Message"};
     static const char *const invalid_warning_values[] = {
@@ -387,6 +391,71 @@ static int test_date_format_predicates(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') >= 0.42 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_1_2_5,
+            .row_count = 3U,
+            .warning_count = 1U,
+            .context = "date_format predicate inclusive lower bound",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') >= 9.00 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "date_format predicate greater equal",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') >= 9.00 "
+                   "AND DATE_FORMAT(option_value, '%H.%i') <= 17.00 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "date_format predicate closed range",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') <> 0.42 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "date_format predicate not equal",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') < 1.00 "
+                   "ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_1_5,
+            .row_count = 2U,
+            .warning_count = 1U,
+            .context = "date_format predicate less than",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM options WHERE DATE_FORMAT(d, '%H.%i') = 0.00 ORDER BY id",
             .columns = columns_id,
             .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
@@ -465,7 +534,7 @@ static int test_date_format_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') <> 0.42",
+        "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') <=> 0.42",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -637,7 +706,8 @@ static int test_date_format_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "DATE_FORMAT() numeric comparison requires a literal",
+            .message_part =
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format)",
         }
     );
     failures += execute_error(

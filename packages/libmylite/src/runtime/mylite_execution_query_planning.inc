@@ -185,8 +185,8 @@ static int plan_row_scalar_special_expression(
     if (handled) {
         return rc;
     }
-    if (mylite_execution_scalar_is_date_format_numeric_equal_expression(expression)) {
-        return plan_row_scalar_date_format_numeric_equal_expression(
+    if (mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) {
+        return plan_row_scalar_date_format_numeric_comparison_expression(
             database,
             expression,
             has_source,
@@ -196,8 +196,12 @@ static int plan_row_scalar_special_expression(
             out_expression
         );
     }
-    if (row_scalar_date_format_equal_attempt(expression)) {
-        set_unsupported_error(database, "DATE_FORMAT() numeric comparison requires a literal");
+    if (row_scalar_date_format_comparison_attempt(expression)) {
+        set_unsupported_error(
+            database,
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) "
+            "[=, <>, <, <=, >, >=] numeric_literal"
+        );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR) {

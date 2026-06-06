@@ -11,6 +11,10 @@
 #  include <unistd.h>
 #endif
 
+#ifndef P_tmpdir
+#  define P_tmpdir "/tmp"
+#endif
+
 enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16,

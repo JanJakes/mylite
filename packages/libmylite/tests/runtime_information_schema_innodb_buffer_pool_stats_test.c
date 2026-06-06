@@ -11,6 +11,10 @@
 #  include <unistd.h>
 #endif
 
+#ifndef P_tmpdir
+#  define P_tmpdir "/tmp"
+#endif
+
 #define ARRAY_COUNT(items) (sizeof(items) / sizeof((items)[0]))
 
 enum {

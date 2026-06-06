@@ -982,16 +982,15 @@ static int test_spatial_diagnostics(void) {
         "CREATE TEMPORARY TABLE tmp_implicit_spatial (g GEOMETRY NOT NULL, KEY kg (g))",
         1U
     );
-    failures += expect_statement_ok(database, "CREATE TEMPORARY TABLE tmp_spatial_column (g GEOMETRY)");
+    failures +=
+        expect_statement_ok(database, "CREATE TEMPORARY TABLE tmp_spatial_column (g GEOMETRY)");
     failures += expect_statement_ok_with_warning_count(
         database,
         "CREATE TABLE tmp_like_source (g GEOMETRY NOT NULL, SPATIAL KEY sg (g))",
         1U
     );
-    failures += expect_statement_ok(
-        database,
-        "CREATE TEMPORARY TABLE tmp_like_clone LIKE tmp_like_source"
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TEMPORARY TABLE tmp_like_clone LIKE tmp_like_source");
     failures += expect_query_values(
         database,
         (struct expected_query){

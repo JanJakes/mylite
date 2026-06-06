@@ -339,11 +339,8 @@ static int test_change_column_success_persistence_and_dml(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_ok(
-        database,
-        "INSERT INTO app.auto_change (v) VALUES ('a'), ('b')",
-        &result
-    );
+    failures +=
+        execute_ok(database, "INSERT INTO app.auto_change (v) VALUES ('a'), ('b')", &result);
     mylite_result_free(result);
     result = NULL;
     failures += expect_change_ok(

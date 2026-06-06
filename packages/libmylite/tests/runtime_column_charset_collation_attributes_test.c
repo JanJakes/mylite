@@ -651,11 +651,21 @@ static int test_ascii_column_charset_collation_metadata(void) {
 
 static int test_wordpress_legacy_charset_metadata(void) {
     static const char *const legacy_metadata[] = {
-        "a", "big5",    "big5_chinese_ci",
-        "b", "latin1",  "latin1_swedish_ci",
-        "c", "koi8r",   "koi8r_general_ci",
-        "d", "utf8mb3", "utf8mb3_bin",
-        "e", "utf8mb3", "utf8mb3_unicode_ci",
+        "a",
+        "big5",
+        "big5_chinese_ci",
+        "b",
+        "latin1",
+        "latin1_swedish_ci",
+        "c",
+        "koi8r",
+        "koi8r_general_ci",
+        "d",
+        "utf8mb3",
+        "utf8mb3_bin",
+        "e",
+        "utf8mb3",
+        "utf8mb3_unicode_ci",
     };
     static const char *const table_default_metadata[] = {
         "a",

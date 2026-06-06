@@ -12,9 +12,11 @@ ORDER BY FIELD(option_name, 'User 0000019', 'User 0000018', 'User 0000020');
 ```
 
 This feature reuses MyLite's existing limited `FIELD()` expression support and
-extends only the single-table `SELECT` ordering path. It is not a general
+extends the descriptor-backed `SELECT` ordering path. It is not a general
 expression-ordering engine, general function coverage project, optimizer
-extension, or DML ordering feature.
+extension, or DML ordering feature. A later WordPress compatibility expansion
+also admits the narrow joined `CAST(descriptor AS CHAR)` and
+`descriptor + integer_literal` order expressions documented below.
 
 ## Sources
 
@@ -57,20 +59,31 @@ Runtime probes establish the behavior used by this baseline:
 - Unknown columns inside `FIELD()` used by `ORDER BY` fail with
   `1054 / 42S22` and message context `order clause`.
 - MySQL accepts broader forms, including mixed-domain arguments, ordinal or
-  additional expression sort keys, joins, grouped queries, `DISTINCT`, `TABLE`,
-  and DML `ORDER BY FIELD()`. Those forms are deferred by this slice.
+  additional expression sort keys, grouped queries, `DISTINCT`, `TABLE`, and
+  DML `ORDER BY FIELD()`. Those forms are deferred by this slice.
+- MySQL accepts joined `ORDER BY FIELD(table.column, ...)`, joined
+  `ORDER BY CAST(table.column AS CHAR)`, and numeric coercion order keys such
+  as `ORDER BY table.column + 0`.
 
 ## Supported Surface
 
 MyLite supports:
 
 - descriptor-backed persistent and shadowing temporary single-table `SELECT`;
+- descriptor-backed joined `SELECT` over the existing plain joined source
+  envelope for the supported order-expression shapes;
 - row-scalar single-table `SELECT` when the select list already belongs to the
   existing row-scalar projection envelope;
 - optional existing single-table `WHERE` predicate subset;
 - optional existing `LIMIT` / `OFFSET` subset for `SELECT`;
 - exactly one top-level `ORDER BY FIELD(search_column, value[, value ...])`
-  item, optionally followed by `ASC` or `DESC`;
+  item, optionally followed by `ASC` or `DESC`, including joined source
+  column references for non-`DISTINCT` plain joined `SELECT`;
+- existing row-scalar `CAST(descriptor_column AS CHAR)` order keys over
+  single-table or joined descriptor sources;
+- narrow signed integer arithmetic order keys in the form
+  `descriptor_column + decimal_integer_literal`, used for WordPress
+  `meta_value + 0` numeric sorting over admitted integer/string descriptors;
 - parenthesized top-level `FIELD()` order keys;
 - `search_column` as an unqualified, table-qualified, alias-qualified, or
   schema-qualified descriptor column that resolves to the one selected source;
@@ -93,7 +106,7 @@ limiting. MyLite does not materialize rows into memory to sort them.
 This slice intentionally does not support:
 
 - `ORDER BY FIELD()` in `UPDATE`, `DELETE`, `TABLE`, grouped aggregate queries,
-  `DISTINCT` / `DISTINCTROW`, joins, `UNION`, `CREATE TABLE ... SELECT`,
+  `DISTINCT` / `DISTINCTROW`, `UNION`, `CREATE TABLE ... SELECT`,
   `INSERT ... SELECT`, `REPLACE ... SELECT`, subqueries, CTEs, views, or
   arbitrary SQLite pass-through;
 - multiple `ORDER BY` items when one item is `FIELD()`;
@@ -107,7 +120,9 @@ This slice intentionally does not support:
   weights;
 - alias ordering where the alias names a `FIELD()` projection;
 - ordinal order keys, string-literal order keys, expression secondary keys, or
-  deterministic tie-breaking for equal `FIELD()` ranks.
+  deterministic tie-breaking for equal `FIELD()` ranks;
+- general arithmetic order expressions beyond the narrow
+  `descriptor_column + decimal_integer_literal` form.
 
 ## Grammar
 
@@ -143,6 +158,15 @@ field_order_value_list(A) ::= field_order_value(B).
 field_order_value_list(A) ::= field_order_value_list(B) COMMA field_order_value(C).
 ```
 
+The WordPress compatibility expansion keeps the same narrow `ORDER BY` grammar
+shape and admits these additional row-scalar order keys through existing
+expression nodes:
+
+```lemon
+select_order_key(A) ::= CAST LPAREN descriptor_column_reference(B) AS CHAR RPAREN.
+select_order_key(A) ::= descriptor_column_reference(B) PLUS decimal_integer_literal(C).
+```
+
 The existing parser grammar is broader; analyzer/runtime validation narrows it
 to the subset above. These snippets describe MyLite's supported subset, not
 MySQL's full grammar.
@@ -151,21 +175,24 @@ MySQL's full grammar.
 
 Planning:
 
-1. Resolve the single source table through the existing selected/default schema
-   policy.
+1. Resolve the source table or admitted joined source chain through the existing
+   selected/default schema policy.
 2. Reject reserved MyLite schema/table names and unsupported object kinds via
    existing table-resolution diagnostics before any SQLite SQL is generated.
-3. Reject joined, grouped, distinct, DML, and table-statement `ORDER BY FIELD()`
+3. Reject grouped, `DISTINCT`, DML, and table-statement `ORDER BY FIELD()`
    attempts for this slice.
-4. Resolve the `FIELD()` search column and any qualified column reference
-   through MyLite descriptors, not SQLite metadata.
-5. Convert candidate literals through the existing limited `FIELD()` conversion
-   path.
-6. Classify the non-`NULL` comparison domain as all string or all integer.
+4. Resolve `FIELD()` search columns, row-scalar conversion operands, and narrow
+   integer-arithmetic operands through MyLite descriptors, not SQLite metadata.
+5. Convert `FIELD()` candidate literals through the existing limited `FIELD()`
+   conversion path.
+6. Classify `FIELD()` non-`NULL` comparison domains as all string or all integer.
    Reject mixed domains deterministically.
-7. Store the planned `FIELD()` order expression as hidden order-plan state.
+7. Store planned `FIELD()` and row-scalar order expressions as hidden
+   order-plan state.
 8. Generate standard SQLite SQL using the same `CASE` expression shape as
-   limited projection `FIELD()`, quoted identifiers, and numbered parameters.
+   limited projection `FIELD()`, existing row-scalar expression renderers for
+   `CAST(descriptor AS CHAR)` and `descriptor + integer_literal`, quoted
+   identifiers, source aliases where needed, and numbered parameters.
 
 Generated SQL shape:
 
@@ -191,8 +218,8 @@ physical table names, quoted identifiers, and bound literal parameters.
 Execution:
 
 - SQLite evaluates the generated expression while scanning and sorting.
-- MyLite binds all `FIELD()` candidate literals and existing predicate/limit
-  literals before stepping the statement.
+- MyLite binds all `FIELD()` candidate literals plus existing predicate,
+  expression, and limit literals before stepping the statement.
 - The result column list and result metadata remain unchanged by the hidden
   order expression.
 - Successful statements follow existing `SELECT` result conventions:
@@ -233,8 +260,8 @@ Required diagnostics:
   `SELECT ORDER BY supports only descriptor columns or FIELD(column, value, ...)`;
 - unsupported multiple keys with `FIELD()`:
   `SELECT ORDER BY FIELD() supports only one order key`;
-- unsupported joined/grouped/distinct/DML/table-statement use through existing
-  parse or deterministic MyLite-specific unsupported diagnostics;
+- unsupported grouped/distinct/DML/table-statement use through existing parse or
+  deterministic MyLite-specific unsupported diagnostics;
 - unsupported `FIELD()` argument shapes:
   `FIELD() supports only string, integer, boolean, and NULL arguments`;
 - unsupported mixed domain:
@@ -261,8 +288,12 @@ Add MySQL-runtime expectation coverage for:
 - table alias, table-qualified, and schema-qualified search columns;
 - unknown search column diagnostics in `order clause`;
 - MySQL-accepted but deferred broader forms: multiple sort keys with
-  `FIELD()`, joins, `DISTINCT`, `TABLE`, mixed domains, nested functions,
-  parameters, scalar subqueries, and DML `ORDER BY FIELD()`.
+  `FIELD()`, `DISTINCT`, `TABLE`, mixed domains, nested functions, parameters,
+  scalar subqueries, and DML `ORDER BY FIELD()`;
+- supported joined `FIELD()` over a descriptor column;
+- supported joined `CAST(descriptor AS CHAR)` order key;
+- supported joined `descriptor + 0` numeric string order key;
+- relaxed-mode `DISTINCT` joined `descriptor + 0` order key.
 
 Add fast C tests under `packages/libmylite/tests/`, preferably
 `runtime_order_by_field_function`, plus parser coverage showing that the AST
@@ -277,5 +308,5 @@ Update:
 - `docs/compatibility/sql-query-expressions.md`
 
 Use limited wording. Do not claim general expression ordering, full `FIELD()`,
-full collation semantics, joins, grouped ordering, distinct ordering, DML
+full collation semantics, grouped ordering, broad distinct ordering, DML
 ordering, secondary expression sort keys, or deterministic tie order.

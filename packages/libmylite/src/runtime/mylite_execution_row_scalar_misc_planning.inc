@@ -187,7 +187,8 @@ static int plan_row_scalar_field_column(
 ) {
     struct mylite_catalog_column_descriptor column = {0};
     enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
-    int rc = resolve_descriptor_column_reference(
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         expression,
         source_context,
@@ -195,7 +196,8 @@ static int plan_row_scalar_field_column(
         column_unsupported_message,
         table_columns,
         table_column_count,
-        &column
+        &column,
+        &source_index
     );
 
     if (rc != MYLITE_OK) {
@@ -212,6 +214,8 @@ static int plan_row_scalar_field_column(
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
     out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
     return MYLITE_OK;
 }
 

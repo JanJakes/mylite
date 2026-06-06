@@ -210,9 +210,11 @@ static int plan_select_order_ast_item(
     }
     if ((row_scalar_conversion_kind_from_expression(item_nodes.order_key) !=
          PLANNED_ROW_SCALAR_CONVERSION_NONE) ||
+        row_scalar_expression_contains_integer_arithmetic_attempt(item_nodes.order_key) ||
         select_order_key_is_searched_case_expression(item_nodes.order_key) ||
         select_order_key_is_like_predicate(item_nodes.order_key)) {
-        if (select_source_context_is_joined(source_context)) {
+        if (select_source_context_is_joined(source_context) &&
+            !select_order_key_is_supported_joined_row_scalar_order(item_nodes.order_key)) {
             set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
             return MYLITE_ERROR;
         }
@@ -489,6 +491,18 @@ static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node 
         return false;
     }
     return mylite_sql_ast_node_operator(order_key) == MYLITE_SQL_AST_OPERATOR_LIKE;
+}
+
+static bool select_order_key_is_supported_joined_row_scalar_order(
+    const struct mylite_sql_ast_node *order_key
+) {
+    enum planned_row_scalar_conversion_kind conversion_kind =
+        row_scalar_conversion_kind_from_expression(order_key);
+
+    if (conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR) {
+        return true;
+    }
+    return row_scalar_expression_contains_integer_arithmetic_attempt(order_key);
 }
 
 static int validate_select_order_field_expression(

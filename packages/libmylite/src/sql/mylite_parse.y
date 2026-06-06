@@ -4600,6 +4600,15 @@ select_order_item(A) ::= select_order_key(K) order_direction_opt(D). {
 select_order_key(A) ::= qualified_identifier(K). {
     A = K;
 }
+select_order_key(A) ::= qualified_identifier(B) PLUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state,
+        B,
+        T,
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER)
+    );
+}
 select_order_key(A) ::= cast_convert_expression(K). {
     A = K;
 }

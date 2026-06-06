@@ -388,7 +388,7 @@ static int plan_joined_select(
             out_plan,
             NULL,
             0U,
-            false,
+            !out_plan->is_distinct,
             false,
             &out_plan->order
         );

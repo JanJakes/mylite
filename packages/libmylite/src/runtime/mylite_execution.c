@@ -20087,6 +20087,9 @@ static bool select_order_key_is_searched_case_expression(
     const struct mylite_sql_ast_node *order_key
 );
 static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key);
+static bool select_order_key_is_supported_joined_row_scalar_order(
+    const struct mylite_sql_ast_node *order_key
+);
 static int plan_select_order_field_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,

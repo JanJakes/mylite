@@ -80,6 +80,9 @@ static int test_order_by_field_success(void) {
     static const char *const values_where_limit[] = {"3", "4"};
     static const char *const values_null_nomatch[] = {"5", "0", "4", "1", "3", "2"};
     static const char *const values_row_scalar[] = {"1", "2", "3"};
+    static const char *const values_joined_field[] = {"2", "1", "3"};
+    static const char *const values_joined_numeric[] = {"2", "3", "1"};
+    static const char *const values_joined_cast_desc[] = {"1", "3", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -216,6 +219,57 @@ static int test_order_by_field_success(void) {
             .context = "row-scalar FIELD projection ordered by FIELD",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id FROM t AS l JOIN t AS r ON l.id = r.id "
+                   "WHERE l.id IN (1,2,3) "
+                   "ORDER BY FIELD(l.name, 'User 0000019', 'User 0000018', "
+                   "'User 0000020')",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = values_joined_field,
+            .row_count = 3U,
+            .context = "joined FIELD order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "
+                   "WHERE meta.key_name = 'age' ORDER BY meta.meta_value + 0 ASC",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = values_joined_numeric,
+            .row_count = 3U,
+            .context = "joined numeric string order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "
+                   "WHERE meta.key_name = 'age' ORDER BY CAST(meta.meta_value AS CHAR) DESC",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = values_joined_cast_desc,
+            .row_count = 3U,
+            .context = "joined cast string order expression",
+        }
+    );
+    failures += execute_ok(database, "SET sql_mode = ''", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT t.id FROM t JOIN meta ON t.id = meta.user_id "
+                   "WHERE meta.key_name = 'age' ORDER BY meta.meta_value + 0 ASC",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = values_joined_numeric,
+            .row_count = 3U,
+            .context = "relaxed distinct joined numeric string order expression",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -277,8 +331,8 @@ static int test_order_by_field_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT l.id FROM t AS l JOIN t AS r ON l.id = r.id "
-        "ORDER BY FIELD(l.name, 'User 0000019') LIMIT 1",
+        "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "
+        "WHERE meta.key_name = 'age' ORDER BY CAST(meta.meta_value AS SIGNED)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -304,6 +358,20 @@ static int setup_order_table(mylite_db *database) {
         "(4, 'Other', 21), "
         "(5, NULL, NULL), "
         "(6, 'One', 1)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE meta(user_id INT, key_name VARCHAR(16), meta_value VARCHAR(16))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO meta VALUES "
+        "(1, 'age', '30'), "
+        "(2, 'age', '10'), "
+        "(3, 'age', '20'), "
+        "(1, 'other', 'x')",
         NULL
     );
     return failures;

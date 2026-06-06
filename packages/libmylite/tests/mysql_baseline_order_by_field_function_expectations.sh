@@ -90,7 +90,13 @@ run_mysql \
 "(3,'User 0000020',20), "\
 "(4,'Other',21), "\
 "(5,NULL,NULL), "\
-"(6,'One',1);" \
+"(6,'One',1); "\
+"CREATE TABLE meta(user_id INT, key_name VARCHAR(16), meta_value VARCHAR(16)); "\
+"INSERT INTO meta VALUES "\
+"(1,'age','30'), "\
+"(2,'age','10'), "\
+"(3,'age','20'), "\
+"(1,'other','x');" \
     "$DATABASE" >/dev/null
 
 ascending_expected=$(cat <<EXPECTED
@@ -188,6 +194,54 @@ expect_output \
 "WHERE id IN (3,4,5) ORDER BY FIELD(name,'Other','User 0000020') ASC;" \
     "$DATABASE"
 
+joined_field_expected=$(cat <<EXPECTED
+2
+1
+3
+EXPECTED
+)
+expect_output \
+    "joined FIELD order" \
+    "$joined_field_expected" \
+    "SELECT l.id FROM t AS l JOIN t AS r ON l.id = r.id "\
+"WHERE l.id IN (1,2,3) "\
+"ORDER BY FIELD(l.name,'User 0000019','User 0000018','User 0000020');" \
+    "$DATABASE"
+
+joined_numeric_expected=$(cat <<EXPECTED
+2
+3
+1
+EXPECTED
+)
+expect_output \
+    "joined numeric string order expression" \
+    "$joined_numeric_expected" \
+    "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "\
+"WHERE meta.key_name = 'age' ORDER BY meta.meta_value+0 ASC;" \
+    "$DATABASE"
+
+joined_cast_expected=$(cat <<EXPECTED
+1
+3
+2
+EXPECTED
+)
+expect_output \
+    "joined cast string order expression" \
+    "$joined_cast_expected" \
+    "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "\
+"WHERE meta.key_name = 'age' ORDER BY CAST(meta.meta_value AS CHAR) DESC;" \
+    "$DATABASE"
+
+expect_output \
+    "relaxed distinct joined numeric string order expression" \
+    "$joined_numeric_expected" \
+    "SET SESSION sql_mode = ''; "\
+"SELECT DISTINCT t.id FROM t JOIN meta ON t.id = meta.user_id "\
+"WHERE meta.key_name = 'age' ORDER BY meta.meta_value+0 ASC;" \
+    "$DATABASE"
+
 expect_error \
     "unknown FIELD order column" \
     1054 \
@@ -202,14 +256,14 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "join FIELD order accepted by MySQL but deferred by MyLite" \
-    "SELECT l.id FROM t AS l JOIN t AS r ON l.id = r.id "\
-"ORDER BY FIELD(l.name,'User 0000019') LIMIT 1;" \
+    "DISTINCT FIELD order accepted by MySQL but deferred by MyLite" \
+    "SELECT DISTINCT name FROM t ORDER BY FIELD(name,'User 0000019');" \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "DISTINCT FIELD order accepted by MySQL but deferred by MyLite" \
-    "SELECT DISTINCT name FROM t ORDER BY FIELD(name,'User 0000019');" \
+    "joined signed CAST order accepted by MySQL but deferred by MyLite" \
+    "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "\
+"WHERE meta.key_name = 'age' ORDER BY CAST(meta.meta_value AS SIGNED);" \
     "$DATABASE"
 
 expect_upstream_accepts \

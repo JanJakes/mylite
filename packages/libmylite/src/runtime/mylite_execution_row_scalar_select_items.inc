@@ -75,6 +75,21 @@ static int append_row_scalar_select_item(
             table_column_count
         );
     }
+    if (item.source_expression != NULL &&
+        item.source_expression->kind == MYLITE_SQL_AST_QUALIFIED_WILDCARD) {
+        if (item.alias != NULL) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        return append_row_scalar_qualified_wildcard_select_items(
+            database,
+            plan,
+            item.source_expression,
+            source_context,
+            table_columns,
+            table_column_count
+        );
+    }
 
     rc = plan_row_scalar_expression(
         database,
@@ -137,6 +152,70 @@ static int append_row_scalar_wildcard_select_items(
             continue;
         }
         rc = append_row_scalar_column_select_item(database, plan, &table_columns[column_index], 0U);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_row_scalar_qualified_wildcard_select_items(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    const struct mylite_sql_ast_node *qualified_wildcard,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_catalog_column_descriptor *columns = table_columns;
+    size_t column_count = table_column_count;
+    size_t source_index = 0U;
+    size_t part_count = 0U;
+    bool matched = false;
+    int rc = collect_qualified_wildcard_parts(database, qualified_wildcard, parts, &part_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        for (size_t index = 0U; index < source_context->source_count; ++index) {
+            const struct planned_select_source *source = &source_context->sources[index];
+
+            if (!joined_source_matches_qualified_wildcard_parts(
+                    source,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    part_count
+                )) {
+                continue;
+            }
+            columns = source->columns;
+            column_count = source->column_count;
+            source_index = index;
+            matched = true;
+            break;
+        }
+    } else {
+        matched = select_source_matches_qualified_wildcard_parts(
+            source_context,
+            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            part_count
+        );
+    }
+    if (!matched) {
+        return set_unknown_qualified_wildcard_table_error(database, parts, part_count);
+    }
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        if (!columns[column_index].is_visible) {
+            continue;
+        }
+        rc = append_row_scalar_column_select_item(
+            database,
+            plan,
+            &columns[column_index],
+            source_index
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }

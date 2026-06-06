@@ -2657,6 +2657,7 @@ struct planned_row_scalar_exists_filter {
 struct planned_row_scalar_select {
     bool has_source;
     bool has_distinct;
+    bool calc_found_rows;
     struct table_name_resolution source;
     char source_alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct mylite_catalog_table_descriptor table;
@@ -20644,6 +20645,14 @@ static int append_row_scalar_select_item(
 static int append_row_scalar_wildcard_select_items(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int append_row_scalar_qualified_wildcard_select_items(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    const struct mylite_sql_ast_node *qualified_wildcard,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count

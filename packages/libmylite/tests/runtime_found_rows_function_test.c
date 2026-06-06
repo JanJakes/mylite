@@ -319,6 +319,8 @@ static int test_sql_calc_found_rows_selects(void) {
     static const char *const filtered_rows[] = {"2"};
     static const char *const no_limit_rows[] = {"1", "2", "3", "4"};
     static const char *const count_rows[] = {"4"};
+    static const char *const row_scalar_filtered_rows[][2] = {{"2", "1"}};
+    static const char *const row_scalar_wildcard_rows[][3] = {{"1", NULL, "1"}, {"2", "20", "1"}};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -403,6 +405,51 @@ static int test_sql_calc_found_rows_selects(void) {
         (struct expected_found_rows_value){
             .expected = "1",
             .context = "sql calc count found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS id, 1 AS marker "
+        "FROM t WHERE n <=> 20 ORDER BY id LIMIT 1",
+        &result
+    );
+    failures += expect_two_column_rows(
+        result,
+        row_scalar_filtered_rows,
+        1U,
+        1U,
+        "row-scalar sql calc descriptor and literal row"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_value(
+        database,
+        (struct expected_found_rows_value){
+            .expected = "2",
+            .context = "row-scalar filtered sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS t.*, 1 AS marker FROM t ORDER BY id LIMIT 2",
+        &result
+    );
+    failures += expect_three_column_rows(
+        result,
+        row_scalar_wildcard_rows,
+        2U,
+        1U,
+        "row-scalar wildcard sql calc rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_value(
+        database,
+        (struct expected_found_rows_value){
+            .expected = "4",
+            .context = "row-scalar wildcard sql calc found rows",
         }
     );
 

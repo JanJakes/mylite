@@ -113,13 +113,14 @@ The first implementation supported `SQL_CALC_FOUND_ROWS` only for the existing
 non-distinct descriptor-backed base-table `SELECT` column-list and wildcard
 paths with optional source alias, baseline `WHERE`, one-column `ORDER BY`, and
 existing `LIMIT` / `OFFSET` forms. Later slices admit the current joined and
-grouped descriptor-backed `SELECT` envelopes plus the current one-row
-aggregate-only envelopes. MyLite still does not admit or execute
-`SQL_CALC_FOUND_ROWS` on scalar/no-source selects, `FROM DUAL`, row-scalar
-projection selects, `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, `REPLACE
-... SELECT`, `UNION`, `TABLE`, subqueries, CTEs, unsupported locking clauses,
-or other select modifiers outside the documented descriptor and aggregate
-paths.
+grouped descriptor-backed `SELECT` envelopes, the current one-row aggregate-only
+envelopes, and source-backed row-scalar projection selects for descriptor
+columns, wildcard expansion, and supported scalar literal items. MyLite still
+does not admit or execute `SQL_CALC_FOUND_ROWS` on scalar/no-source selects,
+`FROM DUAL`, `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, `REPLACE ...
+SELECT`, `UNION`, `TABLE`, subqueries, CTEs, unsupported locking clauses, or
+other select modifiers outside the documented descriptor, aggregate, and
+source-backed row-scalar paths.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -198,12 +199,12 @@ rows the statement would have returned after descriptor selection, source
 resolution, `WHERE`, `DISTINCT` handling if later admitted, grouping if later
 admitted, and ordering, but before `LIMIT` / `OFFSET`.
 
-For non-grouped descriptor-backed table selects, the pre-limit found count is
-the number of rows that match the selected source and optional `WHERE`
-predicate. For admitted grouped descriptor-backed selects, the count is the
-number of groups after source resolution, `WHERE`, `GROUP BY`, and supported
-`HAVING`, but before `ORDER BY`, `LIMIT`, or `OFFSET`. `ORDER BY` does not
-change the found count.
+For non-grouped descriptor-backed table selects and admitted source-backed
+row-scalar projection selects, the pre-limit found count is the number of rows
+that match the selected source and optional `WHERE` predicate. For admitted
+grouped descriptor-backed selects, the count is the number of groups after
+source resolution, `WHERE`, `GROUP BY`, and supported `HAVING`, but before
+`ORDER BY`, `LIMIT`, or `OFFSET`. `ORDER BY` does not change the found count.
 
 For admitted non-grouped one-row aggregate selects, the pre-limit found count
 is the aggregate result row count. For example, `SELECT SQL_CALC_FOUND_ROWS

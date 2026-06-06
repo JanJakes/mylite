@@ -2183,10 +2183,12 @@ static int plan_row_scalar_select(
     if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
         out_plan->has_distinct = true;
     }
-    if (mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+    out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
+    if (out_plan->calc_found_rows &&
+        (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL)) {
         set_unsupported_error(
             database,
-            "SQL_CALC_FOUND_ROWS does not support row-scalar SELECT projection"
+            "SQL_CALC_FOUND_ROWS supports only source-backed row-scalar SELECT projection"
         );
         return MYLITE_ERROR;
     }

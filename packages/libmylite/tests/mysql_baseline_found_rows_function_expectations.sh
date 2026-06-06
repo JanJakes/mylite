@@ -139,6 +139,24 @@ expect_value "sql calc count value" "4" "$(printf '%s\n' "$calc_count" | sed -n 
 expect_value "sql calc count found rows" "1	1	-1" \
     "$(printf '%s\n' "$calc_count" | sed -n '2p')"
 
+calc_row_scalar=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT SQL_CALC_FOUND_ROWS id, 1 AS marker FROM t WHERE n <=> 20 ORDER BY id LIMIT 1;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS t.*, 1 AS marker FROM t ORDER BY id LIMIT 2;
+     SELECT FOUND_ROWS();"
+)
+expect_value "sql calc row scalar visible row" "2	1" \
+    "$(printf '%s\n' "$calc_row_scalar" | sed -n '1p')"
+expect_value "sql calc row scalar found rows" "2	1	-1" \
+    "$(printf '%s\n' "$calc_row_scalar" | sed -n '2p')"
+expect_value "sql calc wildcard row 1" "1	NULL	1" \
+    "$(printf '%s\n' "$calc_row_scalar" | sed -n '3p')"
+expect_value "sql calc wildcard row 2" "2	20	1" \
+    "$(printf '%s\n' "$calc_row_scalar" | sed -n '4p')"
+expect_value "sql calc wildcard found rows" "4" \
+    "$(printf '%s\n' "$calc_row_scalar" | sed -n '5p')"
+
 ordinary_limit=$(run_mysql \
     "USE ${DATABASE};
      SELECT id FROM t ORDER BY id LIMIT 2;

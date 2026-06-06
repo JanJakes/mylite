@@ -239,6 +239,13 @@ static int execute_row_scalar_select_from_plan(
         mylite_result_free(result);
         return rc;
     }
+    if (plan->calc_found_rows) {
+        rc = append_sql_calc_found_rows_deprecation_warning(database);
+        if (rc != MYLITE_OK) {
+            mylite_result_free(result);
+            return rc;
+        }
+    }
 
     return finish_successful_result(database, result, out_result);
 }
@@ -2311,6 +2318,20 @@ static int set_row_scalar_select_found_row_count(
     count_plan.join_count = plan->join_count;
     count_plan.predicate = plan->predicate;
     count_plan.limit = plan->limit;
+    if (plan->calc_found_rows) {
+        int64_t count = 0;
+
+        rc = read_select_found_row_count(database, &count_plan, &count);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (count < 0) {
+            set_runtime_error(database, "invalid SQL_CALC_FOUND_ROWS count");
+            return MYLITE_ERROR;
+        }
+        mylite_result_set_found_row_count(result, (uint64_t)count);
+        return MYLITE_OK;
+    }
     rc = found_row_count_for_select_limit_envelope(
         database,
         &count_plan,

@@ -2069,10 +2069,13 @@ static int append_in_subquery_from_sql(
              ++join_index) {
             size_t right_source_index = join_index + 1U;
 
-            if (subquery->join_kinds[join_index] != MYLITE_SQL_AST_JOIN_KIND_INNER) {
+            if (subquery->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+                rc = mylite_dynamic_string_append(string, " LEFT JOIN ");
+            } else if (subquery->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_INNER) {
+                rc = mylite_dynamic_string_append(string, " JOIN ");
+            } else {
                 return MYLITE_ERROR;
             }
-            rc = mylite_dynamic_string_append(string, " JOIN ");
             if (rc == MYLITE_OK) {
                 rc = append_select_source_sql(
                     string,

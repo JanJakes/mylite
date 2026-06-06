@@ -730,10 +730,13 @@ static int plan_in_subquery_table_source(
         }
         if (rc == MYLITE_OK) {
             for (size_t join_index = 0U; join_index < joined_plan.join_count; ++join_index) {
-                if (joined_plan.join_kinds[join_index] != MYLITE_SQL_AST_JOIN_KIND_INNER) {
+                enum mylite_sql_ast_join_kind join_kind = joined_plan.join_kinds[join_index];
+
+                if (join_kind != MYLITE_SQL_AST_JOIN_KIND_INNER &&
+                    join_kind != MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
                     set_unsupported_error(
                         database,
-                        "IN joined subqueries support only INNER JOIN sources"
+                        "IN joined subqueries support only INNER JOIN or LEFT JOIN sources"
                     );
                     rc = MYLITE_ERROR;
                     break;

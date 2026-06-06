@@ -23,8 +23,9 @@ This is not full MySQL `IN` subquery support. The supported outer statement is
 a descriptor-backed `SELECT` filter over the current single-table or joined
 source envelope. The supported inner query is one descriptor-backed persistent
 or visible session temporary base table, or a limited descriptor-backed
-`INNER JOIN` chain, with one explicit descriptor column, optional `DISTINCT`,
-optional aliases, and optional existing descriptor-backed `WHERE` predicate.
+`INNER JOIN` / `LEFT JOIN` chain, with one explicit descriptor column,
+optional `DISTINCT`, optional aliases, and optional existing descriptor-backed
+`WHERE` predicate.
 Correlated inner predicates reuse the current `EXISTS` subquery correlation
 envelope.
 
@@ -85,7 +86,8 @@ Observed against the local `mysql:8.4.9` runtime:
 - `SELECT DISTINCT inner_column` inside an `IN` subquery has the same visible
   membership result as the non-distinct form.
 - Outer joined `SELECT` sources may contain `IN` subquery predicates, and inner
-  `INNER JOIN` subquery sources may provide the selected membership column.
+  descriptor-backed `INNER JOIN` and `LEFT JOIN` subquery sources may provide
+  the selected membership column.
 - MySQL rejects `LIMIT` inside `IN`, `ALL`, `ANY`, or `SOME` subqueries with
   `1235 / 42000` and the message
   `This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'`.
@@ -176,7 +178,7 @@ Supported inner subquery:
 ```sql
 in_subquery:
     SELECT [DISTINCT] qualified_identifier
-    FROM descriptor_table_or_inner_join_source
+    FROM descriptor_table_or_inner_or_left_join_source
     [WHERE inner_predicate]
 ```
 
@@ -186,9 +188,9 @@ through descriptor metadata. `SELECT *`, tableless subqueries, `DUAL`
 subqueries, expression items, aggregate items, scalar subquery items, and
 multi-column projection lists are deferred.
 
-Inner joined sources are limited to descriptor-backed `INNER JOIN` chains with
-descriptor equality `ON` conditions. Other join kinds and row-scalar join
-conditions remain deferred.
+Inner joined sources are limited to descriptor-backed `INNER JOIN` or
+`LEFT JOIN` chains with descriptor equality `ON` conditions. Other join kinds
+and row-scalar join conditions remain deferred.
 
 Supported inner predicate forms:
 
@@ -270,8 +272,8 @@ Planning:
 2. Resolve the outer membership column through descriptors.
 3. Validate that the inner statement is one supported plain `SELECT` block with
    optional `DISTINCT`, one descriptor table source or admitted descriptor
-   `INNER JOIN` chain, one explicit selected descriptor column, no unsupported
-   clauses, and optional supported `WHERE`.
+   `INNER JOIN` / `LEFT JOIN` chain, one explicit selected descriptor column,
+   no unsupported clauses, and optional supported `WHERE`.
 4. Resolve the inner source through descriptors and reject unsupported object
    kinds once non-base-table descriptors exist.
 5. Resolve the inner selected descriptor column through the inner source. The
@@ -331,6 +333,8 @@ FROM "_mylite_user_table_<outer_id>" AS "_mylite_s0"
 WHERE "_mylite_s0"."outer_col" IN (
     SELECT "_mylite_s1"."inner_col"
     FROM "_mylite_user_table_<inner_id>" AS "_mylite_s1"
+    LEFT JOIN "_mylite_user_table_<joined_id>" AS "_mylite_s2"
+      ON "_mylite_s1"."fk" = "_mylite_s2"."id"
     WHERE "_mylite_s1"."group_id" = "_mylite_s0"."group_id"
 )
 ```
@@ -377,10 +381,11 @@ Deferred until later slices:
 - wildcard inner projection, even when the source has one column;
 - row-constructor `IN` subqueries;
 - quantified `ANY`, `SOME`, and `ALL` comparisons;
-- inner joins outside descriptor equality `INNER JOIN` chains, aliases on
-  unsupported source kinds, index hints, partitions, select modifiers other
-  than the admitted `DISTINCT`, grouping, aggregates, windows, locking clauses,
-  `ORDER BY`, `LIMIT`, and offset limits inside the `IN` subquery;
+- inner joins outside descriptor equality `INNER JOIN` / `LEFT JOIN` chains,
+  aliases on unsupported source kinds, index hints, partitions, select
+  modifiers other than the admitted `DISTINCT`, grouping, aggregates, windows,
+  locking clauses, `ORDER BY`, `LIMIT`, and offset limits inside the
+  `IN` subquery;
 - arbitrary inner projection expressions, functions, parameters, user
   variables, arithmetic, casts, explicit collations, and nested subqueries;
 - correlated references outside the inner `WHERE` clause;
@@ -429,6 +434,8 @@ Add MySQL-runtime expectation coverage for:
 - inner `WHERE` predicates;
 - correlated integer equality and null-safe equality;
 - inner unqualified name resolution preferring the inner source;
+- inner `LEFT JOIN` taxonomy-style membership filters, including `NOT IN` and
+  an outer joined source;
 - schema-qualified outer and inner tables;
 - unknown inner table, unknown selected column, unknown inner predicate column,
   unknown outer correlated column, multi-column subquery, and MySQL's `LIMIT`

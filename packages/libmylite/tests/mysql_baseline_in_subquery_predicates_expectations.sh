@@ -92,6 +92,15 @@ run_mysql \
      CREATE TABLE single_values (
          user_id INT
      );
+     CREATE TABLE user_terms (
+         id INT PRIMARY KEY,
+         user_id INT NOT NULL,
+         term_taxonomy_id INT NOT NULL
+     );
+     CREATE TABLE term_taxonomy (
+         term_taxonomy_id INT PRIMARY KEY,
+         term_id INT NULL
+     );
      INSERT INTO users VALUES
          (1, 'Ann', 1),
          (2, 'Bob', 2),
@@ -106,7 +115,16 @@ run_mysql \
          (14, 5, 'closed', NULL);
      INSERT INTO names VALUES ('Ann'), ('bob'), ('CAT'), (NULL);
      INSERT INTO selected_names VALUES ('ann'), ('cat'), (NULL);
-     INSERT INTO single_values VALUES (2), (3), (NULL);" \
+     INSERT INTO single_values VALUES (2), (3), (NULL);
+     INSERT INTO user_terms VALUES
+         (1, 1, 100),
+         (2, 2, 999),
+         (3, 3, 101),
+         (4, 4, 102);
+     INSERT INTO term_taxonomy VALUES
+         (100, 9),
+         (101, 9),
+         (102, NULL);" \
     "$DATABASE" >/dev/null
 
 expect_output \
@@ -247,6 +265,49 @@ expect_output \
          FROM orders o JOIN users u2 ON o.user_id = u2.id
          WHERE u2.name IN ('Ann', 'Bob')
      );" \
+    "$DATABASE"
+
+expect_output \
+    "left joined in subquery" \
+    "1,3" \
+    "SELECT GROUP_CONCAT(id ORDER BY id)
+     FROM users
+     WHERE id IN (
+         SELECT ut.user_id
+         FROM user_terms ut
+         LEFT JOIN term_taxonomy tt
+           ON ut.term_taxonomy_id = tt.term_taxonomy_id
+         WHERE tt.term_id IN (9)
+     );" \
+    "$DATABASE"
+
+expect_output \
+    "left joined not in subquery" \
+    "2,4,5" \
+    "SELECT GROUP_CONCAT(id ORDER BY id)
+     FROM users
+     WHERE id NOT IN (
+         SELECT ut.user_id
+         FROM user_terms ut
+         LEFT JOIN term_taxonomy tt
+           ON ut.term_taxonomy_id = tt.term_taxonomy_id
+         WHERE tt.term_id IN (9)
+     );" \
+    "$DATABASE"
+
+expect_output \
+    "outer joined source with left joined not in subquery" \
+    "2" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users u JOIN orders o ON u.id = o.user_id
+     WHERE o.status = 'open'
+       AND u.id NOT IN (
+         SELECT ut.user_id
+         FROM user_terms ut
+         LEFT JOIN term_taxonomy tt
+           ON ut.term_taxonomy_id = tt.term_taxonomy_id
+         WHERE tt.term_id IN (9)
+       );" \
     "$DATABASE"
 
 expect_output \

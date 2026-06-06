@@ -85,6 +85,9 @@ static int test_in_subquery_values_and_persistence(void) {
     static const char *const all_user_ids[] = {"1", "2", "3", "4", "5"};
     static const char *const string_matches[] = {"Ann", "Cat"};
     static const char *const joined_user_ids[] = {"1", "2"};
+    static const char *const left_joined_user_ids[] = {"1", "3"};
+    static const char *const left_joined_not_in_user_ids[] = {"2", "4", "5"};
+    static const char *const joined_left_joined_not_in_user_ids[] = {"2"};
     static const char *const scalar_subquery_count[] = {"3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -238,6 +241,52 @@ static int test_in_subquery_values_and_persistence(void) {
             .values = matched_user_ids,
             .row_count = 2U,
             .context = "inner joined source distinct IN subquery",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE id IN "
+                   "(SELECT ut.user_id FROM user_terms ut "
+                   "LEFT JOIN term_taxonomy tt "
+                   "ON ut.term_taxonomy_id = tt.term_taxonomy_id "
+                   "WHERE tt.term_id IN (9)) ORDER BY id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = left_joined_user_ids,
+            .row_count = 2U,
+            .context = "left joined source IN subquery",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE id NOT IN "
+                   "(SELECT ut.user_id FROM user_terms ut "
+                   "LEFT JOIN term_taxonomy tt "
+                   "ON ut.term_taxonomy_id = tt.term_taxonomy_id "
+                   "WHERE tt.term_id IN (9)) ORDER BY id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = left_joined_not_in_user_ids,
+            .row_count = 3U,
+            .context = "left joined source NOT IN subquery",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT u.id FROM users u JOIN orders o ON u.id = o.user_id "
+                   "WHERE o.status = 'open' AND u.id NOT IN "
+                   "(SELECT ut.user_id FROM user_terms ut "
+                   "LEFT JOIN term_taxonomy tt "
+                   "ON ut.term_taxonomy_id = tt.term_taxonomy_id "
+                   "WHERE tt.term_id IN (9)) ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = joined_left_joined_not_in_user_ids,
+            .row_count = 1U,
+            .context = "outer joined source with left joined NOT IN subquery",
         }
     );
     failures += expect_query(
@@ -482,6 +531,23 @@ static int seed_in_subquery_tables(mylite_db *database) {
     failures += execute_ok(database, "CREATE TABLE selected_names (name VARCHAR(20))", NULL);
     failures += execute_ok(
         database,
+        "CREATE TABLE user_terms ("
+        "id INT PRIMARY KEY, "
+        "user_id INT NOT NULL, "
+        "term_taxonomy_id INT NOT NULL"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE term_taxonomy ("
+        "term_taxonomy_id INT PRIMARY KEY, "
+        "term_id INT NULL"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
         "INSERT INTO users VALUES "
         "(1, 'Ann', 1), "
         "(2, 'Bob', 2), "
@@ -501,6 +567,23 @@ static int seed_in_subquery_tables(mylite_db *database) {
     );
     failures += execute_ok(database, "INSERT INTO single_values VALUES (2)", NULL);
     failures += execute_ok(database, "INSERT INTO selected_names VALUES ('ann'), ('CAT')", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO user_terms VALUES "
+        "(1, 1, 100), "
+        "(2, 2, 999), "
+        "(3, 3, 101), "
+        "(4, 4, 102)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO term_taxonomy VALUES "
+        "(100, 9), "
+        "(101, 9), "
+        "(102, NULL)",
+        NULL
+    );
 
     return failures;
 }

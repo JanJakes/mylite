@@ -2,7 +2,8 @@
 
 - [x] Read existing DATE_FORMAT, row-scalar, and SELECT WHERE specs and tests.
 - [x] Verify official MySQL 8.4 documentation for `DATE_FORMAT()` and comparison predicates.
-- [x] Verify MySQL 8.4.9 runtime behavior for the admitted `DATE_FORMAT(..., '%H.%i')` numeric comparison predicate surface.
+- [x] Verify MySQL 8.4.9 runtime behavior for the admitted `DATE_FORMAT(...)`
+      numeric comparison predicate surface.
 - [x] Write an independently authored feature spec with MyLite Lemon-syntax snippets.
 - [x] Add MySQL expectation script for the admitted DATE_FORMAT predicate surface.
 - [x] Extend parser and predicate planning to admit the exact DATE_FORMAT numeric comparison predicate over one descriptor table source.
@@ -12,3 +13,5 @@
 - [x] Run targeted runtime/MySQL expectation tests.
 - [x] Run `cmake --workflow --preset check`.
 - [x] Run subagent release-gate review, fix findings, commit atomically, and push `main`.
+- [x] Extend the admitted numeric comparison formats to include the WordPress
+      `'%H.%i%s'` shape and verify it against MySQL 8.4.9.

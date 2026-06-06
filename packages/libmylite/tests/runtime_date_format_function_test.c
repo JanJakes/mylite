@@ -391,6 +391,19 @@ static int test_date_format_predicates(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i%s') = "
+                   "13.291700 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_2,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "date_format predicate hour minute second match",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM options WHERE DATE_FORMAT(option_value, '%H.%i') >= 0.42 "
                    "ORDER BY id",
             .columns = columns_id,
@@ -529,7 +542,8 @@ static int test_date_format_predicates(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i')",
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "
+                "'%H.%i%s')",
         }
     );
     failures += execute_error(
@@ -717,7 +731,8 @@ static int test_date_format_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i')",
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "
+                "'%H.%i%s')",
         }
     );
     failures += execute_error(
@@ -727,7 +742,8 @@ static int test_date_format_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i')",
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "
+                "'%H.%i%s')",
         }
     );
 

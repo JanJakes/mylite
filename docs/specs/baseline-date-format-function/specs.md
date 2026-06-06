@@ -58,9 +58,10 @@ Runtime probes establish the behavior used by this baseline:
 - Table-backed `DATE_FORMAT(column, literal_format)` evaluates once per row and
   preserves the existing single-table row envelope for `WHERE`, `ORDER BY`, and
   `LIMIT`.
-- `DATE_FORMAT(value, '%H.%i')` returns `1`, `0`, or `NULL` as a numeric
-  comparison for `=`, `<>`, `<`, `<=`, `>`, and `>=`. Invalid temporal values
-  still return `NULL` and append the temporal warning.
+- `DATE_FORMAT(value, '%H.%i')` and `DATE_FORMAT(value, '%H.%i%s')` return
+  `1`, `0`, or `NULL` as numeric comparisons for `=`, `<>`, `<`, `<=`, `>`,
+  and `>=`. Invalid temporal values still return `NULL` and append the
+  temporal warning.
 - Successful supported statements produce no warnings except for invalid
   temporal inputs. Successful `SELECT` makes a following `ROW_COUNT()` return
   `-1`; successful `DO` makes it return `0`.
@@ -93,17 +94,18 @@ MyLite supports:
   - `%%`, a trailing `%`, and unknown non-format percent sequences such as
     `%q` as MySQL-style literal output;
 - top-level row-scalar numeric comparison of the exact form
-  `DATE_FORMAT(value, '%H.%i') comparison_operator numeric_literal` or
-  `numeric_literal comparison_operator DATE_FORMAT(value, '%H.%i')`, where
-  `comparison_operator` is `=`, `<>`, `!=`, `<`, `<=`, `>`, or `>=`, and
-  `numeric_literal` is a decimal integer or fixed decimal literal with optional
-  unary sign;
+  `DATE_FORMAT(value, '%H.%i') comparison_operator numeric_literal`,
+  `DATE_FORMAT(value, '%H.%i%s') comparison_operator numeric_literal`, or the
+  matching reversed no-source scalar shape, where `comparison_operator` is `=`,
+  `<>`, `!=`, `<`, `<=`, `>`, or `>=`, and `numeric_literal` is a decimal
+  integer or fixed decimal literal with optional unary sign;
 - output text/`NULL` values through existing result APIs;
 - warning count `0` for supported valid in-range forms.
 
 The admitted row-scalar numeric comparison is deliberately narrow. It exists
-for common `DATE_FORMAT(..., '%H.%i')` comparison patterns and does not
-establish general table-backed expression comparison.
+for common `DATE_FORMAT(..., '%H.%i')` and `DATE_FORMAT(..., '%H.%i%s')`
+comparison patterns and does not establish general table-backed expression
+comparison.
 
 ## Deferred Surface
 
@@ -184,6 +186,7 @@ comparison_operator(A) ::= GREATER.
 comparison_operator(A) ::= GREATER_EQUAL.
 
 hour_minute_decimal_format(A) ::= string_literal_with_decoded_value_percent_H_dot_percent_i(T).
+hour_minute_decimal_format(A) ::= string_literal_with_decoded_value_percent_H_dot_percent_i_percent_s(T).
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
@@ -202,9 +205,9 @@ Planning:
    including `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`.
 5. Validate the format literal for this slice. Known deferred week tokens fail
    deterministically rather than returning wrong values. The numeric comparison
-   form additionally requires the decoded format literal to be exactly `%H.%i`,
-   because other formatted strings need MySQL-compatible numeric coercion and
-   truncation warnings.
+   form additionally requires the decoded format literal to be exactly `%H.%i`
+   or `%H.%i%s`, because other formatted strings need MySQL-compatible numeric
+   coercion and truncation warnings.
 6. Generate SQLite projection SQL over stable physical table names and quoted
    physical column names. String literals and comparison literals are bound
    parameters.

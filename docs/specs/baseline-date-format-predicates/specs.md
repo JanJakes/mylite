@@ -6,15 +6,16 @@ This phase admits the narrow WordPress-shaped predicate:
 
 ```sql
 SELECT id FROM options
-WHERE DATE_FORMAT(option_value, '%H.%i') >= 9.000000
+WHERE DATE_FORMAT(option_value, '%H.%i%s') = 12.121200
 ```
 
 The scope is intentionally limited to the existing `DATE_FORMAT()` row-scalar
-input subset, the exact `'%H.%i'` format, comparison against a decimal or
-integer numeric literal, and one descriptor-backed table source. It reuses the
-existing row-scalar `DATE_FORMAT()` planner and MyLite's registered SQLite
-`_mylite_date_format(...)` function so SQLite evaluates the predicate during
-the scan. MyLite does not materialize table rows to filter this expression.
+input subset, the exact `'%H.%i'` and `'%H.%i%s'` numeric formats, comparison
+against a decimal or integer numeric literal, and one descriptor-backed table
+source. It reuses the existing row-scalar `DATE_FORMAT()` planner and MyLite's
+registered SQLite `_mylite_date_format(...)` function so SQLite evaluates the
+predicate during the scan. MyLite does not materialize table rows to filter
+this expression.
 
 ## Sources And Evidence
 
@@ -40,18 +41,20 @@ Percona, SQLite implementation internals, or restrictively licensed sources.
 
 Runtime probes establish the behavior used by this phase:
 
-- `DATE_FORMAT(value, '%H.%i')` compared with `=`, `<>`, `<`, `<=`, `>`, or
-  `>=` compares the formatted hour-minute text numerically. Values formatting
-  to `00.42` compare as `0.42`; seconds are not part of the formatted value.
+- `DATE_FORMAT(value, '%H.%i')` and `DATE_FORMAT(value, '%H.%i%s')` compared
+  with `=`, `<>`, `<`, `<=`, `>`, or `>=` compare the formatted hour-minute or
+  hour-minute-second text numerically. Values formatting to `00.42` compare as
+  `0.42`; values formatting to `12.1212` compare equal to `12.121200`.
 - MySQL also accepts the reversed form
-  `0.42 = DATE_FORMAT(value, '%H.%i')`, but the parser admits only the
-  function-left shape in this slice to keep the grammar isolated.
+  `0.42 = DATE_FORMAT(value, '%H.%i')`, but the predicate grammar admits only
+  the function-left shape in this slice to keep the grammar isolated.
 - Unary `+` on the numeric literal is accepted; unary `-` is accepted and
   compares normally.
 - A `NULL` or invalid temporal value produces a `NULL` comparison result and
   does not match the `WHERE` predicate. Invalid temporal strings append warning
   `1292`, preserving the existing `DATE_FORMAT()` warning text.
-- `DATE` values formatted with `'%H.%i'` use MySQL's date-at-midnight behavior.
+- `DATE` values formatted with `'%H.%i'` or `'%H.%i%s'` use MySQL's
+  date-at-midnight behavior.
 - Successful in-range comparisons produce no warnings.
 - MySQL accepts broader shapes such as null-safe equality, other formats,
   quoted numeric operands, expression operands, joins, grouping, subqueries,
@@ -73,7 +76,11 @@ The admitted predicate is:
 
 ```sql
 date_format_numeric_comparison:
-    DATE_FORMAT(value, '%H.%i') comparison_operator numeric_literal
+    DATE_FORMAT(value, numeric_comparison_format) comparison_operator numeric_literal
+
+numeric_comparison_format:
+    '%H.%i'
+  | '%H.%i%s'
 
 comparison_operator:
     = | <> | != | < | <= | > | >=
@@ -98,7 +105,8 @@ This slice intentionally does not support:
   arithmetic, control-flow, aggregate, grouping, having, or ordering
   expressions around `DATE_FORMAT()`;
 - reversed predicate forms such as `0.42 = DATE_FORMAT(value, '%H.%i')`;
-- format strings other than the exact `'%H.%i'` numeric comparison format;
+- format strings other than the exact `'%H.%i'` and `'%H.%i%s'` numeric
+  comparison formats;
 - `TIME` descriptor inputs, week format specifiers, dynamic format arguments,
   quoted numeric operands, hex/bit/float operands, parameter markers,
   variables, column operands, subqueries, or arbitrary expressions;
@@ -126,9 +134,10 @@ These snippets describe MyLite's supported subset, not MySQL's full grammar.
 Planning:
 
 1. Detect the exact top-level or parenthesized binary comparison whose left
-   side is `DATE_FORMAT(value, '%H.%i')`, whose operator is `=`, `<>`, `!=`,
-   `<`, `<=`, `>`, or `>=`, and whose right side is an integer or exact decimal
-   literal with optional unary sign.
+   side is `DATE_FORMAT(value, format)`, whose decoded `format` is `'%H.%i'` or
+   `'%H.%i%s'`, whose operator is `=`, `<>`, `!=`, `<`, `<=`, `>`, or `>=`, and
+   whose right side is an integer or exact decimal literal with optional unary
+   sign.
 2. Reject joined source contexts for this baseline predicate slice.
 3. Reuse `plan_row_scalar_date_format_numeric_comparison_expression()` with
    `has_source=true` so descriptor resolution, unknown-column diagnostics, and
@@ -158,7 +167,7 @@ Required diagnostics:
 - unsupported numeric predicate shape:
   `DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format) [=, <>, <, <=, >, >=] numeric_literal`;
 - unsupported format:
-  `DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') [=, <>, <, <=, >, >=] numeric_literal`;
+  `DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or '%H.%i%s') [=, <>, <, <=, >, >=] numeric_literal`;
 - unsupported `DATE_FORMAT()` arguments use existing `DATE_FORMAT()`
   diagnostics;
 - unknown descriptor columns use existing MySQL-compatible unknown-column
@@ -171,6 +180,7 @@ Extend `packages/libmylite/tests/runtime_date_format_function_test.c` and add
 a MySQL expectation script covering:
 
 - `DATE_FORMAT(option_value, '%H.%i') = 0.42`;
+- `DATE_FORMAT(option_value, '%H.%i%s') = 13.291700`;
 - unary signed integer/decimal numeric operands;
 - descriptor `VARCHAR`, `DATE`, `DATETIME`, and `TIMESTAMP` inputs;
 - `NULL` and invalid string behavior, including warnings;
@@ -183,5 +193,6 @@ a MySQL expectation script covering:
 
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-temporal.md`, and
 `docs/compatibility/sql-query-expressions.md` to state that only this limited
-single-table `WHERE` predicate form is supported. Do not claim full
-`DATE_FORMAT()` predicates or general expression predicates.
+single-table `WHERE` predicate form and these exact numeric formats are
+supported. Do not claim full `DATE_FORMAT()` predicates or general expression
+predicates.

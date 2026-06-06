@@ -942,7 +942,8 @@ static int plan_row_scalar_date_format_numeric_comparison_expression(
         !planned_date_format_numeric_comparison_format_is_supported(&out_expression->arguments[0])) {
         set_unsupported_error(
             database,
-            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') "
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "
+            "'%H.%i%s') "
             "[=, <>, <, <=, >, >=] numeric_literal"
         );
         rc = MYLITE_ERROR;

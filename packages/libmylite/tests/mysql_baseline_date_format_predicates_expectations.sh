@@ -50,6 +50,7 @@ predicate_expected=$(cat <<EXPECTED
 1,5
 NULL
 2
+2
 1,2,5
 2
 2
@@ -85,6 +86,8 @@ expect_output \
 "WHERE DATE_FORMAT(option_value, '%H.%i') = -0.42; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
 "WHERE DATE_FORMAT(option_value, '%H.%i') = 13.29; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
+"WHERE DATE_FORMAT(option_value, '%H.%i%s') = 13.291700; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\
 "WHERE DATE_FORMAT(option_value, '%H.%i') >= 0.42; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM options "\

@@ -1277,7 +1277,8 @@ int mylite_execution_scalar_date_format_numeric_comparison_value(
         )) {
         mylite_execution_set_unsupported_error(
             database,
-            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i') "
+            "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "
+            "'%H.%i%s') "
             "[=, <>, <, <=, >, >=] numeric_literal"
         );
         rc = MYLITE_ERROR;
@@ -1557,10 +1558,21 @@ bool mylite_execution_date_format_numeric_comparison_format_is_supported(
     const char *format,
     size_t format_length
 ) {
-    static const char supported_format[] = "%H.%i";
+    static const char supported_formats[][8] = {"%H.%i", "%H.%i%s"};
 
-    return (format != NULL && format_length == sizeof(supported_format) - 1U &&
-            memcmp(format, supported_format, sizeof(supported_format) - 1U) == 0) != 0;
+    if (format == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(supported_formats) / sizeof(supported_formats[0]);
+         ++index) {
+        size_t supported_length = strlen(supported_formats[index]);
+
+        if (format_length == supported_length &&
+            memcmp(format, supported_formats[index], supported_length) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int mylite_execution_scalar_date_interval_second_value(

@@ -536,13 +536,12 @@ static int reject_joined_select_having_reference_error(
 
     rc = copy_identifier_text(reference, column_name, sizeof(column_name), database);
     if (rc == MYLITE_OK) {
-        rc =
-            count_select_list_output_name_matches(
-                database,
-                request.select_list,
-                column_name,
-                &match_count
-            );
+        rc = count_select_list_output_name_matches(
+            database,
+            request.select_list,
+            column_name,
+            &match_count
+        );
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -770,6 +769,8 @@ static void joined_select_temp_nodes_deinit(struct joined_select_temp_nodes *tem
     *temp_nodes = (struct joined_select_temp_nodes){0};
 }
 
+static bool joined_select_source_node_is_supported(const struct mylite_sql_ast_node *node);
+
 static size_t joined_select_source_count(const struct mylite_sql_ast_node *from_clause) {
     const struct mylite_sql_ast_node *node = from_clause;
     size_t source_count = 0U;
@@ -778,10 +779,15 @@ static size_t joined_select_source_count(const struct mylite_sql_ast_node *from_
         ++source_count;
         node = child_at(node, 0U);
     }
-    if (node == NULL || node->kind != MYLITE_SQL_AST_FROM_TABLE) {
+    if (!joined_select_source_node_is_supported(node)) {
         return 0U;
     }
     return source_count + 1U;
+}
+
+static bool joined_select_source_node_is_supported(const struct mylite_sql_ast_node *node) {
+    return node != NULL &&
+           (node->kind == MYLITE_SQL_AST_FROM_TABLE || node->kind == MYLITE_SQL_AST_FROM_DERIVED);
 }
 
 static int collect_joined_select_parts(
@@ -805,8 +811,7 @@ static int collect_joined_select_parts(
     while (node != NULL && node->kind == MYLITE_SQL_AST_FROM_JOIN) {
         const struct mylite_sql_ast_node *right_source = child_at(node, 1U);
 
-        if (join_index == 0U || right_source == NULL ||
-            right_source->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        if (join_index == 0U || !joined_select_source_node_is_supported(right_source)) {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
         }
@@ -823,7 +828,7 @@ static int collect_joined_select_parts(
         node = child_at(node, 0U);
     }
 
-    if (join_index != 0U || node == NULL || node->kind != MYLITE_SQL_AST_FROM_TABLE) {
+    if (join_index != 0U || !joined_select_source_node_is_supported(node)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -925,6 +930,9 @@ static int plan_joined_select_source(
     struct planned_select_source *out_source
 ) {
     *out_source = (struct planned_select_source){0};
+    if (source_node != NULL && source_node->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        return plan_joined_select_derived_source(database, source_node, out_source);
+    }
     return plan_joined_select_table_source(database, source_node, out_source);
 }
 
@@ -1001,23 +1009,62 @@ static int plan_joined_select_derived_source(
         return MYLITE_ERROR;
     }
 
-    out_source->derived_select = calloc(1U, sizeof(*out_source->derived_select));
-    if (out_source->derived_select == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
     rc = copy_identifier_text(alias, out_source->alias, sizeof(out_source->alias), database);
     if (rc == MYLITE_OK) {
         out_source->has_alias = true;
         out_source->is_derived = true;
-        rc = plan_select(database, select_statement, false, out_source->derived_select);
+        memcpy(
+            out_source->source.table_name,
+            out_source->alias,
+            sizeof(out_source->source.table_name)
+        );
     }
-    if (rc == MYLITE_OK) {
-        rc = validate_derived_select_output_columns(database, out_source->derived_select);
-    }
-    if (rc == MYLITE_OK) {
-        rc = copy_derived_select_source_columns(database, out_source->derived_select, out_source);
+    if (rc == MYLITE_OK && select_statement_has_group_by_clause(select_statement)) {
+        out_source->derived_grouped_aggregate =
+            calloc(1U, sizeof(*out_source->derived_grouped_aggregate));
+        if (out_source->derived_grouped_aggregate == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_grouped_aggregate(
+                database,
+                select_statement,
+                out_source->derived_grouped_aggregate
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_derived_grouped_aggregate_output_columns(
+                database,
+                out_source->derived_grouped_aggregate
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = copy_derived_grouped_aggregate_source_columns(
+                database,
+                out_source->derived_grouped_aggregate,
+                out_source
+            );
+        }
+    } else if (rc == MYLITE_OK) {
+        out_source->derived_select = calloc(1U, sizeof(*out_source->derived_select));
+        if (out_source->derived_select == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_select(database, select_statement, false, out_source->derived_select);
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_derived_select_output_columns(database, out_source->derived_select);
+        }
+        if (rc == MYLITE_OK) {
+            rc = copy_derived_select_source_columns(
+                database,
+                out_source->derived_select,
+                out_source
+            );
+        }
     }
     if (rc != MYLITE_OK) {
         planned_select_source_deinit(out_source);
@@ -1071,6 +1118,195 @@ static int copy_derived_select_source_columns(
     );
     out_source->column_count = derived_plan->column_count;
     return MYLITE_OK;
+}
+
+static int validate_derived_grouped_aggregate_output_columns(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *derived_plan
+) {
+    if (derived_plan == NULL ||
+        (derived_plan->projection_count == 0U && derived_plan->aggregate_count == 0U)) {
+        set_unsupported_error(database, "joined source derived tables require descriptor columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t projection_index = 0U; projection_index < derived_plan->projection_count;
+         ++projection_index) {
+        const struct planned_grouped_projection *projection =
+            &derived_plan->projections[projection_index];
+
+        if (projection->uses_row_scalar_expression) {
+            set_unsupported_error(
+                database,
+                "joined source derived grouped tables require descriptor projections"
+            );
+            return MYLITE_ERROR;
+        }
+        if (projection->alias != NULL && projection->alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            set_unsupported_error(
+                database,
+                "joined source derived grouped tables support only identifier output aliases"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+
+    for (size_t aggregate_index = 0U; aggregate_index < derived_plan->aggregate_count;
+         ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item =
+            &derived_plan->aggregates[aggregate_index];
+
+        if (item->alias == NULL) {
+            set_unsupported_error(
+                database,
+                "joined source derived grouped tables require aggregate output aliases"
+            );
+            return MYLITE_ERROR;
+        }
+        if (item->alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            set_unsupported_error(
+                database,
+                "joined source derived grouped tables support only identifier output aliases"
+            );
+            return MYLITE_ERROR;
+        }
+        if (item->function == PLANNED_GROUPED_AGGREGATE_AVG ||
+            item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+            set_unsupported_error(
+                database,
+                "joined source derived grouped tables support only one-column aggregate outputs"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_derived_grouped_aggregate_source_columns(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *derived_plan,
+    struct planned_select_source *out_source
+) {
+    const size_t output_count = derived_plan->projection_count + derived_plan->aggregate_count;
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    int rc = MYLITE_OK;
+
+    if (output_count > SIZE_MAX / sizeof(*out_source->columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    columns = calloc(output_count, sizeof(*columns));
+    if (columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t projection_index = 0U;
+         rc == MYLITE_OK && projection_index < derived_plan->projection_count;
+         ++projection_index) {
+        rc = copy_derived_grouped_projection_source_column(
+            database,
+            &derived_plan->projections[projection_index],
+            projection_index,
+            &columns[projection_index]
+        );
+    }
+    for (size_t aggregate_index = 0U;
+         rc == MYLITE_OK && aggregate_index < derived_plan->aggregate_count;
+         ++aggregate_index) {
+        size_t output_index = derived_plan->projection_count + aggregate_index;
+
+        rc = make_derived_grouped_aggregate_source_column(
+            database,
+            &derived_plan->aggregates[aggregate_index],
+            output_index,
+            &columns[output_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(columns);
+        return rc;
+    }
+
+    out_source->columns = columns;
+    out_source->column_count = output_count;
+    return MYLITE_OK;
+}
+
+static int copy_derived_grouped_projection_source_column(
+    struct mylite_db *database,
+    const struct planned_grouped_projection *projection,
+    size_t output_index,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    *out_column = projection->column;
+    out_column->table_id = 0;
+    out_column->column_id = (int64_t)output_index + 1;
+    out_column->ordinal_position = (int64_t)output_index + 1;
+    if (projection->alias != NULL) {
+        return copy_derived_grouped_output_alias(
+            database,
+            projection->alias,
+            out_column->name,
+            sizeof(out_column->name)
+        );
+    }
+    return MYLITE_OK;
+}
+
+static int make_derived_grouped_aggregate_source_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate_item *item,
+    size_t output_index,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    *out_column = (struct mylite_catalog_column_descriptor){
+        .column_id = (int64_t)output_index + 1,
+        .ordinal_position = (int64_t)output_index + 1,
+        .is_nullable = item->function != PLANNED_GROUPED_AGGREGATE_COUNT_STAR &&
+                       item->function != PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN,
+        .is_visible = true,
+    };
+    if (item->function == PLANNED_GROUPED_AGGREGATE_MIN ||
+        item->function == PLANNED_GROUPED_AGGREGATE_MAX ||
+        item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        *out_column = item->aggregate_column;
+        out_column->table_id = 0;
+        out_column->column_id = (int64_t)output_index + 1;
+        out_column->ordinal_position = (int64_t)output_index + 1;
+    } else {
+        snprintf(out_column->logical_type, sizeof(out_column->logical_type), "BIGINT");
+        snprintf(out_column->physical_type, sizeof(out_column->physical_type), "INTEGER");
+    }
+    if (item->alias != NULL) {
+        return copy_derived_grouped_output_alias(
+            database,
+            item->alias,
+            out_column->name,
+            sizeof(out_column->name)
+        );
+    }
+    set_unsupported_error(
+        database,
+        "joined source derived grouped tables require aggregate output aliases"
+    );
+    return MYLITE_ERROR;
+}
+
+static int copy_derived_grouped_output_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char *destination,
+    size_t destination_size
+) {
+    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "joined source derived grouped tables support only identifier output aliases"
+        );
+        return MYLITE_ERROR;
+    }
+    return copy_identifier_text(alias, destination, destination_size, database);
 }
 
 static const struct mylite_sql_ast_node *from_table_alias_node(
@@ -1407,7 +1643,8 @@ static int plan_joined_select_condition_with_extra_predicate(
         return MYLITE_ERROR;
     }
 
-    rc = plan_joined_select_primary_condition(database, primary_node, source_context, out_condition);
+    rc =
+        plan_joined_select_primary_condition(database, primary_node, source_context, out_condition);
     if (rc == MYLITE_OK) {
         rc = plan_joined_select_extra_on_predicate(
             database,
@@ -1467,11 +1704,10 @@ static int plan_joined_select_primary_condition(
             &out_condition->right_column,
             &out_condition->right_source_index
         );
-        if (rc == MYLITE_OK &&
-            !join_condition_columns_are_compatible(
-                &out_condition->left_column,
-                &out_condition->right_column
-            )) {
+        if (rc == MYLITE_OK && !join_condition_columns_are_compatible(
+                                   &out_condition->left_column,
+                                   &out_condition->right_column
+                               )) {
             set_unsupported_error(
                 database,
                 "joined SELECT supports only same-family integer or string descriptor equality ON"
@@ -1479,11 +1715,8 @@ static int plan_joined_select_primary_condition(
             return MYLITE_ERROR;
         }
     } else if (rc == MYLITE_OK) {
-        out_condition->right_row_scalar_expression =
-            (struct planned_row_scalar_expression *)calloc(
-                1U,
-                sizeof(*out_condition->right_row_scalar_expression)
-            );
+        out_condition->right_row_scalar_expression = (struct planned_row_scalar_expression *)
+            calloc(1U, sizeof(*out_condition->right_row_scalar_expression));
         if (out_condition->right_row_scalar_expression == NULL) {
             set_nomem_error(database);
             return MYLITE_NOMEM;
@@ -1545,9 +1778,7 @@ static bool joined_select_on_node_is_and(const struct mylite_sql_ast_node *node)
     return node != NULL && node->kind == MYLITE_SQL_AST_AND_PREDICATE;
 }
 
-static bool joined_select_on_node_is_descriptor_equality(
-    const struct mylite_sql_ast_node *node
-) {
+static bool joined_select_on_node_is_descriptor_equality(const struct mylite_sql_ast_node *node) {
     node = unwrap_parenthesized_expression(node);
     if (node == NULL ||
         (node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
@@ -1559,9 +1790,7 @@ static bool joined_select_on_node_is_descriptor_equality(
            predicate_node_is_column_reference(child_at(node, 1U));
 }
 
-static bool joined_select_on_node_is_primary_condition(
-    const struct mylite_sql_ast_node *node
-) {
+static bool joined_select_on_node_is_primary_condition(const struct mylite_sql_ast_node *node) {
     node = unwrap_parenthesized_expression(node);
     if (node == NULL ||
         (node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
@@ -1614,9 +1843,16 @@ static void planned_select_deinit(struct planned_select *plan) {
     struct planned_select_source *derived_source = planned_select_find_deepest_derived_source(plan);
 
     while (derived_source != NULL) {
-        planned_select_deinit_shallow(derived_source->derived_select);
-        free(derived_source->derived_select);
-        derived_source->derived_select = NULL;
+        if (derived_source->derived_select != NULL) {
+            planned_select_deinit_shallow(derived_source->derived_select);
+            free(derived_source->derived_select);
+            derived_source->derived_select = NULL;
+        }
+        if (derived_source->derived_grouped_aggregate != NULL) {
+            planned_grouped_aggregate_deinit(derived_source->derived_grouped_aggregate);
+            free(derived_source->derived_grouped_aggregate);
+            derived_source->derived_grouped_aggregate = NULL;
+        }
         derived_source->is_derived = false;
         derived_source = planned_select_find_deepest_derived_source(plan);
     }
@@ -1659,8 +1895,7 @@ static struct planned_select_source *planned_select_find_deepest_derived_source(
 
     while (current_plan != NULL && descended) {
         descended = false;
-        for (size_t source_index = 0U; source_index < current_plan->source_count;
-             ++source_index) {
+        for (size_t source_index = 0U; source_index < current_plan->source_count; ++source_index) {
             struct planned_select_source *source = &current_plan->sources[source_index];
 
             if (source->derived_select != NULL) {
@@ -1668,6 +1903,9 @@ static struct planned_select_source *planned_select_find_deepest_derived_source(
                 current_plan = source->derived_select;
                 descended = true;
                 break;
+            }
+            if (source->derived_grouped_aggregate != NULL) {
+                deepest_source = source;
             }
         }
     }
@@ -1684,6 +1922,11 @@ static void planned_select_source_deinit(struct planned_select_source *source) {
         free(source->derived_select);
         source->derived_select = NULL;
     }
+    if (source->derived_grouped_aggregate != NULL) {
+        planned_grouped_aggregate_deinit(source->derived_grouped_aggregate);
+        free(source->derived_grouped_aggregate);
+        source->derived_grouped_aggregate = NULL;
+    }
     planned_select_source_deinit_shallow(source);
 }
 
@@ -1692,13 +1935,12 @@ static void planned_select_source_deinit_shallow(struct planned_select_source *s
         return;
     }
     assert(source->derived_select == NULL);
+    assert(source->derived_grouped_aggregate == NULL);
     free(source->columns);
     *source = (struct planned_select_source){0};
 }
 
-static void planned_select_join_condition_deinit(
-    struct planned_select_join_condition *condition
-) {
+static void planned_select_join_condition_deinit(struct planned_select_join_condition *condition) {
     if (condition == NULL) {
         return;
     }

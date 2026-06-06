@@ -53,24 +53,31 @@ static int bind_select_parameter_work_item(
     switch (item->kind) {
     case SELECT_PARAMETER_BIND_PLAN:
         return push_select_plan_parameter_work(stack, item->plan);
-    case SELECT_PARAMETER_BIND_SOURCE_LIST:
-        return push_select_source_list_parameter_work(
-            stack,
-            item->sources,
-            item->source_count
+    case SELECT_PARAMETER_BIND_GROUPED_AGGREGATE:
+        return bind_grouped_aggregate_parameters_at(
+            statement,
+            item->grouped_plan,
+            true,
+            parameter_index
         );
+    case SELECT_PARAMETER_BIND_SOURCE_LIST:
+        return push_select_source_list_parameter_work(stack, item->sources, item->source_count);
     case SELECT_PARAMETER_BIND_SOURCE:
         if (item->source == NULL || !item->source->is_derived) {
             return MYLITE_OK;
         }
-        if (item->source->derived_select == NULL) {
+        if (item->source->derived_select == NULL &&
+            item->source->derived_grouped_aggregate == NULL) {
             return MYLITE_ERROR;
         }
         return select_parameter_bind_stack_push(
             stack,
             (struct select_parameter_bind_item){
-                .kind = SELECT_PARAMETER_BIND_PLAN,
+                .kind = item->source->derived_select == NULL
+                            ? SELECT_PARAMETER_BIND_GROUPED_AGGREGATE
+                            : SELECT_PARAMETER_BIND_PLAN,
                 .plan = item->source->derived_select,
+                .grouped_plan = item->source->derived_grouped_aggregate,
             }
         );
     case SELECT_PARAMETER_BIND_JOIN_CONDITION:

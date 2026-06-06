@@ -186,8 +186,7 @@ static int bind_select_non_in_predicate_node_parameters(
                 ++(*parameter_index);
             }
             if (rc == MYLITE_OK) {
-                rc =
-                    bind_planned_value_parameter(statement, *parameter_index, &node->upper_value);
+                rc = bind_planned_value_parameter(statement, *parameter_index, &node->upper_value);
                 if (rc == MYLITE_OK) {
                     ++(*parameter_index);
                 }
@@ -279,11 +278,8 @@ static int bind_select_scalar_subquery_in_predicate_parameters(
         return MYLITE_ERROR;
     }
 
-    rc = bind_select_in_subquery_predicate_parameters(
-        statement,
-        node->in_subquery,
-        parameter_index
-    );
+    rc =
+        bind_select_in_subquery_predicate_parameters(statement, node->in_subquery, parameter_index);
     if (rc == MYLITE_OK) {
         rc = bind_select_in_value_list_parameters(statement, node, parameter_index);
     }
@@ -388,9 +384,19 @@ static int bind_grouped_aggregate_parameters_with_limit(
     bool include_limit
 ) {
     int parameter_index = 1;
+
+    return bind_grouped_aggregate_parameters_at(statement, plan, include_limit, &parameter_index);
+}
+
+static int bind_grouped_aggregate_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    bool include_limit,
+    int *parameter_index
+) {
     int rc = MYLITE_OK;
 
-    rc = bind_grouped_projection_parameters(statement, plan, &parameter_index);
+    rc = bind_grouped_projection_parameters(statement, plan, parameter_index);
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
@@ -398,20 +404,20 @@ static int bind_grouped_aggregate_parameters_with_limit(
         rc = bind_grouped_aggregate_row_scalar_expression_parameters(
             statement,
             item,
-            &parameter_index
+            parameter_index
         );
         if (rc == MYLITE_OK && item->has_separator) {
-            rc = bind_planned_value_parameter(statement, parameter_index, &item->separator);
+            rc = bind_planned_value_parameter(statement, *parameter_index, &item->separator);
             if (rc == MYLITE_OK) {
-                ++parameter_index;
+                ++(*parameter_index);
             }
         }
     }
     if (rc == MYLITE_OK) {
-        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_grouped_key_parameters(statement, plan, &parameter_index);
+        rc = bind_grouped_key_parameters(statement, plan, parameter_index);
     }
     if (rc == MYLITE_OK && plan->having.kind != PLANNED_GROUPED_HAVING_NONE &&
         plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE) {
@@ -421,26 +427,29 @@ static int bind_grouped_aggregate_parameters_with_limit(
         rc = bind_grouped_aggregate_row_scalar_expression_parameters(
             statement,
             &plan->aggregates[plan->having.aggregate_index],
-            &parameter_index
+            parameter_index
         );
     }
     if (rc == MYLITE_OK && plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->having.value.integer);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->having.value.integer);
         if (rc == MYLITE_OK) {
-            ++parameter_index;
+            ++(*parameter_index);
         }
     }
     if (rc == MYLITE_OK && include_limit) {
-        rc = bind_grouped_order_parameters(statement, plan, &parameter_index);
+        rc = bind_grouped_order_parameters(statement, plan, parameter_index);
     }
     if (rc == MYLITE_OK && include_limit && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
-            ++parameter_index;
+            ++(*parameter_index);
         }
     }
     if (rc == MYLITE_OK && include_limit && plan->limit.has_offset) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
     }
 
     return rc;

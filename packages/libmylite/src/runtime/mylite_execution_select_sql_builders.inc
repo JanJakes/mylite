@@ -57,6 +57,15 @@ static int append_select_sql_work_item(
     switch (item->kind) {
     case SELECT_SQL_WORK_QUERY:
         return append_select_sql_work_query(string, stack, item->plan);
+    case SELECT_SQL_WORK_GROUPED_QUERY:
+        return append_grouped_aggregate_query_sql(
+            string,
+            item->grouped_plan,
+            next_parameter,
+            true,
+            true,
+            true
+        );
     case SELECT_SQL_WORK_FROM:
         return append_select_sql_work_from(string, stack, item->plan);
     case SELECT_SQL_WORK_SOURCE:
@@ -233,7 +242,7 @@ static int append_select_sql_work_source(
         return MYLITE_ERROR;
     }
     if (source->is_derived) {
-        if (source->derived_select == NULL) {
+        if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL) {
             return MYLITE_ERROR;
         }
         rc = mylite_dynamic_string_append_char(string, '(');
@@ -259,8 +268,10 @@ static int append_select_sql_work_source(
             rc = select_sql_work_stack_push(
                 stack,
                 (struct select_sql_work_item){
-                    .kind = SELECT_SQL_WORK_QUERY,
+                    .kind = source->derived_select == NULL ? SELECT_SQL_WORK_GROUPED_QUERY
+                                                           : SELECT_SQL_WORK_QUERY,
                     .plan = source->derived_select,
+                    .grouped_plan = source->derived_grouped_aggregate,
                 }
             );
         }
@@ -400,12 +411,23 @@ static int append_select_source_sql(
         return MYLITE_ERROR;
     }
     if (source->is_derived) {
-        if (source->derived_select == NULL) {
+        if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL) {
             return MYLITE_ERROR;
         }
         rc = mylite_dynamic_string_append_char(string, '(');
         if (rc == MYLITE_OK) {
-            rc = append_select_sql_query(string, source->derived_select, next_parameter);
+            if (source->derived_select != NULL) {
+                rc = append_select_sql_query(string, source->derived_select, next_parameter);
+            } else {
+                rc = append_grouped_aggregate_query_sql(
+                    string,
+                    source->derived_grouped_aggregate,
+                    next_parameter,
+                    true,
+                    true,
+                    true
+                );
+            }
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, ") AS ");

@@ -2134,11 +2134,13 @@ enum select_sql_work_item_kind {
     SELECT_SQL_WORK_LIMIT = 6,
     SELECT_SQL_WORK_TEXT = 7,
     SELECT_SQL_WORK_SOURCE_ALIAS = 8,
+    SELECT_SQL_WORK_GROUPED_QUERY = 9,
 };
 
 struct select_sql_work_item {
     enum select_sql_work_item_kind kind;
     const struct planned_select *plan;
+    const struct planned_grouped_aggregate *grouped_plan;
     const struct planned_select_source *source;
     const struct planned_select_join_condition *join_condition;
     const struct planned_select_predicate *predicate;
@@ -2162,11 +2164,13 @@ enum select_parameter_bind_item_kind {
     SELECT_PARAMETER_BIND_PREDICATE = 4,
     SELECT_PARAMETER_BIND_ORDER = 5,
     SELECT_PARAMETER_BIND_LIMIT = 6,
+    SELECT_PARAMETER_BIND_GROUPED_AGGREGATE = 7,
 };
 
 struct select_parameter_bind_item {
     enum select_parameter_bind_item_kind kind;
     const struct planned_select *plan;
+    const struct planned_grouped_aggregate *grouped_plan;
     const struct planned_select_source *sources;
     const struct planned_select_source *source;
     const struct planned_select_join_condition *join_condition;
@@ -2279,6 +2283,7 @@ struct planned_select_source {
     bool has_alias;
     bool is_derived;
     struct planned_select *derived_select;
+    struct planned_grouped_aggregate *derived_grouped_aggregate;
 };
 
 struct planned_exists_subquery {
@@ -11205,6 +11210,33 @@ static int copy_derived_select_source_columns(
     struct mylite_db *database,
     const struct planned_select *derived_plan,
     struct planned_select_source *out_source
+);
+static int validate_derived_grouped_aggregate_output_columns(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *derived_plan
+);
+static int copy_derived_grouped_aggregate_source_columns(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *derived_plan,
+    struct planned_select_source *out_source
+);
+static int copy_derived_grouped_projection_source_column(
+    struct mylite_db *database,
+    const struct planned_grouped_projection *projection,
+    size_t output_index,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int make_derived_grouped_aggregate_source_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate_item *item,
+    size_t output_index,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int copy_derived_grouped_output_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char *destination,
+    size_t destination_size
 );
 static int validate_derived_select_output_columns(
     struct mylite_db *database,
@@ -25077,7 +25109,8 @@ static int append_grouped_aggregate_query_sql(
     const struct planned_grouped_aggregate *plan,
     size_t *next_parameter,
     bool include_order,
-    bool include_limit
+    bool include_limit,
+    bool include_aliases
 );
 static int append_grouped_aggregate_from_sql(
     struct mylite_dynamic_string *string,
@@ -25087,19 +25120,26 @@ static int append_grouped_aggregate_from_sql(
 static int append_grouped_aggregate_select_list_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
-    size_t *next_parameter
+    size_t *next_parameter,
+    bool include_aliases
 );
 static int append_grouped_projection_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_projection *projection,
     bool qualify,
-    size_t *next_parameter
+    size_t *next_parameter,
+    bool include_aliases
 );
 static int append_grouped_aggregate_select_item_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
     const struct planned_grouped_aggregate_item *item,
-    size_t *next_parameter
+    size_t *next_parameter,
+    bool include_aliases
+);
+static int append_grouped_identifier_alias_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_sql_ast_node *alias
 );
 static int append_grouped_aggregate_expression_sql(
     struct mylite_dynamic_string *string,
@@ -26592,6 +26632,12 @@ static int bind_grouped_aggregate_parameters(
 static int bind_grouped_aggregate_count_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
+);
+static int bind_grouped_aggregate_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    bool include_limit,
+    int *parameter_index
 );
 static int bind_grouped_aggregate_parameters_with_limit(
     sqlite3_stmt *statement,

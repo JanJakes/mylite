@@ -260,7 +260,7 @@ static int build_grouped_aggregate_sql(
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = append_grouped_aggregate_query_sql(&string, plan, &next_parameter, true, true);
+    rc = append_grouped_aggregate_query_sql(&string, plan, &next_parameter, true, true, false);
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
         if (*out_sql == NULL) {
@@ -286,7 +286,8 @@ static int build_grouped_aggregate_found_rows_sql(
 
     rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM (");
     if (rc == MYLITE_OK) {
-        rc = append_grouped_aggregate_query_sql(&string, plan, &next_parameter, false, false);
+        rc =
+            append_grouped_aggregate_query_sql(&string, plan, &next_parameter, false, false, false);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, ") AS ");
@@ -311,7 +312,8 @@ static int append_grouped_aggregate_query_sql(
     const struct planned_grouped_aggregate *plan,
     size_t *next_parameter,
     bool include_order,
-    bool include_limit
+    bool include_limit,
+    bool include_aliases
 ) {
     int rc = mylite_dynamic_string_append(string, "SELECT ");
 
@@ -319,7 +321,8 @@ static int append_grouped_aggregate_query_sql(
         rc = mylite_dynamic_string_append(string, "DISTINCT ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_grouped_aggregate_select_list_sql(string, plan, next_parameter);
+        rc =
+            append_grouped_aggregate_select_list_sql(string, plan, next_parameter, include_aliases);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " FROM ");
@@ -414,7 +417,8 @@ static int append_grouped_aggregate_from_sql(
 static int append_grouped_aggregate_select_list_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
-    size_t *next_parameter
+    size_t *next_parameter,
+    bool include_aliases
 ) {
     bool qualify = plan->source_count > 0U;
     int rc = MYLITE_OK;
@@ -429,7 +433,8 @@ static int append_grouped_aggregate_select_list_sql(
                 string,
                 &plan->projections[projection_index],
                 qualify,
-                next_parameter
+                next_parameter,
+                include_aliases
             );
         }
     }
@@ -444,7 +449,8 @@ static int append_grouped_aggregate_select_list_sql(
                 string,
                 plan,
                 &plan->aggregates[aggregate_index],
-                next_parameter
+                next_parameter,
+                include_aliases
             );
         }
     }
@@ -456,31 +462,40 @@ static int append_grouped_projection_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_projection *projection,
     bool qualify,
-    size_t *next_parameter
+    size_t *next_parameter,
+    bool include_aliases
 ) {
+    int rc = MYLITE_OK;
+
     if (projection->uses_row_scalar_expression) {
         if (next_parameter == NULL) {
             return MYLITE_ERROR;
         }
-        return append_row_scalar_expression_sql(
+        rc = append_row_scalar_expression_sql(
             string,
             &projection->row_scalar_expression,
             next_parameter
         );
+    } else {
+        rc = append_descriptor_column_name_sql_for_source(
+            string,
+            &projection->column,
+            projection->column_source_index,
+            qualify
+        );
     }
-    return append_descriptor_column_name_sql_for_source(
-        string,
-        &projection->column,
-        projection->column_source_index,
-        qualify
-    );
+    if (rc == MYLITE_OK && include_aliases && projection->alias != NULL) {
+        rc = append_grouped_identifier_alias_sql(string, projection->alias);
+    }
+    return rc;
 }
 
 static int append_grouped_aggregate_select_item_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,
     const struct planned_grouped_aggregate_item *item,
-    size_t *next_parameter
+    size_t *next_parameter,
+    bool include_aliases
 ) {
     bool qualify = plan->source_count > 0U;
     int rc = MYLITE_OK;
@@ -509,10 +524,13 @@ static int append_grouped_aggregate_select_item_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
+        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
+            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        }
         return rc;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        return append_group_concat_call_sql(
+        rc = append_group_concat_call_sql(
             string,
             &item->aggregate_column,
             item->aggregate_column_source_index,
@@ -521,9 +539,48 @@ static int append_grouped_aggregate_select_item_sql(
             item->has_separator,
             next_parameter
         );
+        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
+            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        }
+        return rc;
     }
 
-    return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+    rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+    if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
+        rc = append_grouped_identifier_alias_sql(string, item->alias);
+    }
+    return rc;
+}
+
+static int append_grouped_identifier_alias_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_sql_ast_node *alias
+) {
+    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *source = NULL;
+    size_t source_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_ERROR;
+    }
+    source = alias->span.text;
+    source_size = alias->span.length;
+    if (source == NULL || source_size == 0U) {
+        return MYLITE_ERROR;
+    }
+    if (source[0] == '`') {
+        rc = copy_quoted_identifier_text(source, source_size, identifier, sizeof(identifier));
+    } else {
+        rc = copy_unquoted_identifier_text(source, source_size, identifier, sizeof(identifier));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, identifier);
+    }
+    return rc;
 }
 
 static int append_grouped_aggregate_expression_sql(

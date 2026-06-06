@@ -49,6 +49,7 @@ struct expected_sql_error {
 };
 
 static int test_left_join_success_persistence_and_table_lifecycle(void);
+static int test_left_join_derived_grouped_source(void);
 static int test_left_join_diagnostics(void);
 static int test_independent_file_backed_join_handles(void);
 static int seed_app_schema(mylite_db *database);
@@ -94,6 +95,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_left_join_success_persistence_and_table_lifecycle();
+    failures += test_left_join_derived_grouped_source();
     failures += test_left_join_diagnostics();
     failures += test_independent_file_backed_join_handles();
 
@@ -415,6 +417,82 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
             .message_part = "Table 'app.rights2' doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_left_join_derived_grouped_source(void) {
+    static const char *const post_count_columns[] = {"ID"};
+    static const char *const post_count_rows[] = {"3", "1", "2"};
+    static const char *const qualified_post_count_columns[] = {"ID", "post_count"};
+    static const char *const qualified_post_count_rows[] = {"3", "1", "1", "2", "2", "3"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "derived") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open derived left join file");
+    failures += seed_app_schema(database);
+    failures += expect_statement(
+        database,
+        "CREATE TABLE users (ID BIGINT NOT NULL, user_login VARCHAR(30) NOT NULL)",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "CREATE TABLE posts (ID BIGINT NOT NULL, post_author BIGINT NOT NULL, "
+        "post_type VARCHAR(20) NOT NULL, post_status VARCHAR(20) NOT NULL)",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO users VALUES (1,'alice'),(2,'bob'),(3,'carol')",
+        (struct expected_statement){3, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO posts VALUES "
+        "(10,1,'post','publish'),(11,1,'post','publish'),"
+        "(12,2,'post','publish'),(13,2,'post','publish'),(14,2,'post','publish'),"
+        "(15,3,'post','publish'),(16,3,'page','publish'),(17,3,'post','draft')",
+        (struct expected_statement){8, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT users.ID FROM users LEFT OUTER JOIN "
+                   "(SELECT post_author, COUNT(*) AS post_count FROM posts "
+                   "WHERE ((post_type = 'post' AND (post_status = 'publish'))) "
+                   "GROUP BY post_author) p ON (users.ID = p.post_author) "
+                   "WHERE 1=1 ORDER BY post_count ASC",
+            .columns = post_count_columns,
+            .values = post_count_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "left join derived grouped source orders by aggregate alias",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT users.ID, p.post_count FROM users LEFT JOIN "
+                   "(SELECT post_author, COUNT(*) AS post_count FROM posts "
+                   "WHERE post_type = 'post' AND post_status = 'publish' "
+                   "GROUP BY post_author) AS p ON users.ID = p.post_author "
+                   "ORDER BY p.post_count ASC",
+            .columns = qualified_post_count_columns,
+            .values = qualified_post_count_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "left join derived grouped source projects aggregate alias",
         }
     );
 

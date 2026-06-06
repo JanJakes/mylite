@@ -165,6 +165,8 @@ static int test_datetime_success_metadata_dml_and_persistence(void) {
     };
     static const char *const predicate_rows[] = {"1", "3"};
     static const char *const after_predicate_rows[] = {"1", "2"};
+    static const char *const relaxed_before_rows[] = {"1", "3"};
+    static const char *const relaxed_after_rows[] = {"2"};
     static const char *const temporal_z_less_rows[] = {"3"};
     static const char *const temporal_z_warning_rows[] = {
         "Warning",
@@ -334,6 +336,36 @@ static int test_datetime_success_metadata_dml_and_persistence(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "datetime IN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2025-1-02'",
+            .values = nseq_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime relaxed date-only equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d < '2025-2-01' ORDER BY id",
+            .values = relaxed_before_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "datetime relaxed date-only less-than predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d > '2025-2-28 23:59:59' ORDER BY id",
+            .values = relaxed_after_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime relaxed datetime greater-than predicate",
         }
     );
     failures += expect_query_values(

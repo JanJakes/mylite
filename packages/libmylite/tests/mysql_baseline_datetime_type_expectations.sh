@@ -271,6 +271,9 @@ neq	2,4,5,9,10,11
 ge	2,5
 between	1,2,4,11
 inlist	1,5
+relaxed_eq	4
+relaxed_lt	1,4,9,10,11
+relaxed_gt	5
 isnull	3
 asc	3,9,10,1,11,4,2,5
 desc	5,2,4,11,1,3,9,10
@@ -287,6 +290,12 @@ expect_output \
 "WHERE d BETWEEN '1000-01-01 00:00:00' AND '2024-02-29 03:04:05' "\
 "UNION ALL SELECT 'inlist', GROUP_CONCAT(id ORDER BY id) FROM datetimes "\
 "WHERE d IN ('1000-01-01 00:00:00', NULL, '9999-12-31 23:59:59') "\
+"UNION ALL SELECT 'relaxed_eq', GROUP_CONCAT(id ORDER BY id) FROM datetimes "\
+"WHERE d = '2024-1-02' "\
+"UNION ALL SELECT 'relaxed_lt', GROUP_CONCAT(id ORDER BY id) FROM datetimes "\
+"WHERE d < '2024-2-01' "\
+"UNION ALL SELECT 'relaxed_gt', GROUP_CONCAT(id ORDER BY id) FROM datetimes "\
+"WHERE d > '2025-2-28 23:59:59' "\
 "UNION ALL SELECT 'isnull', GROUP_CONCAT(id ORDER BY id) FROM datetimes WHERE d IS NULL "\
 "UNION ALL SELECT 'asc', GROUP_CONCAT(id ORDER BY d ASC, id ASC) FROM datetimes "\
 "UNION ALL SELECT 'desc', GROUP_CONCAT(id ORDER BY d DESC, id ASC) FROM datetimes;" \

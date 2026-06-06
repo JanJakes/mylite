@@ -27,6 +27,20 @@ tools/wordpress-phpunit-mysqli-mylite --filter 'Tests_DB::test_check_connection_
 
 Omit the filter for the full WordPress PHPUnit run.
 
+Run Drupal core's PHPUnit compatibility harness through the mysqli replacement
+with:
+
+```sh
+tools/drupal-phpunit-mysqli-mylite
+```
+
+Pass PHPUnit arguments to run a broader or different Drupal selection, for
+example:
+
+```sh
+tools/drupal-phpunit-mysqli-mylite test --testsuite=kernel
+```
+
 For mysqli callers, pass the `.mylite` file as a socket path, as a path-like
 host, or as `localhost:/path/to/file.mylite` for WordPress-style DB host
 parsing. The replacement module must be loaded in a PHP process that has not

@@ -149,3 +149,45 @@ jobs:
             build/wordpress-php-mylite \
             2>/dev/null || true
           df -h .
+
+  drupal-phpunit:
+    name: drupal-phpunit-mysqli-mylite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      MYLITE_DRUPAL_REF: 11.3.11
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show runner resources
+        run: |
+          df -h .
+          free -h
+          docker version
+
+      - name: Build Drupal PHPUnit Docker image
+        run: tools/drupal-phpunit-mysqli-mylite image
+
+      - name: Fetch Drupal test checkout
+        run: tools/drupal-phpunit-mysqli-mylite fetch-drupal
+
+      - name: Build MyLite PHP extensions
+        run: tools/drupal-phpunit-mysqli-mylite build-extensions
+
+      - name: Install Drupal PHPUnit dependencies
+        run: tools/drupal-phpunit-mysqli-mylite install-dependencies
+
+      - name: Run Drupal PHPUnit test suite
+        run: tools/drupal-phpunit-mysqli-mylite test
+
+      - name: Show generated artifact sizes
+        if: always()
+        run: |
+          du -sh \
+            build/drupal-core/core/drupal-tests.mylite \
+            build/drupal-core \
+            build/drupal-php-mylite \
+            2>/dev/null || true
+          df -h .

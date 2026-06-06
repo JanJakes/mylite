@@ -88,6 +88,8 @@ static int test_in_subquery_values_and_persistence(void) {
     static const char *const left_joined_user_ids[] = {"1", "3"};
     static const char *const left_joined_not_in_user_ids[] = {"2", "4", "5"};
     static const char *const joined_left_joined_not_in_user_ids[] = {"2"};
+    static const char *const scalar_count_subquery_matches[] = {"1", "3"};
+    static const char *const joined_scalar_count_subquery_matches[] = {"1"};
     static const char *const scalar_subquery_count[] = {"3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -316,6 +318,35 @@ static int test_in_subquery_values_and_persistence(void) {
             .values = scalar_subquery_count,
             .row_count = 1U,
             .context = "scalar subquery IN literal list in joined COUNT predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT u.id FROM users AS u WHERE "
+                   "(SELECT COUNT(1) FROM user_terms "
+                   "WHERE term_taxonomy_id IN (100,101) AND user_id = u.id) = 1 "
+                   "ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = scalar_count_subquery_matches,
+            .row_count = 2U,
+            .context = "correlated scalar COUNT subquery comparison",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT u.id FROM users u JOIN orders o ON u.id = o.user_id "
+                   "WHERE o.status = 'open' AND "
+                   "(SELECT COUNT(*) FROM user_terms "
+                   "WHERE term_taxonomy_id IN (100,101) AND user_id = u.id) >= 1 "
+                   "ORDER BY u.id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = joined_scalar_count_subquery_matches,
+            .row_count = 1U,
+            .context = "joined outer source scalar COUNT subquery comparison",
         }
     );
 

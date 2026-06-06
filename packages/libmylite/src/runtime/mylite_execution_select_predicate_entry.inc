@@ -31,6 +31,7 @@ static int plan_joined_select_predicate(
         .allow_exists = false,
         .allow_in_subquery = true,
         .allow_scalar_subquery_in_literal = true,
+        .allow_scalar_count_subquery_comparison = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
     };

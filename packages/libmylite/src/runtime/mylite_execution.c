@@ -2040,6 +2040,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL = 13,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN = 14,
     PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN = 15,
+    PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON = 16,
 };
 
 struct planned_select_predicate_node {
@@ -2086,6 +2087,7 @@ struct select_predicate_plan_options {
     bool allow_exists;
     bool allow_in_subquery;
     bool allow_scalar_subquery_in_literal;
+    bool allow_scalar_count_subquery_comparison;
     bool allow_column_reference_rhs;
     bool allow_same_scope_column_reference_rhs;
     bool allow_date_format_numeric_predicate;
@@ -19526,6 +19528,33 @@ static int plan_comparison_predicate_value(
     size_t table_column_count,
     struct planned_select_predicate_node *node
 );
+static int plan_scalar_count_subquery_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
+static int plan_scalar_count_subquery(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *scalar_subquery,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    size_t outer_source_count,
+    struct planned_exists_subquery *out_subquery
+);
+static int validate_scalar_count_subquery_select_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list
+);
+static bool scalar_count_subquery_select_expression_is_supported(
+    const struct mylite_sql_ast_node *expression
+);
 static int plan_comparison_predicate_like_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -25323,6 +25352,16 @@ static int append_select_row_scalar_predicate_sql(
 static int append_select_scalar_subquery_in_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_scalar_count_subquery_comparison_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_scalar_count_subquery_from_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
     size_t *next_parameter
 );
 static int append_select_exists_predicate_sql(

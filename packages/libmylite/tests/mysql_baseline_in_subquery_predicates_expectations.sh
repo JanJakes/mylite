@@ -311,6 +311,33 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "correlated scalar count subquery comparison" \
+    "1,3" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users AS u
+     WHERE (
+         SELECT COUNT(1)
+         FROM user_terms
+         WHERE term_taxonomy_id IN (100,101)
+           AND user_id = u.id
+     ) = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "joined outer scalar count subquery comparison" \
+    "1" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users u JOIN orders o ON u.id = o.user_id
+     WHERE o.status = 'open'
+       AND (
+         SELECT COUNT(*)
+         FROM user_terms
+         WHERE term_taxonomy_id IN (100,101)
+           AND user_id = u.id
+       ) >= 1;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts inner order without visible membership effect" \
     "1,2,5" \
     "SELECT GROUP_CONCAT(id ORDER BY id)

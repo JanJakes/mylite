@@ -3981,6 +3981,15 @@ predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R) IS(I) NOT NULL(N).
         MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
         N);
 }
+predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R)
+        predicate_comparison_operator(O) predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state,
+        mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R),
+        O.token,
+        O.operator_kind,
+        V);
+}
 predicate_atom(A) ::= predicate_scalar_literal(V). {
     A = V;
 }

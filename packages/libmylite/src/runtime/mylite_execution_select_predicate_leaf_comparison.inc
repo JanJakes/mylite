@@ -428,6 +428,23 @@ static int plan_comparison_predicate(
         return row_scalar_function_rc;
     }
 
+    bool scalar_count_subquery_handled = false;
+    int scalar_count_subquery_rc = plan_scalar_count_subquery_comparison_predicate(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        options,
+        predicate,
+        out_node_index,
+        &scalar_count_subquery_handled
+    );
+
+    if (scalar_count_subquery_handled || scalar_count_subquery_rc != MYLITE_OK) {
+        return scalar_count_subquery_rc;
+    }
+
     bool literal_left_handled = false;
     int literal_left_rc = plan_scalar_literal_or_literal_column_comparison_predicate(
         database,
@@ -494,6 +511,187 @@ static int plan_comparison_predicate(
         planned_select_predicate_node_deinit_runtime_values(&node);
     }
     return rc;
+}
+
+static int plan_scalar_count_subquery_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *left_node = child_at(predicate_node, 0U);
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    size_t outer_source_count = 1U;
+    int rc = MYLITE_OK;
+
+    *out_handled = left_node != NULL && left_node->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY;
+    if (!*out_handled) {
+        return MYLITE_OK;
+    }
+    if (options == NULL ||
+        (!options->allow_exists && !options->allow_scalar_count_subquery_comparison)) {
+        set_unsupported_error(
+            database,
+            "scalar COUNT subquery comparisons are supported only in SELECT WHERE"
+        );
+        return MYLITE_ERROR;
+    }
+    if (source_context == NULL) {
+        set_unsupported_error(
+            database,
+            "scalar COUNT subquery comparisons support only an outer table source"
+        );
+        return MYLITE_ERROR;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        outer_source_count = source_context->source_count;
+    }
+
+    node.exists_subquery = calloc(1U, sizeof(*node.exists_subquery));
+    if (node.exists_subquery == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_scalar_count_subquery(
+        database,
+        left_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        outer_source_count,
+        node.exists_subquery
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(database, child_at(predicate_node, 1U), &node.value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_exists_subquery_deinit(node.exists_subquery);
+        free(node.exists_subquery);
+        return rc;
+    }
+
+    predicate->qualify_column_references = true;
+    return MYLITE_OK;
+}
+
+static int plan_scalar_count_subquery(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *scalar_subquery,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    size_t outer_source_count,
+    struct planned_exists_subquery *out_subquery
+) {
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    int rc = MYLITE_OK;
+
+    *out_subquery = (struct planned_exists_subquery){
+        .has_table_source = false,
+        .inner_source_index = outer_source_count,
+    };
+    if (scalar_subquery == NULL || scalar_subquery->kind != MYLITE_SQL_AST_SCALAR_SUBQUERY ||
+        mylite_sql_ast_node_child_count(scalar_subquery) != 1U) {
+        set_unsupported_error(database, "scalar COUNT subquery supports only parenthesized SELECT");
+        return MYLITE_ERROR;
+    }
+    statement = child_at(scalar_subquery, 0U);
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "scalar COUNT subquery supports only SELECT subqueries");
+        return MYLITE_ERROR;
+    }
+    select_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    optional_clause = child_at(statement, 2U);
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(database, "scalar COUNT subqueries do not support SELECT modifiers");
+        return MYLITE_ERROR;
+    }
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "scalar COUNT subqueries support only WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    rc = plan_exists_table_source(database, from_clause, out_subquery);
+    if (rc == MYLITE_OK) {
+        rc = validate_scalar_count_subquery_select_list(database, select_list);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_exists_inner_predicate(
+            database,
+            where_clause,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_subquery
+        );
+    }
+    return rc;
+}
+
+static int validate_scalar_count_subquery_select_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_scalar_subquery_column_count_error(database);
+        return MYLITE_ERROR;
+    }
+    item = child_at(select_list, 0U);
+    if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    expression = child_at(item, 0U);
+    if (!scalar_count_subquery_select_expression_is_supported(expression)) {
+        set_unsupported_error(
+            database,
+            "scalar COUNT subquery comparisons support only COUNT(*) or COUNT(literal)"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool scalar_count_subquery_select_expression_is_supported(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    return expression != NULL &&
+           (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION);
 }
 
 static int plan_scalar_literal_or_literal_column_comparison_predicate(

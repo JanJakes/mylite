@@ -1169,6 +1169,13 @@ static int append_select_predicate_non_exists_node_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
         return append_select_scalar_subquery_in_predicate_sql(string, node, next_parameter);
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
+        return append_select_scalar_count_subquery_comparison_predicate_sql(
+            string,
+            node,
+            next_parameter
+        );
+    }
 
     return append_select_predicate_column_term_sql(string, predicate, node, next_parameter);
 }
@@ -1195,6 +1202,9 @@ static int append_select_predicate_non_subquery_node_sql(
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
+        return MYLITE_ERROR;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
         return MYLITE_ERROR;
     }
 
@@ -1365,6 +1375,79 @@ static int append_select_scalar_subquery_in_predicate_sql(
     }
     if (rc == MYLITE_OK) {
         rc = append_select_in_value_list_sql(string, node, next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_select_scalar_count_subquery_comparison_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (node == NULL || node->exists_subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "(SELECT COUNT(*) FROM ");
+    if (rc == MYLITE_OK) {
+        rc = append_scalar_count_subquery_from_sql(
+            string,
+            node->exists_subquery,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql_without_exists(
+            string,
+            &node->exists_subquery->predicate,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ") ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, comparison_operator_sql(node->operator_kind));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_scalar_count_subquery_from_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL || !subquery->has_table_source) {
+        return MYLITE_ERROR;
+    }
+    if (subquery->source_count > 0U) {
+        return append_exists_subquery_join_from_sql(string, subquery, next_parameter);
+    }
+
+    rc = mylite_dynamic_string_append_quoted_identifier(
+        string,
+        subquery->source.table.physical_name
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, subquery->inner_source_index);
     }
 
     return rc;

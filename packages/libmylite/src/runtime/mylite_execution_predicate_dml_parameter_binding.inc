@@ -136,6 +136,20 @@ static int bind_select_predicate_node_parameters(
     const struct planned_select_predicate_node *node,
     int *parameter_index
 ) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
+        int rc = bind_select_exists_predicate_parameters(
+            statement,
+            node->exists_subquery,
+            parameter_index
+        );
+        if (rc == MYLITE_OK) {
+            rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
+        }
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+        return rc;
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
         return bind_select_scalar_subquery_in_predicate_parameters(
             statement,
@@ -229,6 +243,9 @@ static int bind_select_predicate_node_parameters_without_subqueries(
     const struct planned_select_predicate_node *node,
     int *parameter_index
 ) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
+        return MYLITE_ERROR;
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
         return MYLITE_ERROR;
     }

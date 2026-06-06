@@ -124,6 +124,8 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
     static const char *const order_values[] = {"1", "1", "2", "1", "3", "1"};
     static const char *const like_order_columns[] = {"id"};
     static const char *const like_order_values[] = {"2", "3", "1"};
+    static const char *const cast_order_columns[] = {"id"};
+    static const char *const cast_order_values[] = {"2", "1"};
     static const char *const relaxed_columns[] = {
         "post_id",
         "id",
@@ -284,6 +286,21 @@ static int test_group_by_primary_key_projection_values_and_persistence(void) {
         }
     );
     failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id FROM posts AS p "
+                   "INNER JOIN postmeta AS m ON p.id = m.post_id "
+                   "WHERE m.meta_key = 'num_as_longtext' "
+                   "AND CAST(m.meta_value AS UNSIGNED) > '0' "
+                   "GROUP BY p.id ORDER BY CAST(m.meta_value AS UNSIGNED)",
+            .columns = cast_order_columns,
+            .column_count = 1U,
+            .values = cast_order_values,
+            .row_count = 2U,
+            .context = "relaxed grouped WordPress meta unsigned cast order",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -515,6 +532,15 @@ static int seed_projection_tables(mylite_db *database) {
     );
     failures += execute_ok(
         database,
+        "CREATE TABLE postmeta("
+        "id INT NOT NULL PRIMARY KEY, "
+        "post_id INT NULL, "
+        "meta_key VARCHAR(40) NULL, "
+        "meta_value VARCHAR(40) NULL)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
         "CREATE TABLE cpk("
         "a INT NOT NULL, b INT NOT NULL, v VARCHAR(20) NULL, PRIMARY KEY(a, b))",
         NULL
@@ -534,6 +560,14 @@ static int seed_projection_tables(mylite_db *database) {
         "INSERT INTO comments VALUES "
         "(10, 1, 'c1', 5), (11, 1, 'c2', 7), (12, 2, 'c3', NULL), "
         "(13, 99, 'orphan', 3)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO postmeta VALUES "
+        "(20, 1, 'num_as_longtext', '123'), "
+        "(21, 2, 'num_as_longtext', '99'), "
+        "(22, 3, 'other', '100')",
         NULL
     );
     failures += execute_ok(

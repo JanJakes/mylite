@@ -171,7 +171,7 @@ static int validate_grouped_order_row_scalar_expression(
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "GROUP BY supports scalar ORDER BY LIKE predicates only over grouped, "
+            "GROUP BY supports scalar ORDER BY expressions only over grouped, "
             "primary-key-dependent, or literal operands"
         );
         return MYLITE_ERROR;
@@ -188,11 +188,27 @@ static int validate_grouped_order_row_scalar_expression(
             table_column_count,
             expression
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+        if (expression->argument_count != 1U || expression->arguments == NULL) {
+            set_unsupported_error(
+                database,
+                "GROUP BY supports scalar ORDER BY expressions only over grouped, "
+                "primary-key-dependent, or literal operands"
+            );
+            return MYLITE_ERROR;
+        }
+        return validate_grouped_order_row_scalar_expression(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            &expression->arguments[0]
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         if (expression->argument_count != 2U || expression->arguments == NULL) {
             set_unsupported_error(
                 database,
-                "GROUP BY supports scalar ORDER BY LIKE predicates only over grouped, "
+                "GROUP BY supports scalar ORDER BY expressions only over grouped, "
                 "primary-key-dependent, or literal operands"
             );
             return MYLITE_ERROR;
@@ -215,7 +231,7 @@ static int validate_grouped_order_row_scalar_expression(
     default:
         set_unsupported_error(
             database,
-            "GROUP BY supports scalar ORDER BY LIKE predicates only over grouped, "
+            "GROUP BY supports scalar ORDER BY expressions only over grouped, "
             "primary-key-dependent, or literal operands"
         );
         return MYLITE_ERROR;

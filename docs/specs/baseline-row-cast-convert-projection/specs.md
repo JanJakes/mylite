@@ -145,6 +145,11 @@ SQLite scalar functions. SQLite supplies row values and filtering/order/limit
 iteration; MyLite owns conversion, warnings, target metadata, identifier
 quoting, and diagnostics. The implementation must not materialize the input
 table in MyLite memory, mutate catalog rows, or require SQLite fork changes.
+Unsigned conversion results that fit SQLite's signed 64-bit integer range are
+returned to SQLite as integer values so generated `ORDER BY
+CAST(... AS UNSIGNED)` expressions sort ordinary values numerically. Values
+above signed `BIGINT` range continue to use unsigned decimal text so projection
+readback can represent the full MySQL unsigned 64-bit domain.
 
 ## Metadata
 

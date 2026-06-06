@@ -66,6 +66,11 @@ With default `ONLY_FULL_GROUP_BY` enabled:
 - `ORDER BY p.title LIKE '%Beta%' DESC` is accepted when `p.title` is
   functionally dependent on the grouped primary key, and secondary descriptor
   sort keys are applied after the LIKE result.
+- With `ONLY_FULL_GROUP_BY` disabled, `ORDER BY CAST(joined.meta_value AS
+  UNSIGNED)` is accepted for the WordPress metadata shape that filters a single
+  metadata key, groups by the base-row primary key, and orders by the cast
+  metadata value. MySQL sorts the cast values numerically, so `99` sorts before
+  `123`.
 - A nondependent selected column fails with `1055 / 42000` and a SELECT-list
   diagnostic. A nondependent `ORDER BY` column, including one inside the
   admitted LIKE predicate subset, fails with `1055 / 42000` and an ORDER BY
@@ -238,6 +243,14 @@ grammar.
   is grouped or primary-key-dependent for its own source. The LIKE result sorts
   as MySQL's integer truth value, and additional supported sort keys are applied
   left to right.
+- `ORDER BY CAST(dependent_column AS SIGNED|UNSIGNED)` and
+  `ORDER BY CONVERT(dependent_column, SIGNED|UNSIGNED)` are accepted for
+  grouped or primary-key-dependent descriptor columns. When `ONLY_FULL_GROUP_BY`
+  is disabled, the same conversion order keys are accepted for MySQL's relaxed
+  nondeterministic grouped-row shape. Small unsigned conversion results that fit
+  SQLite's signed 64-bit integer range remain numeric in generated SQLite SQL so
+  ordinary WordPress metadata values sort numerically rather than
+  lexicographically.
 - `ORDER BY nondependent_column` returns the MySQL-compatible `1055 / 42000`
   ORDER BY diagnostic for this slice.
 - Ties remain unspecified unless the user supplies additional supported sort

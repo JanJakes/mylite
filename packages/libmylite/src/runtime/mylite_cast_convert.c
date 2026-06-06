@@ -701,7 +701,14 @@ static void finish_int64_result(sqlite3_context *context, int64_t value) {
 
 static void finish_uint64_result(sqlite3_context *context, uint64_t value) {
     char buffer[sizeof("18446744073709551615")];
-    int written = snprintf(buffer, sizeof(buffer), "%" PRIu64, value);
+    int written = 0;
+
+    if (value <= (uint64_t)INT64_MAX) {
+        sqlite3_result_int64(context, (int64_t)value);
+        return;
+    }
+
+    written = snprintf(buffer, sizeof(buffer), "%" PRIu64, value);
 
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         sqlite3_result_error(context, "failed to format MyLite unsigned CAST/CONVERT result", -1);

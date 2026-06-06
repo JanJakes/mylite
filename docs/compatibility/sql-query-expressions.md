@@ -45,11 +45,12 @@ utf8mb4`/`utf8`/`utf8mb3`/`latin1` conversion projections over descriptor
 integer-family columns, nonbinary string-family columns, scalar literals, and
 supported folded session scalar values in one-base-table `SELECT` statements.
 The same conversion envelope is admitted as the left side of limited comparison
-predicates and as single-table `ORDER BY` expression keys. It uses MyLite-owned
-conversion and result metadata while SQLite scans the rows. It does not admit
-binary string or `BIT` column operands, decimal/approximate/temporal/JSON/
-spatial column operands, general expression operands, grouping expressions, or
-DML assignments.
+predicates and as documented `ORDER BY` expression keys, including joined and
+grouped signed or unsigned conversion keys. It uses MyLite-owned conversion and
+result metadata while SQLite scans the rows. It does not admit binary string or
+`BIT` column operands, decimal/approximate/temporal/JSON/spatial column
+operands, general expression operands, grouping expressions beyond the grouped
+primary-key subset, or DML assignments.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, and SQL-level

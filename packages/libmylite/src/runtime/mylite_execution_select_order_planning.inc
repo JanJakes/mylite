@@ -502,6 +502,10 @@ static bool select_order_key_is_supported_joined_row_scalar_order(
     if (conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR) {
         return true;
     }
+    if (conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_SIGNED ||
+        conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_UNSIGNED) {
+        return true;
+    }
     return row_scalar_expression_contains_integer_arithmetic_attempt(order_key);
 }
 

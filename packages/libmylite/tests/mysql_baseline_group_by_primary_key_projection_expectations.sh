@@ -80,6 +80,12 @@ run_mysql \
        body VARCHAR(20) NULL,
        score INT NULL
      ) ENGINE=InnoDB;
+     CREATE TABLE postmeta(
+       id INT NOT NULL PRIMARY KEY,
+       post_id INT NULL,
+       meta_key VARCHAR(40) NULL,
+       meta_value VARCHAR(40) NULL
+     ) ENGINE=InnoDB;
      CREATE TABLE cpk(
        a INT NOT NULL,
        b INT NOT NULL,
@@ -99,6 +105,10 @@ run_mysql \
        (11, 1, 'c2', 7),
        (12, 2, 'c3', NULL),
        (13, 99, 'orphan', 3);
+     INSERT INTO postmeta VALUES
+       (20, 1, 'num_as_longtext', '123'),
+       (21, 2, 'num_as_longtext', '99'),
+       (22, 3, 'other', '100');
      INSERT INTO cpk VALUES
        (1, 1, 'aa'),
        (1, 2, 'ab'),
@@ -192,18 +202,30 @@ expect_value "chained left grouped primary key projection" \
 relaxed=$(run_mysql \
     "USE ${DATABASE};
      SET SESSION sql_mode = '';
+     SELECT p.id
+       FROM posts AS p INNER JOIN postmeta AS m ON p.id = m.post_id
+      WHERE m.meta_key = 'num_as_longtext'
+        AND CAST(m.meta_value AS UNSIGNED) > '0'
+      GROUP BY p.id
+      ORDER BY CAST(m.meta_value AS UNSIGNED);
      SELECT c.post_id, p.*, COUNT(*) AS comment_count
        FROM comments AS c LEFT JOIN posts AS p ON p.id = c.post_id
       WHERE c.post_id IN (1, 2)
       GROUP BY p.id
       ORDER BY p.id;"
 )
+expect_value "relaxed grouped unsigned cast order first" \
+    "2" \
+    "$(printf '%s\n' "$relaxed" | sed -n '1p')"
+expect_value "relaxed grouped unsigned cast order second" \
+    "1" \
+    "$(printf '%s\n' "$relaxed" | sed -n '2p')"
 expect_value "relaxed grouped outer join projection first" \
     "1	1	Alpha	2024-01-01 00:00:00	publish	2" \
-    "$(printf '%s\n' "$relaxed" | sed -n '1p')"
+    "$(printf '%s\n' "$relaxed" | sed -n '3p')"
 expect_value "relaxed grouped outer join projection second" \
     "2	2	Beta	2024-01-02 00:00:00	draft	1" \
-    "$(printf '%s\n' "$relaxed" | sed -n '2p')"
+    "$(printf '%s\n' "$relaxed" | sed -n '4p')"
 
 expect_error \
     "no primary key selected column" \

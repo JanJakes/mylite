@@ -25,3 +25,9 @@
   performance, cleanup, compatibility wording, and test relevance.
 - [x] Commit, push `main`, run a review subagent, amend if needed, push again,
   and continue to the next baseline slice.
+- [x] Probe MySQL 8.4.9 for WordPress-style integer descriptor comparisons
+  against nonnumeric and integer-prefix quoted strings.
+- [x] Extend the spec for the warning-producing truncated integer string
+  comparison subset without adding decimal/exponent comparison semantics.
+- [x] Add MySQL-runtime and local runtime coverage for the new coercion and
+  warning behavior.

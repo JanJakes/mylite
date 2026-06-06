@@ -83,6 +83,8 @@ int main(void) {
 static int test_where_and_predicates(void) {
     static const char *const and_row[] = {"2"};
     static const char *const exact_integer_string_row[] = {"2"};
+    static const char *const truncated_zero_string_row[] = {"4"};
+    static const char *const truncated_prefix_string_row[] = {"2"};
     static const char *const nested_row[] = {"2"};
     static const char *const null_row[] = {"3"};
     static const char *const distinct_row[] = {"9"};
@@ -123,6 +125,11 @@ static int test_where_and_predicates(void) {
         "Warning",
         "1287",
         "'&&' is deprecated and will be removed in a future release. Please use AND instead",
+    };
+    static const char *const truncated_double_warning_row[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect DOUBLE value: 'yololololo'",
     };
     static const char *const or_rows[] = {"2", "4"};
     static const char *const or_precedence_rows[] = {"2"};
@@ -316,6 +323,42 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "exact quoted integer comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 'yololololo'",
+            .values = truncated_zero_string_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "truncated nonnumeric integer comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SHOW WARNINGS",
+            .values = truncated_double_warning_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "truncated nonnumeric integer comparison warning",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = '1x'",
+            .values = truncated_prefix_string_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "truncated integer-prefix comparison predicate",
         }
     );
     failures += expect_result(

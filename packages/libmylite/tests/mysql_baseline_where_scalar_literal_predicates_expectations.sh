@@ -137,6 +137,18 @@ expect_output \
     "2" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE i = ' 2 ';"
 
+truncated_integer_string_expected=$(cat <<'EXPECTED'
+2	1
+Warning	1292	Truncated incorrect DOUBLE value: 'yololololo'
+2	1
+Warning	1292	Truncated incorrect DOUBLE value: '2x'
+EXPECTED
+)
+expect_output \
+    "truncated integer string descriptor comparisons" \
+    "$truncated_integer_string_expected" \
+    "SELECT GROUP_CONCAT(id ORDER BY id), @@warning_count FROM numbers WHERE n = 'yololololo'; SHOW WARNINGS; SELECT GROUP_CONCAT(id ORDER BY id), @@warning_count FROM numbers WHERE i = '2x'; SHOW WARNINGS;"
+
 expect_output \
     "literal-left less-than flips to column greater-than" \
     "1,2" \

@@ -23,10 +23,13 @@ The feature is intentionally not a general expression engine. It admits signed
 64-bit decimal integer literals, `TRUE`, `FALSE`, and `NULL` in the new
 scalar-literal positions. Descriptor-column integer predicates also admit exact
 quoted signed integer strings with optional leading and trailing ASCII
-whitespace, and existing row-scalar comparison predicates admit the same exact
-quoted integer strings on the comparison right-hand side. Descriptor-column
-predicates continue to resolve through MyLite catalog descriptors. SQLite still
-executes the final physical filter from generated SQL with bound parameters.
+whitespace. They additionally admit the WordPress search shape where a
+nonempty quoted string is compared to an integer descriptor column and MySQL
+coerces the string to a numeric comparison value with warning `1292`. Existing
+row-scalar comparison predicates admit exact quoted integer strings on the
+comparison right-hand side. Descriptor-column predicates continue to resolve
+through MyLite catalog descriptors. SQLite still executes the final physical
+filter from generated SQL with bound parameters.
 
 ## Sources And Evidence
 
@@ -44,6 +47,8 @@ executes the final physical filter from generated SQL with bound parameters.
   https://dev.mysql.com/doc/refman/8.4/en/expressions.html
 - MySQL 8.4 Reference Manual, comparison functions and operators:
   https://dev.mysql.com/doc/refman/8.4/en/comparison-operators.html
+- MySQL 8.4 Reference Manual, type conversion in expression evaluation:
+  https://dev.mysql.com/doc/refman/8.4/en/type-conversion.html
 - MySQL 8.4 Reference Manual, logical operators:
   https://dev.mysql.com/doc/refman/8.4/en/logical-operators.html
 - MySQL 8.4 Reference Manual, operator precedence:
@@ -81,6 +86,7 @@ scalar_literal comparison_operator scalar_literal
 scalar_literal comparison_operator column_reference
 column_reference comparison_operator NULL
 column_reference comparison_operator exact_integer_string_literal
+column_reference comparison_operator truncated_integer_string_literal
 row_scalar_expression comparison_operator exact_integer_string_literal
 ```
 
@@ -131,8 +137,8 @@ used:
 This phase does not add:
 
 - string scalar truth predicates, string-to-string scalar comparisons, decimal
-  string numeric predicate coercion, truncated string numeric predicate
-  warnings, float, hex, bit, temporal, JSON, parameter, variable, function,
+  string numeric predicate coercion, decimal/exponent string comparison
+  coercion, float, hex, bit, temporal, JSON, parameter, variable, function,
   cast, collation, subquery, or row-constructor scalar predicates;
 - descriptor-column bare truth predicates such as `WHERE column_name`;
 - expression-left predicates such as `WHERE column_name + 1 = 2`;
@@ -160,6 +166,13 @@ Runtime probes against MySQL 8.4.9 verify the admitted surface:
   `WHERE column_name = 1`.
 - `WHERE column_name = '1'` and `WHERE column_name = ' 1 '` match the same rows
   as integer literal comparisons and record no warnings.
+- `WHERE column_name = 'abc'` coerces the nonempty nonnumeric string to `0`,
+  matches the same rows as `WHERE column_name = 0`, and records warning
+  `1292 / Truncated incorrect DOUBLE value`.
+- `WHERE column_name = '1x'` coerces the integer prefix to `1`, matches the
+  same rows as `WHERE column_name = 1`, and records the same `1292` warning.
+- Decimal and exponent string comparison coercion remains outside this slice
+  rather than being rounded through integer DML conversion.
 - For ordered comparisons with a literal on the left, MySQL evaluates the
   predicate normally. MyLite normalizes these by flipping the comparison
   operator and keeping the descriptor column on the left of generated SQL.
@@ -170,7 +183,9 @@ Runtime probes against MySQL 8.4.9 verify the admitted surface:
 - `scalar_literal IS FALSE` is true for zero.
 - `scalar_literal IS UNKNOWN` is true for SQL `NULL`.
 - `IS NOT` forms are the logical negation of their positive forms.
-- Supported scalar-literal predicates record no warnings.
+- Supported exact scalar-literal predicates record no warnings. Supported
+  truncated integer string comparisons record one `1292` warning at statement
+  planning time.
 - `WHERE` filtering still happens before grouping, aggregation, DML mutation,
   ordering, and limiting.
 
@@ -179,7 +194,8 @@ Runtime probes against MySQL 8.4.9 verify the admitted surface:
 - Public API remains unchanged. `mylite_execute()` owns call validation,
   result-handle ownership, public misuse behavior, and cleanup on failure.
 - Statement context owns diagnostics reset, warning count, affected rows, and
-  previous-diagnostics behavior. This feature adds no supported warnings.
+  previous-diagnostics behavior. Exact forms add no warnings; truncated integer
+  string comparisons append one MySQL-shaped `1292` warning.
 - Lexer/parser/AST own syntax admission and source spans. They represent the
   new scalar-literal predicate leaves independently of runtime, catalog,
   storage, and SQLite.
@@ -309,8 +325,8 @@ continues to do the physical scan/filter/update/delete.
   literals.
 - Descriptor comparison literal values outside the target descriptor range keep
   the existing descriptor predicate range diagnostics.
-- Unsupported literal kinds such as non-exact strings, decimals, floats, hex,
-  bit, and parameters are rejected deterministically.
+- Unsupported literal kinds such as decimal/exponent strings, decimals, floats,
+  hex, bit, and parameters are rejected deterministically.
 - Unsupported expression shapes such as `column + 1`, `ABS(column)`, variables,
   subqueries, row constructors, and arbitrary functions remain deterministic
   unsupported syntax or runtime diagnostics according to the existing parser
@@ -336,7 +352,8 @@ Coverage must include:
 - exact quoted integer right-hand values for admitted row-scalar comparisons;
 - literal-left comparison operator flipping;
 - `NULL` comparison behavior for ordinary comparisons and `<=>`;
-- warning count remains zero for supported forms;
+- warning count remains zero for exact supported forms, and warning `1292`
+  appears for supported truncated integer string comparisons;
 - no result rows for successful DML and existing affected-row semantics;
 - persistence across close/reopen and no `.mylite` preamble mutation;
 - independent file-backed handles preserve independent updated row state;

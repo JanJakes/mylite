@@ -45,7 +45,7 @@ static int convert_predicate_integer_literal(
                 );
                 return MYLITE_ERROR;
             }
-            return convert_predicate_exact_integer_string_literal(
+            return convert_predicate_integer_string_literal(
                 database,
                 literal,
                 column,
@@ -75,7 +75,7 @@ static int convert_predicate_integer_literal(
     return MYLITE_OK;
 }
 
-static int convert_predicate_exact_integer_string_literal(
+static int convert_predicate_integer_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     const struct mylite_catalog_column_descriptor *column,
@@ -86,6 +86,8 @@ static int convert_predicate_exact_integer_string_literal(
     size_t value_start = 0U;
     size_t value_end = 0U;
     bool is_negative = false;
+    bool has_digits = false;
+    bool append_truncated_warning = false;
     uint64_t magnitude = 0U;
     enum mylite_execution_dml_numeric_parse_result parse_result =
         MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
@@ -124,22 +126,47 @@ static int convert_predicate_exact_integer_string_literal(
         magnitude = 0U;
         is_negative = false;
     }
-    if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK) {
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID &&
+        value_start != value_end) {
+        rc = scan_predicate_integer_string_prefix(
+            text + value_start,
+            value_end - value_start,
+            &magnitude,
+            &is_negative,
+            &has_digits
+        );
+        if (rc == MYLITE_OK && !has_digits) {
+            magnitude = 0U;
+            is_negative = false;
+        }
+        append_truncated_warning = rc == MYLITE_OK;
+        parse_result = rc == MYLITE_OK ? MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
+                                       : MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
+    }
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         set_unsupported_error(
             database,
             "WHERE supports only integer, boolean, and exact quoted integer predicate literals"
         );
-        free(text);
-        return MYLITE_ERROR;
+        rc = MYLITE_ERROR;
+    } else if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
+               parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
+        set_predicate_out_of_range_error(database, column->name);
+        rc = MYLITE_ERROR;
     }
 
-    rc = convert_integer_for_predicate(
-        database,
-        magnitude,
-        is_negative,
-        column,
-        &out_value->integer
-    );
+    if (rc == MYLITE_OK) {
+        rc = convert_integer_for_predicate(
+            database,
+            magnitude,
+            is_negative,
+            column,
+            &out_value->integer
+        );
+    }
+    if (rc == MYLITE_OK && append_truncated_warning) {
+        rc = append_predicate_truncated_double_warning(database, text, text_length);
+    }
     free(text);
     if (rc != MYLITE_OK) {
         return rc;
@@ -147,6 +174,90 @@ static int convert_predicate_exact_integer_string_literal(
 
     out_value->is_null = false;
     return MYLITE_OK;
+}
+
+static int scan_predicate_integer_string_prefix(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_magnitude,
+    bool *out_is_negative,
+    bool *out_has_digits
+) {
+    size_t index = 0U;
+    uint64_t magnitude = 0U;
+
+    if (text == NULL || out_magnitude == NULL || out_is_negative == NULL ||
+        out_has_digits == NULL || text_length == 0U) {
+        return MYLITE_ERROR;
+    }
+
+    *out_magnitude = 0U;
+    *out_is_negative = false;
+    *out_has_digits = false;
+    if (text[index] == '+' || text[index] == '-') {
+        *out_is_negative = text[index] == '-';
+        ++index;
+    }
+    while (index < text_length && text[index] >= '0' && text[index] <= '9') {
+        uint64_t digit = (uint64_t)(text[index] - '0');
+
+        if (magnitude > (UINT64_MAX - digit) / 10U) {
+            return MYLITE_ERROR;
+        }
+        magnitude = (magnitude * 10U) + digit;
+        *out_has_digits = true;
+        ++index;
+    }
+    if (*out_has_digits && index < text_length &&
+        (text[index] == '.' || text[index] == 'e' || text[index] == 'E')) {
+        return MYLITE_ERROR;
+    }
+
+    *out_magnitude = magnitude;
+    return MYLITE_OK;
+}
+
+static int append_predicate_truncated_double_warning(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+) {
+    static const char prefix[] = "Truncated incorrect DOUBLE value: '";
+    static const char suffix[] = "'";
+    char *message = NULL;
+    size_t message_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value_length > SIZE_MAX - sizeof(prefix) - sizeof(suffix)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    message_length = (sizeof(prefix) - 1U) + value_length + (sizeof(suffix) - 1U);
+    message = (char *)malloc(message_length + 1U);
+    if (message == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    memcpy(message, prefix, sizeof(prefix) - 1U);
+    memcpy(message + sizeof(prefix) - 1U, value, value_length);
+    memcpy(message + sizeof(prefix) - 1U + value_length, suffix, sizeof(suffix));
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_double,
+        "22007",
+        message
+    );
+    free(message);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int convert_predicate_string_numeric_literal(

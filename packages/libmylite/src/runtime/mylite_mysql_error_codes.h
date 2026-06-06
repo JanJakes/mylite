@@ -170,6 +170,7 @@ enum {
     mysql_warning_values_function_deprecated = 1287,
     mysql_warning_truncated_incorrect_auto_increment = 1292,
     mysql_warning_truncated_incorrect_decimal = 1292,
+    mysql_warning_truncated_incorrect_double = 1292,
     mysql_warning_truncated_incorrect_integer = 1292,
     mysql_warning_cast_complement = 1105,
     mysql_warning_truncated_incorrect_temporal = 1292,

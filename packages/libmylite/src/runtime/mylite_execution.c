@@ -20024,11 +20024,23 @@ static int convert_predicate_integer_literal(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
-static int convert_predicate_exact_integer_string_literal(
+static int convert_predicate_integer_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
+);
+static int scan_predicate_integer_string_prefix(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_magnitude,
+    bool *out_is_negative,
+    bool *out_has_digits
+);
+static int append_predicate_truncated_double_warning(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
 );
 static int convert_predicate_string_numeric_literal(
     struct mylite_db *database,

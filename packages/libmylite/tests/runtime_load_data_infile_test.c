@@ -54,6 +54,11 @@ struct text_file {
     const char *contents;
 };
 
+struct load_data_sql {
+    const char *file_path;
+    const char *tail;
+};
+
 static int test_load_data_success_persistence_and_metadata(void);
 static int test_load_data_diagnostics_and_nonstrict_adjustment(void);
 static int test_load_data_independent_handles(void);
@@ -78,7 +83,8 @@ static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int write_text_file(struct text_file file);
-static int build_load_sql(char *sql, size_t sql_size, const char *file_path, const char *tail);
+static int build_load_sql(char *sql, size_t sql_size, struct load_data_sql load_sql);
+static int escape_sql_string(char *output, size_t output_size, const char *input);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
@@ -190,7 +196,11 @@ static int test_load_data_success_persistence_and_metadata(void) {
         sqlite_generation_before_load = session->sqlite_schema_generation;
     }
 
-    failures += build_load_sql(sql, sizeof(sql), import_path, "INTO TABLE imported");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = import_path, .tail = "INTO TABLE imported"}
+    );
     failures += expect_load_ok(
         database,
         sql,
@@ -227,8 +237,10 @@ static int test_load_data_success_persistence_and_metadata(void) {
     failures += build_load_sql(
         sql,
         sizeof(sql),
-        partial_path,
-        "INTO TABLE app.partial IGNORE 1 LINES (id, body)"
+        (struct load_data_sql){
+            .file_path = partial_path,
+            .tail = "INTO TABLE app.partial IGNORE 1 LINES (id, body)",
+        }
     );
     failures += expect_load_ok(
         database,
@@ -313,7 +325,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
         expect_int(mylite_open(database_path, &database), MYLITE_OK, "open diagnostics file");
     failures += seed_schema(database, "app");
 
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE no_default");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE no_default"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -351,7 +367,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += build_load_sql(sql, sizeof(sql), missing_path, "INTO TABLE strict_fields");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = missing_path, .tail = "INTO TABLE strict_fields"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -363,8 +383,12 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     );
 
     failures += write_text_file((struct text_file){.path = load_path, .contents = "1\n"});
-    failures +=
-        build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE missing_schema.strict_fields");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path,
+                               .tail = "INTO TABLE missing_schema.strict_fields"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -374,7 +398,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
             .message_part = "Unknown database",
         }
     );
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE missing_table");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE missing_table"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -384,8 +412,12 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
             .message_part = "doesn't exist",
         }
     );
-    failures +=
-        build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE strict_fields (missing_col)");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path,
+                               .tail = "INTO TABLE strict_fields (missing_col)"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -395,7 +427,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
             .message_part = "Unknown column",
         }
     );
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE strict_fields");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE strict_fields"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -426,7 +462,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     );
 
     failures += write_text_file((struct text_file){.path = load_path, .contents = "12\n"});
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE missing_defaults");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE missing_defaults"}
+    );
     failures += expect_load_ok(
         database,
         sql,
@@ -445,7 +485,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     );
 
     failures += write_text_file((struct text_file){.path = load_path, .contents = "\t\t\t\t\n"});
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE empty_temporal");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE empty_temporal"}
+    );
     failures += expect_load_ok(
         database,
         sql,
@@ -466,7 +510,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     mylite_result_free(result);
     result = NULL;
     failures += write_text_file((struct text_file){.path = load_path, .contents = "2\t3\t4\n"});
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE strict_fields");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE strict_fields"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -496,7 +544,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     );
 
     failures += write_text_file((struct text_file){.path = load_path, .contents = "7\t\n"});
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE strict_nulls");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE strict_nulls"}
+    );
     failures += expect_load_ok(
         database,
         sql,
@@ -517,7 +569,11 @@ static int test_load_data_diagnostics_and_nonstrict_adjustment(void) {
     mylite_result_free(result);
     result = NULL;
     failures += write_text_file((struct text_file){.path = load_path, .contents = "8\tbad\n"});
-    failures += build_load_sql(sql, sizeof(sql), load_path, "INTO TABLE strict_nulls");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = load_path, .tail = "INTO TABLE strict_nulls"}
+    );
     failures += execute_error(
         database,
         sql,
@@ -599,13 +655,21 @@ static int test_load_data_independent_handles(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += build_load_sql(sql, sizeof(sql), first_import, "INTO TABLE loaded");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = first_import, .tail = "INTO TABLE loaded"}
+    );
     failures += expect_load_ok(
         first,
         sql,
         (struct expected_load_result){.affected_rows = 1, .warning_count = 0U}
     );
-    failures += build_load_sql(sql, sizeof(sql), second_import, "INTO TABLE loaded");
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = second_import, .tail = "INTO TABLE loaded"}
+    );
     failures += expect_load_ok(
         second,
         sql,
@@ -832,14 +896,46 @@ static int write_text_file(struct text_file file_data) {
     return 0;
 }
 
-static int build_load_sql(char *sql, size_t sql_size, const char *file_path, const char *tail) {
-    int written = snprintf(sql, sql_size, "LOAD DATA INFILE '%s' %s", file_path, tail);
+static int build_load_sql(char *sql, size_t sql_size, struct load_data_sql load_sql) {
+    char escaped_path[test_path_capacity * 2U];
+    int written = 0;
 
-    if (written < 0 || (size_t)written >= sql_size) {
-        fprintf(stderr, "LOAD DATA SQL is too long for %s\n", file_path);
+    if (escape_sql_string(escaped_path, sizeof(escaped_path), load_sql.file_path) != 0) {
+        fprintf(stderr, "LOAD DATA path is too long for %s\n", load_sql.file_path);
         return 1;
     }
 
+    written = snprintf(sql, sql_size, "LOAD DATA INFILE '%s' %s", escaped_path, load_sql.tail);
+
+    if (written < 0 || (size_t)written >= sql_size) {
+        fprintf(stderr, "LOAD DATA SQL is too long for %s\n", load_sql.file_path);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int escape_sql_string(char *output, size_t output_size, const char *input) {
+    size_t read_offset = 0U;
+    size_t write_offset = 0U;
+
+    while (input[read_offset] != '\0') {
+        if (input[read_offset] == '\\' || input[read_offset] == '\'') {
+            if (write_offset + 1U >= output_size) {
+                return 1;
+            }
+            output[write_offset] = '\\';
+            ++write_offset;
+        }
+        if (write_offset + 1U >= output_size) {
+            return 1;
+        }
+        output[write_offset] = input[read_offset];
+        ++write_offset;
+        ++read_offset;
+    }
+
+    output[write_offset] = '\0';
     return 0;
 }
 

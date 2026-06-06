@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -367,7 +369,7 @@ static int test_information_schema_st_units_of_measure_queries(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open st units db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open st units db");
     failures += expect_query(
         database,
         (struct expected_query){

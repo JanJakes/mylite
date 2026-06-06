@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -255,7 +257,7 @@ static int test_max_allowed_packet_values_and_persistence(void) {
 
 static int test_max_allowed_packet_set_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
     const struct expected_sql_error session_read_only = {
         .code = mysql_error_session_variable_read_only,
         .sqlstate = "HY000",
@@ -312,8 +314,8 @@ static int test_independent_max_allowed_packet_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(":memory:", &second), MYLITE_OK, "open second handle");
+    failures += expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second handle");
 
     failures += expect_nonquery_ok(
         first,

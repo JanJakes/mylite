@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "sqlite3.h"
@@ -187,7 +189,7 @@ static int test_spatial_metadata_surface(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -322,7 +324,7 @@ static int test_spatial_mixed_index_display_order(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -384,7 +386,7 @@ static int test_spatial_added_and_implicit_index_forms(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -474,7 +476,7 @@ static int test_spatial_index_type_options(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -669,7 +671,7 @@ static int test_spatial_create_table_like_metadata(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -718,7 +720,7 @@ static int test_spatial_null_dml_and_result_metadata(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -830,7 +832,7 @@ static int test_spatial_diagnostics(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
     if (failures != 0) {
         return failures;
     }
@@ -1175,8 +1177,8 @@ static int test_spatial_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &first), MYLITE_OK, "open first");
-    failures += expect_int(mylite_open(":memory:", &second), MYLITE_OK, "open second");
+    failures += expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first");
+    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second");
     if (failures == 0) {
         failures += expect_statement_ok(first, "CREATE DATABASE app");
         failures += expect_statement_ok(first, "USE app");

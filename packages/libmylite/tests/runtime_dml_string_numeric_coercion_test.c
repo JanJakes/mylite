@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -280,7 +282,7 @@ static int test_insert_ignore_clipping_and_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics db");
     failures += seed_schema(database);
     failures += create_numeric_table(database);
 
@@ -449,7 +451,8 @@ static int test_decimal_approx_string_prefix_scanning_and_adjustment(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open decimal prefix db");
+    failures +=
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open decimal prefix db");
     failures += seed_schema(database);
     failures += create_numeric_table(database);
 
@@ -811,7 +814,7 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open prefix db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open prefix db");
     failures += seed_schema(database);
     failures += create_numeric_table(database);
 

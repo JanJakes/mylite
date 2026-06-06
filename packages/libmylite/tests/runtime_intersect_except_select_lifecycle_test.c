@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -398,7 +400,7 @@ static int test_intersect_except_diagnostics_and_unsupported_forms(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics memory");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics memory");
     failures += seed_set_operation_tables(database);
     failures += execute_error(
         database,
@@ -486,8 +488,8 @@ static int test_independent_intersect_except_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(":memory:", &second), MYLITE_OK, "open second handle");
+    failures += expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second handle");
     failures += execute_ok(first, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;

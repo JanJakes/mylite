@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -1963,7 +1965,7 @@ static int test_foreign_key_diagnostics(void) {
 
 static int test_drop_foreign_key_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
 
     failures += execute_error(
         database,
@@ -2313,7 +2315,7 @@ static int test_drop_database_cleans_foreign_key_descriptors(void) {
 }
 
 static int open_seeded_memory(mylite_db **out_database) {
-    int failures = expect_int(mylite_open(":memory:", out_database), MYLITE_OK, "open memory");
+    int failures = expect_int(mylite_test_open_temporary(out_database), MYLITE_OK, "open memory");
 
     if (failures == 0) {
         failures += expect_statement_ok(*out_database, "CREATE DATABASE app");

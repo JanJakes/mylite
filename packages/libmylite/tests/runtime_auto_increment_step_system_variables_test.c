@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -156,7 +158,7 @@ static int test_auto_increment_step_variables_and_diagnostics(void) {
     static const char *const plus_and_true_values[] = {"11", "1", "0"};
     static const char *const false_values[] = {"1", "1"};
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open variables");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open variables");
 
     failures += expect_query_result(
         database,
@@ -811,9 +813,9 @@ static int test_auto_increment_step_independent_handles(void) {
     static const char *const second_values[] = {"1", "1", "1"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
-    int failures = expect_int(mylite_open(":memory:", &first), MYLITE_OK, "open first handle");
+    int failures = expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first handle");
 
-    failures += expect_int(mylite_open(":memory:", &second), MYLITE_OK, "open second handle");
+    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second handle");
     failures += expect_nonquery_result(
         first,
         "SET @@auto_increment_increment = 4",

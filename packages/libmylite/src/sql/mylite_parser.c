@@ -22,6 +22,21 @@ struct mylite_sql_parser_token_map {
     bool previous_token_was_dot;
 };
 
+struct mylite_sql_token_kind_mapping {
+    enum mylite_sql_token_kind kind;
+    int parser_token;
+};
+
+struct mylite_sql_punctuation_mapping {
+    char punctuation;
+    int parser_token;
+};
+
+struct mylite_sql_operator_mapping {
+    enum mylite_sql_operator_kind operator_kind;
+    int parser_token;
+};
+
 struct mylite_sql_parse_error {
     enum mylite_sql_parse_status status;
     int parser_token;
@@ -48,6 +63,7 @@ static bool map_lexer_token(
     int previous_parser_token,
     struct mylite_sql_parser_token_map *out_map
 );
+static bool map_direct_lexer_token(enum mylite_sql_token_kind kind, int *out_parser_token);
 static bool lexer_token_has_immediate_left_paren(
     const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token
@@ -8162,69 +8178,33 @@ static bool map_lexer_token(
         return true;
     }
 
-    switch (token->kind) {
-    case MYLITE_SQL_TOKEN_IDENTIFIER:
-        parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
-        break;
-    case MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER:
-        parser_token = MYLITE_SQL_PARSE_QUOTED_IDENTIFIER;
-        break;
-    case MYLITE_SQL_TOKEN_KEYWORD:
-        if (!map_keyword_token(
-                state,
-                token,
-                previous_token_was_dot,
-                previous_parser_token,
-                lexer_token_has_immediate_left_paren(lexer, token),
-                &parser_token
-            )) {
+    if (!map_direct_lexer_token(token->kind, &parser_token)) {
+        switch (token->kind) {
+        case MYLITE_SQL_TOKEN_KEYWORD:
+            if (!map_keyword_token(
+                    state,
+                    token,
+                    previous_token_was_dot,
+                    previous_parser_token,
+                    lexer_token_has_immediate_left_paren(lexer, token),
+                    &parser_token
+                )) {
+                return false;
+            }
+            break;
+        case MYLITE_SQL_TOKEN_OPERATOR:
+            if (!map_operator_token(state, token, &parser_token)) {
+                return false;
+            }
+            break;
+        case MYLITE_SQL_TOKEN_PUNCTUATION:
+            if (!map_punctuation_token(token, &parser_token)) {
+                return false;
+            }
+            break;
+        default:
             return false;
         }
-        break;
-    case MYLITE_SQL_TOKEN_STRING:
-        parser_token = MYLITE_SQL_PARSE_STRING;
-        break;
-    case MYLITE_SQL_TOKEN_NATIONAL_STRING:
-        parser_token = MYLITE_SQL_PARSE_NATIONAL_STRING;
-        break;
-    case MYLITE_SQL_TOKEN_HEX_LITERAL:
-        parser_token = MYLITE_SQL_PARSE_HEX_LITERAL;
-        break;
-    case MYLITE_SQL_TOKEN_BIT_LITERAL:
-        parser_token = MYLITE_SQL_PARSE_BIT_LITERAL;
-        break;
-    case MYLITE_SQL_TOKEN_INTEGER:
-        parser_token = MYLITE_SQL_PARSE_INTEGER;
-        break;
-    case MYLITE_SQL_TOKEN_DECIMAL:
-        parser_token = MYLITE_SQL_PARSE_DECIMAL;
-        break;
-    case MYLITE_SQL_TOKEN_FLOAT:
-        parser_token = MYLITE_SQL_PARSE_FLOAT;
-        break;
-    case MYLITE_SQL_TOKEN_OPERATOR:
-        if (!map_operator_token(state, token, &parser_token)) {
-            return false;
-        }
-        break;
-    case MYLITE_SQL_TOKEN_PUNCTUATION:
-        if (!map_punctuation_token(token, &parser_token)) {
-            return false;
-        }
-        break;
-    case MYLITE_SQL_TOKEN_EOF:
-    case MYLITE_SQL_TOKEN_ERROR:
-    case MYLITE_SQL_TOKEN_COMMENT:
-    case MYLITE_SQL_TOKEN_VERSION_COMMENT:
-    case MYLITE_SQL_TOKEN_HINT_COMMENT:
-    case MYLITE_SQL_TOKEN_PARAMETER:
-        return false;
-    case MYLITE_SQL_TOKEN_USER_VARIABLE:
-        parser_token = MYLITE_SQL_PARSE_USER_VARIABLE;
-        break;
-    case MYLITE_SQL_TOKEN_SYSTEM_VARIABLE:
-        parser_token = MYLITE_SQL_PARSE_SYSTEM_VARIABLE;
-        break;
     }
 
     *out_map = (struct mylite_sql_parser_token_map){
@@ -8232,6 +8212,31 @@ static bool map_lexer_token(
         .previous_token_was_dot = parser_token == MYLITE_SQL_PARSE_DOT,
     };
     return true;
+}
+
+static bool map_direct_lexer_token(enum mylite_sql_token_kind kind, int *out_parser_token) {
+    static const struct mylite_sql_token_kind_mapping mappings[] = {
+        {MYLITE_SQL_TOKEN_IDENTIFIER, MYLITE_SQL_PARSE_IDENTIFIER},
+        {MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER, MYLITE_SQL_PARSE_QUOTED_IDENTIFIER},
+        {MYLITE_SQL_TOKEN_STRING, MYLITE_SQL_PARSE_STRING},
+        {MYLITE_SQL_TOKEN_NATIONAL_STRING, MYLITE_SQL_PARSE_NATIONAL_STRING},
+        {MYLITE_SQL_TOKEN_HEX_LITERAL, MYLITE_SQL_PARSE_HEX_LITERAL},
+        {MYLITE_SQL_TOKEN_BIT_LITERAL, MYLITE_SQL_PARSE_BIT_LITERAL},
+        {MYLITE_SQL_TOKEN_INTEGER, MYLITE_SQL_PARSE_INTEGER},
+        {MYLITE_SQL_TOKEN_DECIMAL, MYLITE_SQL_PARSE_DECIMAL},
+        {MYLITE_SQL_TOKEN_FLOAT, MYLITE_SQL_PARSE_FLOAT},
+        {MYLITE_SQL_TOKEN_USER_VARIABLE, MYLITE_SQL_PARSE_USER_VARIABLE},
+        {MYLITE_SQL_TOKEN_SYSTEM_VARIABLE, MYLITE_SQL_PARSE_SYSTEM_VARIABLE},
+    };
+
+    for (size_t i = 0U; i < sizeof(mappings) / sizeof(mappings[0]); ++i) {
+        if (mappings[i].kind == kind) {
+            *out_parser_token = mappings[i].parser_token;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool lexer_token_has_immediate_left_paren(
@@ -8819,29 +8824,26 @@ static bool token_text_is_count_function_name(const struct mylite_sql_token *tok
 }
 
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token) {
+    static const struct mylite_sql_punctuation_mapping mappings[] = {
+        {';', MYLITE_SQL_PARSE_SEMICOLON},
+        {',', MYLITE_SQL_PARSE_COMMA},
+        {'.', MYLITE_SQL_PARSE_DOT},
+        {'(', MYLITE_SQL_PARSE_LPAREN},
+        {')', MYLITE_SQL_PARSE_RPAREN},
+    };
+
     if (token->length != 1U) {
         return false;
     }
 
-    switch (token->text[0]) {
-    case ';':
-        *out_parser_token = MYLITE_SQL_PARSE_SEMICOLON;
-        return true;
-    case ',':
-        *out_parser_token = MYLITE_SQL_PARSE_COMMA;
-        return true;
-    case '.':
-        *out_parser_token = MYLITE_SQL_PARSE_DOT;
-        return true;
-    case '(':
-        *out_parser_token = MYLITE_SQL_PARSE_LPAREN;
-        return true;
-    case ')':
-        *out_parser_token = MYLITE_SQL_PARSE_RPAREN;
-        return true;
-    default:
-        return false;
+    for (size_t i = 0U; i < sizeof(mappings) / sizeof(mappings[0]); ++i) {
+        if (mappings[i].punctuation == token->text[0]) {
+            *out_parser_token = mappings[i].parser_token;
+            return true;
+        }
     }
+
+    return false;
 }
 
 static bool map_operator_token(
@@ -8849,46 +8851,39 @@ static bool map_operator_token(
     const struct mylite_sql_token *token,
     int *out_parser_token
 ) {
+    static const struct mylite_sql_operator_mapping mappings[] = {
+        {MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL, MYLITE_SQL_PARSE_NULL_SAFE_EQUAL},
+        {MYLITE_SQL_OPERATOR_LESS_EQUAL, MYLITE_SQL_PARSE_LESS_EQUAL},
+        {MYLITE_SQL_OPERATOR_GREATER_EQUAL, MYLITE_SQL_PARSE_GREATER_EQUAL},
+        {MYLITE_SQL_OPERATOR_NOT_EQUAL, MYLITE_SQL_PARSE_NOT_EQUAL},
+        {MYLITE_SQL_OPERATOR_EQUAL, MYLITE_SQL_PARSE_EQUAL},
+        {MYLITE_SQL_OPERATOR_LESS, MYLITE_SQL_PARSE_LESS},
+        {MYLITE_SQL_OPERATOR_GREATER, MYLITE_SQL_PARSE_GREATER},
+        {MYLITE_SQL_OPERATOR_PLUS, MYLITE_SQL_PARSE_PLUS},
+        {MYLITE_SQL_OPERATOR_MINUS, MYLITE_SQL_PARSE_MINUS},
+        {MYLITE_SQL_OPERATOR_STAR, MYLITE_SQL_PARSE_STAR},
+        {MYLITE_SQL_OPERATOR_SLASH, MYLITE_SQL_PARSE_SLASH},
+        {MYLITE_SQL_OPERATOR_PERCENT, MYLITE_SQL_PARSE_PERCENT},
+        {MYLITE_SQL_OPERATOR_LOGICAL_AND, MYLITE_SQL_PARSE_LOGICAL_AND},
+        {MYLITE_SQL_OPERATOR_LEFT_SHIFT, MYLITE_SQL_PARSE_LEFT_SHIFT},
+        {MYLITE_SQL_OPERATOR_RIGHT_SHIFT, MYLITE_SQL_PARSE_RIGHT_SHIFT},
+        {MYLITE_SQL_OPERATOR_BITWISE_NOT, MYLITE_SQL_PARSE_BITWISE_NOT},
+        {MYLITE_SQL_OPERATOR_BITWISE_XOR, MYLITE_SQL_PARSE_BITWISE_XOR},
+        {MYLITE_SQL_OPERATOR_BITWISE_AND, MYLITE_SQL_PARSE_BITWISE_AND},
+        {MYLITE_SQL_OPERATOR_BITWISE_OR, MYLITE_SQL_PARSE_BITWISE_OR},
+        {MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT, MYLITE_SQL_PARSE_JSON_UNQUOTE_EXTRACT_OPERATOR},
+        {MYLITE_SQL_OPERATOR_JSON_EXTRACT, MYLITE_SQL_PARSE_JSON_EXTRACT_OPERATOR},
+        {MYLITE_SQL_OPERATOR_ASSIGN, MYLITE_SQL_PARSE_ASSIGN},
+    };
+
+    for (size_t i = 0U; i < sizeof(mappings) / sizeof(mappings[0]); ++i) {
+        if (mappings[i].operator_kind == token->operator_kind) {
+            *out_parser_token = mappings[i].parser_token;
+            return true;
+        }
+    }
+
     switch (token->operator_kind) {
-    case MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL:
-        *out_parser_token = MYLITE_SQL_PARSE_NULL_SAFE_EQUAL;
-        return true;
-    case MYLITE_SQL_OPERATOR_LESS_EQUAL:
-        *out_parser_token = MYLITE_SQL_PARSE_LESS_EQUAL;
-        return true;
-    case MYLITE_SQL_OPERATOR_GREATER_EQUAL:
-        *out_parser_token = MYLITE_SQL_PARSE_GREATER_EQUAL;
-        return true;
-    case MYLITE_SQL_OPERATOR_NOT_EQUAL:
-        *out_parser_token = MYLITE_SQL_PARSE_NOT_EQUAL;
-        return true;
-    case MYLITE_SQL_OPERATOR_EQUAL:
-        *out_parser_token = MYLITE_SQL_PARSE_EQUAL;
-        return true;
-    case MYLITE_SQL_OPERATOR_LESS:
-        *out_parser_token = MYLITE_SQL_PARSE_LESS;
-        return true;
-    case MYLITE_SQL_OPERATOR_GREATER:
-        *out_parser_token = MYLITE_SQL_PARSE_GREATER;
-        return true;
-    case MYLITE_SQL_OPERATOR_PLUS:
-        *out_parser_token = MYLITE_SQL_PARSE_PLUS;
-        return true;
-    case MYLITE_SQL_OPERATOR_MINUS:
-        *out_parser_token = MYLITE_SQL_PARSE_MINUS;
-        return true;
-    case MYLITE_SQL_OPERATOR_STAR:
-        *out_parser_token = MYLITE_SQL_PARSE_STAR;
-        return true;
-    case MYLITE_SQL_OPERATOR_SLASH:
-        *out_parser_token = MYLITE_SQL_PARSE_SLASH;
-        return true;
-    case MYLITE_SQL_OPERATOR_PERCENT:
-        *out_parser_token = MYLITE_SQL_PARSE_PERCENT;
-        return true;
-    case MYLITE_SQL_OPERATOR_LOGICAL_AND:
-        *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_AND;
-        return true;
     case MYLITE_SQL_OPERATOR_LOGICAL_OR:
         if (parser_sql_mode_has(state, MYLITE_SQL_MODE_PIPES_AS_CONCAT)) {
             *out_parser_token = MYLITE_SQL_PARSE_CONCAT_OPERATOR;
@@ -8896,35 +8891,7 @@ static bool map_operator_token(
             *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_OR;
         }
         return true;
-    case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
-        *out_parser_token = MYLITE_SQL_PARSE_LEFT_SHIFT;
-        return true;
-    case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
-        *out_parser_token = MYLITE_SQL_PARSE_RIGHT_SHIFT;
-        return true;
-    case MYLITE_SQL_OPERATOR_BITWISE_NOT:
-        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_NOT;
-        return true;
-    case MYLITE_SQL_OPERATOR_BITWISE_XOR:
-        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_XOR;
-        return true;
-    case MYLITE_SQL_OPERATOR_BITWISE_AND:
-        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_AND;
-        return true;
-    case MYLITE_SQL_OPERATOR_BITWISE_OR:
-        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_OR;
-        return true;
-    case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
-        *out_parser_token = MYLITE_SQL_PARSE_JSON_UNQUOTE_EXTRACT_OPERATOR;
-        return true;
-    case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
-        *out_parser_token = MYLITE_SQL_PARSE_JSON_EXTRACT_OPERATOR;
-        return true;
-    case MYLITE_SQL_OPERATOR_ASSIGN:
-        *out_parser_token = MYLITE_SQL_PARSE_ASSIGN;
-        return true;
-    case MYLITE_SQL_OPERATOR_NONE:
-    case MYLITE_SQL_OPERATOR_NOT:
+    default:
         return false;
     }
 

@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 #include "storage/mylite_file_format.h"
@@ -990,7 +992,7 @@ static int test_string_defaults_diagnostics(void) {
     };
     static const char *const numeric_character_default_rows[] = {"0", "1", "0"};
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
 
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");

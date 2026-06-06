@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "storage/mylite_file_format.h"
@@ -296,7 +298,8 @@ static int test_temporary_table_shadowing(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open shadow memory db");
+    failures +=
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open shadow memory db");
     failures += expect_statement_result(
         database,
         "CREATE DATABASE app",
@@ -357,7 +360,7 @@ static int test_disable_enable_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics db");
     failures += expect_statement_result(
         database,
         "CREATE DATABASE app",

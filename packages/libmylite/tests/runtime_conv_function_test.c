@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -290,7 +292,7 @@ static int test_conv_warnings_and_do(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open warning db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open warning db");
     failures += execute_ok(database, "DO 0", NULL);
     failures += expect_query(
         database,
@@ -398,7 +400,7 @@ static int test_conv_errors_and_unsupported_forms(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open error db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open error db");
     failures += execute_error(
         database,
         "SELECT CONV()",

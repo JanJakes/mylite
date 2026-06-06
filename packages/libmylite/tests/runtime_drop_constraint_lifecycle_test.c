@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -701,7 +703,7 @@ static int test_drop_constraint_diagnostics(void) {
 
     mylite_close(database);
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open no schema db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open no schema db");
     failures += execute_error(
         database,
         "ALTER TABLE missing_default DROP CONSTRAINT c",
@@ -815,7 +817,8 @@ static int test_drop_constraint_persistence_and_independent_handles(void) {
 }
 
 static int open_seeded_memory(mylite_db **out_database) {
-    int failures = expect_int(mylite_open(":memory:", out_database), MYLITE_OK, "open memory db");
+    int failures =
+        expect_int(mylite_test_open_temporary(out_database), MYLITE_OK, "open memory db");
 
     if (failures == 0) {
         failures += expect_statement_ok(*out_database, "CREATE DATABASE app");

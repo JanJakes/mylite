@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <inttypes.h>
@@ -209,7 +211,8 @@ static int test_create_clone_metadata_and_persistence(void) {
 
 static int test_alter_column_comment_lifecycle(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open alter memory");
+    int failures =
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open alter memory");
 
     failures += create_app_schema(database);
     failures += execute_statement_ok(
@@ -276,7 +279,7 @@ static int test_alter_column_comment_lifecycle(void) {
 
 static int test_temporary_comments_and_sql_modes(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open temp memory");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open temp memory");
 
     failures += create_app_schema(database);
     failures += execute_statement_ok(
@@ -329,7 +332,7 @@ static int test_column_comment_diagnostics(void) {
     char *sql = NULL;
     mylite_db *database = NULL;
     int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics memory");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics memory");
 
     failures += create_app_schema(database);
     failures += execute_error(

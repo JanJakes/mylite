@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
@@ -309,7 +311,7 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
 
 static int test_storage_statistics_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
 
     failures += create_app_schema(database);
     failures += execute_error(

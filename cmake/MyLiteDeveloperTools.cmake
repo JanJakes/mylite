@@ -73,6 +73,7 @@ function(mylite_add_developer_tool_targets)
       COMMENT "Running clang-tidy on first-party C sources"
       VERBATIM
     )
+    add_dependencies(tidy mylite)
   else()
     add_custom_target(tidy
       COMMAND "${CMAKE_COMMAND}" -E echo "run-clang-tidy not found. Install LLVM and put it on PATH."

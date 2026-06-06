@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -738,7 +740,8 @@ static int test_transaction_system_variable_assignments(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transaction vars");
+    failures +=
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transaction vars");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);

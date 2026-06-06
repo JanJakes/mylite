@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "storage/mylite_file_format.h"
@@ -272,7 +274,7 @@ static int test_create_and_alter_index_options(void) {
         "YES",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open memory");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open memory");
 
     failures += create_app_schema(database);
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT)");
@@ -502,7 +504,7 @@ static int test_index_options_diagnostics(void) {
     char *alter_long = NULL;
     char *create_primary_long = NULL;
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
 
     failures += create_app_schema(database);
     failures += execute_statement_ok(database, "CREATE TABLE t (a INT, body TEXT)");

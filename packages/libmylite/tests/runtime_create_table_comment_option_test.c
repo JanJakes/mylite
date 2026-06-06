@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <inttypes.h>
@@ -438,7 +440,7 @@ static int test_alter_table_comment_lifecycle(void) {
 
 static int test_temporary_and_like_comment_cloning(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open temp memory");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open temp memory");
 
     failures += create_app_schema(database);
     failures += execute_statement_ok(
@@ -488,7 +490,7 @@ static int test_temporary_and_like_comment_cloning(void) {
 
 static int test_comment_sql_modes(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open sql modes");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open sql modes");
 
     failures += create_app_schema(database);
     failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'");
@@ -539,7 +541,7 @@ static int test_comment_diagnostics(void) {
     char *sql = NULL;
     mylite_db *database = NULL;
     int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics memory");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics memory");
 
     failures += execute_error(
         database,

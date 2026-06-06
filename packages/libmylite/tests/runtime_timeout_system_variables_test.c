@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
@@ -394,7 +396,7 @@ static int test_timeout_assignment_diagnostics(void) {
         .message_part = "SET timeout system variable supports only fixed no-op global assignments",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
+    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
 
     failures += expect_nonquery_result(
         database,
@@ -587,8 +589,8 @@ static int test_timeout_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(":memory:", &second), MYLITE_OK, "open second handle");
+    failures += expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second handle");
     failures += expect_nonquery_result(
         first,
         "SET wait_timeout = 5",

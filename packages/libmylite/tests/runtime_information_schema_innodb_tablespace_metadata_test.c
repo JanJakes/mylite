@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -589,7 +591,7 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open innodb metadata db");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open innodb metadata db");
     failures += expect_query(
         database,
         (struct expected_query){

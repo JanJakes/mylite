@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "sqlite3.h"
@@ -1139,7 +1141,7 @@ static int test_long_unique_prefix_dml(void) {
         return failures;
     }
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open long prefix db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open long prefix db");
     failures += create_schema(database);
 
     failures += expect_statement_ok(
@@ -1308,7 +1310,7 @@ static int test_unique_prefix_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics db");
     failures += create_schema(database);
 
     failures += execute_error(

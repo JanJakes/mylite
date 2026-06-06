@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -769,7 +771,8 @@ static int test_check_constraint_diagnostics(void) {
 }
 
 static int open_seeded_memory(mylite_db **out_database) {
-    int failures = expect_int(mylite_open(":memory:", out_database), MYLITE_OK, "open memory db");
+    int failures =
+        expect_int(mylite_test_open_temporary(out_database), MYLITE_OK, "open memory db");
 
     if (failures == 0) {
         failures += seed_schema(*out_database, "app");

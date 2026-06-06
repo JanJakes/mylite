@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -126,7 +128,8 @@ static int test_no_source_dual_and_do_timestampadd(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open scalar database");
+    failures +=
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open scalar database");
     if (failures != 0) {
         return failures;
     }
@@ -373,7 +376,7 @@ static int test_timestampadd_diagnostics_and_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics db");
     failures += execute_ok(database, "CREATE DATABASE app", NULL);
     failures += execute_ok(database, "USE app", NULL);
     failures += execute_error(

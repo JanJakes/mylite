@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_diagnostics.h"
 #include "sqlite3.h"
@@ -746,7 +748,7 @@ static int test_fulltext_mixed_index_show_create_order(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open mixed order db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open mixed order db");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
@@ -823,7 +825,7 @@ static int test_fulltext_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics db");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(

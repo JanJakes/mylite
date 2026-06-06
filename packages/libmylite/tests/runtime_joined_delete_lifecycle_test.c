@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -376,7 +378,7 @@ static int test_joined_delete_diagnostics(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &missing_default_database), MYLITE_OK, "open no db");
+        expect_int(mylite_test_open_temporary(&missing_default_database), MYLITE_OK, "open no db");
     failures += expect_statement_ok(missing_default_database, "CREATE DATABASE app");
     failures +=
         expect_statement_ok(missing_default_database, "CREATE TABLE app.lefts (id INT, k INT)");
@@ -408,7 +410,7 @@ static int test_joined_delete_diagnostics(void) {
     mylite_close(missing_default_database);
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics memory");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics memory");
     failures += seed_app_schema(database);
     failures += create_join_tables(
         database,
@@ -566,7 +568,7 @@ static int test_joined_delete_foreign_keys_and_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open FK memory");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open FK memory");
     failures += seed_app_schema(database);
     failures += create_fk_join_tables(database);
     failures +=

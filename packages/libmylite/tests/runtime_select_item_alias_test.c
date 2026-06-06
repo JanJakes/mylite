@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -423,7 +425,7 @@ static int test_select_alias_length_boundaries(void) {
         return failures;
     }
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open length db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open length db");
     failures += seed_numbers(
         database,
         (struct seed_numbers_request){
@@ -522,7 +524,7 @@ static int test_select_alias_diagnostics(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics db");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics db");
     failures += seed_numbers(
         database,
         (struct seed_numbers_request){
@@ -593,8 +595,8 @@ static int test_independent_alias_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(":memory:", &second), MYLITE_OK, "open second handle");
+    failures += expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second handle");
     failures += seed_numbers(
         first,
         (struct seed_numbers_request){

@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -114,7 +116,7 @@ static int test_create_time_string_key_metadata_and_dml(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open create-time database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open create-time database");
     failures += create_schema(database);
     failures += expect_statement_ok(
         database,
@@ -181,7 +183,7 @@ static int test_string_key_duplicate_semantics(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open duplicate database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open duplicate database");
     failures += create_schema(database);
 
     failures += expect_statement_ok(database, "CREATE TABLE pkdup (c CHAR(3) PRIMARY KEY)");
@@ -279,7 +281,7 @@ static int test_nullable_unique_and_alter_add_primary_key(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open alter database");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open alter database");
     failures += create_schema(database);
 
     failures += expect_statement_ok(
@@ -340,7 +342,7 @@ static int test_non_ascii_string_key_values_are_rejected(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open non-ascii database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open non-ascii database");
     failures += create_schema(database);
     failures += expect_statement_ok(database, "CREATE TABLE non_ascii (v VARCHAR(5) UNIQUE)");
     failures += execute_error(

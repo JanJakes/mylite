@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -475,7 +477,7 @@ static int test_alter_add_composite_string_primary_key(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open alter database");
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open alter database");
     failures += create_schema(database);
     failures += expect_statement_ok(
         database,
@@ -534,7 +536,7 @@ static int test_composite_string_primary_key_diagnostics(void) {
     int failures = 0;
 
     failures +=
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics database");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics database");
     failures += create_schema(database);
 
     failures += execute_error(

@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime_test_support.h"
+
 #include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
@@ -406,7 +408,7 @@ static int test_catalog_default_text_validation(void) {
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor column = {0};
     int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open default-text catalog");
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open default-text catalog");
 
     failures += expect_int(
         mylite_catalog_create_schema(database, "app", &schema),

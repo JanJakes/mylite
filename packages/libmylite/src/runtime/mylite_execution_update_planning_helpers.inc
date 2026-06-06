@@ -183,11 +183,6 @@ static int plan_update_multiple_assignment(
         );
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_auto_increment(&table_columns[column_index])) {
-        set_update_multiple_assignment_unsupported_error(database);
-        return MYLITE_ERROR;
-    }
-
     value_node = child_at(assignment, 1U);
     if (!update_assignment_value_is_multi_constant_supported(value_node)) {
         set_update_multiple_assignment_unsupported_error(database);
@@ -719,6 +714,36 @@ static const struct planned_update_assignment *planned_update_assignment_for_col
             continue;
         }
         if (assignment->column.column_id == column_id) {
+            return assignment;
+        }
+    }
+
+    return NULL;
+}
+
+static bool planned_update_assigns_auto_increment(const struct planned_update *plan) {
+    if (plan == NULL || plan->generated_default_noop) {
+        return false;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        return planned_update_auto_increment_assignment(plan) != NULL;
+    }
+    return column_descriptor_is_auto_increment(&plan->assignment_column);
+}
+
+static const struct planned_update_assignment *planned_update_auto_increment_assignment(
+    const struct planned_update *plan
+) {
+    if (plan == NULL || !planned_update_has_multiple_assignments(plan)) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        const struct planned_update_assignment *assignment = &plan->assignments[index];
+
+        if (planned_update_assignment_is_noop(assignment)) {
+            continue;
+        }
+        if (column_descriptor_is_auto_increment(&assignment->column)) {
             return assignment;
         }
     }

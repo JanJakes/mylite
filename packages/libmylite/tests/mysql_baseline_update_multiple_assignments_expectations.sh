@@ -221,6 +221,35 @@ expect_output \
      FROM key_t WHERE term_taxonomy_id = 72;" \
     "$DATABASE"
 
+reset_rows
+expect_output \
+    "auto increment primary key multiple assignment advances next value" \
+    "1	0	5:1:2,6:7:8" \
+    "UPDATE rows_t SET id = 5, a = 1 WHERE id = 1;
+     SET @update_rows = ROW_COUNT(), @update_warnings = @@warning_count;
+     INSERT INTO rows_t(a, b, nn) VALUES (7, 8, 9);
+     SELECT @update_rows, @update_warnings,
+         GROUP_CONCAT(CONCAT(id, ':', IFNULL(a, 'N'), ':', IFNULL(b, 'N')) ORDER BY id)
+     FROM rows_t WHERE id IN (5, 6);" \
+    "$DATABASE"
+
+expect_output \
+    "wordpress auto increment primary key multiple assignment" \
+    "1	0	2015:http://example.org/?p=2015|2016:" \
+    "DROP TABLE IF EXISTS wp_posts;
+     CREATE TABLE wp_posts (
+         ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+         guid VARCHAR(255) NOT NULL DEFAULT ''
+     );
+     INSERT INTO wp_posts(guid) VALUES ('http://example.org/?p=1');
+     UPDATE wp_posts SET ID = 2015, guid = 'http://example.org/?p=2015' WHERE ID = 1;
+     SET @update_rows = ROW_COUNT(), @update_warnings = @@warning_count;
+     INSERT INTO wp_posts(guid) VALUES ('');
+     SELECT @update_rows, @update_warnings,
+         GROUP_CONCAT(CONCAT(ID, ':', guid) ORDER BY ID SEPARATOR '|')
+     FROM wp_posts;" \
+    "$DATABASE"
+
 reset_key_rows
 expect_error \
     "composite unique key duplicate" \

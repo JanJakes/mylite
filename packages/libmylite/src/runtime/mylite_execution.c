@@ -15105,6 +15105,10 @@ static const struct planned_update_assignment *planned_update_assignment_for_col
     const struct planned_update *plan,
     int64_t column_id
 );
+static bool planned_update_assigns_auto_increment(const struct planned_update *plan);
+static const struct planned_update_assignment *planned_update_auto_increment_assignment(
+    const struct planned_update *plan
+);
 static size_t planned_update_executable_assignment_count(const struct planned_update *plan);
 static int copy_update_assignments_for_execution(
     struct mylite_db *database,
@@ -15378,7 +15382,7 @@ static int step_update_statement(
 static int advance_auto_increment_after_update(
     struct mylite_db *database,
     const struct planned_update *plan,
-    const struct planned_value *assignment_value,
+    const struct planned_update *executable_plan,
     int64_t affected_rows,
     int64_t *out_auto_increment_next
 );

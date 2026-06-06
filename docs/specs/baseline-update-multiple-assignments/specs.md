@@ -84,9 +84,9 @@ The implementation supports:
   selected-schema policy;
 - two or more assignment list entries;
 - distinct unqualified assignment targets only;
-- assignment to non-`AUTO_INCREMENT` primary-key and unique-key columns, with
-  duplicate-key diagnostics for the current supported primary-key and
-  unique-index subset;
+- assignment to primary-key and unique-key columns, including supported
+  `AUTO_INCREMENT` key columns, with duplicate-key diagnostics for the current
+  supported primary-key and unique-index subset;
 - assignment values admitted by the existing single-assignment constant
   conversion path: decimal integer, fixed decimal, approximate numeric,
   `TRUE`, `FALSE`, `NULL`, `DEFAULT`, ordinary string literals for supported
@@ -115,7 +115,8 @@ This feature does not add:
 - column-to-column assignments, general expressions, functions other than the
   existing current-timestamp value forms, variables, parameters, or
   `DEFAULT(column_name)`;
-- multiple assignment to auto-increment columns;
+- arithmetic or expression assignment to auto-increment columns inside a
+  multi-assignment list;
 - automatic timestamp updates for key columns;
 - parent foreign-key cascade/set-null behavior beyond the existing direct
   single-assignment parent-update action subset;
@@ -201,7 +202,9 @@ Runtime narrows this parsed shape:
 
 - each assignment target must be an unqualified descriptor column;
 - each target column may appear at most once;
-- each target column must not be auto-increment;
+- `AUTO_INCREMENT` targets use the existing descriptor conversion path, and
+  positive changed values advance the descriptor-owned next counter just like
+  supported single-assignment `UPDATE`;
 - each value must be one of the existing single-assignment constant value
   forms. Multi-assignment scalar subqueries and arithmetic expressions are
   rejected even though their single-assignment forms remain supported.
@@ -304,8 +307,8 @@ The feature adds deterministic MyLite-specific unsupported diagnostics for:
 - duplicate assignment targets in a multi-assignment list;
 - scalar subquery assignment inside a multi-assignment list;
 - same-column arithmetic assignment inside a multi-assignment list;
-- assignment to a primary-key, unique-key, or auto-increment column inside a
-  multi-assignment list;
+- assignment to unsupported primary-key, unique-key, or auto-increment
+  descriptor shapes inside a multi-assignment list;
 - automatic `ON UPDATE CURRENT_TIMESTAMP` columns that would be updated while
   participating in a primary or unique key.
 
@@ -333,7 +336,7 @@ Coverage includes:
 - arithmetic and scalar-subquery multi-assignment rejection;
 - non-`AUTO_INCREMENT` key and unique-key multi-assignment plus duplicate-key
   rollback;
-- auto-increment multi-assignment rejection;
+- auto-increment primary-key multi-assignment with next-counter advancement;
 - automatic `ON UPDATE CURRENT_TIMESTAMP` behavior;
 - reopen persistence and `.mylite` preamble preservation;
 - independent file-backed handles.
@@ -343,5 +346,5 @@ Coverage includes:
 `COMPATIBILITY.md` and `docs/compatibility/sql-table-dml.md` mark
 single-table `UPDATE` as still limited, but no longer one-assignment-only for
 ordinary constant assignments. They continue to document the unsupported
-left-to-right expression, duplicate target, auto-increment target, scalar
-subquery, and arithmetic multi-assignment gaps.
+left-to-right expression, duplicate target, unsupported auto-increment
+descriptor shapes, scalar subquery, and arithmetic multi-assignment gaps.

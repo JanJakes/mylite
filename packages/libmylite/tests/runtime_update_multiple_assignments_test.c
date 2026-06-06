@@ -20,6 +20,7 @@ enum {
     mysql_error_duplicate_entry = 1062,
     mysql_error_parse = 1064,
     mysql_error_data_out_of_range = 1264,
+    key_table_projection_column_count = 5,
 };
 
 struct expected_sql_error {
@@ -140,6 +141,20 @@ static int test_multiple_assignment_success_persistence_and_limits(void) {
         "renamed",
         "0",
     };
+    static const char *const after_auto_increment_primary_update[] = {
+        "5",
+        "1",
+        "2",
+        "6",
+        "7",
+        "8",
+    };
+    static const char *const after_wordpress_auto_increment_update[] = {
+        "2015",
+        "http://example.org/?p=2015",
+        "2016",
+        "",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -256,7 +271,7 @@ static int test_multiple_assignment_success_persistence_and_limits(void) {
             .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent "
                    "FROM key_t WHERE term_taxonomy_id = 71",
             .values = after_composite_key_update,
-            .column_count = 5U,
+            .column_count = key_table_projection_column_count,
             .row_count = 1U,
             .context = "composite unique key multiple assignment",
         }
@@ -273,7 +288,7 @@ static int test_multiple_assignment_success_persistence_and_limits(void) {
             .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent "
                    "FROM key_t WHERE term_taxonomy_id = 72",
             .values = after_primary_key_update,
-            .column_count = 5U,
+            .column_count = key_table_projection_column_count,
             .row_count = 1U,
             .context = "primary key multiple assignment",
         }
@@ -305,6 +320,46 @@ static int test_multiple_assignment_success_persistence_and_limits(void) {
             .column_count = 3U,
             .row_count = 3U,
             .context = "multiple assignment persists after reopen",
+        }
+    );
+    failures += reset_rows_table(database);
+    failures += expect_update_ok(database, "UPDATE rows_t SET id = 5, a = 1 WHERE id = 1", 1);
+    failures += execute_ok(database, "INSERT INTO rows_t(a, b, nn) VALUES (7, 8, 9)", NULL);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM rows_t WHERE id IN (5, 6) ORDER BY id",
+            .values = after_auto_increment_primary_update,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "auto-increment primary key multiple assignment",
+        }
+    );
+    failures += execute_ok(database, "DROP TABLE IF EXISTS wp_posts", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE wp_posts ("
+        "ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+        "guid VARCHAR(255) NOT NULL DEFAULT '')",
+        NULL
+    );
+    failures +=
+        execute_ok(database, "INSERT INTO wp_posts(guid) VALUES ('http://example.org/?p=1')", NULL);
+    failures += expect_update_ok(
+        database,
+        "UPDATE `wp_posts` SET `ID` = 2015, `guid` = 'http://example.org/?p=2015' "
+        "WHERE `ID` = 1",
+        1
+    );
+    failures += execute_ok(database, "INSERT INTO wp_posts(guid) VALUES ('')", NULL);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ID, guid FROM wp_posts ORDER BY ID",
+            .values = after_wordpress_auto_increment_update,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "wordpress auto-increment primary key multiple assignment",
         }
     );
 
@@ -394,8 +449,6 @@ static int test_multiple_assignment_errors_and_atomicity(void) {
         "UPDATE rows_t SET a = 1, b = (SELECT a FROM rows_t LIMIT 1) WHERE id = 1",
         parse_unsupported
     );
-    failures +=
-        execute_error(database, "UPDATE rows_t SET id = 5, a = 1 WHERE id = 1", parse_unsupported);
     failures += reset_key_table(database);
     failures += execute_error(
         database,
@@ -423,7 +476,7 @@ static int test_multiple_assignment_errors_and_atomicity(void) {
             .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent "
                    "FROM key_t WHERE term_taxonomy_id = 71",
             .values = unchanged_key_after_error,
-            .column_count = 5U,
+            .column_count = key_table_projection_column_count,
             .row_count = 1U,
             .context = "failed key multiple assignment leaves row unchanged",
         }

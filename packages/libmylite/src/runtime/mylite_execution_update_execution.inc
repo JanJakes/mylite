@@ -18,7 +18,7 @@ static int execute_update_from_plan(
 
     rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
 
-    if (rc == MYLITE_OK && column_descriptor_is_auto_increment(&plan->assignment_column)) {
+    if (rc == MYLITE_OK && planned_update_assigns_auto_increment(plan)) {
         rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
     }
     if (rc == MYLITE_OK) {
@@ -58,7 +58,7 @@ static int execute_update_from_plan(
         rc = advance_auto_increment_after_update(
             database,
             plan,
-            &executable_plan.assignment_value,
+            &executable_plan,
             affected_rows,
             &auto_increment_next_after_update
         );
@@ -1816,13 +1816,17 @@ static int validate_update_multiple_string_key_values(
     return rc;
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): original and executable plans are separate
+// states.
 static int advance_auto_increment_after_update(
     struct mylite_db *database,
     const struct planned_update *plan,
-    const struct planned_value *assignment_value,
+    const struct planned_update *executable_plan,
     int64_t affected_rows,
     int64_t *out_auto_increment_next
 ) {
+    const struct mylite_catalog_column_descriptor *assignment_column = NULL;
+    const struct planned_value *assignment_value = NULL;
     struct integer_column_range range = {0};
     int64_t next_value = plan->table.auto_increment_next;
     int rc = MYLITE_OK;
@@ -1830,9 +1834,24 @@ static int advance_auto_increment_after_update(
     if (out_auto_increment_next != NULL) {
         *out_auto_increment_next = plan->table.auto_increment_next;
     }
-    if (planned_update_has_multiple_assignments(plan) || affected_rows <= 0 ||
-        !column_descriptor_is_auto_increment(&plan->assignment_column) ||
-        assignment_value->is_null || assignment_value->is_text || assignment_value->integer <= 0) {
+    if (affected_rows <= 0) {
+        return MYLITE_OK;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        const struct planned_update_assignment *assignment =
+            planned_update_auto_increment_assignment(executable_plan);
+
+        if (assignment == NULL) {
+            return MYLITE_OK;
+        }
+        assignment_column = &assignment->column;
+        assignment_value = &assignment->value;
+    } else {
+        assignment_column = &plan->assignment_column;
+        assignment_value = &executable_plan->assignment_value;
+    }
+    if (!column_descriptor_is_auto_increment(assignment_column) || assignment_value->is_null ||
+        assignment_value->is_text || assignment_value->integer <= 0) {
         return MYLITE_OK;
     }
     if (next_value <= 0) {
@@ -1841,7 +1860,7 @@ static int advance_auto_increment_after_update(
 
     rc = integer_range_for_column(
         database,
-        &plan->assignment_column,
+        assignment_column,
         "AUTO_INCREMENT supports only baseline integer columns",
         &range
     );
@@ -1863,6 +1882,8 @@ static int advance_auto_increment_after_update(
 
     return rc;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int update_table_auto_increment_next(
     struct mylite_db *database,

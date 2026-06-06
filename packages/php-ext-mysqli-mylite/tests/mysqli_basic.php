@@ -2,6 +2,22 @@
 
 require __DIR__ . '/bootstrap.php';
 
+$path = tempnam(sys_get_temp_dir(), 'mylite_php_ext_empty_db_');
+if ($path === false) {
+    throw new RuntimeException('create temporary empty database path');
+}
+unlink($path);
+
+$server_connection = new mysqli($path, '', '', '', 0, '');
+expect_same(0, $server_connection->connect_errno, 'empty database connect errno');
+expect_true($server_connection->query('CREATE DATABASE app'), 'empty database create schema');
+expect_true($server_connection->select_db('app'), 'empty database select schema');
+expect_true(
+    $server_connection->query('CREATE TABLE empty_database_connection (id INT NOT NULL)'),
+    'empty database create table'
+);
+$server_connection->close();
+
 $mysqli = open_mylite_mysqli();
 
 expect_true(

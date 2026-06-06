@@ -4879,8 +4879,8 @@ static zend_string *mylite_mysqli_resolve_path(
 
         *out_memory =
             path_length == strlen(":memory:") && memcmp(path, ":memory:", path_length) == 0;
-        *out_use_database =
-            database != NULL && !mylite_mysqli_is_path_like(database, database_length);
+        *out_use_database = database != NULL && database_length > 0U &&
+                            !mylite_mysqli_is_path_like(database, database_length);
         return zend_string_init(
             path_length == 0U ? ":memory:" : path,
             path_length == 0U ? strlen(":memory:") : path_length,
@@ -4890,14 +4890,14 @@ static zend_string *mylite_mysqli_resolve_path(
     host_path = mylite_mysqli_host_path(host, host_length, &host_path_length);
     if (host_path != NULL) {
         *out_memory = mylite_mysqli_is_local_path(host_path, host_path_length);
-        *out_use_database =
-            database != NULL && !mylite_mysqli_is_path_like(database, database_length);
+        *out_use_database = database != NULL && database_length > 0U &&
+                            !mylite_mysqli_is_path_like(database, database_length);
         return zend_string_init(host_path, host_path_length, false);
     }
     if (socket != NULL && socket_length > 0U) {
         *out_memory = mylite_mysqli_is_local_path(socket, socket_length);
-        *out_use_database =
-            database != NULL && !mylite_mysqli_is_path_like(database, database_length);
+        *out_use_database = database != NULL && database_length > 0U &&
+                            !mylite_mysqli_is_path_like(database, database_length);
         return zend_string_init(socket, socket_length, false);
     }
     if (database != NULL && mylite_mysqli_is_path_like(database, database_length)) {

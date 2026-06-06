@@ -302,8 +302,7 @@ static int test_date_add_second_sql_modes_and_errors(void) {
         "DATE_ADD ('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
     };
     static const char *const ignore_space_values[] = {"2008-01-02 13:29:18"};
-    static const char *const table_columns[] = {
-        "DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
+    static const char *const table_columns[] = {"DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -715,8 +714,7 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
         "2008-01-02 13:29:18",
         "2008-01-02 13:29:16",
     };
-    static const char *const table_columns[] = {
-        "DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
+    static const char *const table_columns[] = {"DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;

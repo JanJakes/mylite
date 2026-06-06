@@ -114,8 +114,8 @@ static const char *const show_index_columns[show_index_column_count] = {
     "Expression",
 };
 
-static const char *const
-    information_schema_column_probe_columns[information_schema_column_probe_count] = {
+static const char
+    *const information_schema_column_probe_columns[information_schema_column_probe_count] = {
         "COLUMN_NAME",
         "COLUMN_DEFAULT",
         "IS_NULLABLE",
@@ -141,8 +141,8 @@ static const char *const
             "REFERENCED_COLUMN_NAME",
 };
 
-static const char *const
-    information_schema_statistics_columns[information_schema_statistics_column_count] = {
+static const char
+    *const information_schema_statistics_columns[information_schema_statistics_column_count] = {
         "INDEX_NAME",
         "SEQ_IN_INDEX",
         "COLUMN_NAME",

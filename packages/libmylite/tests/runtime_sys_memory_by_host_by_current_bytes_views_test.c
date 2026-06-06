@@ -67,8 +67,8 @@ static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_datetime_text(const char *actual, const char *context);
 
-static const char *const
-    memory_by_host_by_current_bytes_columns[memory_by_host_by_current_bytes_column_count] = {
+static const char
+    *const memory_by_host_by_current_bytes_columns[memory_by_host_by_current_bytes_column_count] = {
         "host",
         "current_count_used",
         "current_allocated",
@@ -116,8 +116,8 @@ static const char *const show_index_columns[show_index_column_count] = {
     "Expression",
 };
 
-static const char *const
-    information_schema_columns_columns[information_schema_columns_column_count] = {
+static const char
+    *const information_schema_columns_columns[information_schema_columns_column_count] = {
         "TABLE_NAME",
         "COLUMN_NAME",
         "ORDINAL_POSITION",

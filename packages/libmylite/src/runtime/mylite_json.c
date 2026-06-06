@@ -413,10 +413,8 @@ int mylite_json_value(
     }
     if (rc == MYLITE_OK && (!matched || matched_value->kind == JSON_VALUE_NULL)) {
         *out_is_null = true;
-    } else if (
-        rc == MYLITE_OK &&
-        (matched_value->kind == JSON_VALUE_STRING || matched_value->kind == JSON_VALUE_NUMBER)
-    ) {
+    } else if (rc == MYLITE_OK && (matched_value->kind == JSON_VALUE_STRING ||
+                                   matched_value->kind == JSON_VALUE_NUMBER)) {
         rc = mylite_json_internal_copy_result_text(
             matched_value->payload.text.text,
             matched_value->payload.text.length,
@@ -969,8 +967,7 @@ int mylite_json_quote_string(
     return rc;
 }
 
-const char *mylite_json_invalid_text_error_message(
-    const struct mylite_json_normalize_result *result
+const char *mylite_json_invalid_text_error_message(const struct mylite_json_normalize_result *result
 ) {
     if (result != NULL && result->error_detail == MYLITE_JSON_ERROR_MISSING_OBJECT_MEMBER_NAME) {
         return "Missing a name for object member.";

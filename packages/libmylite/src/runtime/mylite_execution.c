@@ -4288,8 +4288,7 @@ static int apply_set_system_variable_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment
 );
-static bool set_system_variable_target_is_read_only(
-    enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
 );
 static int apply_set_system_variable_user_variable_assignment(
     struct mylite_db *database,
@@ -4740,8 +4739,7 @@ static int rebuild_sql_mode_text(
 static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
-static bool system_variable_expression_has_global_scope(
-    const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
 );
 static bool foreign_key_checks_system_variable_value(
     const struct mylite_db *database,
@@ -4822,8 +4820,7 @@ static int set_transaction_variable_invalid_node_value_error(
     const struct mylite_sql_ast_node *value_node
 );
 static const char *transaction_isolation_value_text(enum mylite_transaction_isolation isolation);
-static const char *transaction_read_only_scalar_text(
-    enum mylite_transaction_access_mode access_mode
+static const char *transaction_read_only_scalar_text(enum mylite_transaction_access_mode access_mode
 );
 static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode);
 static const char *transaction_isolation_system_variable_value(
@@ -5410,11 +5407,9 @@ static int validate_alter_table_key_maintenance_algorithm_lock_options(
     enum mylite_sql_ast_alter_algorithm algorithm,
     enum mylite_sql_ast_alter_lock lock
 );
-static bool alter_table_statement_accepts_algorithm_lock_options(
-    enum mylite_sql_ast_node_kind kind
+static bool alter_table_statement_accepts_algorithm_lock_options(enum mylite_sql_ast_node_kind kind
 );
-static bool alter_table_add_index_statement_is_fulltext(
-    const struct mylite_sql_ast_node *statement
+static bool alter_table_add_index_statement_is_fulltext(const struct mylite_sql_ast_node *statement
 );
 static int execute_insert_statement(
     struct mylite_db *database,
@@ -6234,8 +6229,7 @@ static int increment_sys_schema_object_overview_group(
     const char *object_type,
     uint64_t count
 );
-static int grow_sys_schema_object_overview_groups(
-    struct sys_schema_object_overview_context *context
+static int grow_sys_schema_object_overview_groups(struct sys_schema_object_overview_context *context
 );
 static void sort_sys_schema_object_overview_groups(
     struct sys_schema_object_overview_context *context
@@ -7177,8 +7171,7 @@ static int append_mysql_escaped_expression_text(
     const char *text
 );
 static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column);
-static bool column_default_is_generated_extra(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_default_is_generated_extra(const struct mylite_catalog_column_descriptor *column
 );
 static int append_information_schema_columns_numeric_metadata(
     struct mylite_db *database,
@@ -9364,8 +9357,7 @@ static int validate_hash_index_key_part_order(
 static bool secondary_index_part_has_explicit_direction(const struct mylite_sql_ast_node *part);
 static bool index_option_nodes_have_type_option(struct index_option_nodes nodes);
 static bool index_option_list_has_type_option(const struct mylite_sql_ast_node *option_list);
-static size_t planned_create_table_hash_index_warning_count(
-    const struct planned_create_table *plan
+static size_t planned_create_table_hash_index_warning_count(const struct planned_create_table *plan
 );
 static int reserve_hash_index_warnings(struct mylite_db *database, size_t additional_count);
 static int append_hash_index_warnings(struct mylite_db *database, size_t warning_count);
@@ -10212,8 +10204,7 @@ static int validate_alter_table_convert_character_set_columns(
     struct mylite_db *database,
     const struct planned_alter_table_convert_character_set *plan
 );
-static bool table_charset_option_is_default_keyword(
-    const struct mylite_sql_ast_node *charset_option
+static bool table_charset_option_is_default_keyword(const struct mylite_sql_ast_node *charset_option
 );
 static bool alter_table_convert_column_participates(
     const struct mylite_catalog_column_descriptor *column
@@ -10428,8 +10419,7 @@ static bool modify_column_name_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
-static void planned_alter_table_modify_column_deinit(
-    struct planned_alter_table_modify_column *plan
+static void planned_alter_table_modify_column_deinit(struct planned_alter_table_modify_column *plan
 );
 static int alter_table_modify_column_from_plan(
     struct mylite_db *database,
@@ -11502,8 +11492,7 @@ static int plan_row_scalar_select_exists_filter(
     const struct mylite_sql_ast_node *where_clause,
     struct planned_row_scalar_select *out_plan
 );
-static bool row_scalar_select_where_is_exists_filter(
-    const struct mylite_sql_ast_node *where_clause
+static bool row_scalar_select_where_is_exists_filter(const struct mylite_sql_ast_node *where_clause
 );
 static int plan_row_scalar_select_scalar_filter(
     struct mylite_db *database,
@@ -11669,11 +11658,9 @@ static int row_scalar_integer_width_enter_frame(
     struct row_scalar_integer_width_stack *stack,
     const struct mylite_sql_ast_node *expression
 );
-static int row_scalar_integer_width_finish_unary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
 );
-static int row_scalar_integer_width_finish_binary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
 );
 static int row_scalar_integer_width_push_frame(
     struct row_scalar_integer_width_stack *stack,
@@ -12901,8 +12888,7 @@ static int scalar_concat_operator_result(
     size_t argument_count,
     char **out_text
 );
-static bool concat_operator_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 );
 static bool concat_operator_scalar_argument_is_integer_arithmetic_expression(
     const struct mylite_sql_ast_node *expression
@@ -14349,16 +14335,14 @@ static int if_validation_stack_push(
     const struct mylite_sql_ast_node *expression
 );
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
-static bool is_scalar_projection_select_item_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_projection_select_item_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_collate_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_projection_expression_without_collate(
     const struct mylite_sql_ast_node *expression
 );
-static bool is_last_insert_id_set_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_last_insert_id_set_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_numeric_scalar_function_projection_expression(
@@ -14391,8 +14375,7 @@ static bool is_base64_projection_expression(const struct mylite_sql_ast_node *ex
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_weight_string_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_uuid_value_projection_argument_supported(
-    const struct mylite_sql_ast_node *expression
+static bool is_uuid_value_projection_argument_supported(const struct mylite_sql_ast_node *expression
 );
 static bool is_char_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -14412,16 +14395,13 @@ static bool is_string_replace_projection_expression(const struct mylite_sql_ast_
 static bool is_string_insert_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_reverse_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_quote_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_charset_collation_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_charset_collation_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_string_metadata_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_scalar_conversion_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_conversion_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_cast_convert_basic_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_cast_convert_basic_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_convert_binary_type_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -14448,23 +14428,19 @@ static bool is_json_valid_projection_expression(const struct mylite_sql_ast_node
 static bool is_json_contains_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_extract_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_value_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_json_introspection_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_json_introspection_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_json_unquote_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_quote_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_json_construction_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_json_construction_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_json_set_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_scalar_arithmetic_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_arithmetic_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_scalar_bitwise_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_logical_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_scalar_comparison_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_comparison_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_scalar_concat_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool scalar_arithmetic_projection_node_is_admitted(
@@ -14506,11 +14482,9 @@ static bool scalar_arithmetic_attempt_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
 );
-static bool is_scalar_value_projection_attempt_operand(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_value_projection_attempt_operand(const struct mylite_sql_ast_node *expression
 );
-static bool is_scalar_numeric_function_attempt_operand(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_numeric_function_attempt_operand(const struct mylite_sql_ast_node *expression
 );
 static int append_system_variable_read_warning(
     struct mylite_db *database,
@@ -16690,8 +16664,7 @@ static int evaluate_integer_default_binary_enter_frame(
     struct scalar_arithmetic_eval_stack *expression_stack,
     const struct mylite_sql_ast_node *expression
 );
-static bool integer_default_binary_operator_is_supported(
-    enum mylite_sql_ast_operator operator_kind
+static bool integer_default_binary_operator_is_supported(enum mylite_sql_ast_operator operator_kind
 );
 static int parse_integer_default_literal_value(
     const struct mylite_sql_ast_node *literal,
@@ -16977,8 +16950,7 @@ static bool planned_column_is_timestamp(const struct planned_column *column);
 static bool column_default_kind_has_integer_value(
     enum mylite_catalog_column_default_kind default_kind
 );
-static bool column_default_kind_has_text_value(
-    enum mylite_catalog_column_default_kind default_kind
+static bool column_default_kind_has_text_value(enum mylite_catalog_column_default_kind default_kind
 );
 static bool column_default_kind_is_expression(enum mylite_catalog_column_default_kind default_kind);
 static bool column_default_kind_materializes_value(
@@ -16993,8 +16965,7 @@ static bool column_descriptor_is_char_or_varchar(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_text_family(const struct mylite_catalog_column_descriptor *column);
-static bool column_descriptor_is_string_family(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_descriptor_is_string_family(const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_json(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_spatial(const struct mylite_catalog_column_descriptor *column);
@@ -17690,8 +17661,7 @@ static int format_insert_unix_timestamp_integer_text(
     char **out_text,
     size_t *out_text_length
 );
-static bool insert_unix_timestamp_now_node_is_admitted(
-    const struct mylite_sql_ast_node *value_node
+static bool insert_unix_timestamp_now_node_is_admitted(const struct mylite_sql_ast_node *value_node
 );
 static bool insert_unix_timestamp_delta_node_is_admitted(
     const struct mylite_sql_ast_node *value_node
@@ -19308,8 +19278,7 @@ static bool scalar_literal_is_result(
 static bool predicate_node_is_find_in_set_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_json_valid_expression(
-    const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_json_valid_expression(const struct mylite_sql_ast_node *predicate_node
 );
 static bool predicate_node_is_json_contains_expression(
     const struct mylite_sql_ast_node *predicate_node
@@ -19320,8 +19289,7 @@ static bool predicate_node_is_regexp_like_expression(
 static bool predicate_node_is_string_length_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_substring_expression(
-    const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_substring_expression(const struct mylite_sql_ast_node *predicate_node
 );
 static bool predicate_node_is_date_format_numeric_predicate_expression(
     const struct mylite_sql_ast_node *predicate_node
@@ -19943,8 +19911,7 @@ static int append_planned_select_predicate_node(
 );
 static int append_deprecated_logical_and_warning(struct mylite_db *database);
 static int append_deprecated_logical_or_warning(struct mylite_db *database);
-static bool planned_select_predicate_has_expression(
-    const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
 );
 static int append_predicate_work_node(
     struct mylite_db *database,
@@ -20282,8 +20249,7 @@ static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast
 static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items);
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key);
-static bool select_order_key_is_searched_case_expression(
-    const struct mylite_sql_ast_node *order_key
+static bool select_order_key_is_searched_case_expression(const struct mylite_sql_ast_node *order_key
 );
 static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_supported_joined_row_scalar_order(
@@ -23385,8 +23351,7 @@ static bool row_scalar_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
-static bool row_scalar_expression_contains_row_function(
-    const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_conversion_expression(
     const struct mylite_sql_ast_node *expression
@@ -28470,8 +28435,7 @@ const char *mylite_execution_temporal_constructor_function_name(
     return temporal_constructor_function_name(ast_kind);
 }
 
-bool mylite_execution_is_temporal_constructor_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
+bool mylite_execution_is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind
 ) {
     return is_temporal_constructor_function_kind(ast_kind);
 }

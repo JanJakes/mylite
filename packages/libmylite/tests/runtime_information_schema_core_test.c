@@ -235,15 +235,9 @@ static int test_information_schema_core_queries(void) {
         "ucs2_romanian_ci",
         "ucs2_roman_ci",
     };
-    static const char *const system_table_columns[] = {
-        "TABLE_SCHEMA",
-        "TABLE_NAME",
-        "TABLE_TYPE",
-        "ENGINE",
-        "VERSION",
-        "ROW_FORMAT",
-        "TABLE_ROWS"
-    };
+    static const char *const system_table_columns[] =
+        {"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "ENGINE", "VERSION", "ROW_FORMAT", "TABLE_ROWS"
+        };
     static const char *const system_table_values[] = {
         "information_schema", "COLUMNS",  "SYSTEM VIEW", NULL, "10", NULL, "0",
         "information_schema", "SCHEMATA", "SYSTEM VIEW", NULL, "10", NULL, "0",

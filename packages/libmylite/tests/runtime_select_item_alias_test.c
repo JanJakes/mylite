@@ -477,11 +477,12 @@ static int test_select_alias_length_boundaries(void) {
         (struct formatted_alias_error){
             .sql_format = "SELECT n AS %s FROM numbers",
             .alias = alias257,
-            .expected = (struct expected_sql_error){
-                .code = mysql_error_identifier_too_long,
-                .sqlstate = "42000",
-                .message_part = "alias identifier is too long",
-            },
+            .expected =
+                (struct expected_sql_error){
+                    .code = mysql_error_identifier_too_long,
+                    .sqlstate = "42000",
+                    .message_part = "alias identifier is too long",
+                },
         }
     );
     failures += expect_formatted_alias_error(
@@ -489,11 +490,12 @@ static int test_select_alias_length_boundaries(void) {
         (struct formatted_alias_error){
             .sql_format = "SELECT n AS `%s` FROM numbers",
             .alias = alias257,
-            .expected = (struct expected_sql_error){
-                .code = mysql_error_identifier_too_long,
-                .sqlstate = "42000",
-                .message_part = "alias identifier is too long",
-            },
+            .expected =
+                (struct expected_sql_error){
+                    .code = mysql_error_identifier_too_long,
+                    .sqlstate = "42000",
+                    .message_part = "alias identifier is too long",
+                },
         }
     );
     failures += expect_formatted_alias_error(
@@ -501,11 +503,12 @@ static int test_select_alias_length_boundaries(void) {
         (struct formatted_alias_error){
             .sql_format = "SELECT n AS '%s' FROM numbers",
             .alias = alias257,
-            .expected = (struct expected_sql_error){
-                .code = mysql_error_identifier_too_long,
-                .sqlstate = "42000",
-                .message_part = "alias identifier is too long",
-            },
+            .expected =
+                (struct expected_sql_error){
+                    .code = mysql_error_identifier_too_long,
+                    .sqlstate = "42000",
+                    .message_part = "alias identifier is too long",
+                },
         }
     );
 

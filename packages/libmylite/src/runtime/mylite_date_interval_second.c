@@ -174,11 +174,9 @@ static bool parse_date_interval_second_time(
     int *out_second
 );
 static bool parse_date_interval_second_digits(const char *text, size_t length, int *out_value);
-static bool date_interval_second_date_is_valid(
-    const struct date_interval_second_datetime *datetime
+static bool date_interval_second_date_is_valid(const struct date_interval_second_datetime *datetime
 );
-static bool date_interval_second_time_is_valid(
-    const struct date_interval_second_datetime *datetime
+static bool date_interval_second_time_is_valid(const struct date_interval_second_datetime *datetime
 );
 static int date_interval_second_days_in_month(int year, int month);
 static bool date_interval_second_is_leap_year(int year);
@@ -1146,8 +1144,7 @@ static bool parse_date_interval_second_digits(const char *text, size_t length, i
     return true;
 }
 
-static bool date_interval_second_date_is_valid(
-    const struct date_interval_second_datetime *datetime
+static bool date_interval_second_date_is_valid(const struct date_interval_second_datetime *datetime
 ) {
     if (datetime == NULL || datetime->year < date_interval_second_year_minimum ||
         datetime->year > date_interval_second_year_maximum || datetime->month < 1 ||
@@ -1158,8 +1155,7 @@ static bool date_interval_second_date_is_valid(
            date_interval_second_days_in_month((int)datetime->year, datetime->month);
 }
 
-static bool date_interval_second_time_is_valid(
-    const struct date_interval_second_datetime *datetime
+static bool date_interval_second_time_is_valid(const struct date_interval_second_datetime *datetime
 ) {
     if (datetime == NULL) {
         return false;

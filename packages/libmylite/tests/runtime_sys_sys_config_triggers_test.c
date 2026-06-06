@@ -60,8 +60,8 @@ static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_timestamp2_text(const char *actual, const char *context);
 
-static const char *const
-    information_schema_triggers_columns[information_schema_triggers_column_count] = {
+static const char
+    *const information_schema_triggers_columns[information_schema_triggers_column_count] = {
         "TRIGGER_NAME",
         "EVENT_MANIPULATION",
         "EVENT_OBJECT_TABLE",

@@ -512,18 +512,14 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += expect_query_empty(
         database,
-        (struct expected_empty_query){
-            .sql = "SELECT i FROM numbers WHERE iu = -1",
-            .context = "unsigned column negative predicate equality"
-        }
+        (struct expected_empty_query){.sql = "SELECT i FROM numbers WHERE iu = -1",
+                                      .context = "unsigned column negative predicate equality"}
     );
     failures += expect_query_single_value(
         database,
-        (struct expected_single_value_query){
-            .sql = "SELECT COUNT(*) FROM numbers WHERE iu > -1",
-            .expected = "3",
-            .context = "unsigned column negative predicate range"
-        }
+        (struct expected_single_value_query){.sql = "SELECT COUNT(*) FROM numbers WHERE iu > -1",
+                                             .expected = "3",
+                                             .context = "unsigned column negative predicate range"}
     );
     failures += execute_error(
         database,

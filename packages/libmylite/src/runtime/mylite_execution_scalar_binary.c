@@ -2436,9 +2436,9 @@ static int base64_collect_function_chain(
             return rc;
         }
 
-        current = mylite_execution_unwrap_parenthesized_expression(
-            mylite_execution_child_at(current, 0U)
-        );
+        current =
+            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(current, 0U)
+            );
     }
 
     mylite_execution_set_native_function_parameter_count_error(

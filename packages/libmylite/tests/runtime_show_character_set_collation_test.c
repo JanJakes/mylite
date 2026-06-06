@@ -935,13 +935,8 @@ static int expect_int(int actual, int expected, const char *context) {
 
 static int expect_int64(int64_t actual, int64_t expected, const char *context) {
     if (actual != expected) {
-        (void)fprintf(
-            stderr,
-            "%s: expected %" PRId64 ", got %" PRId64 "\n",
-            context,
-            expected,
-            actual
-        );
+        (void
+        )fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
         return 1;
     }
 

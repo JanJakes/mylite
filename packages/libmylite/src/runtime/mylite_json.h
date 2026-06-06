@@ -24,8 +24,7 @@ struct mylite_json_normalize_result {
     enum mylite_json_error_detail error_detail;
 };
 
-const char *mylite_json_invalid_text_error_message(
-    const struct mylite_json_normalize_result *result
+const char *mylite_json_invalid_text_error_message(const struct mylite_json_normalize_result *result
 );
 
 enum mylite_json_sql_value_kind {

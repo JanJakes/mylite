@@ -85,12 +85,8 @@ static int test_information_schema_conditional_table_absence(void) {
         char message[message_buffer_capacity];
         const char *table_name = conditional_tables[table_index];
 
-        (void)snprintf(
-            message,
-            sizeof(message),
-            "Unknown table '%s' in information_schema",
-            table_name
-        );
+        (void
+        )snprintf(message, sizeof(message), "Unknown table '%s' in information_schema", table_name);
         (void)snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM INFORMATION_SCHEMA.%s", table_name);
         failures += expect_error(
             database,

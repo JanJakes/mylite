@@ -532,40 +532,35 @@ static int test_integer_signed_attribute_lifecycle(void) {
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "ti", .logical_type = "TINYINT", .is_nullable = true},
         "signed tinyint descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "si", .logical_type = "SMALLINT", .is_nullable = true},
         "signed smallint descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "mi", .logical_type = "MEDIUMINT", .is_nullable = true},
         "signed mediumint descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
-        ){.name = "ii", .logical_type = "INT", .is_nullable = true},
+        (struct expected_column_descriptor){.name = "ii", .logical_type = "INT", .is_nullable = true
+        },
         "signed integer descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "b", .logical_type = "BIGINT", .is_nullable = true},
         "signed bigint descriptor"
     );
@@ -700,16 +695,14 @@ static int test_integer_signed_attribute_lifecycle(void) {
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "changed", .logical_type = "MEDIUMINT", .is_nullable = true},
         "changed signed descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "added", .logical_type = "TINYINT", .is_nullable = true},
         "added signed descriptor"
     );
@@ -1413,48 +1406,42 @@ static int test_integer_display_width_lifecycle(void) {
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "ti0", .logical_type = "TINYINT", .is_nullable = true},
         "ti0 display width descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "ti1", .logical_type = "TINYINT(1)", .is_nullable = true},
         "ti1 display width descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "tis", .logical_type = "TINYINT(1)", .is_nullable = true},
         "tis display width descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "tiu", .logical_type = "TINYINT UNSIGNED", .is_nullable = true},
         "tiu display width descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "i1", .logical_type = "TINYINT(1)", .is_nullable = true},
         "int1 display width descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "i2", .logical_type = "SMALLINT", .is_nullable = true},
         "int2 display width descriptor"
     );
@@ -1803,24 +1790,21 @@ static int test_bool_boolean_alias_lifecycle(void) {
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "b", .logical_type = "TINYINT(1)", .is_nullable = true},
         "bool descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "c", .logical_type = "TINYINT(1)", .is_nullable = true},
         "boolean descriptor"
     );
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        (
-            struct expected_column_descriptor
+        (struct expected_column_descriptor
         ){.name = "nn", .logical_type = "TINYINT(1)", .is_nullable = false},
         "bool not null descriptor"
     );

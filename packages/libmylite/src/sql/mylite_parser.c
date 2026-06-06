@@ -9108,8 +9108,7 @@ static bool span_text_equals(const struct mylite_sql_source_span *span, const ch
     return true;
 }
 
-static bool span_text_matches_ignore_space_function_name(
-    const struct mylite_sql_source_span *span
+static bool span_text_matches_ignore_space_function_name(const struct mylite_sql_source_span *span
 ) {
     static const char *const function_names[] = {
         "BIT_AND",

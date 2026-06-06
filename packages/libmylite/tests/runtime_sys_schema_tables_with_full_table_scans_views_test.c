@@ -57,8 +57,8 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 
-static const char *const
-    tables_with_full_table_scans_columns[tables_with_full_table_scans_column_count] = {
+static const char
+    *const tables_with_full_table_scans_columns[tables_with_full_table_scans_column_count] = {
         "object_schema",
         "object_name",
         "rows_full_scanned",

@@ -1068,8 +1068,8 @@ static int expect_binary_result_metadata(mylite_db *database) {
                 "binary collation result metadata id"
             );
             failures += expect_true(
-                (mylite_result_column_flags(result, column_index) &
-                 MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
+                (mylite_result_column_flags(result, column_index) & MYLITE_RESULT_COLUMN_FLAG_BINARY
+                ) != 0U,
                 "binary result metadata flag"
             );
         }

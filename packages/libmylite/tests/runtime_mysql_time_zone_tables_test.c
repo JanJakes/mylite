@@ -607,8 +607,8 @@ static int test_mysql_time_zone_tables(void) {
         "2",
         NULL,
     };
-    static const char *const
-        table_constraints_extensions_columns[table_constraints_extensions_column_count] = {
+    static const char
+        *const table_constraints_extensions_columns[table_constraints_extensions_column_count] = {
             "TABLE_NAME",
             "CONSTRAINT_NAME",
             "ENGINE_ATTRIBUTE",

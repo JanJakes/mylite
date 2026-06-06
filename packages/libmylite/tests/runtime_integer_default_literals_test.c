@@ -1777,8 +1777,7 @@ static int test_default_diagnostics_and_if_not_exists(void) {
     failures += execute_error(
         database,
         "INSERT INTO no_default (v) VALUES (1)",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_field_no_default, "HY000", "doesn't have a default value"}
     );
     failures += execute_statement_ok(database, "CREATE TABLE ifne (id INT)");

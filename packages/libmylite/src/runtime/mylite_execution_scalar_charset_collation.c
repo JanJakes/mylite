@@ -646,8 +646,7 @@ static int coercibility_validate_binary_wrapper_argument(
     if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
         const struct mylite_sql_ast_node *literal =
-            mylite_execution_unwrap_parenthesized_expression(
-                mylite_execution_child_at(argument, 0U)
+            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(argument, 0U)
             );
 
         if ((operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||

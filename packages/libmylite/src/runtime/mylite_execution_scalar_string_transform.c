@@ -53,8 +53,7 @@ static int evaluate_string_replace_scalar_argument(
     size_t *out_text_length,
     bool *out_is_null
 );
-static bool string_replace_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool string_replace_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 );
 static int evaluate_string_insert_scalar_argument(
     struct mylite_db *database,
@@ -91,8 +90,7 @@ static int evaluate_string_reverse_scalar_argument(
     size_t *out_text_length,
     bool *out_is_null
 );
-static bool string_reverse_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool string_reverse_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 );
 static int soundex_function_value(
     struct mylite_db *database,
@@ -225,8 +223,7 @@ bool mylite_execution_soundex_scalar_argument_is_admitted(
     return soundex_scalar_argument_is_admitted(expression);
 }
 
-bool mylite_execution_quote_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+bool mylite_execution_quote_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 ) {
     return quote_scalar_argument_is_admitted(expression);
 }
@@ -645,8 +642,7 @@ static int evaluate_string_replace_scalar_argument(
     return MYLITE_OK;
 }
 
-static bool string_replace_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool string_replace_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 ) {
     return mylite_execution_string_length_scalar_argument_is_admitted(expression);
 }
@@ -922,8 +918,7 @@ static int evaluate_string_reverse_scalar_argument(
     return MYLITE_OK;
 }
 
-static bool string_reverse_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool string_reverse_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 ) {
     return mylite_execution_string_length_scalar_argument_is_admitted(expression);
 }

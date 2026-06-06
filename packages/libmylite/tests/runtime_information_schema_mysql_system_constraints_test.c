@@ -65,8 +65,8 @@ static const char *const key_column_usage_columns[key_column_usage_column_count]
     "REFERENCED_COLUMN_NAME",
 };
 
-static const char *const
-    table_constraints_extensions_columns[table_constraints_extensions_column_count] = {
+static const char
+    *const table_constraints_extensions_columns[table_constraints_extensions_column_count] = {
         "CONSTRAINT_CATALOG",
         "CONSTRAINT_SCHEMA",
         "CONSTRAINT_NAME",

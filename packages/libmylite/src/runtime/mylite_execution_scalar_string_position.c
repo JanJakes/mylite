@@ -991,9 +991,9 @@ static int string_slice_signed_integer_value(
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             is_negative = true;
         }
-        literal = mylite_execution_unwrap_parenthesized_expression(
-            mylite_execution_child_at(literal, 0U)
-        );
+        literal =
+            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(literal, 0U)
+            );
     }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         mylite_execution_set_unsupported_error(database, unsupported_message);

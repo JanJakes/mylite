@@ -69,8 +69,8 @@ static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_datetime_text(const char *actual, const char *context);
 
-static const char *const
-    sys_host_summary_by_file_io_columns[sys_host_summary_by_file_io_column_count] = {
+static const char
+    *const sys_host_summary_by_file_io_columns[sys_host_summary_by_file_io_column_count] = {
         "host",
         "ios",
         "io_latency",
@@ -115,8 +115,8 @@ static const char *const show_index_columns[show_index_column_count] = {
     "Expression",
 };
 
-static const char *const
-    information_schema_columns_columns[information_schema_columns_column_count] = {
+static const char
+    *const information_schema_columns_columns[information_schema_columns_column_count] = {
         "TABLE_NAME",
         "COLUMN_NAME",
         "ORDINAL_POSITION",

@@ -1289,13 +1289,10 @@ static int test_independent_innodb_engine_handles(void) {
         "SELECT @@default_storage_engine, @@global.default_storage_engine, "
         "@@default_tmp_storage_engine, @@global.default_tmp_storage_engine",
         (struct expected_single_row_result){
-            .columns =
-                (const char *const[]){
-                    "@@default_storage_engine",
-                    "@@global.default_storage_engine",
-                    "@@default_tmp_storage_engine",
-                    "@@global.default_tmp_storage_engine"
-                },
+            .columns = (const char *const[]){"@@default_storage_engine",
+                                             "@@global.default_storage_engine",
+                                             "@@default_tmp_storage_engine",
+                                             "@@global.default_tmp_storage_engine"},
             .values = (const char *const[]){"InnoDB", "InnoDB", "InnoDB", "InnoDB"},
             .column_count = scoped_default_storage_engine_variable_column_count,
         },
@@ -1306,13 +1303,10 @@ static int test_independent_innodb_engine_handles(void) {
         "SELECT @@default_storage_engine, @@global.default_storage_engine, "
         "@@default_tmp_storage_engine, @@global.default_tmp_storage_engine",
         (struct expected_single_row_result){
-            .columns =
-                (const char *const[]){
-                    "@@default_storage_engine",
-                    "@@global.default_storage_engine",
-                    "@@default_tmp_storage_engine",
-                    "@@global.default_tmp_storage_engine"
-                },
+            .columns = (const char *const[]){"@@default_storage_engine",
+                                             "@@global.default_storage_engine",
+                                             "@@default_tmp_storage_engine",
+                                             "@@global.default_tmp_storage_engine"},
             .values = (const char *const[]){"InnoDB", "InnoDB", "InnoDB", "InnoDB"},
             .column_count = scoped_default_storage_engine_variable_column_count,
         },

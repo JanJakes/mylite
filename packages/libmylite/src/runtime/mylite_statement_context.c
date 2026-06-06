@@ -124,8 +124,7 @@ void mylite_statement_context_set_previous_row_count(
     context->previous_row_count = previous_row_count;
 }
 
-int64_t mylite_statement_context_previous_row_count(
-    const struct mylite_statement_context *context
+int64_t mylite_statement_context_previous_row_count(const struct mylite_statement_context *context
 ) {
     if (context == NULL) {
         return 0;
@@ -145,8 +144,7 @@ void mylite_statement_context_set_previous_found_rows(
     context->previous_found_rows = previous_found_rows;
 }
 
-uint64_t mylite_statement_context_previous_found_rows(
-    const struct mylite_statement_context *context
+uint64_t mylite_statement_context_previous_found_rows(const struct mylite_statement_context *context
 ) {
     if (context == NULL) {
         return 0U;

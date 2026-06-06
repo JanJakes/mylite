@@ -505,8 +505,7 @@ static int string_length_session_scalar_argument_value(
     }
 }
 
-static bool string_length_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 ) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
 

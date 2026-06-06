@@ -97,8 +97,8 @@ static const char *const show_index_columns[show_index_column_count] = {
     "Expression",
 };
 
-static const char *const
-    information_schema_columns_columns[information_schema_columns_column_count] = {
+static const char
+    *const information_schema_columns_columns[information_schema_columns_column_count] = {
         "COLUMN_NAME",
         "ORDINAL_POSITION",
         "COLUMN_DEFAULT",

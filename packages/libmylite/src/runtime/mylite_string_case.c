@@ -199,9 +199,8 @@ static bool ascii_string_case_byte(
     }
     if (case_kind == MYLITE_STRING_CASE_LOWER && input >= ascii_upper_a && input <= ascii_upper_z) {
         output = (unsigned char)(input + ascii_case_delta);
-    } else if (
-        case_kind == MYLITE_STRING_CASE_UPPER && input >= ascii_lower_a && input <= ascii_lower_z
-    ) {
+    } else if (case_kind == MYLITE_STRING_CASE_UPPER && input >= ascii_lower_a &&
+               input <= ascii_lower_z) {
         output = (unsigned char)(input - ascii_case_delta);
     } else if (case_kind != MYLITE_STRING_CASE_LOWER && case_kind != MYLITE_STRING_CASE_UPPER) {
         return false;

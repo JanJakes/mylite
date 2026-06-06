@@ -186,10 +186,8 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
         {.name = "primary_only", .rows = "0", .average_row_length = "0"},
         {.name = "rename_me", .rows = "1", .average_row_length = "16384"},
-        {.name = "secondary_keyed",
-         .rows = "0",
-         .average_row_length = "0",
-         .index_length = "16384"},
+        {.name = "secondary_keyed", .rows = "0", .average_row_length = "0", .index_length = "16384"
+        },
         {.name = "to_truncate", .rows = "2", .average_row_length = "8192"},
     };
     static const struct expected_status_row numbers_after_delete[] = {
@@ -1374,10 +1372,8 @@ static int copy_status_cell(mylite_db *database, struct copied_status_cell reque
         if (value == NULL) {
             (void)fprintf(stderr, "%s: expected non-NULL status cell\n", request.cell.context);
             ++failures;
-        } else if (
-            snprintf(request.buffer, request.buffer_size, "%s", value) < 0 ||
-            strlen(value) >= request.buffer_size
-        ) {
+        } else if (snprintf(request.buffer, request.buffer_size, "%s", value) < 0 ||
+                   strlen(value) >= request.buffer_size) {
             (void)fprintf(stderr, "%s: status cell buffer too small\n", request.cell.context);
             ++failures;
         }

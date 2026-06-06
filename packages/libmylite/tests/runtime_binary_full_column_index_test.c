@@ -378,9 +378,8 @@ static int test_full_binary_index_metadata_dml_and_persistence(void) {
         database,
         (struct expected_query){
             .sql = "SELECT id, HEX(b), HEX(vb) FROM bin_full WHERE id IN (1, 2, 4) ORDER BY id",
-            .values =
-                (const char *const
-                     []){"1", "41000000", "41", "2", "61000000", "4100", "4", "62620000", "62"},
+            .values = (const char *const[]
+            ){"1", "41000000", "41", "2", "61000000", "4100", "4", "62620000", "62"},
             .column_count = 3U,
             .row_count = 3U,
             .context = "full binary rows persist after reopen",

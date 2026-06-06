@@ -498,10 +498,8 @@ static int parse_number_integer_part(
             mylite_json_internal_is_decimal_digit(mylite_json_internal_parser_peek(parser))) {
             return mylite_json_internal_parser_invalid(parser, parser->position);
         }
-    } else if (
-        mylite_json_internal_parser_peek(parser) >= '1' &&
-        mylite_json_internal_parser_peek(parser) <= '9'
-    ) {
+    } else if (mylite_json_internal_parser_peek(parser) >= '1' &&
+               mylite_json_internal_parser_peek(parser) <= '9') {
         while (!mylite_json_internal_parser_at_end(parser) &&
                mylite_json_internal_is_decimal_digit(mylite_json_internal_parser_peek(parser))) {
             ++parser->position;

@@ -237,8 +237,7 @@ struct mylite_db {
 };
 
 struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *database);
-const struct mylite_session_state *mylite_connection_session_state(
-    const struct mylite_db *database
+const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
 );
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database);

@@ -2345,9 +2345,8 @@ static int materialize_column_defaults(
     );
 
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_validate_column_default_kind(
-            (enum mylite_catalog_column_default_kind)default_kind
-        );
+        rc = mylite_catalog_validate_column_default_kind((enum mylite_catalog_column_default_kind
+        )default_kind);
     }
     if (rc == MYLITE_OK) {
         out_column->default_kind = (enum mylite_catalog_column_default_kind)default_kind;

@@ -72,8 +72,7 @@ void mylite_statement_context_set_previous_found_rows(
     struct mylite_statement_context *context,
     uint64_t previous_found_rows
 );
-uint64_t mylite_statement_context_previous_found_rows(
-    const struct mylite_statement_context *context
+uint64_t mylite_statement_context_previous_found_rows(const struct mylite_statement_context *context
 );
 
 void mylite_statement_context_set_first_insert_id(

@@ -542,9 +542,8 @@ static int test_information_schema_extension_attribute_tables_queries(void) {
                    "AND TABLE_NAME = 'TABLE_CONSTRAINTS_EXTENSIONS' ORDER BY ORDINAL_POSITION",
             .column_names = columns_metadata_columns,
             .column_count = sizeof(columns_metadata_columns) / sizeof(columns_metadata_columns[0]),
-            .values =
-                &system_columns_metadata_values[(size_t)
-                                                    table_constraints_extensions_metadata_offset],
+            .values = &system_columns_metadata_values[(size_t
+            )table_constraints_extensions_metadata_offset],
             .row_count = (size_t)table_constraints_extensions_metadata_row_count,
             .context = "table constraints extensions system columns metadata",
         }

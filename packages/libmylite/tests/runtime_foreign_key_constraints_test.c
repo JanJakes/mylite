@@ -217,15 +217,13 @@ static int test_create_table_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DELETE FROM parent WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += execute_error(
         database,
         "UPDATE parent SET id = 9 WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_dml_ok(database, "DELETE FROM child WHERE id = 10", 1);
@@ -282,8 +280,7 @@ static int test_create_table_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DROP TABLE parent",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_statement_ok(database, "CREATE TABLE select_source (id INT, parent_id INT)");
@@ -375,8 +372,7 @@ static int test_self_referencing_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DELETE FROM self_ref WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_statement_ok(
@@ -737,15 +733,13 @@ static int test_composite_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DELETE FROM parent_pk WHERE a = 1 AND b = 2",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += execute_error(
         database,
         "UPDATE parent_pk SET a = 9 WHERE a = 1 AND b = 2",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
 
@@ -1341,15 +1335,13 @@ static int test_foreign_key_cascade_actions(void) {
     failures += execute_error(
         database,
         "DELETE FROM prestrict WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += execute_error(
         database,
         "UPDATE prestrict SET id = 2 WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
 
@@ -1570,8 +1562,7 @@ static int test_foreign_key_set_null_actions(void) {
     failures += execute_error(
         database,
         "DELETE FROM prollback_delete WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_query_values(
@@ -1612,8 +1603,7 @@ static int test_foreign_key_set_null_actions(void) {
     failures += execute_error(
         database,
         "UPDATE prollback_update SET id = 2 WHERE id = 1",
-        (
-            struct expected_sql_error
+        (struct expected_sql_error
         ){mysql_error_row_is_referenced, "23000", "foreign key constraint fails"}
     );
     failures += expect_query_values(

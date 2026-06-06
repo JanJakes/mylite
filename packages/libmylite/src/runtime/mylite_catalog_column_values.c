@@ -54,8 +54,7 @@ static int bind_catalog_column_generated_values(
 );
 static const char *catalog_text_or_empty(const char *value);
 static int validate_catalog_column_default_value(const struct mylite_catalog_column_values *values);
-static int validate_catalog_generated_column_value(
-    const struct mylite_catalog_column_values *values
+static int validate_catalog_generated_column_value(const struct mylite_catalog_column_values *values
 );
 static int validate_catalog_current_timestamp_default_value(
     const struct mylite_catalog_column_values *values
@@ -543,8 +542,7 @@ static const char *catalog_text_or_empty(const char *value) {
     return value;
 }
 
-static int validate_catalog_column_default_value(
-    const struct mylite_catalog_column_values *values
+static int validate_catalog_column_default_value(const struct mylite_catalog_column_values *values
 ) {
     size_t text_length = 0U;
     int rc = MYLITE_OK;
@@ -580,8 +578,7 @@ static int validate_catalog_column_default_value(
     return validate_catalog_text_default_value(values, text_length);
 }
 
-static int validate_catalog_generated_column_value(
-    const struct mylite_catalog_column_values *values
+static int validate_catalog_generated_column_value(const struct mylite_catalog_column_values *values
 ) {
     size_t expression_length = 0U;
     size_t sqlite_expression_length = 0U;

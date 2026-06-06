@@ -2083,9 +2083,8 @@ static void finish_json_constructor_sqlite_result(
         if (normalize_result != NULL &&
             normalize_result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
             sqlite3_result_error(context, "Unsupported JSON value in JSON constructor", -1);
-        } else if (
-            normalize_result != NULL && normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID
-        ) {
+        } else if (normalize_result != NULL &&
+                   normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
             sqlite3_result_error(context, "Invalid JSON text in JSON constructor", -1);
         } else {
             sqlite3_result_error(context, "MyLite JSON constructor failed", -1);
@@ -2154,10 +2153,8 @@ static void finish_json_contains_sqlite_result(
                 "Unsupported JSON path or JSON document in JSON_CONTAINS()",
                 -1
             );
-        } else if (
-            result->normalize_result != NULL &&
-            result->normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID
-        ) {
+        } else if (result->normalize_result != NULL &&
+                   result->normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
             sqlite3_result_error(context, "Invalid JSON text or JSON path in JSON_CONTAINS()", -1);
         } else {
             sqlite3_result_error(context, "MyLite JSON_CONTAINS failed", -1);
@@ -2191,10 +2188,8 @@ static void finish_json_contains_path_sqlite_result(
                 "Unsupported JSON path or JSON document in JSON_CONTAINS_PATH()",
                 -1
             );
-        } else if (
-            result->normalize_result != NULL &&
-            result->normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID
-        ) {
+        } else if (result->normalize_result != NULL &&
+                   result->normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
             sqlite3_result_error(
                 context,
                 "Invalid JSON text or JSON path in JSON_CONTAINS_PATH()",

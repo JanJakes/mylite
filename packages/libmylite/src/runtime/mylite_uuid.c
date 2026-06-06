@@ -478,12 +478,8 @@ static void uuid_to_bin_sqlite_value(
         return;
     }
     if (!valid) {
-        (void)mylite_uuid_set_incorrect_string_error(
-            database,
-            value.bytes,
-            value.size,
-            "uuid_to_bin"
-        );
+        (void
+        )mylite_uuid_set_incorrect_string_error(database, value.bytes, value.size, "uuid_to_bin");
         sqlite3_result_error(context, "Incorrect string value for UUID_TO_BIN()", -1);
         return;
     }
@@ -533,12 +529,8 @@ static void bin_to_uuid_sqlite_value(
         return;
     }
     if (!valid) {
-        (void)mylite_uuid_set_incorrect_string_error(
-            database,
-            value.bytes,
-            value.size,
-            "bin_to_uuid"
-        );
+        (void
+        )mylite_uuid_set_incorrect_string_error(database, value.bytes, value.size, "bin_to_uuid");
         sqlite3_result_error(context, "Incorrect string value for BIN_TO_UUID()", -1);
         return;
     }

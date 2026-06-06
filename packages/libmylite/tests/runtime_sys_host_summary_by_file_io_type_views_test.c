@@ -117,8 +117,8 @@ static const char *const show_index_columns[show_index_column_count] = {
     "Expression",
 };
 
-static const char *const
-    information_schema_columns_columns[information_schema_columns_column_count] = {
+static const char
+    *const information_schema_columns_columns[information_schema_columns_column_count] = {
         "TABLE_NAME",
         "COLUMN_NAME",
         "ORDINAL_POSITION",

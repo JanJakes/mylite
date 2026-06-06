@@ -349,10 +349,8 @@ static int test_temporary_index_diagnostics(void) {
     failures += expect_error(
         database,
         "CREATE FULLTEXT INDEX ft_name ON t(name)",
-        (struct expected_sql_error){
-            mysql_error_temporary_fulltext_index,
-            "Cannot create FULLTEXT index on temporary InnoDB table"
-        }
+        (struct expected_sql_error){mysql_error_temporary_fulltext_index,
+                                    "Cannot create FULLTEXT index on temporary InnoDB table"}
     );
     failures += expect_error(
         database,

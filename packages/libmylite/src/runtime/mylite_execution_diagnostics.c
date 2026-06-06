@@ -63,8 +63,7 @@ void mylite_execution_diagnostics_set_alter_table_instant_lock_error(struct myli
     );
 }
 
-void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -178,8 +177,7 @@ void mylite_execution_diagnostics_set_in_subquery_limit_error(struct mylite_db *
     );
 }
 
-void mylite_execution_diagnostics_set_scalar_subquery_column_count_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_scalar_subquery_column_count_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -198,8 +196,7 @@ void mylite_execution_diagnostics_set_scalar_subquery_row_count_error(struct myl
     );
 }
 
-void mylite_execution_diagnostics_set_union_column_count_mismatch_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_union_column_count_mismatch_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -697,8 +694,7 @@ void mylite_execution_diagnostics_set_invalid_json_one_or_all_error(struct mylit
     );
 }
 
-void mylite_execution_diagnostics_set_json_unquote_incorrect_type_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_json_unquote_incorrect_type_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -1680,8 +1676,7 @@ void mylite_execution_diagnostics_set_key_does_not_exist_in_table_error(
     );
 }
 
-void mylite_execution_diagnostics_set_primary_key_index_invisible_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_primary_key_index_invisible_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -1755,8 +1750,7 @@ void mylite_execution_diagnostics_set_temporary_fulltext_index_error(struct myli
     );
 }
 
-void mylite_execution_diagnostics_set_spatial_index_non_geometric_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_spatial_index_non_geometric_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -2244,8 +2238,7 @@ void mylite_execution_diagnostics_set_foreign_key_cascade_duplicate_error(
     );
 }
 
-void mylite_execution_diagnostics_set_check_constraint_non_boolean_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_check_constraint_non_boolean_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -2924,8 +2917,7 @@ void mylite_execution_diagnostics_set_values_default_error(struct mylite_db *dat
     );
 }
 
-void mylite_execution_diagnostics_set_values_integer_out_of_range_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_values_integer_out_of_range_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -3350,8 +3342,7 @@ void mylite_execution_diagnostics_set_no_default_error(
     );
 }
 
-void mylite_execution_diagnostics_set_default_function_expression_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_default_function_expression_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),

@@ -732,8 +732,7 @@ static int str_to_date_function_arguments(
     return rc;
 }
 
-bool mylite_execution_str_to_date_child_is_null_literal(
-    const struct mylite_sql_ast_node *expression
+bool mylite_execution_str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression
 ) {
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
     return (expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL &&
@@ -934,9 +933,9 @@ static int get_format_literal_argument(
             );
             return MYLITE_ERROR;
         }
-        literal = mylite_execution_unwrap_parenthesized_expression(
-            mylite_execution_child_at(literal, 0U)
-        );
+        literal =
+            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(literal, 0U)
+            );
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
             mylite_execution_set_unsupported_error(
@@ -1413,9 +1412,9 @@ static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_n
             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             return false;
         }
-        literal = mylite_execution_unwrap_parenthesized_expression(
-            mylite_execution_child_at(literal, 0U)
-        );
+        literal =
+            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(literal, 0U)
+            );
     }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         return false;
@@ -1688,8 +1687,7 @@ bool mylite_execution_is_date_interval_second_function_kind(enum mylite_sql_ast_
     }
 }
 
-const char *mylite_execution_date_interval_second_function_name(
-    enum mylite_sql_ast_node_kind kind
+const char *mylite_execution_date_interval_second_function_name(enum mylite_sql_ast_node_kind kind
 ) {
     switch (kind) {
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
@@ -2547,9 +2545,8 @@ static int time_arithmetic_first_argument(
     if (rc == MYLITE_OK && text_length == datetime_text_length &&
         mylite_temporal_arithmetic_parse_datetime_text(text, text_length, &out_input->datetime)) {
         out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_DATETIME;
-    } else if (
-        rc == MYLITE_OK && time_text_to_seconds(text, text_length, &out_input->time_seconds)
-    ) {
+    } else if (rc == MYLITE_OK &&
+               time_text_to_seconds(text, text_length, &out_input->time_seconds)) {
         out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_TIME;
     } else if (rc == MYLITE_OK) {
         rc = set_time_arithmetic_unsupported_error(

@@ -286,13 +286,13 @@ static int test_show_variables_values_scopes_and_filters(void) {
                                                     {"gtid_owned", ""},
                                                     {"gtid_purged", ""},
                                                 };
-    const char *const expected_gtid_global_rows[gtid_global_variable_row_count]
-                                               [variable_column_count] = {
-                                                   {"gtid_executed", ""},
-                                                   {"gtid_mode", "OFF"},
-                                                   {"gtid_owned", ""},
-                                                   {"gtid_purged", ""},
-                                               };
+    const char
+        *const expected_gtid_global_rows[gtid_global_variable_row_count][variable_column_count] = {
+            {"gtid_executed", ""},
+            {"gtid_mode", "OFF"},
+            {"gtid_owned", ""},
+            {"gtid_purged", ""},
+        };
     const char *const expected_gtid_session_rows[gtid_session_variable_row_count]
                                                 [variable_column_count] = {
                                                     {"gtid_executed", ""},
@@ -302,12 +302,12 @@ static int test_show_variables_values_scopes_and_filters(void) {
                                                     {"sql_log_bin", "ON"},
                                                     {"warning_count", "0"},
                                                 };
-    const char *const expected_empty_gtid_rows[empty_gtid_variable_row_count]
-                                              [variable_column_count] = {
-                                                  {"gtid_executed", ""},
-                                                  {"gtid_owned", ""},
-                                                  {"gtid_purged", ""},
-                                              };
+    const char
+        *const expected_empty_gtid_rows[empty_gtid_variable_row_count][variable_column_count] = {
+            {"gtid_executed", ""},
+            {"gtid_owned", ""},
+            {"gtid_purged", ""},
+        };
     mylite_db *database = NULL;
     int failures = 0;
 

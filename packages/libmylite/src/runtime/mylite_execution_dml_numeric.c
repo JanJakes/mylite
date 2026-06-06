@@ -133,8 +133,8 @@ enum mylite_execution_dml_numeric_parse_result mylite_execution_parse_dml_intege
 
     *out_magnitude = 0U;
     *out_is_negative = false;
-    while (token_start < text_length &&
-           ascii_numeric_whitespace((unsigned char)text[token_start])) {
+    while (token_start < text_length && ascii_numeric_whitespace((unsigned char)text[token_start])
+    ) {
         ++token_start;
     }
     if (token_start == text_length ||
@@ -165,8 +165,8 @@ enum mylite_execution_dml_numeric_parse_result mylite_execution_scan_dml_numeric
     if (text == NULL || out_scan == NULL || text_length == 0U) {
         return MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
     }
-    while (token_start < text_length &&
-           ascii_numeric_whitespace((unsigned char)text[token_start])) {
+    while (token_start < text_length && ascii_numeric_whitespace((unsigned char)text[token_start])
+    ) {
         ++token_start;
     }
     if (token_start == text_length) {

@@ -56,8 +56,7 @@ bool mylite_execution_string_reverse_scalar_argument_is_admitted(
 bool mylite_execution_soundex_scalar_argument_is_admitted(
     const struct mylite_sql_ast_node *expression
 );
-bool mylite_execution_quote_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+bool mylite_execution_quote_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 );
 
 #endif

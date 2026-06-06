@@ -62,8 +62,7 @@ bool mylite_execution_date_format_numeric_comparison_format_is_supported(
 );
 bool mylite_execution_is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind kind);
 bool mylite_execution_is_time_arithmetic_function_kind(enum mylite_sql_ast_node_kind kind);
-bool mylite_execution_str_to_date_child_is_null_literal(
-    const struct mylite_sql_ast_node *expression
+bool mylite_execution_str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression
 );
 bool mylite_execution_str_to_date_child_is_identifier_reference(
     const struct mylite_sql_ast_node *expression

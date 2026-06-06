@@ -978,13 +978,11 @@ static int temporal_extract_sqlite_result(
     }
     if (is_null) {
         sqlite3_result_null(context);
-    } else if (
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE ||
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME ||
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_LAST_DAY ||
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_DAYNAME ||
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_MONTHNAME
-    ) {
+    } else if (extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE ||
+               extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME ||
+               extract_kind == MYLITE_TEMPORAL_EXTRACT_LAST_DAY ||
+               extract_kind == MYLITE_TEMPORAL_EXTRACT_DAYNAME ||
+               extract_kind == MYLITE_TEMPORAL_EXTRACT_MONTHNAME) {
         sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
     } else {
         sqlite3_result_int64(context, (sqlite3_int64)strtoll(result, NULL, digit_radix));
@@ -1433,10 +1431,8 @@ static int extract_time_part_value(
             *request->out_is_null = true;
             return rc;
         }
-    } else if (
-        parse_datetime_text(request->value, request->value_length, &datetime) &&
-        datetime_time_parts_are_valid(&datetime.time)
-    ) {
+    } else if (parse_datetime_text(request->value, request->value_length, &datetime) &&
+               datetime_time_parts_are_valid(&datetime.time)) {
         time = datetime.time;
         day = datetime.date.day;
     } else if (!parse_string_time_value(request->value, request->value_length, &time)) {
@@ -2074,9 +2070,8 @@ static bool parse_microsecond_fraction(
         digit = value[index] - '0';
         if (index < fractional_second_digit_count) {
             microsecond = (microsecond * digit_radix) + digit;
-        } else if (
-            index == fractional_second_digit_count && digit >= fractional_second_round_up_digit
-        ) {
+        } else if (index == fractional_second_digit_count &&
+                   digit >= fractional_second_round_up_digit) {
             round_up = true;
         }
     }
@@ -2436,8 +2431,8 @@ static int calendar_week_start_for_year(int year, int mode) {
 }
 
 static int calendar_weeks_in_year(int year, int mode) {
-    return (calendar_week_start_for_year(year + 1, mode) -
-            calendar_week_start_for_year(year, mode)) /
+    return (calendar_week_start_for_year(year + 1, mode) - calendar_week_start_for_year(year, mode)
+           ) /
            days_per_week;
 }
 

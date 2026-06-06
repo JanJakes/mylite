@@ -77,8 +77,8 @@ static int test_show_plugins_and_information_schema_plugins(void) {
         NULL,
         "GPL",
     };
-    static const char *const
-        information_schema_plugins_columns[information_schema_plugins_column_count] = {
+    static const char
+        *const information_schema_plugins_columns[information_schema_plugins_column_count] = {
             "PLUGIN_NAME",
             "PLUGIN_VERSION",
             "PLUGIN_STATUS",
@@ -91,8 +91,8 @@ static int test_show_plugins_and_information_schema_plugins(void) {
             "PLUGIN_LICENSE",
             "LOAD_OPTION",
         };
-    static const char *const
-        information_schema_plugins_values[information_schema_plugins_column_count] = {
+    static const char
+        *const information_schema_plugins_values[information_schema_plugins_column_count] = {
             "InnoDB",
             "8.4",
             "ACTIVE",

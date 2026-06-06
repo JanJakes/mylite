@@ -761,9 +761,8 @@ static int timestamp_shape_is_valid(const char *actual) {
         return 0;
     }
     for (size_t index = 0U; index < timestamp_text_length; ++index) {
-        if (!timestamp_character_is_valid(
-                (struct timestamp_character_check){.value = actual[index], .index = index}
-            )) {
+        if (!timestamp_character_is_valid((struct timestamp_character_check){.value = actual[index],
+                                                                             .index = index})) {
             return 0;
         }
     }

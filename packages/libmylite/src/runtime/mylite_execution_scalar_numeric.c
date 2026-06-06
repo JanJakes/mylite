@@ -1976,9 +1976,8 @@ int mylite_execution_scalar_logarithm_function_value(
     if (expression->kind == MYLITE_SQL_AST_LN_FUNCTION && child_count == 1U) {
         function_name = "LN";
         log_base = 0.0;
-    } else if (
-        expression->kind == MYLITE_SQL_AST_LOG_FUNCTION && (child_count == 1U || child_count == 2U)
-    ) {
+    } else if (expression->kind == MYLITE_SQL_AST_LOG_FUNCTION &&
+               (child_count == 1U || child_count == 2U)) {
         function_name = "LOG";
         log_base = 0.0;
     } else if (expression->kind == MYLITE_SQL_AST_LOG10_FUNCTION && child_count == 1U) {

@@ -16,8 +16,7 @@ void mylite_execution_diagnostics_set_unsupported_error(
     const char *message
 );
 void mylite_execution_diagnostics_set_alter_table_instant_lock_error(struct mylite_db *database);
-void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(struct mylite_db *database
 );
 void mylite_execution_diagnostics_set_alter_table_add_foreign_key_instant_error(
     struct mylite_db *database
@@ -41,8 +40,7 @@ void mylite_execution_diagnostics_set_alter_table_add_fulltext_lock_none_error(
 );
 void mylite_execution_diagnostics_set_no_tables_used_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_in_subquery_limit_error(struct mylite_db *database);
-void mylite_execution_diagnostics_set_scalar_subquery_column_count_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_scalar_subquery_column_count_error(struct mylite_db *database
 );
 void mylite_execution_diagnostics_set_scalar_subquery_row_count_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_union_column_count_mismatch_error(struct mylite_db *database);
@@ -383,8 +381,7 @@ void mylite_execution_diagnostics_set_foreign_key_cascade_duplicate_error(
     const char *child_table_name,
     const char *index_name
 );
-void mylite_execution_diagnostics_set_check_constraint_non_boolean_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_check_constraint_non_boolean_error(struct mylite_db *database
 );
 void mylite_execution_diagnostics_set_check_constraint_column_ref_error(
     struct mylite_db *database,

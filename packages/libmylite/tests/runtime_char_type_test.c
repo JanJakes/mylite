@@ -580,13 +580,14 @@ static int test_char_diagnostics(void) {
     }
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM diag WHERE v = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates support only string literals",
+        (struct expected_query){
+            .sql = "SELECT id FROM diag WHERE v = 1",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "numeric char predicate no match",
         }
     );
     failures += execute_error(

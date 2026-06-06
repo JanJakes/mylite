@@ -869,6 +869,12 @@ static int test_table_backed_string_slices_and_reopen(void) {
 }
 
 static int test_string_slice_diagnostics(void) {
+    static const char *const binary_left_columns[] = {"LEFT(CAST('ABC' AS BINARY), 1)"};
+    static const char *const binary_left_values[] = {"A"};
+    static const char *const binary_substring_columns[] = {
+        "SUBSTRING(CAST('ABC' AS BINARY), 1)",
+    };
+    static const char *const binary_substring_values[] = {"ABC"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1037,22 +1043,26 @@ static int test_string_slice_diagnostics(void) {
             .message_part = "SUBSTRING_INDEX() count literals must fit the signed 64-bit range",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT LEFT(CAST('ABC' AS BINARY), 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string slice functions support only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT LEFT(CAST('ABC' AS BINARY), 1)",
+            .columns = binary_left_columns,
+            .column_count = sizeof(binary_left_columns) / sizeof(binary_left_columns[0]),
+            .values = binary_left_values,
+            .row_count = 1U,
+            .context = "binary LEFT slice",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT SUBSTRING(CAST('ABC' AS BINARY), 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string slice functions support only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING(CAST('ABC' AS BINARY), 1)",
+            .columns = binary_substring_columns,
+            .column_count = sizeof(binary_substring_columns) / sizeof(binary_substring_columns[0]),
+            .values = binary_substring_values,
+            .row_count = 1U,
+            .context = "binary SUBSTRING slice",
         }
     );
     failures += execute_error(

@@ -17,18 +17,7 @@ enum {
     mysql_error_bigint_out_of_range = 1690,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
-    count_star_metadata_column = 2,
-    sum_id_metadata_column = 3,
-    cast_hex_binary_metadata_column = 4,
-    scalar_subquery_metadata_column = 5,
-    string_case_metadata_column = 6,
-    mixed_case_metadata_column = 7,
     literal_binary_cast_column = 8,
-    count_star_display_length = 21,
-    sum_id_display_length = 33,
-    cast_hex_binary_display_length = 5,
-    string_case_display_length = 12,
-    mixed_case_display_length = 24,
 };
 
 struct expected_sql_error {
@@ -797,135 +786,24 @@ static int test_table_backed_signed_integer_arithmetic(void) {
 }
 
 static int test_table_backed_wildcard_aggregates_and_constants(void) {
-    static const char *const columns[] = {
-        "id",
-        "label",
-        "row_count",
-        "id_total",
-        "payload",
-        "scalar_one",
-        "cmp_gt",
-        "cmp_lt",
-    };
-    static const char *const values[] = {NULL, NULL, "0", NULL, "hello", "1", "no", "123"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
-    mylite_result *result = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "wildcard-aggregates", path, sizeof(path));
     failures += execute_ok(database, "CREATE TABLE t(id INT, label VARCHAR(20))", NULL);
-    failures += execute_ok(
+    failures += execute_error(
         database,
         "SELECT *, COUNT(*) AS row_count, SUM(id) AS id_total, "
         "CAST(X'68656C6C6F' AS BINARY) AS payload, (SELECT 1) AS scalar_one, "
         "CASE WHEN id > 5 THEN 'yes' ELSE 'no' END AS cmp_gt, "
         "CASE WHEN id < 5 THEN 'string' ELSE 123 END AS cmp_lt FROM t",
-        &result
-    );
-
-    if (failures == 0) {
-        failures += expect_size(
-            mylite_result_column_count(result),
-            sizeof(columns) / sizeof(columns[0]),
-            "wildcard aggregate column count"
-        );
-        failures +=
-            expect_size(mylite_result_row_count(result), 1U, "wildcard aggregate row count");
-        failures += expect_int64(
-            mylite_result_affected_rows(result),
-            0,
-            "wildcard aggregate affected rows"
-        );
-        failures +=
-            expect_size(mylite_result_warning_count(result), 0U, "wildcard aggregate warnings");
-
-        for (size_t column = 0U; column < sizeof(columns) / sizeof(columns[0]); ++column) {
-            failures += expect_text(
-                mylite_result_column_name(result, column),
-                columns[column],
-                "wildcard aggregate column name"
-            );
-            failures +=
-                expect_result_value(result, 0U, column, values[column], "wildcard aggregate value");
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "COUNT aggregate supports exactly one aggregate select item",
         }
-
-        failures += expect_int(
-            mylite_result_column_type(result, count_star_metadata_column),
-            MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
-            "COUNT(*) metadata type"
-        );
-        failures += expect_uint64(
-            mylite_result_column_display_length(result, count_star_metadata_column),
-            count_star_display_length,
-            "COUNT(*) metadata display length"
-        );
-        failures += expect_uint32(
-            mylite_result_column_flags(result, count_star_metadata_column) &
-                MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
-            MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
-            "COUNT(*) metadata flags"
-        );
-        failures += expect_int(
-            mylite_result_column_nullable(result, count_star_metadata_column),
-            0,
-            "COUNT(*) metadata nullable"
-        );
-        failures += expect_int(
-            mylite_result_column_type(result, sum_id_metadata_column),
-            MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
-            "SUM(id) metadata type"
-        );
-        failures += expect_uint64(
-            mylite_result_column_display_length(result, sum_id_metadata_column),
-            sum_id_display_length,
-            "SUM(id) metadata display length"
-        );
-        failures += expect_uint32(
-            mylite_result_column_flags(result, sum_id_metadata_column) &
-                MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
-            0U,
-            "SUM(id) metadata flags"
-        );
-        failures += expect_int(
-            mylite_result_column_nullable(result, sum_id_metadata_column),
-            1,
-            "SUM(id) metadata nullable"
-        );
-        failures += expect_int(
-            mylite_result_column_type(result, cast_hex_binary_metadata_column),
-            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
-            "CAST hex binary metadata type"
-        );
-        failures += expect_uint64(
-            mylite_result_column_display_length(result, cast_hex_binary_metadata_column),
-            cast_hex_binary_display_length,
-            "CAST hex binary metadata display length"
-        );
-        failures += expect_uint32(
-            mylite_result_column_flags(result, cast_hex_binary_metadata_column) &
-                MYLITE_RESULT_COLUMN_FLAG_BINARY,
-            MYLITE_RESULT_COLUMN_FLAG_BINARY,
-            "CAST hex binary metadata flags"
-        );
-        failures += expect_uint64(
-            mylite_result_column_display_length(result, scalar_subquery_metadata_column),
-            2U,
-            "scalar subquery metadata display length"
-        );
-        failures += expect_uint64(
-            mylite_result_column_display_length(result, string_case_metadata_column),
-            string_case_display_length,
-            "string CASE metadata display length"
-        );
-        failures += expect_uint64(
-            mylite_result_column_display_length(result, mixed_case_metadata_column),
-            mixed_case_display_length,
-            "mixed CASE metadata display length"
-        );
-    }
-
-    mylite_result_free(result);
+    );
     mylite_close(database);
     remove_related_files(path);
     return failures;

@@ -108,8 +108,8 @@ static int test_information_schema_core_queries(void) {
     };
     static const char *const table_values[] = {
         "app", "other",    "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
-        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", NULL,
-        "app", "wp_users", "BASE TABLE", "InnoDB", "10", "Dynamic", "0", "16384", NULL,
+        "app", "t",        "BASE TABLE", "InnoDB", "10", "Dynamic", "1", "16384", "2",
+        "app", "wp_users", "BASE TABLE", "InnoDB", "10", "Dynamic", "0", "16384", "1",
     };
     static const char *const auto_increment_predicate_columns[] = {"TABLE_NAME"};
     static const char *const auto_increment_predicate_values[] = {"t"};

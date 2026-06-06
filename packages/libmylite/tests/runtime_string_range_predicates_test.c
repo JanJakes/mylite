@@ -34,6 +34,7 @@ struct expected_query {
     const char *const *values;
     size_t column_count;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -409,6 +410,16 @@ static int test_string_range_predicate_dml_persistence(void) {
 }
 
 static int test_string_range_predicate_diagnostics(void) {
+    static const char *const integer_string_coercion_ids[] = {
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -424,13 +435,14 @@ static int test_string_range_predicate_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'where clause'",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM strings WHERE v > 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates support only string literals",
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v > 1",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "numeric string range predicate no match",
         }
     );
     failures += execute_error(
@@ -451,13 +463,16 @@ static int test_string_range_predicate_diagnostics(void) {
             .message_part = "WHERE string predicates support only string literals",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM strings WHERE id > 'abc'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE id > 'abc' ORDER BY id",
+            .values = integer_string_coercion_ids,
+            .column_count = 1U,
+            .row_count =
+                sizeof(integer_string_coercion_ids) / sizeof(integer_string_coercion_ids[0]),
+            .warning_count = 1U,
+            .context = "integer predicate coerces nonnumeric string literal",
         }
     );
 
@@ -549,7 +564,8 @@ static int expect_query_values(mylite_db *database, struct expected_query expect
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
 
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {

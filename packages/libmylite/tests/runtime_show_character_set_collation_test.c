@@ -435,14 +435,9 @@ static int test_catalog_only_metadata_rows_do_not_expand_ddl(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog-only ddl file");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
-    failures += execute_error(
+    failures += execute_statement_ok(
         database,
-        "CREATE TABLE catalog_charset (name VARCHAR(5)) CHARSET=latin1",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_character_set,
-            .sqlstate = "42000",
-            .message_part = "Unknown character set: 'latin1'",
-        }
+        "CREATE TABLE catalog_charset (name VARCHAR(5)) CHARSET=latin1"
     );
     failures += execute_error(
         database,

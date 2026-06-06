@@ -319,6 +319,8 @@ static int test_session_value_scalar_projection_warning_order(void) {
 }
 
 static int test_session_value_scalar_projection_unsupported_forms(void) {
+    static const char *const version_literal_columns[] = {"VERSION()", "1"};
+    const char *version_literal_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING, "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -370,13 +372,16 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
             .message_part = "near 'WHERE'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT VERSION(), 1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT VERSION(), 1 FROM t",
+            .columns = version_literal_columns,
+            .column_count = 2U,
+            .values = version_literal_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "table-backed session scalar and literal projection",
         }
     );
 

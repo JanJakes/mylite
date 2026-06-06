@@ -57,10 +57,6 @@ static int append_show_column(
             return rc;
         }
         values[show_full_columns_extra_column] = column_extra_text(column);
-        if (context->table->kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY &&
-            values[show_full_columns_extra_column][0] == '\0') {
-            values[show_full_columns_extra_column] = NULL;
-        }
         values[show_full_columns_privileges_column] = "select,insert,update,references";
         values[show_full_columns_comment_column] = column->comment;
 

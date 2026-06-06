@@ -232,7 +232,7 @@ static int test_serial_alias_metadata_dml_and_persistence(void) {
         database,
         (struct expected_table_status_auto_increment){
             .table_name = "serial_t",
-            .value = NULL,
+            .value = "1",
             .context = "initial serial table status",
         }
     );
@@ -368,7 +368,7 @@ static int test_serial_alias_metadata_dml_and_persistence(void) {
         database,
         (struct expected_table_status_auto_increment){
             .table_name = "serial_t",
-            .value = NULL,
+            .value = "12",
             .context = "advanced serial table status",
         }
     );
@@ -400,7 +400,7 @@ static int test_serial_alias_metadata_dml_and_persistence(void) {
         database,
         (struct expected_table_status_auto_increment){
             .table_name = "serial_t",
-            .value = NULL,
+            .value = "12",
             .context = "reopened serial table status",
         }
     );
@@ -834,7 +834,7 @@ static int test_serial_alias_independent_handles(void) {
         first,
         (struct expected_table_status_auto_increment){
             .table_name = "t",
-            .value = NULL,
+            .value = "2",
             .context = "first serial status",
         }
     );

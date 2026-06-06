@@ -277,6 +277,8 @@ static int test_order_by_field_success(void) {
 }
 
 static int test_order_by_field_diagnostics(void) {
+    static const char *const id_column[] = {"id"};
+    static const char *const values_joined_cast_signed[] = {"2", "3", "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -329,14 +331,16 @@ static int test_order_by_field_diagnostics(void) {
             .message_part = "SELECT ORDER BY supports only descriptor columns",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "
-        "WHERE meta.key_name = 'age' ORDER BY CAST(meta.meta_value AS SIGNED)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT ORDER BY supports only descriptor columns",
+        (struct expected_query){
+            .sql = "SELECT t.id FROM t JOIN meta ON t.id = meta.user_id "
+                   "WHERE meta.key_name = 'age' ORDER BY CAST(meta.meta_value AS SIGNED)",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = values_joined_cast_signed,
+            .row_count = 3U,
+            .context = "joined signed cast order expression",
         }
     );
 

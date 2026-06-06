@@ -253,9 +253,9 @@ static int test_set_connection_character_set_success_and_persistence(void) {
 static int test_set_connection_character_set_diagnostics(void) {
     static const char *const charset_values[] = {
         "utf8mb4",
-        "utf8mb4",
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
+        "latin1",
+        "latin1",
+        "latin1_swedish_ci",
         "0",
         "0",
         "0",
@@ -270,15 +270,7 @@ static int test_set_connection_character_set_diagnostics(void) {
     remove_related_files(path);
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
-    failures += execute_error(
-        database,
-        "SET NAMES latin1",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_character_set,
-            .sqlstate = "42000",
-            .message_part = "Unknown character set: 'latin1'",
-        }
-    );
+    failures += expect_set_ok(database, "SET NAMES latin1");
     failures += execute_error(
         database,
         "SET NAMES bogus",

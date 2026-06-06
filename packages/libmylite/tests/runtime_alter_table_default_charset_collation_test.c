@@ -552,15 +552,7 @@ static int test_alter_table_default_charset_diagnostics(void) {
             .message_part = "Unknown character set: 'nosuch_charset'",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE target DEFAULT CHARSET=latin1",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_character_set,
-            .sqlstate = "42000",
-            .message_part = "Unknown character set: 'latin1'",
-        }
-    );
+    failures += execute_statement_ok(database, "ALTER TABLE target DEFAULT CHARSET=latin1");
     failures += execute_error(
         database,
         "ALTER TABLE target DEFAULT CHARSET=latin1 COLLATE=utf8mb4_unicode_ci",
@@ -608,15 +600,8 @@ static int test_alter_table_default_charset_diagnostics(void) {
             .message_part = "Unknown collation: 'nosuch_collation'",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE target DEFAULT CHARSET=utf8mb4 CHARSET=latin1",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_character_set,
-            .sqlstate = "42000",
-            .message_part = "Unknown character set: 'latin1'",
-        }
-    );
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE target DEFAULT CHARSET=utf8mb4 CHARSET=latin1");
     failures += execute_error(
         database,
         "ALTER TABLE target DEFAULT CHARSET='utf8\\0mb4'",

@@ -1629,13 +1629,13 @@ static int test_order_limit_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM ordered_numbers ORDER BY id + 1 LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id + 1 LIMIT 1",
+            .values = alias_first,
+            .value_count = sizeof(alias_first) / sizeof(alias_first[0]),
+            .context = "expression order by with limit",
         }
     );
     failures += expect_query_values(

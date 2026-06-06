@@ -13,7 +13,6 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
-    mysql_error_parse = 1064,
     string_row_count = 5,
 };
 
@@ -36,12 +35,6 @@ enum {
     "\x80"                                                                                         \
     "\xA0"
 
-struct expected_sql_error {
-    int code;
-    const char *sqlstate;
-    const char *message_part;
-};
-
 struct expected_query {
     const char *sql;
     const char *const *values;
@@ -55,7 +48,6 @@ static int test_string_predicate_dml(void);
 static int test_string_predicate_diagnostics(void);
 static int populate_strings(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
-static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query expected);
 static int open_app_database(
@@ -79,7 +71,6 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -283,13 +274,14 @@ static int test_string_predicate_diagnostics(void) {
 
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
     failures += populate_strings(database);
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM strings WHERE v = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates support only string literals",
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v = 1",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "numeric string equality predicate no match",
         }
     );
     mylite_close(database);
@@ -332,23 +324,6 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
         mylite_result_free(result);
     }
     return 0;
-}
-
-static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
-    mylite_result *result = NULL;
-    int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = 0;
-
-    if (rc == MYLITE_OK) {
-        fprintf(stderr, "%s: expected error, got success\n", sql);
-        mylite_result_free(result);
-        return 1;
-    }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
-    mylite_result_free(result);
-    return failures;
 }
 
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
@@ -514,20 +489,6 @@ static int expect_text(const char *actual, const char *expected, const char *con
     }
     if (strcmp(actual, expected) != 0) {
         fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected message containing %s, got %s\n",
-            context,
-            needle == NULL ? "(null)" : needle,
-            actual == NULL ? "(null)" : actual
-        );
         return 1;
     }
     return 0;

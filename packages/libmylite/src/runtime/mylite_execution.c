@@ -6789,11 +6789,6 @@ static int table_status_auto_increment_next_value(
     size_t buffer_size,
     const char **out_value
 );
-static int table_status_has_shadowing_temporary_table(
-    struct mylite_db *database,
-    const struct mylite_catalog_table_descriptor *table,
-    bool *out_has_shadowing_temporary
-);
 static int table_status_has_auto_increment(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,

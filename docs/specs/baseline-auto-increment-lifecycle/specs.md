@@ -96,6 +96,9 @@ slice:
   `DEFAULT` each generate the next sequence value under MySQL's default SQL
   mode. `NO_AUTO_VALUE_ON_ZERO` changes this upstream, but MyLite's current
   `@@sql_mode` is fixed and does not implement that mode.
+- `SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT` expose
+  the next generated value for tables with an auto-increment column, including
+  initial value `1` and later values advanced by generated or explicit inserts.
 - `LAST_INSERT_ID()` returns the first generated value from the most recent
   successful insert statement that generated at least one value. Explicit
   nonzero, non-`NULL` values do not change it.

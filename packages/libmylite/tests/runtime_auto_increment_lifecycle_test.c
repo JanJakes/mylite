@@ -130,6 +130,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const last_insert_id_zero[] = {"0"};
+    static const char *const initial_information_schema_auto_increment[] = {"1"};
     static const char *const first_insert_state[] = {"1", "0", "1"};
     static const char *const generated_rows[] = {
         "1",
@@ -167,6 +168,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
         ") ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 "
         "COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const advanced_information_schema_auto_increment[] = {"12"};
     static const char *const insert_set_rows[] = {"1", "10", "5", "50", "6", "60"};
     static const char *const option_show_create[] = {
         "opt",
@@ -255,7 +257,18 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
             .context = "initial auto increment SHOW CREATE",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", NULL, "initial status");
+    failures += expect_show_table_status_auto_increment(database, "t", "1", "initial status");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_NAME='t'",
+            .values = initial_information_schema_auto_increment,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "initial auto increment information schema status",
+        }
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -362,7 +375,18 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
             .context = "advanced auto increment SHOW CREATE",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", NULL, "advanced status");
+    failures += expect_show_table_status_auto_increment(database, "t", "12", "advanced status");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA='app' AND TABLE_NAME='t'",
+            .values = advanced_information_schema_auto_increment,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "advanced auto increment information schema status",
+        }
+    );
     session = mylite_connection_session_state(database);
     if (session != NULL) {
         failures += expect_uint64(
@@ -587,7 +611,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
     failures += expect_show_table_status_auto_increment(
         database,
         "default_set",
-        NULL,
+        "8",
         "hidden default status"
     );
     failures += execute_error(
@@ -622,7 +646,7 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
             .context = "reopened generated rows",
         }
     );
-    failures += expect_show_table_status_auto_increment(database, "t", NULL, "reopened status");
+    failures += expect_show_table_status_auto_increment(database, "t", "12", "reopened status");
 
     mylite_close(database);
     remove_related_files(path);
@@ -1185,7 +1209,7 @@ static int test_auto_increment_independent_handles(void) {
             .context = "second handle auto increment rows",
         }
     );
-    failures += expect_show_table_status_auto_increment(first, "t", NULL, "first handle status");
+    failures += expect_show_table_status_auto_increment(first, "t", "2", "first handle status");
     failures += expect_show_table_status_auto_increment(second, "t", "5", "second handle status");
 
     mylite_close(second);

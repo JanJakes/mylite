@@ -990,7 +990,7 @@ static int plan_joined_select_derived_source(
     const struct mylite_sql_ast_node *source_node,
     struct planned_select_source *out_source
 ) {
-    const struct mylite_sql_ast_node *select_statement = NULL;
+    const struct mylite_sql_ast_node *inner_statement = NULL;
     const struct mylite_sql_ast_node *alias = NULL;
     int rc = MYLITE_OK;
 
@@ -998,9 +998,11 @@ static int plan_joined_select_derived_source(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    select_statement = child_at(source_node, 0U);
+    inner_statement = child_at(source_node, 0U);
     alias = child_at(source_node, 1U);
-    if (select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+    if (inner_statement == NULL ||
+        (inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT &&
+         inner_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -1019,7 +1021,29 @@ static int plan_joined_select_derived_source(
             sizeof(out_source->source.table_name)
         );
     }
-    if (rc == MYLITE_OK && select_statement_has_group_by_clause(select_statement)) {
+    if (rc == MYLITE_OK && inner_statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        rc = plan_derived_compound_select_source_child(database, inner_statement, out_source);
+    } else if (rc == MYLITE_OK) {
+        rc = plan_derived_select_source_child(database, inner_statement, out_source);
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_source_deinit(out_source);
+    }
+    return rc;
+}
+
+static int plan_derived_select_source_child(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement,
+    struct planned_select_source *out_source
+) {
+    int rc = MYLITE_OK;
+
+    if (select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (select_statement_has_group_by_clause(select_statement)) {
         out_source->derived_grouped_aggregate =
             calloc(1U, sizeof(*out_source->derived_grouped_aggregate));
         if (out_source->derived_grouped_aggregate == NULL) {
@@ -1066,8 +1090,145 @@ static int plan_joined_select_derived_source(
             );
         }
     }
+    return rc;
+}
+
+static int plan_derived_compound_select_source_child(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *compound_statement,
+    struct planned_select_source *out_source
+) {
+    const struct mylite_sql_ast_node *terms = NULL;
+    const struct mylite_sql_ast_node *term = NULL;
+    const struct mylite_sql_ast_node *branch = NULL;
+    size_t branch_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (compound_statement == NULL ||
+        compound_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    terms = child_at(compound_statement, 1U);
+    rc = validate_derived_compound_select_terms(database, terms);
     if (rc != MYLITE_OK) {
-        planned_select_source_deinit(out_source);
+        return rc;
+    }
+
+    out_source->derived_compound_select = calloc(1U, sizeof(*out_source->derived_compound_select));
+    if (out_source->derived_compound_select == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_source->derived_compound_select->branch_count = compound_select_branch_count(
+        compound_statement
+    );
+    if (out_source->derived_compound_select->branch_count >
+        SIZE_MAX / sizeof(*out_source->derived_compound_select->branches)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_source->derived_compound_select->branches = calloc(
+        out_source->derived_compound_select->branch_count,
+        sizeof(*out_source->derived_compound_select->branches)
+    );
+    if (out_source->derived_compound_select->branches == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    branch = child_at(compound_statement, 0U);
+    rc = plan_derived_compound_select_branch(
+        database,
+        branch,
+        &out_source->derived_compound_select->branches[branch_index]
+    );
+    term = child_at(terms, 0U);
+    while (rc == MYLITE_OK && term != NULL) {
+        ++branch_index;
+        branch = child_at(term, 0U);
+        if (branch_index >= out_source->derived_compound_select->branch_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        rc = plan_derived_compound_select_branch(
+            database,
+            branch,
+            &out_source->derived_compound_select->branches[branch_index]
+        );
+        term = term->next_sibling;
+    }
+    if (rc == MYLITE_OK && branch_index + 1U != out_source->derived_compound_select->branch_count) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_derived_compound_select_source_columns(
+            database,
+            out_source->derived_compound_select,
+            out_source
+        );
+    }
+
+    return rc;
+}
+
+static int validate_derived_compound_select_terms(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *terms
+) {
+    if (terms == NULL || terms->kind != MYLITE_SQL_AST_UNION_TERM_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (child_at(terms, 0U) == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    for (const struct mylite_sql_ast_node *term = child_at(terms, 0U); term != NULL;
+         term = term->next_sibling) {
+        if (mylite_sql_ast_node_set_operator_kind(term) != MYLITE_SQL_AST_SET_OPERATOR_UNION ||
+            mylite_sql_ast_node_union_modifier(term) != MYLITE_SQL_AST_UNION_MODIFIER_ALL) {
+            set_unsupported_error(database, "derived table compound sources support only UNION ALL");
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int plan_derived_compound_select_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch,
+    struct planned_select *out_branch
+) {
+    int rc = validate_derived_compound_select_branch_shape(database, branch);
+
+    if (rc == MYLITE_OK) {
+        rc = plan_select(database, branch, false, out_branch);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_derived_select_output_columns(database, out_branch);
+    }
+    return rc;
+}
+
+static int validate_derived_compound_select_branch_shape(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch
+) {
+    int rc = reject_compound_select_branch_shape(
+        database,
+        branch,
+        MYLITE_SQL_AST_SET_OPERATOR_UNION
+    );
+
+    if (rc == MYLITE_OK && select_statement_has_group_by_clause(branch)) {
+        set_unsupported_error(
+            database,
+            "derived table compound sources support only descriptor SELECT branches"
+        );
+        rc = MYLITE_ERROR;
     }
     return rc;
 }
@@ -1118,6 +1279,28 @@ static int copy_derived_select_source_columns(
     );
     out_source->column_count = derived_plan->column_count;
     return MYLITE_OK;
+}
+
+static int copy_derived_compound_select_source_columns(
+    struct mylite_db *database,
+    const struct planned_compound_select *compound_plan,
+    struct planned_select_source *out_source
+) {
+    size_t column_count = 0U;
+
+    if (compound_plan == NULL || compound_plan->branches == NULL ||
+        compound_plan->branch_count == 0U || out_source == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    column_count = compound_plan->branches[0].column_count;
+    for (size_t branch_index = 1U; branch_index < compound_plan->branch_count; ++branch_index) {
+        if (compound_plan->branches[branch_index].column_count != column_count) {
+            set_union_column_count_mismatch_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+    return copy_derived_select_source_columns(database, &compound_plan->branches[0], out_source);
 }
 
 static int validate_derived_grouped_aggregate_output_columns(
@@ -1853,6 +2036,11 @@ static void planned_select_deinit(struct planned_select *plan) {
             free(derived_source->derived_grouped_aggregate);
             derived_source->derived_grouped_aggregate = NULL;
         }
+        if (derived_source->derived_compound_select != NULL) {
+            planned_compound_select_deinit(derived_source->derived_compound_select);
+            free(derived_source->derived_compound_select);
+            derived_source->derived_compound_select = NULL;
+        }
         derived_source->is_derived = false;
         derived_source = planned_select_find_deepest_derived_source(plan);
     }
@@ -1886,6 +2074,20 @@ static void planned_select_deinit_shallow(struct planned_select *plan) {
     *plan = (struct planned_select){0};
 }
 
+static void planned_compound_select_deinit(struct planned_compound_select *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    if (plan->branches != NULL) {
+        for (size_t branch_index = 0U; branch_index < plan->branch_count; ++branch_index) {
+            planned_select_deinit(&plan->branches[branch_index]);
+        }
+    }
+    free(plan->branches);
+    *plan = (struct planned_compound_select){0};
+}
+
 static struct planned_select_source *planned_select_find_deepest_derived_source(
     struct planned_select *plan
 ) {
@@ -1905,6 +2107,9 @@ static struct planned_select_source *planned_select_find_deepest_derived_source(
                 break;
             }
             if (source->derived_grouped_aggregate != NULL) {
+                deepest_source = source;
+            }
+            if (source->derived_compound_select != NULL) {
                 deepest_source = source;
             }
         }
@@ -1927,6 +2132,11 @@ static void planned_select_source_deinit(struct planned_select_source *source) {
         free(source->derived_grouped_aggregate);
         source->derived_grouped_aggregate = NULL;
     }
+    if (source->derived_compound_select != NULL) {
+        planned_compound_select_deinit(source->derived_compound_select);
+        free(source->derived_compound_select);
+        source->derived_compound_select = NULL;
+    }
     planned_select_source_deinit_shallow(source);
 }
 
@@ -1936,6 +2146,7 @@ static void planned_select_source_deinit_shallow(struct planned_select_source *s
     }
     assert(source->derived_select == NULL);
     assert(source->derived_grouped_aggregate == NULL);
+    assert(source->derived_compound_select == NULL);
     free(source->columns);
     *source = (struct planned_select_source){0};
 }

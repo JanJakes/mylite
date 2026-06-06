@@ -44,6 +44,27 @@ static int append_select_sql_query(
     return rc;
 }
 
+static int append_compound_select_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_compound_select *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || plan->branches == NULL || plan->branch_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    rc = append_select_sql_query(string, &plan->branches[0], next_parameter);
+    for (size_t branch_index = 1U; rc == MYLITE_OK && branch_index < plan->branch_count;
+         ++branch_index) {
+        rc = mylite_dynamic_string_append(string, " UNION ALL ");
+        if (rc == MYLITE_OK) {
+            rc = append_select_sql_query(string, &plan->branches[branch_index], next_parameter);
+        }
+    }
+    return rc;
+}
+
 static int append_select_sql_work_item(
     struct mylite_dynamic_string *string,
     struct select_sql_work_stack *stack,
@@ -66,6 +87,8 @@ static int append_select_sql_work_item(
             true,
             true
         );
+    case SELECT_SQL_WORK_COMPOUND_QUERY:
+        return append_compound_select_query_sql(string, item->compound_plan, next_parameter);
     case SELECT_SQL_WORK_FROM:
         return append_select_sql_work_from(string, stack, item->plan);
     case SELECT_SQL_WORK_SOURCE:
@@ -174,6 +197,16 @@ static int append_select_sql_work_from(
         }
         return rc;
     }
+    if (plan->source_count == 1U) {
+        return select_sql_work_stack_push(
+            stack,
+            (struct select_sql_work_item){
+                .kind = SELECT_SQL_WORK_SOURCE,
+                .source = &plan->sources[0],
+                .source_index = 0U,
+            }
+        );
+    }
     if (plan->join_count != plan->source_count - 1U || plan->join_kinds == NULL ||
         plan->join_conditions == NULL) {
         return MYLITE_ERROR;
@@ -242,7 +275,8 @@ static int append_select_sql_work_source(
         return MYLITE_ERROR;
     }
     if (source->is_derived) {
-        if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL) {
+        if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL &&
+            source->derived_compound_select == NULL) {
             return MYLITE_ERROR;
         }
         rc = mylite_dynamic_string_append_char(string, '(');
@@ -268,10 +302,13 @@ static int append_select_sql_work_source(
             rc = select_sql_work_stack_push(
                 stack,
                 (struct select_sql_work_item){
-                    .kind = source->derived_select == NULL ? SELECT_SQL_WORK_GROUPED_QUERY
-                                                           : SELECT_SQL_WORK_QUERY,
+                    .kind = source->derived_compound_select != NULL
+                                ? SELECT_SQL_WORK_COMPOUND_QUERY
+                                : (source->derived_select == NULL ? SELECT_SQL_WORK_GROUPED_QUERY
+                                                                  : SELECT_SQL_WORK_QUERY),
                     .plan = source->derived_select,
                     .grouped_plan = source->derived_grouped_aggregate,
+                    .compound_plan = source->derived_compound_select,
                 }
             );
         }
@@ -362,6 +399,9 @@ static int append_select_from_sql(
         }
         return rc;
     }
+    if (plan->source_count == 1U) {
+        return append_select_source_sql(string, &plan->sources[0], 0U, next_parameter);
+    }
     if (plan->join_count != plan->source_count - 1U || plan->join_kinds == NULL ||
         plan->join_conditions == NULL) {
         return MYLITE_ERROR;
@@ -411,12 +451,19 @@ static int append_select_source_sql(
         return MYLITE_ERROR;
     }
     if (source->is_derived) {
-        if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL) {
+        if (source->derived_select == NULL && source->derived_grouped_aggregate == NULL &&
+            source->derived_compound_select == NULL) {
             return MYLITE_ERROR;
         }
         rc = mylite_dynamic_string_append_char(string, '(');
         if (rc == MYLITE_OK) {
-            if (source->derived_select != NULL) {
+            if (source->derived_compound_select != NULL) {
+                rc = append_compound_select_query_sql(
+                    string,
+                    source->derived_compound_select,
+                    next_parameter
+                );
+            } else if (source->derived_select != NULL) {
                 rc = append_select_sql_query(string, source->derived_select, next_parameter);
             } else {
                 rc = append_grouped_aggregate_query_sql(

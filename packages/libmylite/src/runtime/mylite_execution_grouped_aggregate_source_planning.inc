@@ -18,6 +18,14 @@ static int plan_grouped_aggregate_source(
             out_source_context
         );
     }
+    if (from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        return plan_grouped_aggregate_derived_source(
+            database,
+            from_clause,
+            out_plan,
+            out_source_context
+        );
+    }
 
     rc = resolve_visible_table_reference(
         database,
@@ -41,6 +49,32 @@ static int plan_grouped_aggregate_source(
         rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, out_columns, out_column_count);
     }
 
+    return rc;
+}
+
+static int plan_grouped_aggregate_derived_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_grouped_aggregate *out_plan,
+    struct select_source_context *out_source_context
+) {
+    int rc = MYLITE_OK;
+
+    out_plan->sources = calloc(1U, sizeof(*out_plan->sources));
+    if (out_plan->sources == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->source_count = 1U;
+
+    rc = plan_joined_select_derived_source(database, from_clause, &out_plan->sources[0]);
+    if (rc == MYLITE_OK) {
+        rc = init_join_select_source_context(
+            out_plan->sources,
+            out_plan->source_count,
+            out_source_context
+        );
+    }
     return rc;
 }
 

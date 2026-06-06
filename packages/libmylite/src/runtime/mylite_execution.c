@@ -1019,6 +1019,7 @@ struct user_savepoint_values {
     const char *sqlite_name;
 };
 
+struct planned_compound_select;
 struct planned_select_source;
 struct planned_exists_subquery;
 struct planned_in_subquery;
@@ -2140,12 +2141,14 @@ enum select_sql_work_item_kind {
     SELECT_SQL_WORK_TEXT = 7,
     SELECT_SQL_WORK_SOURCE_ALIAS = 8,
     SELECT_SQL_WORK_GROUPED_QUERY = 9,
+    SELECT_SQL_WORK_COMPOUND_QUERY = 10,
 };
 
 struct select_sql_work_item {
     enum select_sql_work_item_kind kind;
     const struct planned_select *plan;
     const struct planned_grouped_aggregate *grouped_plan;
+    const struct planned_compound_select *compound_plan;
     const struct planned_select_source *source;
     const struct planned_select_join_condition *join_condition;
     const struct planned_select_predicate *predicate;
@@ -2170,12 +2173,14 @@ enum select_parameter_bind_item_kind {
     SELECT_PARAMETER_BIND_ORDER = 5,
     SELECT_PARAMETER_BIND_LIMIT = 6,
     SELECT_PARAMETER_BIND_GROUPED_AGGREGATE = 7,
+    SELECT_PARAMETER_BIND_COMPOUND_SELECT = 8,
 };
 
 struct select_parameter_bind_item {
     enum select_parameter_bind_item_kind kind;
     const struct planned_select *plan;
     const struct planned_grouped_aggregate *grouped_plan;
+    const struct planned_compound_select *compound_plan;
     const struct planned_select_source *sources;
     const struct planned_select_source *source;
     const struct planned_select_join_condition *join_condition;
@@ -2289,6 +2294,7 @@ struct planned_select_source {
     bool is_derived;
     struct planned_select *derived_select;
     struct planned_grouped_aggregate *derived_grouped_aggregate;
+    struct planned_compound_select *derived_compound_select;
 };
 
 struct planned_exists_subquery {
@@ -2871,6 +2877,11 @@ struct grouped_alias_group_resolution {
     const struct select_source_context *source_context;
     const struct mylite_catalog_column_descriptor *table_columns;
     size_t table_column_count;
+};
+
+struct planned_compound_select {
+    struct planned_select *branches;
+    size_t branch_count;
 };
 
 struct planned_grouped_projection {
@@ -11212,9 +11223,37 @@ static int plan_joined_select_derived_source(
     const struct mylite_sql_ast_node *source_node,
     struct planned_select_source *out_source
 );
+static int plan_derived_select_source_child(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement,
+    struct planned_select_source *out_source
+);
+static int plan_derived_compound_select_source_child(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *compound_statement,
+    struct planned_select_source *out_source
+);
+static int validate_derived_compound_select_terms(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *terms
+);
+static int plan_derived_compound_select_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch,
+    struct planned_select *out_branch
+);
+static int validate_derived_compound_select_branch_shape(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch
+);
 static int copy_derived_select_source_columns(
     struct mylite_db *database,
     const struct planned_select *derived_plan,
+    struct planned_select_source *out_source
+);
+static int copy_derived_compound_select_source_columns(
+    struct mylite_db *database,
+    const struct planned_compound_select *compound_plan,
     struct planned_select_source *out_source
 );
 static int validate_derived_grouped_aggregate_output_columns(
@@ -11302,6 +11341,7 @@ static int append_select_column_from_source(
     const struct mylite_sql_ast_node *alias
 );
 static void planned_select_order_deinit(struct planned_select_order *order);
+static void planned_compound_select_deinit(struct planned_compound_select *plan);
 static void planned_select_source_deinit(struct planned_select_source *source);
 static void planned_select_source_deinit_shallow(struct planned_select_source *source);
 static void planned_select_join_condition_deinit(struct planned_select_join_condition *condition);
@@ -11688,6 +11728,12 @@ static int plan_grouped_aggregate_source(
     size_t *out_column_count
 );
 static int plan_grouped_aggregate_join_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_grouped_aggregate *out_plan,
+    struct select_source_context *out_source_context
+);
+static int plan_grouped_aggregate_derived_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *from_clause,
     struct planned_grouped_aggregate *out_plan,

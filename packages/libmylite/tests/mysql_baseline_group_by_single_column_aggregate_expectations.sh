@@ -91,7 +91,23 @@ run_mysql \
        (4, 1, NULL, NULL, NULL, 4, NULL),
        (5, 1, 20, 20, 7, NULL, 7),
        (6, 2, NULL, NULL, NULL, NULL, NULL),
-       (7, 2, NULL, NULL, NULL, NULL, NULL);" >/dev/null
+       (7, 2, NULL, NULL, NULL, NULL, NULL);
+     CREATE TABLE readable_posts(
+       id INT,
+       post_status VARCHAR(20),
+       post_type VARCHAR(32),
+       post_author INT
+     ) ENGINE=InnoDB;
+     INSERT INTO readable_posts VALUES
+       (1,'publish','article',10),
+       (2,'publish','article',10),
+       (3,'publish','article',10),
+       (4,'publish','article',10),
+       (5,'publish','article',10),
+       (6,'private','article',10),
+       (7,'private','article',10),
+       (8,'private','article',11),
+       (10,'publish','page',10);" >/dev/null
 
 core=$(run_mysql \
     "USE ${DATABASE};
@@ -143,6 +159,26 @@ expect_value "strict distinct group one" "1	3" \
     "$(printf '%s\n' "$distinct_group" | sed -n '2p')"
 expect_value "strict distinct group two" "2	2" \
     "$(printf '%s\n' "$distinct_group" | sed -n '3p')"
+
+derived_union_group=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT post_status, COUNT(*) AS num_posts
+       FROM (
+         SELECT post_status
+           FROM readable_posts
+          WHERE post_type = 'article' AND post_status != 'private'
+         UNION ALL
+         SELECT post_status
+           FROM readable_posts
+          WHERE post_type = 'article' AND post_status = 'private' AND post_author = 11
+       ) AS filtered_posts
+      GROUP BY post_status
+      ORDER BY post_status;"
+)
+expect_value "derived union group private" "private	1" \
+    "$(printf '%s\n' "$derived_union_group" | sed -n '1p')"
+expect_value "derived union group publish" "publish	5" \
+    "$(printf '%s\n' "$derived_union_group" | sed -n '2p')"
 
 no_match=$(run_mysql \
     "USE ${DATABASE};

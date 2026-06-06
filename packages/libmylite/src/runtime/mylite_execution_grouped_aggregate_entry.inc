@@ -44,7 +44,8 @@ static int plan_grouped_aggregate(
         return MYLITE_ERROR;
     }
     if (from_clause == NULL || (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE &&
-                                from_clause->kind != MYLITE_SQL_AST_FROM_JOIN)) {
+                                from_clause->kind != MYLITE_SQL_AST_FROM_JOIN &&
+                                from_clause->kind != MYLITE_SQL_AST_FROM_DERIVED)) {
         set_unsupported_error(database, "GROUP BY requires descriptor-backed table sources");
         return MYLITE_ERROR;
     }

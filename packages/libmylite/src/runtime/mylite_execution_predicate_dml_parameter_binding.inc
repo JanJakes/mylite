@@ -457,6 +457,21 @@ static int bind_grouped_aggregate_parameters_at(
         }
     }
     if (rc == MYLITE_OK) {
+        rc = bind_select_source_parameters(
+            statement,
+            plan->sources,
+            plan->source_count,
+            parameter_index
+        );
+    }
+    for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_conditions[join_index],
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
     }
     if (rc == MYLITE_OK) {

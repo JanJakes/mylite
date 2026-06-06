@@ -3341,6 +3341,9 @@ table_source(A) ::= derived_table_source(D). {
 derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) table_alias_opt(AL). {
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
+derived_table_source(A) ::= LPAREN(L) compound_select_statement(S) RPAREN(R) table_alias_opt(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
+}
 
 joined_table_source(A) ::=
     table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {

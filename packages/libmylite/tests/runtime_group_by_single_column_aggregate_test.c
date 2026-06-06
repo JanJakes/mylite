@@ -99,6 +99,8 @@ int main(void) {
 static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_count_columns[] = {"g", "COUNT(*)"};
     static const char *const g_count_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const readable_post_status_columns[] = {"post_status", "num_posts"};
+    static const char *const readable_post_status_values[] = {"private", "1", "publish", "5"};
     static const char *const g_count_n_columns[] = {"g", "COUNT(n)"};
     static const char *const g_count_n_values[] = {NULL, "0", "1", "1", "2", "2"};
     static const char *const g_min_columns[] = {"g", "MIN(n)"};
@@ -470,6 +472,30 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     );
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE readable_posts("
+        "id INT, post_status VARCHAR(20), post_type VARCHAR(32), post_author INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO readable_posts VALUES "
+        "(1,'publish','article',10),"
+        "(2,'publish','article',10),"
+        "(3,'publish','article',10),"
+        "(4,'publish','article',10),"
+        "(5,'publish','article',10),"
+        "(6,'private','article',10),"
+        "(7,'private','article',10),"
+        "(8,'private','article',11),"
+        "(10,'publish','page',10)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -500,6 +526,24 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = g_count_values,
             .row_count = 3U,
             .context = "distinct grouped aggregate keeps grouped rows",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT post_status, COUNT(*) AS num_posts FROM ("
+                   "SELECT post_status FROM readable_posts "
+                   "WHERE post_type = 'article' AND post_status != 'private' "
+                   "UNION ALL "
+                   "SELECT post_status FROM readable_posts "
+                   "WHERE post_type = 'article' AND post_status = 'private' "
+                   "AND post_author = 11"
+                   ") AS filtered_posts GROUP BY post_status ORDER BY post_status",
+            .columns = readable_post_status_columns,
+            .column_count = 2U,
+            .values = readable_post_status_values,
+            .row_count = 2U,
+            .context = "grouped aggregate over derived UNION ALL source",
         }
     );
     failures += execute_ok(database, "SET SESSION sql_mode = ''", &result);

@@ -4,6 +4,12 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
     return bind_select_parameters_at(statement, plan, &parameter_index);
 }
 
+static int bind_compound_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_compound_select *plan,
+    int *parameter_index
+);
+
 static int bind_select_parameters_at(
     sqlite3_stmt *statement,
     const struct planned_select *plan,
@@ -60,6 +66,8 @@ static int bind_select_parameter_work_item(
             true,
             parameter_index
         );
+    case SELECT_PARAMETER_BIND_COMPOUND_SELECT:
+        return bind_compound_select_parameters_at(statement, item->compound_plan, parameter_index);
     case SELECT_PARAMETER_BIND_SOURCE_LIST:
         return push_select_source_list_parameter_work(stack, item->sources, item->source_count);
     case SELECT_PARAMETER_BIND_SOURCE:
@@ -67,17 +75,21 @@ static int bind_select_parameter_work_item(
             return MYLITE_OK;
         }
         if (item->source->derived_select == NULL &&
-            item->source->derived_grouped_aggregate == NULL) {
+            item->source->derived_grouped_aggregate == NULL &&
+            item->source->derived_compound_select == NULL) {
             return MYLITE_ERROR;
         }
         return select_parameter_bind_stack_push(
             stack,
             (struct select_parameter_bind_item){
-                .kind = item->source->derived_select == NULL
-                            ? SELECT_PARAMETER_BIND_GROUPED_AGGREGATE
-                            : SELECT_PARAMETER_BIND_PLAN,
+                .kind = item->source->derived_compound_select != NULL
+                            ? SELECT_PARAMETER_BIND_COMPOUND_SELECT
+                            : (item->source->derived_select == NULL
+                                   ? SELECT_PARAMETER_BIND_GROUPED_AGGREGATE
+                                   : SELECT_PARAMETER_BIND_PLAN),
                 .plan = item->source->derived_select,
                 .grouped_plan = item->source->derived_grouped_aggregate,
+                .compound_plan = item->source->derived_compound_select,
             }
         );
     case SELECT_PARAMETER_BIND_JOIN_CONDITION:
@@ -151,6 +163,23 @@ static int push_select_plan_parameter_work(
                 .source_count = plan->source_count,
             }
         );
+    }
+    return rc;
+}
+
+static int bind_compound_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_compound_select *plan,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || plan->branches == NULL || parameter_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t branch_index = 0U; rc == MYLITE_OK && branch_index < plan->branch_count;
+         ++branch_index) {
+        rc = bind_select_parameters_at(statement, &plan->branches[branch_index], parameter_index);
     }
     return rc;
 }

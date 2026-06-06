@@ -18266,6 +18266,10 @@ static bool normalize_date_only_datetime_storage_text(
     const struct temporal_predicate_normalization_input *input,
     char *out_text
 );
+static bool normalize_single_digit_hour_datetime_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+);
 static bool datetime_storage_time_is_midnight(const char *text);
 static char *copy_temporal_text(struct mylite_db *database, const char *text, size_t text_length);
 static int canonicalize_time_text(

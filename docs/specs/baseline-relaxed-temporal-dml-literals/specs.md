@@ -49,6 +49,9 @@ With `sql_mode = ''` and `time_zone = '+00:00'`:
 
 - `DATETIME` and `TIMESTAMP` storage/default strings with a `T` separator store
   as the equivalent `YYYY-MM-DD HH:MM:SS` value and record no warning.
+- `DATETIME` and `TIMESTAMP` storage/default strings with a one-digit hour in
+  either `YYYY-MM-DD H:MM:SS` or `YYYY-MM-DDTH:MM:SS` form store with a padded
+  two-digit hour and record no warning.
 - `DATETIME` and `TIMESTAMP` storage/default strings with a valid numeric
   offset store after converting from the literal offset to the session target
   offset. With session `+00:00`, `'2024-01-02 03:04:05+02:30'` stores as
@@ -93,6 +96,8 @@ Admitted decoded string forms:
 ```text
 YYYY-MM-DD HH:MM:SS
 YYYY-MM-DDTHH:MM:SS
+YYYY-MM-DD H:MM:SS
+YYYY-MM-DDTH:MM:SS
 YYYY-MM-DD HH:MM:SS+HH:MM
 YYYY-MM-DDTHH:MM:SS+HH:MM
 YYYY-MM-DD HH:MM:SS-HH:MM
@@ -180,6 +185,10 @@ For single trailing `Z` / `z` forms:
 
 `YYYY-MM-DDTHH:MM:SS` normalizes `T` to a space and then follows the existing
 canonical `DATETIME` SQL-mode conversion.
+
+`YYYY-MM-DD H:MM:SS` and `YYYY-MM-DDTH:MM:SS` normalize by padding the hour
+with a leading `0` and normalizing `T` to a space. They then follow the
+existing canonical `DATETIME` SQL-mode conversion.
 
 Numeric-offset strings validate the offset and shift the datetime from the
 literal offset to the current session time-zone offset before applying the

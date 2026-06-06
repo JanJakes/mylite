@@ -133,6 +133,17 @@ static bool normalize_date_storage_text(
         return date_text_has_canonical_shape(out_text, date_text_length);
     }
 
+    if (normalize_single_digit_hour_datetime_storage_text(input, normalized_datetime)) {
+        memcpy(out_text, normalized_datetime, date_text_length);
+        out_text[date_text_length] = '\0';
+        if (datetime_storage_time_is_midnight(normalized_datetime)) {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NONE;
+        } else {
+            *out_truncation = TEMPORAL_STORAGE_TRUNCATION_NOTE;
+        }
+        return date_text_has_canonical_shape(out_text, date_text_length);
+    }
+
     if (normalize_iso_temporal_predicate_text(input, normalized_datetime)) {
         memcpy(out_text, normalized_datetime, date_text_length);
         out_text[date_text_length] = '\0';
@@ -206,6 +217,48 @@ static bool normalize_date_only_datetime_storage_text(
     memcpy(out_text + date_text_length, " 00:00:00", datetime_text_length - date_text_length);
     out_text[datetime_text_length] = '\0';
     return true;
+}
+
+static bool normalize_single_digit_hour_datetime_storage_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+) {
+    enum {
+        single_digit_hour_datetime_text_length = datetime_text_length - 1U,
+        single_digit_first_time_separator_offset = datetime_first_time_separator_offset - 1U,
+        single_digit_minute_text_offset = datetime_minute_text_offset - 1U,
+        single_digit_second_time_separator_offset = datetime_second_time_separator_offset - 1U,
+        single_digit_second_text_offset = datetime_second_text_offset - 1U,
+    };
+    const char *text = input == NULL ? NULL : input->text;
+
+    if (input == NULL || text == NULL || out_text == NULL ||
+        input->text_length != single_digit_hour_datetime_text_length ||
+        (text[datetime_date_time_separator_offset] != ' ' &&
+         text[datetime_date_time_separator_offset] != 'T') ||
+        !date_text_has_canonical_shape(text, date_text_length) ||
+        !ascii_decimal_digit((unsigned char)text[datetime_hour_text_offset]) ||
+        text[single_digit_first_time_separator_offset] != ':' ||
+        !ascii_decimal_digit((unsigned char)text[single_digit_minute_text_offset]) ||
+        !ascii_decimal_digit((unsigned char)text[single_digit_minute_text_offset + 1U]) ||
+        text[single_digit_second_time_separator_offset] != ':' ||
+        !ascii_decimal_digit((unsigned char)text[single_digit_second_text_offset]) ||
+        !ascii_decimal_digit((unsigned char)text[single_digit_second_text_offset + 1U])) {
+        return false;
+    }
+
+    memcpy(out_text, text, datetime_date_time_separator_offset);
+    out_text[datetime_date_time_separator_offset] = ' ';
+    out_text[datetime_hour_text_offset] = '0';
+    out_text[datetime_hour_text_offset + 1U] = text[datetime_hour_text_offset];
+    out_text[datetime_first_time_separator_offset] = ':';
+    out_text[datetime_minute_text_offset] = text[single_digit_minute_text_offset];
+    out_text[datetime_minute_text_offset + 1U] = text[single_digit_minute_text_offset + 1U];
+    out_text[datetime_second_time_separator_offset] = ':';
+    out_text[datetime_second_text_offset] = text[single_digit_second_text_offset];
+    out_text[datetime_second_text_offset + 1U] = text[single_digit_second_text_offset + 1U];
+    out_text[datetime_text_length] = '\0';
+    return datetime_text_has_canonical_shape(out_text, datetime_text_length);
 }
 
 static bool datetime_storage_time_is_midnight(const char *text) {
@@ -628,6 +681,22 @@ static int convert_relaxed_datetime_storage_text(
             out_value
         );
     }
+    if (normalize_single_digit_hour_datetime_storage_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
         free(text);
         copy = copy_temporal_text(database, normalized, datetime_text_length);
@@ -765,6 +834,22 @@ static int convert_relaxed_timestamp_storage_text(
     normalization.text_length = text_length;
     normalization.target_offset_minutes = target_offset_minutes;
     if (normalize_date_only_datetime_storage_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column_name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (normalize_single_digit_hour_datetime_storage_text(&normalization, normalized)) {
         free(text);
         copy = copy_temporal_text(database, normalized, datetime_text_length);
         if (copy == NULL) {

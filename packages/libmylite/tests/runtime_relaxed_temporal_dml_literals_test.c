@@ -153,6 +153,14 @@ static int test_relaxed_temporal_dml_defaults_and_persistence(void) {
         "2024-01-03 00:02:03",
         "2024-01-03 01:02:03",
     };
+    static const char *const single_digit_hour_rows[] = {
+        "1",
+        "2016-04-20 04:26:20",
+        "2016-04-20 04:26:20",
+        "2",
+        "2016-04-21 05:06:07",
+        "2016-04-21 05:06:07",
+    };
     static const char *const update_z_warning_rows[] = {
         "Warning",
         "1265",
@@ -273,6 +281,37 @@ static int test_relaxed_temporal_dml_defaults_and_persistence(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "relaxed temporal inserted row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE temporal_single_hour ("
+        "id INT PRIMARY KEY, "
+        "dt DATETIME DEFAULT '2016-04-20 4:26:20', "
+        "ts TIMESTAMP NULL DEFAULT '2016-04-20T4:26:20')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO temporal_single_hour (id) VALUES (1)", 1);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO temporal_single_hour VALUES "
+        "(2, '2016-04-20 4:26:20', '2016-04-20T4:26:20')",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE temporal_single_hour "
+        "SET dt = '2016-04-21 5:06:07', ts = '2016-04-21T5:06:07' "
+        "WHERE id = 2",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, dt, ts FROM temporal_single_hour ORDER BY id",
+            .values = single_digit_hour_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "single digit hour temporal storage",
         }
     );
     failures += expect_statement_ok(database, "SET time_zone = '+02:00'");

@@ -1686,6 +1686,22 @@ static int convert_update_datetime_literal(
     normalization.text_length = text_length;
     normalization.target_offset_minutes =
         database == NULL ? 0 : database->session.time_zone_offset_minutes;
+    if (normalize_single_digit_hour_datetime_storage_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_datetime_text(
+            database,
+            copy,
+            datetime_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
         free(text);
         copy = copy_temporal_text(database, normalized, datetime_text_length);
@@ -1780,6 +1796,22 @@ static int convert_update_timestamp_literal(
     normalization.text = text;
     normalization.text_length = text_length;
     normalization.target_offset_minutes = 0;
+    if (normalize_single_digit_hour_datetime_storage_text(&normalization, normalized)) {
+        free(text);
+        copy = copy_temporal_text(database, normalized, datetime_text_length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        return canonicalize_timestamp_text(
+            database,
+            copy,
+            datetime_text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
         free(text);
         copy = copy_temporal_text(database, normalized, datetime_text_length);

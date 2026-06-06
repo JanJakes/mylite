@@ -87,28 +87,32 @@ run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 
 expect_output \
     "relaxed temporal storage literals normalize" \
-    "dt_values|3|1
+    "dt_values|4|1
 1|2024-01-02 03:04:05
 2|2024-01-02 00:34:05
 3|2024-01-02 03:04:05
-ts_values|3|1
+4|2016-04-20 04:26:20
+ts_values|4|1
 1|2024-01-02 03:04:05
 2|2024-01-02 00:34:05
-3|2024-01-02 03:04:05" \
+3|2024-01-02 03:04:05
+4|2016-04-20 04:26:20" \
     "SET time_zone = '+00:00'; "\
 "SET sql_mode = ''; "\
 "CREATE TABLE dt_values (id INT PRIMARY KEY, v DATETIME NULL); "\
 "INSERT INTO dt_values VALUES "\
 "(1, '2024-01-02T03:04:05'), "\
 "(2, '2024-01-02 03:04:05+02:30'), "\
-"(3, '2024-01-02T03:04:05Z'); "\
+"(3, '2024-01-02T03:04:05Z'), "\
+"(4, '2016-04-20 4:26:20'); "\
 "SELECT 'dt_values', ROW_COUNT(), @@warning_count; "\
 "SELECT id, v FROM dt_values ORDER BY id; "\
 "CREATE TABLE ts_values (id INT PRIMARY KEY, v TIMESTAMP NULL); "\
 "INSERT INTO ts_values VALUES "\
 "(1, '2024-01-02T03:04:05'), "\
 "(2, '2024-01-02 03:04:05+02:30'), "\
-"(3, '2024-01-02T03:04:05Z'); "\
+"(3, '2024-01-02T03:04:05Z'), "\
+"(4, '2016-04-20T4:26:20'); "\
 "SELECT 'ts_values', ROW_COUNT(), @@warning_count; "\
 "SELECT id, v FROM ts_values ORDER BY id;" \
     "$DATABASE"
@@ -150,16 +154,30 @@ Warning|1265|Data truncated for column 'v' at row 1" \
 expect_output \
     "relaxed temporal defaults normalize" \
     "defaults|0|2
-2024-01-02|2024-01-02 00:34:05|2024-01-02 03:04:05" \
+2024-01-02|2024-01-02 00:34:05|2024-01-02 03:04:05|2016-04-20 04:26:20|2016-04-20 04:26:20" \
     "SET time_zone = '+00:00'; "\
 "SET sql_mode = ''; "\
 "CREATE TABLE defaults ("\
 "d DATE DEFAULT '2024-01-02T03:04:05', "\
 "dt DATETIME DEFAULT '2024-01-02 03:04:05+02:30', "\
-"ts TIMESTAMP NULL DEFAULT '2024-01-02T03:04:05Z'); "\
+"ts TIMESTAMP NULL DEFAULT '2024-01-02T03:04:05Z', "\
+"dt_one DATETIME DEFAULT '2016-04-20 4:26:20', "\
+"ts_one TIMESTAMP NULL DEFAULT '2016-04-20T4:26:20'); "\
 "SELECT 'defaults', ROW_COUNT(), @@warning_count; "\
 "INSERT INTO defaults () VALUES (); "\
-"SELECT d, dt, ts FROM defaults;" \
+"SELECT d, dt, ts, dt_one, ts_one FROM defaults;" \
+    "$DATABASE"
+
+expect_output \
+    "single digit hour temporal update normalizes" \
+    "single_hour|1|0|2016-04-21 05:06:07|2016-04-21 05:06:07" \
+    "SET time_zone = '+00:00'; "\
+"SET sql_mode = ''; "\
+"CREATE TABLE single_hour (id INT PRIMARY KEY, dt DATETIME NULL, ts TIMESTAMP NULL); "\
+"INSERT INTO single_hour VALUES (1, '2016-04-20 04:26:20', '2016-04-20 04:26:20'); "\
+"UPDATE single_hour SET dt = '2016-04-21 5:06:07', ts = '2016-04-21T5:06:07' "\
+"WHERE id = 1; "\
+"SELECT 'single_hour', ROW_COUNT(), @@warning_count, dt, ts FROM single_hour;" \
     "$DATABASE"
 
 expect_output \

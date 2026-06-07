@@ -91,6 +91,17 @@ enum mylite_catalog_index_sort_direction {
 };
 
 struct mylite_db;
+struct sqlite3_stmt;
+
+enum {
+    MYLITE_CATALOG_STATEMENT_CACHE_LIMIT = 64,
+};
+
+struct mylite_catalog_statement_cache_entry {
+    char *sql;
+    struct sqlite3_stmt *statement;
+    bool in_use;
+};
 
 struct mylite_catalog {
     bool initialized;
@@ -98,6 +109,9 @@ struct mylite_catalog {
     uint64_t generation;
     uint64_t cached_generation;
     bool descriptor_cache_is_valid;
+    struct mylite_catalog_statement_cache_entry
+        statement_cache[MYLITE_CATALOG_STATEMENT_CACHE_LIMIT];
+    size_t statement_cache_count;
 };
 
 struct mylite_catalog_schema_descriptor {

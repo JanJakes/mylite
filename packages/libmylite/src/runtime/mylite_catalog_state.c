@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum {
@@ -68,6 +69,10 @@ void mylite_catalog_deinit(struct mylite_catalog *catalog) {
         return;
     }
 
+    for (size_t index = 0U; index < catalog->statement_cache_count; ++index) {
+        sqlite3_finalize(catalog->statement_cache[index].statement);
+        free(catalog->statement_cache[index].sql);
+    }
     memset(catalog, 0, sizeof(*catalog));
 }
 

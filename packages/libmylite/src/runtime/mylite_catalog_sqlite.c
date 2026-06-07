@@ -1,14 +1,42 @@
 #include "mylite_catalog_internal.h"
 
+#include "mylite_connection.h"
+#include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 #include "sqlite3.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum {
     sqlite_use_nul_terminated_string = -1,
 };
+
+static int prepare_uncached_statement(
+    sqlite3 *sqlite,
+    const char *sql,
+    sqlite3_stmt **out_statement
+);
+static int prepare_cached_statement(
+    struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+);
+static struct mylite_catalog_statement_cache_entry *find_available_cached_statement(
+    struct mylite_catalog *catalog,
+    const char *sql
+);
+static int append_cached_statement(
+    struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+);
+static char *copy_statement_sql(const char *sql);
+static struct mylite_catalog_statement_cache_entry *find_cached_statement_by_handle(
+    struct mylite_catalog *catalog,
+    sqlite3_stmt *statement
+);
 
 int mylite_catalog_execute_sql(sqlite3 *sqlite, const char *sql) {
     int sqlite_rc = sqlite3_exec(sqlite, sql, NULL, NULL, NULL);
@@ -21,11 +49,41 @@ int mylite_catalog_prepare_statement(
     const char *sql,
     sqlite3_stmt **out_statement
 ) {
+    struct mylite_db *database = NULL;
+
+    if (out_statement == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_statement = NULL;
+    database = mylite_sqlite_bootstrap_owner_from_connection(sqlite);
+    if (database != NULL && database->catalog.initialized) {
+        return prepare_cached_statement(database, sql, out_statement);
+    }
+
+    return prepare_uncached_statement(sqlite, sql, out_statement);
+}
+
+static int prepare_uncached_statement(
+    sqlite3 *sqlite,
+    const char *sql,
+    sqlite3_stmt **out_statement
+) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
 
+    if (sqlite == NULL || sql == NULL || out_statement == NULL) {
+        return MYLITE_MISUSE;
+    }
+
     *out_statement = NULL;
-    sqlite_rc = sqlite3_prepare_v2(sqlite, sql, sqlite_use_nul_terminated_string, &statement, NULL);
+    sqlite_rc = sqlite3_prepare_v3(
+        sqlite,
+        sql,
+        sqlite_use_nul_terminated_string,
+        SQLITE_PREPARE_PERSISTENT,
+        &statement,
+        NULL
+    );
     if (sqlite_rc != SQLITE_OK) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
@@ -33,6 +91,96 @@ int mylite_catalog_prepare_statement(
     *out_statement = statement;
 
     return MYLITE_OK;
+}
+
+static int prepare_cached_statement(
+    struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+) {
+    struct mylite_catalog_statement_cache_entry *entry =
+        find_available_cached_statement(&database->catalog, sql);
+
+    if (entry != NULL) {
+        entry->in_use = true;
+        *out_statement = entry->statement;
+        return MYLITE_OK;
+    }
+
+    if (database->catalog.statement_cache_count < MYLITE_CATALOG_STATEMENT_CACHE_LIMIT) {
+        return append_cached_statement(database, sql, out_statement);
+    }
+
+    return prepare_uncached_statement(database->sqlite, sql, out_statement);
+}
+
+static struct mylite_catalog_statement_cache_entry *find_available_cached_statement(
+    struct mylite_catalog *catalog,
+    const char *sql
+) {
+    if (catalog == NULL || sql == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U; index < catalog->statement_cache_count; ++index) {
+        struct mylite_catalog_statement_cache_entry *entry = &catalog->statement_cache[index];
+
+        if (!entry->in_use && entry->sql != NULL && strcmp(entry->sql, sql) == 0) {
+            return entry;
+        }
+    }
+
+    return NULL;
+}
+
+static int append_cached_statement(
+    struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+) {
+    struct mylite_catalog_statement_cache_entry *entry = NULL;
+    sqlite3_stmt *statement = NULL;
+    char *sql_copy = NULL;
+    int rc = MYLITE_OK;
+
+    rc = prepare_uncached_statement(database->sqlite, sql, &statement);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    sql_copy = copy_statement_sql(sql);
+    if (sql_copy == NULL) {
+        sqlite3_finalize(statement);
+        return MYLITE_NOMEM;
+    }
+
+    entry = &database->catalog.statement_cache[database->catalog.statement_cache_count];
+    ++database->catalog.statement_cache_count;
+    *entry = (struct mylite_catalog_statement_cache_entry){
+        .sql = sql_copy,
+        .statement = statement,
+        .in_use = true,
+    };
+    *out_statement = statement;
+
+    return MYLITE_OK;
+}
+
+static char *copy_statement_sql(const char *sql) {
+    size_t sql_size = 0U;
+    char *copy = NULL;
+
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    sql_size = strlen(sql) + 1U;
+    copy = malloc(sql_size);
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    memcpy(copy, sql, sql_size);
+    return copy;
 }
 
 int mylite_catalog_bind_text(sqlite3_stmt *statement, int index, const char *value) {
@@ -132,10 +280,33 @@ int mylite_catalog_require_changed_row(sqlite3 *sqlite) {
 }
 
 int mylite_catalog_finalize_statement(sqlite3_stmt *statement, int rc) {
+    sqlite3 *sqlite = NULL;
+    struct mylite_db *database = NULL;
+    struct mylite_catalog_statement_cache_entry *entry = NULL;
     int sqlite_rc = SQLITE_OK;
 
     if (statement == NULL) {
         return rc;
+    }
+    sqlite = sqlite3_db_handle(statement);
+    database = mylite_sqlite_bootstrap_owner_from_connection(sqlite);
+    if (database != NULL) {
+        entry = find_cached_statement_by_handle(&database->catalog, statement);
+    }
+    if (entry != NULL) {
+        sqlite_rc = sqlite3_reset(statement);
+        {
+            int clear_rc = sqlite3_clear_bindings(statement);
+
+            if (sqlite_rc == SQLITE_OK) {
+                sqlite_rc = clear_rc;
+            }
+        }
+        entry->in_use = false;
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
 
     sqlite_rc = sqlite3_finalize(statement);
@@ -144,6 +315,25 @@ int mylite_catalog_finalize_statement(sqlite3_stmt *statement, int rc) {
     }
 
     return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static struct mylite_catalog_statement_cache_entry *find_cached_statement_by_handle(
+    struct mylite_catalog *catalog,
+    sqlite3_stmt *statement
+) {
+    if (catalog == NULL || statement == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U; index < catalog->statement_cache_count; ++index) {
+        struct mylite_catalog_statement_cache_entry *entry = &catalog->statement_cache[index];
+
+        if (entry->statement == statement) {
+            return entry;
+        }
+    }
+
+    return NULL;
 }
 
 int mylite_catalog_checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value) {

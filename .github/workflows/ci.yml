@@ -179,7 +179,7 @@ jobs:
       - name: Install Drupal PHPUnit dependencies
         run: tools/drupal-phpunit-mysqli-mylite install-dependencies
 
-      - name: Run Drupal PHPUnit test suite
+      - name: Run Drupal database PHPUnit tests
         run: tools/drupal-phpunit-mysqli-mylite test
 
       - name: Show generated artifact sizes

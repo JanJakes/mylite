@@ -54,8 +54,8 @@ Commands:
   build-extensions      Build the MyLite PHP extensions and PHP wrapper.
   install-dependencies  Install Drupal PHPUnit dependencies.
   build                 Build the Docker image and full PHPUnit environment.
-  test                  Run the Drupal PHPUnit test suite.
-  run                   Build the environment, then run the Drupal PHPUnit test suite.
+  test                  Run the Drupal database PHPUnit selection.
+  run                   Build the environment, then run the Drupal database PHPUnit selection.
 USAGE
 }
 
@@ -227,7 +227,11 @@ run_drupal_phpunit_suite() {
   (
     cd "${drupal_core_dir}"
     if [ "$#" -eq 0 ]; then
-      "${php_wrapper}" ../vendor/bin/phpunit -c phpunit.xml tests/Drupal/KernelTests/Core/Database/BasicSyntaxTest.php
+      "${php_wrapper}" ../vendor/bin/phpunit -c phpunit.xml \
+        tests/Drupal/KernelTests/Core/Database \
+        tests/Drupal/Tests/Core/Database \
+        modules/mysqli/tests/src/Kernel/mysqli \
+        modules/mysqli/tests/src/Unit/NamedPlaceholderConverterTest.php
     else
       "${php_wrapper}" ../vendor/bin/phpunit -c phpunit.xml "$@"
     fi

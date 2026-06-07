@@ -9,9 +9,12 @@ enabled, loads `mylite.so` and the MyLite-backed `mysqli.so`, writes Drupal's
 `core/phpunit.xml` with a `mysqli://...` `SIMPLETEST_DB` URL, creates the
 configured test schema inside a single `.mylite` file, and invokes PHPUnit.
 
-CI runs a pinned Drupal 11.3.11 compatibility selection against Drupal's core
-database kernel tests. Broader Drupal PHPUnit execution remains available
-locally by passing arguments to the same tool.
+CI runs a pinned Drupal 11.3.11 compatibility selection against Drupal's
+database-relevant PHPUnit coverage for the MyLite-backed `mysqli` driver. The
+default selection includes Drupal core's Database kernel tests, Drupal core's
+Database unit tests, the `mysqli` driver kernel tests, and the `mysqli` named
+placeholder converter unit test. Broader Drupal PHPUnit execution remains
+available locally by passing arguments to the same tool.
 
 ## Compatibility Contract
 
@@ -19,15 +22,17 @@ The harness is an application-level signal. It does not mark all Drupal,
 mysqli, or MySQL behavior as supported. A passing selected run means Drupal can
 load the MyLite mysqli replacement, resolve Drupal's own `mysqli` database
 driver, connect through a MyLite-backed database URL, bootstrap the PHPUnit
-environment, and exercise the selected database kernel test path.
+environment, and exercise the selected database kernel and unit test paths.
 
 The CI job must fail when PHPUnit fails. The runner preserves PHPUnit's process
 status through its logging pipeline and rejects non-passing PHPUnit summary
 lines even if the PHPUnit process exits successfully.
 
-The full Drupal suite is expected to expose unimplemented MySQL, mysqli, and
-Drupal database surfaces until those features are independently specified and
-added to the core compatibility matrix.
+Functional browser tests, non-`mysqli` driver tests, and unrelated Drupal
+subsystems are intentionally outside this default selection. The full Drupal
+suite is expected to expose unimplemented MySQL, mysqli, and Drupal database
+surfaces until those features are independently specified and added to the core
+compatibility matrix.
 
 ## Runtime Inputs
 

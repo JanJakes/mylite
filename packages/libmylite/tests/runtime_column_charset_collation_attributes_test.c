@@ -540,6 +540,19 @@ static int test_ascii_column_charset_collation_metadata(void) {
         "ascii",
         "ascii_bin",
     };
+    static const char *const utf8_binary_attr_metadata[] = {
+        "u",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "t",
+        "utf8mb4",
+        "utf8mb4_bin",
+    };
+    static const char *const ascii_default_binary_attr_metadata[] = {
+        "a",
+        "ascii",
+        "ascii_bin",
+    };
     static const char *const ascii_binary_unique_count[] = {"2"};
     static const char *const ascii_binary_unique_match[] = {"john"};
     static const char *const ascii_values[] = {"A", "B", "text", "bin"};
@@ -602,6 +615,44 @@ static int test_ascii_column_charset_collation_metadata(void) {
         ascii_binary_attr_metadata,
         1U,
         "ascii binary attribute metadata"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE utf8_binary_attr(u VARCHAR(10) BINARY, t TEXT BINARY) "
+        "DEFAULT CHARSET=utf8mb4"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE utf8_binary_attr",
+        "`u` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE utf8_binary_attr",
+        "`t` text CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "utf8_binary_attr",
+        utf8_binary_attr_metadata,
+        2U,
+        "utf8 standalone binary attribute metadata"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ascii_default_binary_attr(a VARCHAR(10) BINARY) DEFAULT CHARSET=ascii"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ascii_default_binary_attr",
+        "`a` varchar(10) CHARACTER SET ascii COLLATE ascii_bin"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "ascii_default_binary_attr",
+        ascii_default_binary_attr_metadata,
+        1U,
+        "ascii default binary attribute metadata"
     );
     failures += execute_statement_ok(
         database,

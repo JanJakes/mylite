@@ -175,6 +175,13 @@ static int finalize_alter_table_modify_column_definition(
     );
 
     if (rc == MYLITE_OK) {
+        rc = apply_column_binary_collation_shorthand(
+            database,
+            out_plan->table.default_charset,
+            &out_plan->column
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = apply_default_binary_charset_to_column(
             database,
             out_plan->table.default_charset,

@@ -1,0 +1,8 @@
+- [x] Verify MySQL 8.4.9 behavior for `VARCHAR(...) BINARY` under explicit and inherited charsets.
+- [x] Verify MySQL 8.4.9 behavior for joined simple `CASE` projection and string `MIN()` / `MAX()`.
+- [x] Implement standalone `BINARY` column attribute as binary-collation shorthand.
+- [x] Implement joined row-scalar simple `CASE` projection for the Drupal entity revision shape.
+- [x] Extend `MIN()` / `MAX()` descriptor aggregates to nonbinary string columns.
+- [x] Add native runtime and MySQL expectation coverage.
+- [x] Update compatibility documentation.
+- [x] Run focused native, MySQL expectation, Drupal, and release-gate checks.

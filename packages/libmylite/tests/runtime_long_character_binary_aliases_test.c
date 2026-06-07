@@ -22,6 +22,7 @@ enum {
     alias_metadata_column_count = 3,
     alias_projection_column_count = 5,
     alias_information_schema_column_count = 8,
+    long_binary_information_schema_column_count = 5,
     mysql_collation_binary_id = 63,
     mysql_collation_utf8mb4_0900_ai_ci_id = 255,
     mediumtext_result_display_length = 67108860,
@@ -191,6 +192,19 @@ static int test_alias_success_persistence_and_introspection(void) {
         "  `c` mediumblob NOT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const long_binary_show_create_rows[] = {
+        "long_binary",
+        "CREATE TABLE `long_binary` (\n"
+        "  `a` mediumtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const long_binary_information_schema_rows[] = {
+        "a",
+        "mediumtext",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "mediumtext",
+    };
     static const char *const alias_defaults_show_create_rows[] = {
         "alias_defaults",
         "CREATE TABLE `alias_defaults` (\n"
@@ -331,6 +345,29 @@ static int test_alias_success_persistence_and_introspection(void) {
             .context = "alias charset attributes",
         }
     );
+    failures += expect_statement_ok(database, "CREATE TABLE long_binary (a LONG BINARY)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE long_binary",
+            .values = long_binary_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "LONG BINARY SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'long_binary' ORDER BY ORDINAL_POSITION",
+            .values = long_binary_information_schema_rows,
+            .column_count = long_binary_information_schema_column_count,
+            .row_count = 1U,
+            .context = "LONG BINARY INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
     failures += expect_statement_ok(
         database,
         "CREATE TABLE alias_defaults (a LONG VARBINARY DEFAULT (X'4100'), "
@@ -421,15 +458,6 @@ static int test_alias_diagnostics(void) {
     failures += execute_error(
         database,
         "CREATE TABLE bad_long_text (a LONG TEXT)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_long_binary (a LONG BINARY)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

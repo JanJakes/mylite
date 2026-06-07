@@ -199,19 +199,15 @@ static int validate_column_attributes(
         if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
             ++nullability_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (
-            child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
-            child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
+                   child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
             ++default_count;
             previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
             ++primary_key_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY ||
-            child->kind == MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY ||
+                   child->kind == MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE) {
             previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) {
             ++auto_increment_count;
@@ -222,7 +218,8 @@ static int validate_column_attributes(
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) {
             ++charset_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (child->kind == MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) {
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE ||
+                   child->kind == MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE) {
             ++collation_count;
             previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE) {
@@ -330,16 +327,24 @@ static int apply_column_charset_collation_attributes(
         child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE);
     const struct mylite_sql_ast_node *collation_attribute =
         child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE);
+    const struct mylite_sql_ast_node *binary_collation_attribute =
+        child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE);
     char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
     bool has_charset = charset_attribute != NULL;
     bool has_collation = collation_attribute != NULL;
+    bool has_binary_collation = binary_collation_attribute != NULL;
     int rc = MYLITE_OK;
 
     column->character_set_name[0] = '\0';
     column->collation_name[0] = '\0';
-    if (!has_charset && !has_collation) {
+    column->has_binary_collation_attribute = has_binary_collation;
+    if (!has_charset && !has_collation && !has_binary_collation) {
         return MYLITE_OK;
+    }
+    if (has_collation && has_binary_collation) {
+        set_unsupported_error(database, "duplicate column attributes are not supported");
+        return MYLITE_ERROR;
     }
     if (planned_column_is_national_char_or_varchar(column)) {
         set_unsupported_error(
@@ -371,6 +376,16 @@ static int apply_column_charset_collation_attributes(
             collation_name,
             sizeof(collation_name)
         );
+    }
+    if (rc == MYLITE_OK && has_charset && has_binary_collation &&
+        !charset_name_is_binary(charset_name)) {
+        rc = copy_binary_collation_for_charset(
+            database,
+            charset_name,
+            collation_name,
+            sizeof(collation_name)
+        );
+        has_collation = true;
     }
     if (rc == MYLITE_OK && has_charset && has_collation && !charset_name_is_binary(charset_name) &&
         collation_name_is_binary(collation_name) &&
@@ -683,8 +698,7 @@ static int copy_column_collation_attribute_name(
     );
 }
 
-static bool planned_column_allows_charset_collation_attributes(
-    const struct planned_column *column
+static bool planned_column_allows_charset_collation_attributes(const struct planned_column *column
 ) {
     return (planned_column_is_char(column) || planned_column_is_varchar(column) ||
             planned_column_is_text_family(column)) != 0;

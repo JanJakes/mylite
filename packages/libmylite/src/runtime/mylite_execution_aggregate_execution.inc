@@ -1413,6 +1413,11 @@ static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_f
             function == PLANNED_COLUMN_AGGREGATE_BIT_XOR) != 0;
 }
 
+static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function) {
+    return (function == PLANNED_COLUMN_AGGREGATE_MIN ||
+            function == PLANNED_COLUMN_AGGREGATE_MAX) != 0;
+}
+
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 ) {
@@ -1499,7 +1504,26 @@ static const char *column_aggregate_integer_error(enum planned_column_aggregate_
         return "SUM(column) supports only integer descriptor columns";
     }
 
-    return "MIN/MAX supports only integer descriptor columns";
+    return "MIN/MAX supports only integer and nonbinary string descriptor columns";
+}
+
+static int validate_column_aggregate_descriptor_column(
+    struct mylite_db *database,
+    enum planned_column_aggregate_function aggregate_function,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+
+    if (column_aggregate_function_is_min_max(aggregate_function) &&
+        column_descriptor_is_string_family(column)) {
+        return MYLITE_OK;
+    }
+    return integer_range_for_column(
+        database,
+        column,
+        column_aggregate_integer_error(aggregate_function),
+        &range
+    );
 }
 
 static int plan_column_aggregate_column(
@@ -1512,7 +1536,6 @@ static int plan_column_aggregate_column(
     struct mylite_catalog_column_descriptor *out_column
 ) {
     const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
-    struct integer_column_range range;
     int rc = MYLITE_OK;
 
     rc = resolve_descriptor_column_reference(
@@ -1528,11 +1551,10 @@ static int plan_column_aggregate_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = integer_range_for_column(
+    rc = validate_column_aggregate_descriptor_column(
         database,
-        out_column,
-        column_aggregate_integer_error(aggregate_function),
-        &range
+        aggregate_function,
+        out_column
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -1934,6 +1956,21 @@ static int append_grouped_aggregate_sqlite_cell(
         return rc;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        rc = append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            (size_t)*sqlite_column_index,
+            &item->aggregate_column,
+            buffer,
+            buffer_size,
+            out_cell
+        );
+        ++(*sqlite_column_index);
+        return rc;
+    }
+    if ((item->function == PLANNED_GROUPED_AGGREGATE_MIN ||
+         item->function == PLANNED_GROUPED_AGGREGATE_MAX) &&
+        column_descriptor_is_string_family(&item->aggregate_column)) {
         rc = append_selected_sqlite_row_value_with_descriptor(
             database,
             statement,

@@ -7212,6 +7212,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_collation_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_binary_collation_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token binary_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE,
+        span_from_token(&binary_token)
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token comment_token,
@@ -7377,6 +7388,7 @@ static int scan_column_attribute_positions(
         case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
             rc = record_column_attribute_position(state, &out_positions->charset, position);
             break;
+        case MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE:
         case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
             rc = record_column_attribute_position(state, &out_positions->collation, position);
             break;

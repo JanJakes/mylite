@@ -78,8 +78,8 @@ slice:
 - `LONG VARCHAR(10)` and `LONG VARBINARY(10)` are syntax errors. The aliases do
   not accept a length argument.
 - `LONG BINARY` is accepted by MySQL as `MEDIUMTEXT` with a binary collation.
-  MyLite defers that spelling because it belongs to the broader `BINARY`
-  character-column attribute surface rather than the binary-string alias.
+  MyLite admits it through the broader `BINARY` character-column attribute
+  surface rather than treating it as a binary-string alias.
 - Literal defaults on normalized `MEDIUMTEXT` and `MEDIUMBLOB` columns are
   rejected by MySQL. Expression defaults are accepted upstream but remain
   deferred in MyLite because the current `TEXT` and BLOB-family default slices
@@ -101,6 +101,8 @@ The implementation must add:
   the existing `MEDIUMTEXT` / `MEDIUMBLOB` code paths;
 - column `CHARACTER SET` / `CHARSET` / `COLLATE` support for `LONG` and
   `LONG VARCHAR` through the existing `TEXT` family attribute path;
+- standalone `BINARY` binary-collation shorthand for `LONG` and `LONG VARCHAR`
+  through the normalized `MEDIUMTEXT` descriptor path;
 - parser tests for alias AST shape and rejected length forms;
 - fast runtime tests for create/add-column metadata, DML, clone/copy,
   persistence, and deterministic unsupported forms;
@@ -111,14 +113,13 @@ The implementation must add:
 
 This feature must not implement:
 
-- `LONG BINARY`, `LONG TEXT`, `LONG VARCHAR(length)`,
-  `LONG VARBINARY(length)`, signed or expression alias lengths, or other
-  vendor aliases;
+- `LONG TEXT`, `LONG VARCHAR(length)`, `LONG VARBINARY(length)`, signed or
+  expression alias lengths, or other vendor aliases;
 - new `TEXT` or BLOB-family value semantics beyond the existing normalized
   target paths;
 - large-object literal defaults or expression defaults;
-- binary-string charset/collation attributes, `CHARACTER SET binary` rewrites,
-  or character-column `BINARY` collation attributes;
+- new binary-string charset/collation attributes or `CHARACTER SET binary`
+  rewrites beyond the existing normalized descriptor paths;
 - new comparisons, ordering, grouping, distinct, functions, casts, parameters,
   or expression evaluation;
 - new public API, catalog columns, physical storage formats, indexes, or SQLite
@@ -238,8 +239,8 @@ All DML behavior is inherited from the normalized target descriptor:
 
 The feature uses existing diagnostics where possible:
 
-- malformed alias syntax, length arguments, `LONG TEXT`, and deferred
-  `LONG BINARY` produce deterministic parse or unsupported diagnostics;
+- malformed alias syntax, length arguments, and `LONG TEXT` produce
+  deterministic parse or unsupported diagnostics;
 - explicit large-object literal/default-expression attempts use existing
   normalized target diagnostics;
 - invalid string/binary assignment, embedded `NUL` in text, overlength values,
@@ -274,7 +275,7 @@ covering:
 - `ALTER TABLE ... ADD [COLUMN]` with admitted aliases;
 - `CREATE TABLE ... LIKE`, `CREATE TABLE ... SELECT`, and reopen persistence;
 - deterministic rejection of `LONG VARCHAR(length)`, `LONG VARBINARY(length)`,
-  `LONG TEXT`, `LONG BINARY`, literal defaults, expression defaults, and
+  `LONG TEXT`, literal defaults, expression defaults, and
   unsupported binary-string charset/collation attributes;
 - no `.mylite` preamble mutation.
 

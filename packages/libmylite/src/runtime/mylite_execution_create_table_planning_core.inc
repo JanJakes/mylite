@@ -174,6 +174,13 @@ static int plan_create_table_item(
             );
         }
         if (rc == MYLITE_OK) {
+            rc = apply_column_binary_collation_shorthand(
+                database,
+                out_plan->default_charset,
+                &out_plan->columns[current_column_index]
+            );
+        }
+        if (rc == MYLITE_OK) {
             rc = apply_create_table_default_binary_charset_to_column(
                 database,
                 out_plan,

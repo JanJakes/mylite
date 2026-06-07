@@ -556,13 +556,14 @@ static int test_text_type_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "CREATE TABLE long_aliases (a LONG, b LONG VARCHAR NOT NULL, c LONG VARBINARY);",
+        "CREATE TABLE long_aliases (a LONG, b LONG VARCHAR NOT NULL, c LONG VARBINARY, "
+        "d LONG BINARY);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     statement = parser_test_child_at(result.root, 0U);
     columns = parser_test_child_at(statement, 1U);
-    failures += parser_test_expect_child_count(columns, 3U, "long alias column list");
+    failures += parser_test_expect_child_count(columns, 4U, "long alias column list");
     column = parser_test_child_at(columns, 0U);
     column_type = parser_test_child_at(column, 1U);
     failures += parser_test_expect_span_text(
@@ -609,6 +610,24 @@ static int test_text_type_statements(void) {
     );
     failures +=
         parser_test_expect_span_text(column_type, "LONG VARBINARY", "long varbinary alias span");
+    column = parser_test_child_at(columns, 3U);
+    column_type = parser_test_child_at(column, 1U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(column, 0U),
+        "d",
+        "long binary alias column name"
+    );
+    failures += parser_test_expect_text_type(
+        column_type,
+        MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+        "long binary alias mediumtext type"
+    );
+    failures += parser_test_expect_span_text(column_type, "LONG", "long binary alias type span");
+    failures += parser_test_expect_node(
+        parser_test_first_child_kind(column, MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE),
+        MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE,
+        "long binary alias binary collation attribute"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -861,13 +880,6 @@ static int test_text_type_statements(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "CREATE TABLE invalid_long_binary (body LONG BINARY);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
     return failures;
 }
 

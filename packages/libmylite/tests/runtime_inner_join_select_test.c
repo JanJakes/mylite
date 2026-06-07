@@ -147,6 +147,7 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
         "43",
     };
     static const char *const three_cartesian_rows[] = {"1", "7", "30", "1", "8", "30"};
+    static const char *const simple_case_rows[] = {"1", "1", "2", "0", "3", "0"};
     static const char *const multi_star_columns[] = {
         "id",
         "k",
@@ -205,6 +206,26 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
         3
     );
     failures += seed_extra_join_tables(database);
+    failures += expect_statement(
+        database,
+        "CREATE TABLE case_base(id INT NOT NULL, revision_id INT NULL)",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "CREATE TABLE case_revision(id INT NOT NULL, revision_id INT NULL)",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO case_base VALUES (1, 10), (2, 20), (3, NULL)",
+        (struct expected_statement){3, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO case_revision VALUES (1, 10), (2, 21), (3, NULL)",
+        (struct expected_statement){3, 0U}
+    );
 
     failures += expect_query_values(
         database,
@@ -260,6 +281,18 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "cross join with on equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b.id, CASE b.revision_id WHEN r.revision_id THEN 1 ELSE 0 END "
+                   "AS isDefaultRevision FROM case_base AS b "
+                   "JOIN case_revision AS r ON r.id = b.id ORDER BY b.id",
+            .values = simple_case_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "joined simple case projection compares revision ids",
         }
     );
     failures += expect_query_values(

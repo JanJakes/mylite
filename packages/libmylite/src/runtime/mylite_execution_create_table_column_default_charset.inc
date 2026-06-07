@@ -82,11 +82,56 @@ static int apply_default_binary_charset_to_column(
     return validate_column_default(database, column->default_node, column);
 }
 
+static int apply_column_binary_collation_shorthand(
+    struct mylite_db *database,
+    const char *default_charset,
+    struct planned_column *column
+) {
+    const char *effective_charset = default_charset;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || !column->has_binary_collation_attribute) {
+        return MYLITE_OK;
+    }
+    if (column->collation_name[0] != '\0') {
+        return MYLITE_OK;
+    }
+    if (column->character_set_name[0] != '\0') {
+        effective_charset = column->character_set_name;
+    }
+    if (effective_charset == NULL || effective_charset[0] == '\0') {
+        effective_charset = MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
+    }
+    if (charset_name_is_binary(effective_charset)) {
+        return apply_default_binary_charset_to_column(database, effective_charset, column);
+    }
+
+    rc = copy_normalized_charset_name(
+        database,
+        effective_charset,
+        column->character_set_name,
+        sizeof(column->character_set_name)
+    );
+    if (rc == MYLITE_OK) {
+        rc = copy_binary_collation_for_charset(
+            database,
+            effective_charset,
+            column->collation_name,
+            sizeof(column->collation_name)
+        );
+    }
+    return rc;
+}
+
 static bool create_table_column_has_explicit_charset_or_collation(
     const struct mylite_sql_ast_node *column_node
 ) {
     return (child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) != NULL ||
-            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) != NULL) != 0;
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) != NULL ||
+            child_with_kind(
+                column_node,
+                MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE
+            ) != NULL) != 0;
 }
 
 static bool planned_create_table_default_charset_is_binary(

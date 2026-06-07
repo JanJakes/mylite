@@ -1096,6 +1096,7 @@ struct planned_column {
     char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
     char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_binary_collation_attribute;
     char comment[MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY];
     bool is_generated;
     enum mylite_catalog_generated_column_kind generated_kind;
@@ -12705,6 +12706,7 @@ static enum planned_column_aggregate_function select_list_column_aggregate_funct
     const struct mylite_sql_ast_node *select_list
 );
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
+static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 );
@@ -12714,6 +12716,11 @@ static const char *column_aggregate_optional_clause_error(
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_column_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_integer_error(enum planned_column_aggregate_function function);
+static int validate_column_aggregate_descriptor_column(
+    struct mylite_db *database,
+    enum planned_column_aggregate_function aggregate_function,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_column_aggregate_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
@@ -15870,6 +15877,11 @@ static int normalize_text_length_argument_for_default_charset(
     const char *default_charset
 );
 static int apply_default_binary_charset_to_column(
+    struct mylite_db *database,
+    const char *default_charset,
+    struct planned_column *column
+);
+static int apply_column_binary_collation_shorthand(
     struct mylite_db *database,
     const char *default_charset,
     struct planned_column *column
@@ -22785,9 +22797,37 @@ static int plan_row_scalar_searched_case_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_simple_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_nested_searched_case_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_nested_simple_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_simple_case_equality_condition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *case_value,
+    const struct mylite_sql_ast_node *when_value,
     bool has_source,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -22832,6 +22872,15 @@ static int plan_row_scalar_leaf_logical_condition_expression(
 );
 static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
     const struct mylite_sql_ast_node *expression
+);
+static int plan_row_scalar_control_flow_comparison_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_if_expression(
     struct mylite_db *database,

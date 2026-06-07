@@ -9587,33 +9587,8 @@ column_attribute_list_opt(A) ::= column_attribute_list(B). {
 column_attribute_list(A) ::= column_attribute(B). {
     A = mylite_sql_parser_make_column_attribute_list(state, B);
 }
-column_attribute_list(A) ::= CHARACTER(C) SET option_name(N) BINARY(B). {
-    A = mylite_sql_parser_make_column_attribute_list(
-        state,
-        mylite_sql_parser_make_column_charset_attribute(state, C, N));
-    A = mylite_sql_parser_append_column_attribute(
-        state,
-        A,
-        mylite_sql_parser_make_column_collation_attribute(
-            state,
-            B,
-            mylite_sql_parser_make_identifier(state, B)));
-}
 column_attribute_list(A) ::= column_attribute_list(B) column_attribute(C). {
     A = mylite_sql_parser_append_column_attribute(state, B, C);
-}
-column_attribute_list(A) ::= column_attribute_list(L) CHARACTER(C) SET option_name(N) BINARY(B). {
-    A = mylite_sql_parser_append_column_attribute(
-        state,
-        L,
-        mylite_sql_parser_make_column_charset_attribute(state, C, N));
-    A = mylite_sql_parser_append_column_attribute(
-        state,
-        A,
-        mylite_sql_parser_make_column_collation_attribute(
-            state,
-            B,
-            mylite_sql_parser_make_identifier(state, B)));
 }
 
 column_attribute(A) ::= nullability(B). {
@@ -9651,6 +9626,9 @@ column_attribute(A) ::= COLLATE(C) BINARY(N). {
         state,
         C,
         mylite_sql_parser_make_identifier(state, N));
+}
+column_attribute(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_column_binary_collation_attribute(state, T);
 }
 column_attribute(A) ::= COMMENT(C) STRING(V). {
     A = mylite_sql_parser_make_column_comment_attribute(

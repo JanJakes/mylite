@@ -333,7 +333,6 @@ static int plan_grouped_column_aggregate_column(
     size_t *out_source_index
 ) {
     const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
-    struct integer_column_range range;
     int rc = resolve_descriptor_column_reference_with_source_index(
         database,
         column_node,
@@ -349,11 +348,10 @@ static int plan_grouped_column_aggregate_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    return integer_range_for_column(
+    return validate_column_aggregate_descriptor_column(
         database,
-        out_column,
-        column_aggregate_integer_error(aggregate_function),
-        &range
+        aggregate_function,
+        out_column
     );
 }
 

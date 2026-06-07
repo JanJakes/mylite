@@ -256,8 +256,8 @@ expect_error \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "mysql accepts deferred long binary collation alias" \
-    "CREATE TABLE deferred_long_binary (a LONG BINARY); SHOW CREATE TABLE deferred_long_binary;" \
+    "mysql accepts long binary collation alias" \
+    "CREATE TABLE long_binary (a LONG BINARY); SHOW CREATE TABLE long_binary;" \
     "$DATABASE"
 
 expect_upstream_accepts \

@@ -1232,6 +1232,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_charset_attribute";
     case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
         return "column_collation_attribute";
+    case MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE:
+        return "column_binary_collation_attribute";
     case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
         return "generated_column_clause";
     case MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL:

@@ -96,6 +96,7 @@ int main(void) {
 }
 
 static int test_min_max_values_persistence_rename_and_drop(void) {
+    static const char *const grouped_string_min_values[] = {"Blue", "green"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -121,6 +122,25 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += create_empty_table(database, "empty_numbers");
     failures += create_all_null_table(database, "all_null_numbers");
     failures += create_aggregate_table(database, "numbers");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE strings(owner_id INT NOT NULL, color VARCHAR(16) NULL, "
+        "format VARCHAR(16) NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO strings VALUES "
+        "(1, 'red', 'plain'), "
+        "(1, 'Blue', 'rich'), "
+        "(2, NULL, NULL), "
+        "(2, 'green', 'basic')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(database, "ALTER TABLE numbers ALTER COLUMN tie SET INVISIBLE", &result);
     mylite_result_free(result);
     result = NULL;
@@ -384,6 +404,52 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
             .column = "MAX(n)",
             .value = NULL,
             .context = "all null maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MIN(color) FROM strings",
+            .column = "MIN(color)",
+            .value = "Blue",
+            .context = "string minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(color) FROM strings",
+            .column = "MAX(color)",
+            .value = "red",
+            .context = "string maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MIN(format) FROM strings",
+            .column = "MIN(format)",
+            .value = "basic",
+            .context = "second string minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(color) FROM strings WHERE owner_id = 99",
+            .column = "MAX(color)",
+            .value = NULL,
+            .context = "empty string maximum",
+        }
+    );
+    failures += expect_aggregate_rows_query(
+        database,
+        (struct expected_aggregate_rows_query){
+            .sql = "SELECT MIN(color) FROM strings GROUP BY owner_id ORDER BY owner_id",
+            .column = "MIN(color)",
+            .values = grouped_string_min_values,
+            .value_count = sizeof(grouped_string_min_values) / sizeof(grouped_string_min_values[0]),
+            .context = "grouped string minimum",
         }
     );
 

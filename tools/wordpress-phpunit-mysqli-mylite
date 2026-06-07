@@ -8,6 +8,7 @@ wordpress_ref="${MYLITE_WORDPRESS_REF:-trunk}"
 wordpress_dir="${MYLITE_WORDPRESS_DIR:-${root_dir}/build/wordpress-develop}"
 phpunit_tools_dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR:-${root_dir}/build/wordpress-phpunit-tools}"
 cmake_build_dir="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR:-${root_dir}/build/wordpress-php-mylite}"
+cmake_build_type="${MYLITE_WORDPRESS_CMAKE_BUILD_TYPE:-RelWithDebInfo}"
 db_path="${MYLITE_WORDPRESS_DB_PATH:-${root_dir}/build/wordpress-tests.mylite}"
 container_root="/work"
 container_wordpress_dir="${container_root}${wordpress_dir#"${root_dir}"}"
@@ -68,6 +69,7 @@ run_container() {
     -e MYLITE_WORDPRESS_DIR="${container_wordpress_dir}" \
     -e MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR="${container_phpunit_tools_dir}" \
     -e MYLITE_WORDPRESS_CMAKE_BUILD_DIR="${container_cmake_build_dir}" \
+    -e MYLITE_WORDPRESS_CMAKE_BUILD_TYPE="${cmake_build_type}" \
     -e MYLITE_WORDPRESS_DB_PATH="${container_db_path}" \
     -v "${root_dir}:${container_root}" \
     -w "${container_root}" \
@@ -154,6 +156,7 @@ build_mylite_php_extensions() {
   local build_start
   build_start="$(date +%s)"
   cmake -S . -B "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${MYLITE_WORDPRESS_CMAKE_BUILD_TYPE}" \
     -DMYLITE_WARNINGS_AS_ERRORS=ON \
     -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
     -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \

@@ -7,6 +7,7 @@ drupal_repo="${MYLITE_DRUPAL_REPO:-https://git.drupalcode.org/project/drupal.git
 drupal_ref="${MYLITE_DRUPAL_REF:-11.3.11}"
 drupal_dir="${MYLITE_DRUPAL_DIR:-${root_dir}/build/drupal-core}"
 cmake_build_dir="${MYLITE_DRUPAL_CMAKE_BUILD_DIR:-${root_dir}/build/drupal-php-mylite}"
+cmake_build_type="${MYLITE_DRUPAL_CMAKE_BUILD_TYPE:-RelWithDebInfo}"
 db_file_name="${MYLITE_DRUPAL_DB_FILE_NAME:-drupal-tests.mylite}"
 db_name="${MYLITE_DRUPAL_DB_NAME:-drupal_tests}"
 db_prefix="${MYLITE_DRUPAL_DB_PREFIX:-mylite_drupal_}"
@@ -67,6 +68,7 @@ run_container() {
     -e MYLITE_DRUPAL_REF="${drupal_ref}" \
     -e MYLITE_DRUPAL_DIR="${container_drupal_dir}" \
     -e MYLITE_DRUPAL_CMAKE_BUILD_DIR="${container_cmake_build_dir}" \
+    -e MYLITE_DRUPAL_CMAKE_BUILD_TYPE="${cmake_build_type}" \
     -e MYLITE_DRUPAL_DB_FILE_NAME="${db_file_name}" \
     -e MYLITE_DRUPAL_DB_NAME="${db_name}" \
     -e MYLITE_DRUPAL_DB_PREFIX="${db_prefix}" \
@@ -129,6 +131,7 @@ build_mylite_php_extensions() {
   local build_start
   build_start="$(date +%s)"
   cmake -S . -B "${MYLITE_DRUPAL_CMAKE_BUILD_DIR}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${MYLITE_DRUPAL_CMAKE_BUILD_TYPE}" \
     -DMYLITE_WARNINGS_AS_ERRORS=ON \
     -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
     -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \

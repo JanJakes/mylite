@@ -22,6 +22,7 @@
       "inherits": "dev",
       "binaryDir": "${sourceDir}/build/php-dev",
       "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
       }
     }

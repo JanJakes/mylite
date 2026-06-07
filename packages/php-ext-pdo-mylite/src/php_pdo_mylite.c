@@ -457,8 +457,15 @@ static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const 
         native_errno = (unsigned)status;
     }
 
-    strncpy(*pdo_error, sqlstate, sizeof(*pdo_error));
-    (*pdo_error)[sizeof(*pdo_error) - 1U] = '\0';
+    {
+        size_t sqlstate_size = strlen(sqlstate);
+
+        if (sqlstate_size >= sizeof(*pdo_error)) {
+            sqlstate_size = sizeof(*pdo_error) - 1U;
+        }
+        memcpy(*pdo_error, sqlstate, sqlstate_size);
+        (*pdo_error)[sqlstate_size] = '\0';
+    }
     if (handle != NULL) {
         handle->native_errno = native_errno;
         if (handle->errmsg != NULL) {

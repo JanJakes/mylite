@@ -293,7 +293,7 @@ static int execute_alter_table_multi_action_add_column(
     int rc = MYLITE_OK;
 
     make_alter_table_action_statement_view(table_node, &view, action);
-    rc = plan_alter_table_add_column(database, &view.statement, &plan);
+    rc = plan_alter_table_add_column_for_multi_action(database, &view.statement, &plan);
     if (rc == MYLITE_OK) {
         rc = reject_warning_producing_multi_action_add_column(database, &plan);
     }
@@ -454,7 +454,7 @@ static int execute_alter_table_multi_action_modify_column(
     rc = reject_alter_table_multi_action_temporary_target(database, table_node);
     if (rc == MYLITE_OK) {
         make_alter_table_action_statement_view(table_node, &view, action);
-        rc = plan_alter_table_modify_column(database, &view.statement, &plan);
+        rc = plan_alter_table_modify_column_for_multi_action(database, &view.statement, &plan);
     }
     if (rc == MYLITE_OK && plan.zero_temporal_default_warnings.count > 0U) {
         set_unsupported_error(
@@ -490,7 +490,7 @@ static int execute_alter_table_multi_action_change_column(
     rc = reject_alter_table_multi_action_temporary_target(database, table_node);
     if (rc == MYLITE_OK) {
         make_alter_table_action_statement_view(table_node, &view, action);
-        rc = plan_alter_table_change_column(database, &view.statement, &plan);
+        rc = plan_alter_table_change_column_for_multi_action(database, &view.statement, &plan);
     }
     if (rc == MYLITE_OK && plan.zero_temporal_default_warnings.count > 0U) {
         set_unsupported_error(

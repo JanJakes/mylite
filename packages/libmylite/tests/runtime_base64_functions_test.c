@@ -367,7 +367,7 @@ static int test_base64_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'TO_BASE64'",
+            .message_part = "near '('",
         }
     );
 

@@ -1417,6 +1417,14 @@ static int plan_row_scalar_integer_arithmetic_frame(
             frame->out_expression
         );
     }
+    if (current->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+        return plan_row_scalar_count_star_expression(
+            database,
+            current,
+            true,
+            frame->out_expression
+        );
+    }
     if (current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
         return plan_row_scalar_unix_timestamp_expression(
             database,
@@ -1715,18 +1723,12 @@ static bool signed_integer_arithmetic_column_descriptor_is_supported(
     }
 
     logical_type = column->logical_type;
-    if (strstr(logical_type, "UNSIGNED") != NULL) {
-        set_unsupported_error(
-            database,
-            "table-backed signed integer arithmetic projection does not support unsigned "
-            "integer columns"
-        );
-        return false;
-    }
     if (strcmp(logical_type, "TINYINT") == 0 || strcmp(logical_type, "TINYINT(1)") == 0 ||
-        strcmp(logical_type, "SMALLINT") == 0 || strcmp(logical_type, "MEDIUMINT") == 0 ||
-        strcmp(logical_type, "INT") == 0 || strcmp(logical_type, "INTEGER") == 0 ||
-        strcmp(logical_type, "BIGINT") == 0) {
+        strcmp(logical_type, "TINYINT UNSIGNED") == 0 || strcmp(logical_type, "SMALLINT") == 0 ||
+        strcmp(logical_type, "MEDIUMINT") == 0 || strcmp(logical_type, "SMALLINT UNSIGNED") == 0 ||
+        strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0 || strcmp(logical_type, "INT") == 0 ||
+        strcmp(logical_type, "INTEGER") == 0 || strcmp(logical_type, "INT UNSIGNED") == 0 ||
+        strcmp(logical_type, "INTEGER UNSIGNED") == 0 || strcmp(logical_type, "BIGINT") == 0) {
         return true;
     }
 
@@ -2066,10 +2068,14 @@ static const char *calendar_date_argument_count_error_function_name(
 }
 
 static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_kind kind) {
-    if (mylite_execution_is_string_length_function_kind(kind) || mylite_execution_is_string_codepoint_function_kind(kind) ||
-        mylite_execution_is_string_case_function_kind(kind) || mylite_execution_is_string_trim_function_kind(kind) ||
-        mylite_execution_is_string_slice_function_kind(kind) || mylite_execution_is_string_padding_function_kind(kind) ||
-        mylite_execution_is_string_bitmask_function_kind(kind) || mylite_execution_is_string_search_function_kind(kind)) {
+    if (mylite_execution_is_string_length_function_kind(kind) ||
+        mylite_execution_is_string_codepoint_function_kind(kind) ||
+        mylite_execution_is_string_case_function_kind(kind) ||
+        mylite_execution_is_string_trim_function_kind(kind) ||
+        mylite_execution_is_string_slice_function_kind(kind) ||
+        mylite_execution_is_string_padding_function_kind(kind) ||
+        mylite_execution_is_string_bitmask_function_kind(kind) ||
+        mylite_execution_is_string_search_function_kind(kind)) {
         return true;
     }
 
@@ -2288,14 +2294,16 @@ static int plan_row_scalar_string_expression(
             out_expression
         );
     }
-    if (mylite_execution_regexp_string_function_argument_count_error_name(expression->kind) != NULL) {
+    if (mylite_execution_regexp_string_function_argument_count_error_name(expression->kind) !=
+        NULL) {
         set_native_function_parameter_count_error(
             database,
             mylite_execution_regexp_string_function_argument_count_error_name(expression->kind)
         );
         return MYLITE_ERROR;
     }
-    if (mylite_execution_regexp_string_function_kind(expression->kind) != PLANNED_REGEXP_STRING_FUNCTION_NONE) {
+    if (mylite_execution_regexp_string_function_kind(expression->kind) !=
+        PLANNED_REGEXP_STRING_FUNCTION_NONE) {
         return plan_row_scalar_regexp_string_expression(
             database,
             expression,

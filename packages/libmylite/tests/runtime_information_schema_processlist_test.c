@@ -688,7 +688,10 @@ static int expect_processlist_result(
     char connection_id_copy[connection_id_text_capacity];
     mylite_result *result = NULL;
     const char *connection_id = NULL;
+    const char *row_info = NULL;
     const char *info = NULL;
+    size_t row_count = 0U;
+    size_t row_index = 0U;
     int failures = 0;
 
     connection_id_copy[0] = '\0';
@@ -706,11 +709,30 @@ static int expect_processlist_result(
             expected.context
         );
     }
-    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
+    row_count = mylite_result_row_count(result);
+    if (row_count == 0U) {
+        fprintf(stderr, "%s: expected at least one processlist row\n", expected.context);
+        ++failures;
+        mylite_result_free(result);
+        return failures;
+    }
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
     failures += expect_size(mylite_result_warning_count(result), 1U, expected.context);
 
-    connection_id = mylite_result_value_text(result, 0U, processlist_id_column);
+    while (row_index < row_count) {
+        row_info = mylite_result_value_text(result, row_index, processlist_info_column);
+        if (row_info != NULL && strcmp(row_info, expected.expected_info) == 0) {
+            break;
+        }
+        ++row_index;
+    }
+    if (row_index == row_count) {
+        fprintf(stderr, "%s: expected current query processlist row\n", expected.context);
+        ++failures;
+        row_index = 0U;
+    }
+
+    connection_id = mylite_result_value_text(result, row_index, processlist_id_column);
     failures += expect_decimal_text(connection_id, expected.context);
     if (connection_id != NULL) {
         int written = snprintf(connection_id_copy, sizeof(connection_id_copy), "%s", connection_id);
@@ -721,36 +743,36 @@ static int expect_processlist_result(
         }
     }
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, processlist_user_column),
+        mylite_result_value_text(result, row_index, processlist_user_column),
         "root",
         expected.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, processlist_host_column),
+        mylite_result_value_text(result, row_index, processlist_host_column),
         "%",
         expected.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, processlist_db_column),
+        mylite_result_value_text(result, row_index, processlist_db_column),
         expected.expected_db,
         expected.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, processlist_command_column),
+        mylite_result_value_text(result, row_index, processlist_command_column),
         "Query",
         expected.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, processlist_time_column),
+        mylite_result_value_text(result, row_index, processlist_time_column),
         "0",
         expected.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, processlist_state_column),
+        mylite_result_value_text(result, row_index, processlist_state_column),
         "executing",
         expected.context
     );
-    info = mylite_result_value_text(result, 0U, processlist_info_column);
+    info = mylite_result_value_text(result, row_index, processlist_info_column);
     failures += expect_text_or_null(info, expected.expected_info, expected.context);
     if (info == NULL) {
         fprintf(stderr, "%s: expected non-null processlist info\n", expected.context);

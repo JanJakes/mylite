@@ -37,6 +37,7 @@ void mylite_result_free(mylite_result *result) {
     mylite_result_metadata_deinit(&result->metadata);
     free_values(result->values, result->row_count * result->column_count);
     free(result->value_sizes);
+    free(result->info);
     free(result);
 }
 
@@ -188,6 +189,24 @@ void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_row
     }
 
     result->affected_rows = affected_rows;
+}
+
+int mylite_result_set_info(mylite_result *result, const char *info) {
+    char *owned_info = NULL;
+
+    if (result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (info != NULL) {
+        owned_info = duplicate_text(info);
+        if (owned_info == NULL) {
+            return MYLITE_NOMEM;
+        }
+    }
+
+    free(result->info);
+    result->info = owned_info;
+    return MYLITE_OK;
 }
 
 void mylite_result_set_insert_id(mylite_result *result, uint64_t insert_id) {
@@ -391,6 +410,14 @@ int64_t mylite_result_affected_rows(const mylite_result *result) {
     }
 
     return result->affected_rows;
+}
+
+const char *mylite_result_info(const mylite_result *result) {
+    if (result == NULL) {
+        return NULL;
+    }
+
+    return result->info;
 }
 
 uint64_t mylite_result_insert_id(const mylite_result *result) {

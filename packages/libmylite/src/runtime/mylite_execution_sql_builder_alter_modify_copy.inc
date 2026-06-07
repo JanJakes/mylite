@@ -200,9 +200,28 @@ static bool alter_table_modify_needs_binary_copy_materialization(
             column_descriptor_is_binary_string_family(column)) {
             return true;
         }
+        if (alter_table_modify_changes_binary_to_string(plan, column)) {
+            return true;
+        }
+        if (column->column_id == plan->original_column.column_id &&
+            column_descriptor_is_decimal(column)) {
+            return true;
+        }
     }
 
     return false;
+}
+
+static bool alter_table_modify_changes_binary_to_string(
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (plan == NULL || column == NULL) {
+        return false;
+    }
+    return (column->column_id == plan->original_column.column_id &&
+            column_descriptor_is_binary_string_family(&plan->original_column) &&
+            column_descriptor_is_string_family(column)) != 0;
 }
 
 static int execute_physical_alter_table_modify_copy_rows(
@@ -238,8 +257,8 @@ static int execute_physical_alter_table_modify_copy_rows(
     if (rc == MYLITE_OK) {
         rc = prepare_sqlite_statement(database, insert_sql, &statements.insert_statement);
     }
-    while (rc == MYLITE_OK &&
-           (sqlite_rc = sqlite3_step(statements.select_statement)) == SQLITE_ROW) {
+    while (rc == MYLITE_OK && (sqlite_rc = sqlite3_step(statements.select_statement)) == SQLITE_ROW
+    ) {
         if (row_number >= (size_t)INT64_MAX) {
             set_runtime_error(database, plan->row_count_overflow_message);
             rc = MYLITE_ERROR;
@@ -429,6 +448,30 @@ static int materialize_alter_table_modify_copy_row(
                     &values[column_index]
                 );
             }
+        } else if (alter_table_modify_changes_binary_to_string(plan, column) &&
+                   sqlite3_column_type(select_statement, (int)column_index) == SQLITE_BLOB) {
+            rc = materialize_alter_table_modify_binary_to_text_value(
+                database,
+                select_statement,
+                (int)column_index,
+                column,
+                row_number,
+                &values[column_index]
+            );
+        } else if (column->column_id == plan->original_column.column_id &&
+                   column_descriptor_is_decimal(column) &&
+                   sqlite3_column_type(select_statement, (int)column_index) != SQLITE_NULL) {
+            rc = materialize_alter_table_modify_decimal_value(
+                database,
+                select_statement,
+                (int)column_index,
+                column,
+                row_number,
+                &values[column_index]
+            );
+        } else if (column->column_id == plan->original_column.column_id &&
+                   column_descriptor_is_decimal(column)) {
+            values[column_index] = (struct planned_value){.is_null = true};
         } else {
             rc = materialize_insert_select_raw_value(
                 database,
@@ -443,6 +486,84 @@ static int materialize_alter_table_modify_copy_row(
     }
 
     return MYLITE_OK;
+}
+
+static int materialize_alter_table_modify_binary_to_text_value(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    const void *bytes = sqlite3_column_blob(select_statement, selected_column_index);
+    int byte_count = sqlite3_column_bytes(select_statement, selected_column_index);
+    char *copy = NULL;
+    int rc = MYLITE_OK;
+
+    if ((bytes == NULL && byte_count != 0) || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = validate_existing_text_for_column(
+        database,
+        (const unsigned char *)bytes,
+        byte_count,
+        column,
+        row_number
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    copy = malloc((size_t)byte_count + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, bytes, (size_t)byte_count);
+    copy[(size_t)byte_count] = '\0';
+    return assign_text_value(database, copy, (size_t)byte_count, out_value);
+}
+
+static int materialize_alter_table_modify_decimal_value(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    const unsigned char *text = sqlite3_column_text(select_statement, selected_column_index);
+    int byte_count = sqlite3_column_bytes(select_statement, selected_column_index);
+    struct decimal_type_info info = {0};
+    bool is_negative = false;
+    size_t start = 0U;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    if (byte_count > 0 && text[0] == '-') {
+        is_negative = true;
+        start = 1U;
+    }
+    rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+    if (rc != MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    return canonicalize_decimal_text(
+        database,
+        (const char *)text + start,
+        (size_t)byte_count - start,
+        is_negative,
+        &info,
+        column->name,
+        row_number,
+        false,
+        out_value
+    );
 }
 
 static int bind_alter_table_modify_copy_row(

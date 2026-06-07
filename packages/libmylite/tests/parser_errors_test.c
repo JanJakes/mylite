@@ -697,7 +697,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE t (id INT DEFAULT NULL DEFAULT NULL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1793,8 +1793,7 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("UPDATE t SET id = 1 / 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("UPDATE t SET id = other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("UPDATE t SET id = other;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

@@ -3,6 +3,23 @@ static int plan_alter_table_add_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_column *out_plan
 ) {
+    return plan_alter_table_add_column_with_options(database, statement, false, out_plan);
+}
+
+static int plan_alter_table_add_column_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_column *out_plan
+) {
+    return plan_alter_table_add_column_with_options(database, statement, true, out_plan);
+}
+
+static int plan_alter_table_add_column_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool defer_auto_increment_key_validation,
+    struct planned_alter_table_add_column *out_plan
+) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct primary_key_info existing_primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
@@ -10,6 +27,7 @@ static int plan_alter_table_add_column(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_column){0};
+    out_plan->defer_auto_increment_key_validation = defer_auto_increment_key_validation;
     rc = resolve_visible_writable_table_reference(
         database,
         child_at(statement, 0U),
@@ -31,11 +49,18 @@ static int plan_alter_table_add_column(
         rc = reject_unsupported_alter_add_column_planned_column(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
-        rc = reject_auto_increment_column_definition(
-            database,
-            child_at(statement, 1U),
-            "ALTER TABLE ADD COLUMN does not support AUTO_INCREMENT"
-        );
+        if (out_plan->defer_auto_increment_key_validation) {
+            rc = validate_alter_table_add_column_auto_increment_definition(
+                database,
+                &out_plan->column
+            );
+        } else {
+            rc = reject_auto_increment_column_definition(
+                database,
+                child_at(statement, 1U),
+                "ALTER TABLE ADD COLUMN does not support AUTO_INCREMENT"
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = validate_alter_table_add_column_target(database, out_plan);
@@ -68,7 +93,12 @@ static int plan_alter_table_add_column(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK && out_plan->adds_inline_primary_key) {
         rc = mylite_execution_load_primary_key_info(
@@ -113,6 +143,30 @@ static int plan_alter_table_add_column(
     mylite_execution_primary_key_info_deinit(&existing_primary_key);
 
     return rc;
+}
+
+static int validate_alter_table_add_column_auto_increment_definition(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    if (column == NULL || !column->is_auto_increment) {
+        return MYLITE_OK;
+    }
+    if (planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
+        planned_column_is_bit(column) || planned_column_is_enum(column) ||
+        planned_column_is_set(column) || planned_column_is_decimal(column) ||
+        planned_column_is_approximate(column) || planned_column_is_date(column) ||
+        planned_column_is_time(column) || planned_column_is_datetime(column) ||
+        planned_column_is_timestamp(column)) {
+        set_incorrect_column_specifier_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column->default_node != NULL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_alter_table_add_column_target(
@@ -585,7 +639,7 @@ static int alter_table_add_column_in_mutation(
         plan->column.physical_type,
         plan->column.is_nullable,
         true,
-        false,
+        plan->column.is_auto_increment,
         plan->column.default_kind,
         plan->column.default_integer,
         plan->column.default_text,
@@ -1089,7 +1143,12 @@ static int plan_alter_table_add_primary_key(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_primary_key_info(
@@ -1524,10 +1583,8 @@ static int validate_alter_table_add_primary_key_nulls(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -1590,10 +1647,8 @@ static int validate_alter_table_add_primary_key_string_values(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -1637,10 +1692,8 @@ static int validate_alter_table_add_primary_key_duplicates(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }

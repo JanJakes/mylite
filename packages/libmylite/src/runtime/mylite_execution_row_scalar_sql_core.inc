@@ -42,7 +42,11 @@ static int append_row_scalar_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
         return append_row_scalar_date_format_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
-        return append_row_scalar_date_format_numeric_comparison_sql(string, expression, next_parameter);
+        return append_row_scalar_date_format_numeric_comparison_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
         return append_row_scalar_date_interval_second_expression_sql(
             string,
@@ -720,10 +724,9 @@ static const char *row_scalar_conversion_sql_function_name(
         if (step->ascii_only) {
             return "_mylite_cast_convert_text_ascii";
         }
-        if (step->charset != NULL && (strcmp(step->charset, "ascii") == 0 ||
-                                      strcmp(step->charset, "ujis") == 0 ||
-                                      strcmp(step->charset, "utf8mb3") == 0 ||
-                                      strcmp(step->charset, "utf8mb4") == 0)) {
+        if (step->charset != NULL &&
+            (strcmp(step->charset, "ascii") == 0 || strcmp(step->charset, "ujis") == 0 ||
+             strcmp(step->charset, "utf8mb3") == 0 || strcmp(step->charset, "utf8mb4") == 0)) {
             return "_mylite_cast_convert_text";
         }
         if (step->charset != NULL && strcmp(step->charset, "big5") == 0) {
@@ -1069,6 +1072,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return append_row_scalar_integer_arithmetic_function_call_sql(string, stack, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -1078,14 +1083,17 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
         rc = mylite_dynamic_string_append(string, "CAST(");
         if (rc == MYLITE_OK) {
-            rc = append_row_scalar_temporal_extract_expression_sql(string, expression, next_parameter);
+            rc = append_row_scalar_temporal_extract_expression_sql(
+                string,
+                expression,
+                next_parameter
+            );
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, " AS INTEGER)");
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
@@ -1312,10 +1320,8 @@ static int append_row_scalar_concat_expression_sql(
                     &expression->arguments[argument_index],
                     next_parameter
                 );
-            } else if (
-                expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
-            ) {
+            } else if (expression->arguments[argument_index].kind ==
+                       PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE) {
                 rc = append_row_scalar_string_slice_expression_sql(
                     string,
                     &expression->arguments[argument_index],
@@ -1362,10 +1368,8 @@ static int append_row_scalar_concat_ws_expression_sql(
                     &expression->arguments[argument_index],
                     next_parameter
                 );
-            } else if (
-                expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
-            ) {
+            } else if (expression->arguments[argument_index].kind ==
+                       PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE) {
                 rc = append_row_scalar_string_slice_expression_sql(
                     string,
                     &expression->arguments[argument_index],

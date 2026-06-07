@@ -1,3 +1,5 @@
+enum { update_info_buffer_capacity = 128 };
+
 static int execute_update_from_plan(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -92,6 +94,29 @@ static int execute_update_from_plan(
     }
 
     mylite_result_set_affected_rows(result, affected_rows);
+    {
+        char info[update_info_buffer_capacity];
+        size_t warning_count =
+            mylite_diagnostics_warning_count(mylite_connection_diagnostics(database));
+        int written = snprintf(
+            info,
+            sizeof(info),
+            "Rows matched: %llu  Changed: %lld  Warnings: %llu",
+            (unsigned long long)matched_row_count,
+            (long long)affected_rows,
+            (unsigned long long)warning_count
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(info)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        rc = mylite_result_set_info(result, info);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+            return rc;
+        }
+    }
 
     return MYLITE_OK;
 }
@@ -257,10 +282,17 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
         plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         return MYLITE_OK;
     }
+    if (!planned_update_has_multiple_assignments(plan) &&
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return MYLITE_OK;
+    }
     for (uint64_t row_index = 1U; rc == MYLITE_OK && row_index < matched_row_count; ++row_index) {
         if (planned_update_has_multiple_assignments(plan)) {
             for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
                 if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+                    continue;
+                }
+                if (plan->assignments[index].value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
                     continue;
                 }
                 rc = append_update_assignment_adjustment_warning(
@@ -526,9 +558,8 @@ static int append_update_integer_string_adjustment_diagnostic(
         );
         if (rc == MYLITE_OK && exceeds_range) {
             rc = append_out_of_range_warning(database, column->name, row_number);
-        } else if (
-            rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
-        ) {
+        } else if (rc == MYLITE_OK &&
+                   parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
             rc = append_data_truncated_warning(database, column->name, row_number);
         }
     }
@@ -1001,13 +1032,20 @@ static int bind_parent_update_cascade_parameters(
     const struct planned_update *plan
 ) {
     int parameter_index = 1;
-    int rc = bind_update_assignment_parameter(statement, parameter_index, plan);
+    int rc = MYLITE_OK;
 
-    if (rc == MYLITE_OK) {
+    if (plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY &&
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        rc = bind_update_assignment_parameter(statement, parameter_index, plan);
+    }
+    if (rc == MYLITE_OK && plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY &&
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
         ++parameter_index;
         if (plan->is_joined) {
             rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
         }
+    } else if (rc == MYLITE_OK && plan->is_joined) {
+        rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
     }
     if (rc == MYLITE_OK && plan->is_joined) {
         rc = bind_select_join_condition_parameters(
@@ -1180,6 +1218,20 @@ static int format_parent_update_cascade_record_value(
         }
         return MYLITE_OK;
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        written = snprintf(value, value_size, "%s", "<computed>");
+        if (written < 0 || (size_t)written >= value_size) {
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        written = snprintf(value, value_size, "%s", "<computed>");
+        if (written < 0 || (size_t)written >= value_size) {
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
     return format_key_value(&plan->assignment_value, value, value_size);
 }
 
@@ -1332,7 +1384,9 @@ static int prepare_executable_update_plan(
         rc = prepare_update_multiple_assignments(database, plan, executable_plan);
     } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = prepare_update_arithmetic_assignment(database, plan, executable_plan);
-    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL ||
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY ||
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
         rc = MYLITE_OK;
     } else {
         rc = convert_update_value(database, plan, &executable_plan->assignment_value);
@@ -1345,7 +1399,9 @@ static int prepare_executable_update_plan(
     }
     if (rc == MYLITE_OK && !planned_update_has_multiple_assignments(plan) &&
         plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL &&
-        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC &&
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY &&
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
         rc = validate_update_string_key_value(database, executable_plan);
     }
     return rc;
@@ -1367,6 +1423,9 @@ static int prepare_update_multiple_assignments(
             unwrap_parenthesized_expression(plan->assignments[index].value_node);
 
         if (planned_update_assignment_is_noop(&plan->assignments[index])) {
+            continue;
+        }
+        if (plan->assignments[index].value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
             continue;
         }
         if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
@@ -1806,7 +1865,9 @@ static int validate_update_multiple_string_key_values(
             const struct planned_update_assignment *assignment =
                 planned_update_assignment_for_column(plan, part->index_column.column_id);
 
-            if (assignment == NULL || !loaded_index_part_requires_string_key_validation(part)) {
+            if (assignment == NULL ||
+                assignment->value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR ||
+                !loaded_index_part_requires_string_key_validation(part)) {
                 continue;
             }
             rc = validate_string_key_value(database, &assignment->value);
@@ -1835,6 +1896,12 @@ static int advance_auto_increment_after_update(
         *out_auto_increment_next = plan->table.auto_increment_next;
     }
     if (affected_rows <= 0) {
+        return MYLITE_OK;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return MYLITE_OK;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
         return MYLITE_OK;
     }
     if (planned_update_has_multiple_assignments(plan)) {

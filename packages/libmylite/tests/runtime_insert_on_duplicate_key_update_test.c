@@ -200,6 +200,7 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         "Column 'v' cannot be null",
     };
     static const char *const auto_increment_rows[] = {"1", "10", "200", "3", "20", "300"};
+    static const char *const auto_increment_values_key_rows[] = {"1", "200"};
     static const char *const auto_increment_primary_unique_rows[] = {
         "1",
         "10",
@@ -1041,6 +1042,27 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 3U,
             .row_count = 2U,
             .context = "duplicate generated auto increment rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE auto_values_key(id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO auto_values_key VALUES (1, 100)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_values_key VALUES (1, 200) "
+        "ON DUPLICATE KEY UPDATE id = VALUES(id), v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM auto_values_key",
+            .values = auto_increment_values_key_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "auto increment same-column VALUES assignment",
         }
     );
 

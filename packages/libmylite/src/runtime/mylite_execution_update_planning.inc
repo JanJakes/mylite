@@ -222,9 +222,8 @@ static int validate_update_subquery_predicate_node_source(
                     return MYLITE_ERROR;
                 }
             }
-        } else if (
-            subquery->has_table_source && subquery->source.table.table_id == plan->table.table_id
-        ) {
+        } else if (subquery->has_table_source &&
+                   subquery->source.table.table_id == plan->table.table_id) {
             set_update_table_used_error(database, plan->target.table_name);
             return MYLITE_ERROR;
         }
@@ -238,10 +237,8 @@ static int validate_update_subquery_predicate_node_source(
                 return MYLITE_ERROR;
             }
         }
-    } else if (
-        node->kind == PLANNED_SELECT_PREDICATE_IN && node->in_subquery != NULL &&
-        node->in_subquery->source.table.table_id == plan->table.table_id
-    ) {
+    } else if (node->kind == PLANNED_SELECT_PREDICATE_IN && node->in_subquery != NULL &&
+               node->in_subquery->source.table.table_id == plan->table.table_id) {
         set_update_table_used_error(database, plan->target.table_name);
         return MYLITE_ERROR;
     }
@@ -996,10 +993,14 @@ static void planned_update_deinit(struct planned_update *plan) {
     planned_select_join_condition_deinit(&plan->join_condition);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_deinit(&plan->assignment_subquery);
+    planned_column_aggregate_deinit(&plan->assignment_scalar_aggregate);
+    planned_row_scalar_expression_deinit(&plan->assignment_scalar_aggregate_rhs);
+    planned_row_scalar_expression_deinit(&plan->assignment_row_scalar_expression);
     planned_value_deinit(&plan->assignment_value);
     planned_value_deinit(&plan->auto_update_value);
     if (plan->assignments != NULL) {
         for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            planned_row_scalar_expression_deinit(&plan->assignments[index].row_scalar_expression);
             planned_value_deinit(&plan->assignments[index].value);
         }
     }
@@ -1053,6 +1054,9 @@ static int copy_update_assignments_for_execution(
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
         executable_plan->assignments[index].column = plan->assignments[index].column;
         executable_plan->assignments[index].value_node = plan->assignments[index].value_node;
+        executable_plan->assignments[index].value_kind = plan->assignments[index].value_kind;
+        executable_plan->assignments[index].row_scalar_expression =
+            plan->assignments[index].row_scalar_expression;
         executable_plan->assignments[index].generated_default_noop =
             plan->assignments[index].generated_default_noop;
     }

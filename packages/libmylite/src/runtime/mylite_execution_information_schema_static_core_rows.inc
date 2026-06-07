@@ -10,7 +10,8 @@ static int append_information_schema_schemata_system_rows(
     };
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(schema_order) / sizeof(schema_order[0]);
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(schema_order) / sizeof(schema_order[0]);
          ++index) {
         const struct mylite_execution_catalog_builtin_schema *schema =
             mylite_execution_catalog_builtin_schema_by_name(schema_order[index]);
@@ -58,7 +59,8 @@ static int append_information_schema_schemata_extensions_system_rows(
     };
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(schema_order) / sizeof(schema_order[0]);
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(schema_order) / sizeof(schema_order[0]);
          ++index) {
         const struct mylite_execution_catalog_builtin_schema *schema =
             mylite_execution_catalog_builtin_schema_by_name(schema_order[index]);
@@ -353,6 +355,38 @@ static int append_information_schema_processlist_system_row(
     const struct mylite_statement_context *context,
     struct information_schema_row_set *rows
 ) {
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to collect INFORMATION_SCHEMA.PROCESSLIST sessions");
+        return rc;
+    }
+    for (size_t session_index = 0U; rc == MYLITE_OK && session_index < session_count;
+         ++session_index) {
+        rc = append_information_schema_processlist_session_row(
+            database,
+            context,
+            &sessions[session_index],
+            rows
+        );
+    }
+
+    free(sessions);
+    return rc;
+}
+
+static int append_information_schema_processlist_session_row(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_processlist_session_snapshot *session,
+    struct information_schema_row_set *rows
+) {
     char connection_id_text[integer_text_capacity];
     char user[MYLITE_SESSION_IDENTIFIER_CAPACITY];
     char host[MYLITE_SESSION_IDENTIFIER_CAPACITY];
@@ -363,16 +397,16 @@ static int append_information_schema_processlist_system_row(
         user,
         host,
         NULL,
-        "Query",
+        session->is_current ? "Query" : "Sleep",
         "0",
-        "executing",
+        session->is_current ? "executing" : NULL,
         NULL,
     };
     int written = snprintf(
         connection_id_text,
         sizeof(connection_id_text),
         "%" PRIu64,
-        database->session.connection_id
+        session->connection_id
     );
     int rc = MYLITE_OK;
 
@@ -380,13 +414,20 @@ static int append_information_schema_processlist_system_row(
         set_runtime_error(database, "failed to format INFORMATION_SCHEMA.PROCESSLIST ID");
         return MYLITE_ERROR;
     }
-    if (database->session.has_selected_schema) {
-        selected_schema = database->session.selected_schema;
+    if (session->has_selected_schema) {
+        selected_schema = session->selected_schema;
     }
     values[information_schema_processlist_db_column] = selected_schema;
 
-    rc = format_show_processlist_user_host(database, user, sizeof(user), host, sizeof(host));
-    if (rc == MYLITE_OK) {
+    rc = format_processlist_user_host(
+        database,
+        session->client_user_identity,
+        user,
+        sizeof(user),
+        host,
+        sizeof(host)
+    );
+    if (rc == MYLITE_OK && session->is_current) {
         rc = copy_information_schema_processlist_info(database, context, &info);
     }
     if (rc == MYLITE_OK) {

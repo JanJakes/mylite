@@ -227,6 +227,14 @@ struct mylite_session_state {
     char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
 };
 
+struct mylite_processlist_session_snapshot {
+    uint64_t connection_id;
+    bool has_selected_schema;
+    bool is_current;
+    char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
+    char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+};
+
 struct mylite_db {
     struct sqlite3 *sqlite;
     struct mylite_diagnostics diagnostics;
@@ -234,10 +242,16 @@ struct mylite_db {
     struct mylite_session_state session;
     struct mylite_sqlite_bootstrap_state sqlite_bootstrap;
     struct mylite_catalog catalog;
+    struct mylite_db *processlist_next;
 };
 
 struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *database);
 const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
+);
+int mylite_connection_collect_processlist_sessions(
+    const struct mylite_db *current,
+    struct mylite_processlist_session_snapshot **out_sessions,
+    size_t *out_count
 );
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database);

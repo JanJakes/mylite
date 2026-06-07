@@ -25,6 +25,7 @@ struct mylite_result {
     size_t row_count;
     size_t row_capacity;
     int64_t affected_rows;
+    char *info;
     uint64_t insert_id;
     size_t warning_count;
     bool has_found_row_count;
@@ -41,6 +42,7 @@ int mylite_result_append_bytes_row(mylite_result *result, const struct mylite_re
 int mylite_result_append_text_row(mylite_result *result, const char *const *values);
 void mylite_result_truncate_rows(mylite_result *result, size_t row_count);
 void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_rows);
+int mylite_result_set_info(mylite_result *result, const char *info);
 void mylite_result_set_insert_id(mylite_result *result, uint64_t insert_id);
 void mylite_result_set_warning_count(mylite_result *result, size_t warning_count);
 void mylite_result_set_found_row_count(mylite_result *result, uint64_t found_row_count);

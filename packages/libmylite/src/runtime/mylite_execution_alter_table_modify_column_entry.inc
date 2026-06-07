@@ -3,9 +3,27 @@ static int plan_alter_table_modify_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
 ) {
+    return plan_alter_table_modify_column_with_options(database, statement, false, out_plan);
+}
+
+static int plan_alter_table_modify_column_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    return plan_alter_table_modify_column_with_options(database, statement, true, out_plan);
+}
+
+static int plan_alter_table_modify_column_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool defer_auto_increment_key_validation,
+    struct planned_alter_table_modify_column *out_plan
+) {
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_modify_column){0};
+    out_plan->defer_auto_increment_key_validation = defer_auto_increment_key_validation;
     out_plan->unsupported_object_message =
         "ALTER TABLE MODIFY COLUMN supports only persistent base tables";
     out_plan->rowid_alias_message =
@@ -70,9 +88,27 @@ static int plan_alter_table_change_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
 ) {
+    return plan_alter_table_change_column_with_options(database, statement, false, out_plan);
+}
+
+static int plan_alter_table_change_column_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    return plan_alter_table_change_column_with_options(database, statement, true, out_plan);
+}
+
+static int plan_alter_table_change_column_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool defer_auto_increment_key_validation,
+    struct planned_alter_table_modify_column *out_plan
+) {
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_modify_column){0};
+    out_plan->defer_auto_increment_key_validation = defer_auto_increment_key_validation;
     out_plan->checks_duplicate_replacement = true;
     out_plan->unsupported_object_message =
         "ALTER TABLE CHANGE COLUMN supports only persistent base tables";
@@ -123,7 +159,8 @@ static int plan_alter_table_change_column(
     if (rc == MYLITE_OK) {
         const struct mylite_sql_ast_node *column_definition = child_at(statement, 2U);
 
-        if (mylite_sql_ast_node_integer_type_is_serial_alias(child_at(column_definition, 1U)) != 0) {
+        if (mylite_sql_ast_node_integer_type_is_serial_alias(child_at(column_definition, 1U)) !=
+            0) {
             set_unsupported_error(
                 database,
                 "ALTER TABLE CHANGE COLUMN does not support AUTO_INCREMENT"

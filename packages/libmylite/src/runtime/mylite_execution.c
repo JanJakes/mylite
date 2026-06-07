@@ -1023,6 +1023,7 @@ struct planned_compound_select;
 struct planned_select_source;
 struct planned_exists_subquery;
 struct planned_in_subquery;
+struct planned_scalar_aggregate_subquery;
 
 struct select_source_context {
     const struct table_name_resolution *source;
@@ -1319,6 +1320,7 @@ struct planned_alter_table_add_column {
     bool changes_position;
     bool adds_inline_primary_key;
     bool adds_inline_unique_key;
+    bool defer_auto_increment_key_validation;
     char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
@@ -1624,6 +1626,7 @@ struct planned_alter_table_modify_column {
     bool reports_rebuild_row_count;
     bool adds_inline_primary_key;
     bool adds_inline_unique_key;
+    bool defer_auto_increment_key_validation;
     const char *unsupported_object_message;
     const char *rowid_alias_message;
     const char *integer_support_message;
@@ -1883,6 +1886,8 @@ enum planned_update_assignment_value_kind {
     PLANNED_UPDATE_ASSIGNMENT_VALUE = 0,
     PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC = 1,
     PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL = 2,
+    PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY = 3,
+    PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR = 4,
 };
 
 enum {
@@ -2042,6 +2047,8 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN = 14,
     PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN = 15,
     PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON = 16,
+    PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON = 17,
+    PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN = 18,
 };
 
 struct planned_select_predicate_node {
@@ -2061,11 +2068,15 @@ struct planned_select_predicate_node {
     bool row_scalar_compare_as_real;
     size_t row_scalar_decimal_scale;
     bool row_scalar_regexp_case_sensitive;
+    bool regexp_cast_subject_as_text;
     size_t left_index;
     size_t right_index;
     bool like_uses_escape;
     struct planned_exists_subquery *exists_subquery;
     struct planned_in_subquery *in_subquery;
+    struct planned_scalar_aggregate_subquery *subject_scalar_subquery;
+    struct planned_scalar_aggregate_subquery *value_scalar_subquery;
+    struct planned_scalar_aggregate_subquery *upper_scalar_subquery;
     struct planned_row_scalar_expression *row_scalar_expression;
     struct planned_row_scalar_expression *row_scalar_value_expression;
 };
@@ -2079,12 +2090,14 @@ struct planned_select_predicate {
 };
 
 struct planned_row_scalar_expression;
+struct planned_row_scalar_select;
 
 enum planned_select_order_item_kind {
     PLANNED_SELECT_ORDER_ITEM_COLUMN = 0,
     PLANNED_SELECT_ORDER_ITEM_FIELD = 1,
     PLANNED_SELECT_ORDER_ITEM_RAND = 2,
     PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR = 3,
+    PLANNED_SELECT_ORDER_ITEM_ALIAS = 4,
 };
 
 struct select_predicate_plan_options {
@@ -2142,6 +2155,7 @@ enum select_sql_work_item_kind {
     SELECT_SQL_WORK_SOURCE_ALIAS = 8,
     SELECT_SQL_WORK_GROUPED_QUERY = 9,
     SELECT_SQL_WORK_COMPOUND_QUERY = 10,
+    SELECT_SQL_WORK_ROW_SCALAR_QUERY = 11,
 };
 
 struct select_sql_work_item {
@@ -2149,6 +2163,7 @@ struct select_sql_work_item {
     const struct planned_select *plan;
     const struct planned_grouped_aggregate *grouped_plan;
     const struct planned_compound_select *compound_plan;
+    const struct planned_row_scalar_select *row_scalar_plan;
     const struct planned_select_source *source;
     const struct planned_select_join_condition *join_condition;
     const struct planned_select_predicate *predicate;
@@ -2174,6 +2189,7 @@ enum select_parameter_bind_item_kind {
     SELECT_PARAMETER_BIND_LIMIT = 6,
     SELECT_PARAMETER_BIND_GROUPED_AGGREGATE = 7,
     SELECT_PARAMETER_BIND_COMPOUND_SELECT = 8,
+    SELECT_PARAMETER_BIND_ROW_SCALAR_SELECT = 9,
 };
 
 struct select_parameter_bind_item {
@@ -2181,6 +2197,7 @@ struct select_parameter_bind_item {
     const struct planned_select *plan;
     const struct planned_grouped_aggregate *grouped_plan;
     const struct planned_compound_select *compound_plan;
+    const struct planned_row_scalar_select *row_scalar_plan;
     const struct planned_select_source *sources;
     const struct planned_select_source *source;
     const struct planned_select_join_condition *join_condition;
@@ -2227,6 +2244,7 @@ struct planned_select_order_item {
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
     struct planned_row_scalar_expression *expression;
+    char alias[select_item_alias_capacity];
 };
 
 struct planned_select_order {
@@ -2266,6 +2284,7 @@ enum planned_grouped_having_operand {
     PLANNED_GROUPED_HAVING_OPERAND_NONE = 0,
     PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN = 1,
     PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE = 2,
+    PLANNED_GROUPED_HAVING_OPERAND_ROW_SCALAR = 3,
 };
 
 struct planned_grouped_having {
@@ -2275,6 +2294,7 @@ struct planned_grouped_having {
     struct planned_value value;
     size_t group_index;
     size_t aggregate_index;
+    struct planned_row_scalar_expression *row_scalar_expression;
 };
 
 struct planned_diagnostics_show_limit {
@@ -2293,6 +2313,7 @@ struct planned_select_source {
     bool has_alias;
     bool is_derived;
     struct planned_select *derived_select;
+    struct planned_row_scalar_select *derived_row_scalar_select;
     struct planned_grouped_aggregate *derived_grouped_aggregate;
     struct planned_compound_select *derived_compound_select;
 };
@@ -2762,9 +2783,32 @@ enum planned_count_function {
     PLANNED_COUNT_DISTINCT_COLUMN = 4,
 };
 
+enum planned_count_source_kind {
+    PLANNED_COUNT_SOURCE_NONE = 0,
+    PLANNED_COUNT_SOURCE_TABLE = 1,
+    PLANNED_COUNT_SOURCE_DERIVED_SELECT = 2,
+    PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR = 3,
+    PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE = 4,
+    PLANNED_COUNT_SOURCE_DERIVED_COMPOUND = 5,
+};
+
+struct planned_count_derived_compound_branch {
+    enum mylite_sql_ast_union_modifier modifier;
+    enum planned_count_source_kind kind;
+    struct planned_select select;
+    struct planned_row_scalar_select row_scalar_select;
+    struct planned_grouped_aggregate *grouped_aggregate;
+};
+
+struct planned_count_derived_compound {
+    struct planned_count_derived_compound_branch *branches;
+    size_t branch_count;
+};
+
 struct planned_count {
     bool has_source;
     bool calc_found_rows;
+    enum planned_count_source_kind source_kind;
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
     enum planned_count_function function;
@@ -2774,6 +2818,10 @@ struct planned_count {
     struct planned_value count_literal;
     struct planned_select_predicate predicate;
     struct planned_select_limit limit;
+    struct planned_select derived_select;
+    struct planned_row_scalar_select derived_row_scalar_select;
+    struct planned_grouped_aggregate *derived_grouped_aggregate;
+    struct planned_count_derived_compound derived_compound;
 };
 
 enum planned_count_expression_aggregate_item_kind {
@@ -2816,6 +2864,13 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT = 8,
 };
 
+struct planned_scalar_aggregate_subquery {
+    enum planned_column_aggregate_function function;
+    struct mylite_catalog_column_descriptor column;
+    size_t column_source_index;
+    struct planned_exists_subquery subquery;
+};
+
 struct planned_column_aggregate {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
@@ -2825,6 +2880,9 @@ struct planned_column_aggregate {
     struct mylite_catalog_column_descriptor aggregate_column;
     bool aggregate_uses_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
+    bool aggregate_has_projection_rhs;
+    enum mylite_sql_ast_operator aggregate_projection_operator;
+    struct planned_row_scalar_expression aggregate_projection_rhs;
     struct planned_select_order aggregate_order;
     bool has_separator;
     struct planned_value separator;
@@ -2986,47 +3044,56 @@ struct planned_delete {
 struct planned_update_assignment {
     struct mylite_catalog_column_descriptor column;
     const struct mylite_sql_ast_node *value_node;
+    enum planned_update_assignment_value_kind value_kind;
+    struct planned_row_scalar_expression row_scalar_expression;
     struct planned_value value;
     bool generated_default_noop;
 };
 
 struct planned_update {
-    struct table_name_resolution target;
-    struct mylite_catalog_table_descriptor table;
     struct planned_select_source *sources;
     size_t source_count;
-    enum mylite_sql_ast_join_kind join_kind;
-    struct planned_select_join_condition join_condition;
     size_t target_source_index;
-    struct mylite_catalog_column_descriptor assignment_column;
     struct planned_update_assignment *assignments;
     size_t assignment_count;
     struct loaded_index_info *indexes;
     size_t index_count;
     const struct mylite_sql_ast_node *assignment_value_node;
-    enum planned_update_assignment_value_kind assignment_value_kind;
-    enum mylite_sql_ast_operator arithmetic_operator;
     const struct mylite_sql_ast_node *arithmetic_delta_node;
     uint64_t arithmetic_delta_magnitude;
     int64_t arithmetic_delta;
-    enum mylite_date_interval_second_input_kind date_interval_input_kind;
-    enum mylite_date_interval_unit date_interval_unit;
     int64_t date_interval_value;
-    bool date_interval_is_null;
-    bool date_interval_subtract;
-    bool assignment_value_is_scalar_subquery;
-    struct planned_select assignment_subquery;
-    struct planned_value assignment_value;
-    struct planned_value auto_update_value;
-    struct planned_select_predicate predicate;
-    struct planned_select_order order;
-    struct planned_select_limit limit;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
     const char *rowid_alias;
-    bool has_primary_key;
     size_t primary_key_column_index;
     int64_t primary_key_column_id;
+    struct planned_select_predicate predicate;
+    struct planned_select_limit limit;
+    struct planned_value assignment_value;
+    struct planned_value auto_update_value;
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor assignment_column;
+    struct mylite_catalog_column_descriptor assignment_source_column;
+    struct planned_select_order order;
+    struct planned_select_join_condition join_condition;
+    struct planned_row_scalar_expression assignment_row_scalar_expression;
+    struct planned_row_scalar_expression assignment_scalar_aggregate_rhs;
+    struct planned_select assignment_subquery;
+    struct planned_column_aggregate assignment_scalar_aggregate;
+    enum mylite_sql_ast_join_kind join_kind;
+    enum planned_update_assignment_value_kind assignment_value_kind;
+    enum mylite_sql_ast_operator arithmetic_operator;
+    enum mylite_date_interval_second_input_kind date_interval_input_kind;
+    enum mylite_date_interval_unit date_interval_unit;
+    enum mylite_sql_ast_operator assignment_scalar_aggregate_operator;
+    bool date_interval_is_null;
+    bool date_interval_subtract;
+    bool assignment_value_is_scalar_subquery;
+    bool assignment_value_is_scalar_aggregate_expression_subquery;
+    bool assignment_scalar_aggregate_has_rhs;
+    bool has_primary_key;
     bool is_joined;
     bool low_priority;
     bool ignore_errors;
@@ -5558,7 +5625,8 @@ struct compound_branch_results {
 static int reject_compound_select_branch_shape(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *branch,
-    enum mylite_sql_ast_set_operator operator_kind
+    enum mylite_sql_ast_set_operator operator_kind,
+    bool allow_final_order_limit
 );
 static int validate_compound_select_operator_chain(
     struct mylite_db *database,
@@ -5748,6 +5816,50 @@ static void apply_sql_select_limit_to_result(
     const struct mylite_db *database,
     mylite_result *result
 );
+static int apply_compound_select_final_order_and_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result
+);
+static const struct mylite_sql_ast_node *compound_select_final_branch(
+    const struct mylite_sql_ast_node *statement
+);
+static int apply_compound_select_final_order(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *order_clause
+);
+static int compound_select_order_key_and_direction(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct mylite_sql_ast_node **out_order_key,
+    bool *out_descending
+);
+static int compound_select_order_column_index(
+    struct mylite_db *database,
+    const mylite_result *result,
+    const struct mylite_sql_ast_node *order_key,
+    size_t *out_column_index
+);
+static void compound_select_sort_result(
+    mylite_result *result,
+    size_t column_index,
+    bool descending
+);
+static int compound_select_compare_order_rows(
+    const mylite_result *result,
+    size_t left_row,
+    size_t right_row,
+    size_t column_index,
+    bool descending
+);
+static void compound_select_swap_result_rows(mylite_result *result, size_t left, size_t right);
+static int apply_compound_select_final_limit(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *limit_clause
+);
+static void compound_select_discard_result_prefix(mylite_result *result, uint64_t offset);
 static int reject_select_modifier_usage_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -6605,6 +6717,12 @@ static long information_schema_online_processor_count(void);
 static int append_information_schema_processlist_system_row(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_processlist_session_row(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_processlist_session_snapshot *session,
     struct information_schema_row_set *rows
 );
 static int copy_information_schema_processlist_info(
@@ -8479,6 +8597,7 @@ static int finish_successful_result_with_warning_count(
 static int plan_create_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool is_temporary_target,
     struct planned_create_table *out_plan
 );
 static int plan_create_table_like(
@@ -8489,6 +8608,7 @@ static int plan_create_table_like(
 static int plan_create_table_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool is_temporary_target,
     struct planned_create_table_select *out_plan
 );
 static void planned_create_table_select_deinit(struct planned_create_table_select *plan);
@@ -8609,12 +8729,14 @@ static void planned_create_table_like_deinit(struct planned_create_table_like *p
 static int validate_create_table_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_options,
-    const char *table_name
+    const char *table_name,
+    bool is_temporary_target
 );
 static int validate_create_table_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_option,
-    const char *table_name
+    const char *table_name,
+    bool is_temporary_target
 );
 static int apply_create_table_charset_collation_options(
     struct mylite_db *database,
@@ -8719,7 +8841,8 @@ static int decode_table_comment_option(
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option,
-    const char *table_name
+    const char *table_name,
+    bool is_temporary_target
 );
 static int append_unknown_storage_engine_warning(
     struct mylite_db *database,
@@ -9085,11 +9208,26 @@ static int plan_alter_table_add_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_column *out_plan
 );
+static int plan_alter_table_add_column_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_column *out_plan
+);
+static int plan_alter_table_add_column_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool defer_auto_increment_key_validation,
+    struct planned_alter_table_add_column *out_plan
+);
 static int validate_alter_table_add_column_target(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 );
 static int reject_unsupported_alter_add_column_planned_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
+static int validate_alter_table_add_column_auto_increment_definition(
     struct mylite_db *database,
     const struct planned_column *column
 );
@@ -10132,9 +10270,31 @@ static int plan_alter_table_modify_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
 );
+static int plan_alter_table_modify_column_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int plan_alter_table_modify_column_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool defer_auto_increment_key_validation,
+    struct planned_alter_table_modify_column *out_plan
+);
 static int plan_alter_table_change_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int plan_alter_table_change_column_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int plan_alter_table_change_column_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool defer_auto_increment_key_validation,
     struct planned_alter_table_modify_column *out_plan
 );
 static int plan_alter_table_modify_column_position(
@@ -10410,10 +10570,22 @@ static bool modify_column_temporal_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
+static bool modify_column_numeric_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
 static bool modify_column_string_to_integer_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
+static bool modify_column_integer_to_string_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static bool column_descriptor_is_numeric_replacement_family(
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool planned_column_is_numeric_replacement_family(const struct planned_column *column);
 static bool modify_column_definition_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -10481,6 +10653,19 @@ static int validate_existing_integer_for_column(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     const char *unsupported_message
+);
+static int validate_existing_approximate_for_column(
+    struct mylite_db *database,
+    double value,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
+static int validate_existing_decimal_text_for_column(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
 );
 static int validate_existing_text_for_column(
     struct mylite_db *database,
@@ -11290,6 +11475,17 @@ static int copy_derived_select_source_columns(
     const struct planned_select *derived_plan,
     struct planned_select_source *out_source
 );
+static int copy_derived_row_scalar_select_source_columns(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *derived_plan,
+    struct planned_select_source *out_source
+);
+static int make_derived_row_scalar_source_column(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select_item *item,
+    size_t output_index,
+    struct mylite_catalog_column_descriptor *out_column
+);
 static int copy_derived_compound_select_source_columns(
     struct mylite_db *database,
     const struct planned_compound_select *compound_plan,
@@ -11493,6 +11689,12 @@ static int plan_row_scalar_select_join_source(
     struct planned_row_scalar_select *out_plan,
     struct select_source_context *out_source_context
 );
+static int plan_row_scalar_select_derived_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_row_scalar_select *out_plan,
+    struct select_source_context *out_source_context
+);
 static int plan_row_scalar_select_row_envelope(
     struct mylite_db *database,
     const struct row_scalar_select_clauses *clauses,
@@ -11501,6 +11703,29 @@ static int plan_row_scalar_select_row_envelope(
     size_t table_column_count,
     bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_order_by_field,
+    struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_order_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct planned_row_scalar_select *select_plan,
+    struct planned_select_order *out_order,
+    bool *out_handled
+);
+static int plan_row_scalar_select_order_alias_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct planned_row_scalar_select *select_plan,
+    struct planned_select_order *out_order,
+    bool *out_handled
 );
 static int plan_row_scalar_select_tableless_filter(
     struct mylite_db *database,
@@ -11882,6 +12107,38 @@ static int plan_grouped_aggregate_temporal_projection(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
+static int plan_grouped_aggregate_literal_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+);
+static int plan_grouped_aggregate_integer_arithmetic_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+);
+static int validate_grouped_projection_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+);
+static int validate_grouped_projection_row_scalar_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+);
 static int plan_grouped_aggregate_relaxed_row_scalar_projection(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -12155,6 +12412,29 @@ static int plan_grouped_having_identifier_operand(
     struct planned_grouped_aggregate *out_plan,
     enum planned_grouped_having_operand *out_operand
 );
+static int plan_grouped_having_row_scalar_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    enum planned_grouped_having_operand *out_operand
+);
+static int validate_grouped_having_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+);
+static int validate_grouped_having_row_scalar_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+);
 static int find_grouped_having_projection_alias_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *operand_node,
@@ -12332,7 +12612,25 @@ static int plan_count_derived_table_source(
     const struct planned_count_source_nodes *nodes,
     struct planned_count *out_plan
 );
-static bool count_derived_select_list_is_supported(const struct mylite_sql_ast_node *select_list);
+static int plan_count_derived_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count *out_plan
+);
+static int plan_count_derived_compound_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count *out_plan
+);
+static int plan_count_derived_compound_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch,
+    struct planned_count_derived_compound_branch *out_branch
+);
+static void planned_count_derived_compound_deinit(struct planned_count_derived_compound *compound);
+static void planned_count_derived_compound_branch_deinit(
+    struct planned_count_derived_compound_branch *branch
+);
 static int validate_count_order_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
@@ -12396,6 +12694,12 @@ static int plan_column_aggregate(
 static void planned_column_aggregate_deinit(struct planned_column_aggregate *plan);
 static enum planned_column_aggregate_function column_aggregate_function_from_expression(
     const struct mylite_sql_ast_node *expression
+);
+static enum planned_column_aggregate_function column_aggregate_function_from_projection_expression(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_aggregate_expression,
+    enum mylite_sql_ast_operator *out_operator,
+    const struct mylite_sql_ast_node **out_rhs_expression
 );
 static enum planned_column_aggregate_function select_list_column_aggregate_function(
     const struct mylite_sql_ast_node *select_list
@@ -14549,10 +14853,12 @@ static int append_show_processlist_row(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
+    const struct mylite_processlist_session_snapshot *session,
     mylite_result *result
 );
-static int format_show_processlist_user_host(
+static int format_processlist_user_host(
     struct mylite_db *database,
+    const char *identity,
     char *user,
     size_t user_size,
     char *host,
@@ -14936,6 +15242,8 @@ static int plan_joined_delete(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_delete *out_plan
+);
+static bool delete_where_clause_needs_source_context(const struct mylite_sql_ast_node *where_clause
 );
 static int reject_builtin_schema_joined_delete_source(
     struct mylite_db *database,
@@ -17440,6 +17748,9 @@ static bool insert_duplicate_column_index_is_keyed(
 static bool insert_duplicate_assignment_is_noop(
     const struct planned_insert_duplicate_update_assignment *assignment
 );
+static bool insert_duplicate_assignment_is_same_column_values_reference(
+    const struct planned_insert_duplicate_update_assignment *assignment
+);
 static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan);
 static void set_insert_duplicate_arithmetic_unsupported_error(struct mylite_db *database);
 static int validate_update_string_key_value(
@@ -19049,6 +19360,9 @@ static void planned_select_predicate_deinit_without_exists(
 );
 static void planned_exists_subquery_deinit(struct planned_exists_subquery *subquery);
 static void planned_in_subquery_deinit(struct planned_in_subquery *subquery);
+static void planned_scalar_aggregate_subquery_deinit(
+    struct planned_scalar_aggregate_subquery *subquery
+);
 static int plan_select_predicate_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -19659,6 +19973,62 @@ static int plan_scalar_count_subquery_comparison_predicate(
     size_t *out_node_index,
     bool *out_handled
 );
+static int plan_scalar_aggregate_subquery_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
+static int plan_scalar_aggregate_subquery_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
+static int plan_scalar_aggregate_subquery_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *scalar_subquery,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_scalar_aggregate_subquery *out_subquery,
+    size_t outer_source_count
+);
+static bool scalar_subquery_is_column_aggregate(const struct mylite_sql_ast_node *scalar_subquery);
+static int scalar_aggregate_subquery_select_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node **out_expression,
+    enum planned_column_aggregate_function *out_function
+);
+static int plan_scalar_aggregate_subquery_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum planned_column_aggregate_function function,
+    const struct planned_exists_subquery *subquery,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+);
+static int scalar_aggregate_subquery_source_context(
+    const struct planned_exists_subquery *subquery,
+    struct select_source_context *out_source_context,
+    const struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static int allocate_scalar_aggregate_subquery(
+    struct mylite_db *database,
+    struct planned_scalar_aggregate_subquery **out_subquery
+);
 static int plan_scalar_count_subquery(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *scalar_subquery,
@@ -20033,6 +20403,27 @@ static int bind_select_in_literal_predicate_parameters(
 static int bind_select_scalar_subquery_in_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_scalar_aggregate_subquery_comparison_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_scalar_aggregate_subquery_between_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_scalar_aggregate_subquery_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    int *parameter_index
+);
+static int bind_scalar_aggregate_subquery_or_value_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    const struct planned_value *value,
     int *parameter_index
 );
 static int bind_select_in_value_list_parameters(
@@ -20415,6 +20806,32 @@ static int plan_update_scalar_subquery_assignment(
     struct mylite_db *database,
     struct planned_update *out_plan
 );
+static int plan_update_scalar_aggregate_subquery_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan,
+    bool *out_handled
+);
+static int plan_update_scalar_aggregate_subquery_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_update *out_plan,
+    enum planned_column_aggregate_function *out_function,
+    const struct mylite_sql_ast_node **out_aggregate_expression,
+    const struct mylite_sql_ast_node **out_rhs_expression
+);
+static int plan_update_scalar_aggregate_rhs_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *rhs_expression,
+    struct planned_update *out_plan
+);
+static int plan_update_scalar_aggregate_subquery_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    enum planned_column_aggregate_function function,
+    const struct mylite_sql_ast_node *aggregate_expression,
+    struct planned_update *out_plan
+);
 static int plan_update_date_interval_assignment(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -20437,6 +20854,32 @@ static int plan_update_date_interval_source_column(
 static int plan_update_date_interval_target(
     struct mylite_db *database,
     struct planned_update *plan
+);
+static int plan_update_column_copy_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
+static bool update_column_copy_source_target_types_are_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+);
+static int plan_update_row_scalar_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
+static int plan_update_assignment_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    struct planned_update *plan,
+    struct planned_row_scalar_expression *out_expression,
+    bool *out_planned
 );
 static int update_date_interval_input_kind_for_column(
     struct mylite_db *database,
@@ -20606,6 +21049,30 @@ static int materialize_update_scalar_subquery_sqlite_value(
     sqlite3_stmt *statement,
     const struct planned_update *plan,
     struct planned_value *out_value
+);
+static int materialize_update_scalar_aggregate_subquery_value(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static int materialize_update_scalar_aggregate_sqlite_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static int build_update_scalar_aggregate_assignment_sql(
+    const struct planned_update *plan,
+    char **out_sql
+);
+static int append_update_scalar_aggregate_assignment_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int bind_update_scalar_aggregate_assignment_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan
 );
 static bool update_scalar_subquery_target_uses_text_storage(
     const struct mylite_catalog_column_descriptor *target_column
@@ -24040,6 +24507,19 @@ static int show_index_part_prefix_value(
     size_t prefix_text_size,
     const char **out_prefix_value
 );
+static int index_part_display_prefix_value(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part,
+    char *prefix_text,
+    size_t prefix_text_size,
+    const char **out_prefix_value
+);
+static int index_part_prefix_matches_full_column_length(
+    struct mylite_db *database,
+    const struct loaded_index_part *part,
+    bool *out_matches
+);
 static const char *show_index_index_type_text(const struct loaded_index_info *index);
 static int show_column_type_text(
     struct mylite_db *database,
@@ -24210,6 +24690,7 @@ static int append_create_table_index_sql(
 );
 static int append_planned_key_part_sql(
     struct mylite_dynamic_string *string,
+    const struct planned_create_table *plan,
     const struct planned_column *column
 );
 static int append_planned_secondary_key_part_sql(
@@ -24232,6 +24713,16 @@ static int append_loaded_key_part_parameter_sql(
     const struct loaded_index_part *part,
     size_t parameter_index
 );
+static bool planned_column_uses_string_key_collation(
+    const struct planned_create_table *plan,
+    const struct planned_column *column,
+    bool include_text_family
+);
+static bool column_descriptor_uses_string_key_collation(
+    const struct mylite_catalog_column_descriptor *column,
+    bool include_text_family
+);
+static bool string_key_collation_name_is_binary(const char *name);
 static int append_string_key_collation_sql(struct mylite_dynamic_string *string);
 static int append_select_projection_column_sql(
     struct mylite_dynamic_string *string,
@@ -24432,6 +24923,10 @@ static int build_alter_table_modify_copy_sql(
 static bool alter_table_modify_needs_binary_copy_materialization(
     const struct planned_alter_table_modify_column *plan
 );
+static bool alter_table_modify_changes_binary_to_string(
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int execute_physical_alter_table_modify_copy_rows(
     struct mylite_db *database,
     const struct planned_alter_table_modify_column *plan,
@@ -24459,6 +24954,22 @@ static int materialize_alter_table_modify_copy_row(
     const struct planned_alter_table_modify_column *plan,
     size_t row_number,
     struct planned_value *values
+);
+static int materialize_alter_table_modify_binary_to_text_value(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int materialize_alter_table_modify_decimal_value(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
 );
 static int bind_alter_table_modify_copy_row(
     sqlite3_stmt *insert_statement,
@@ -24672,6 +25183,11 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int build_row_scalar_select_sql(
     const struct planned_row_scalar_select *plan,
     char **out_sql
+);
+static int append_row_scalar_select_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_select *plan,
+    size_t *next_parameter
 );
 static int build_count_having_select_sql(
     const struct planned_count_having_select *plan,
@@ -25309,6 +25825,35 @@ static int append_select_distinct_found_rows_sql(
     size_t *next_parameter
 );
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
+static int append_count_function_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count *plan
+);
+static int append_count_source_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count *plan,
+    size_t *next_parameter
+);
+static int append_count_derived_source_query_sql(
+    struct mylite_dynamic_string *string,
+    enum planned_count_source_kind kind,
+    const struct planned_select *select_plan,
+    const struct planned_row_scalar_select *row_scalar_plan,
+    const struct planned_grouped_aggregate *grouped_plan,
+    const struct planned_count_derived_compound *compound_plan,
+    size_t *next_parameter
+);
+static int append_count_derived_compound_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_derived_compound *compound_plan,
+    size_t *next_parameter
+);
+static int append_count_derived_compound_branch_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_derived_compound_branch *branch,
+    size_t *next_parameter
+);
+static const char *union_modifier_sql(enum mylite_sql_ast_union_modifier modifier);
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
 static int append_column_aggregate_select_list_sql(
     struct mylite_dynamic_string *string,
@@ -25541,6 +26086,36 @@ static int append_select_scalar_subquery_in_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_scalar_aggregate_subquery_comparison_predicate_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_scalar_aggregate_subquery_between_predicate_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_scalar_aggregate_subquery_operand_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    size_t *next_parameter
+);
+static int append_scalar_aggregate_subquery_subject_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_scalar_aggregate_subquery_value_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    const struct planned_value *value,
+    size_t *next_parameter
+);
+static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_function function);
 static int append_select_scalar_count_subquery_comparison_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
@@ -25778,6 +26353,9 @@ static int append_single_update_target_sql(
 );
 static bool planned_update_needs_target_alias(const struct planned_update *plan);
 static size_t update_assignment_parameter_count(const struct planned_update *plan);
+static size_t planned_row_scalar_expression_parameter_count(
+    const struct planned_row_scalar_expression *expression
+);
 static int append_update_assignment_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan
@@ -25856,6 +26434,21 @@ static int append_update_changed_condition_sql(
 static int append_update_multiple_changed_condition_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_column_copy_changed_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_update *plan
+);
+static int append_update_row_scalar_changed_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_assignment_row_scalar_changed_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
 static int append_update_assignment_changed_condition_sql(
@@ -26884,6 +27477,21 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     int *parameter_index
 );
 static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan);
+static int bind_count_derived_source_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count *plan,
+    int *parameter_index
+);
+static int bind_count_derived_compound_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count_derived_compound *compound_plan,
+    int *parameter_index
+);
+static int bind_count_derived_compound_branch_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count_derived_compound_branch *branch,
+    int *parameter_index
+);
 static int bind_column_aggregate_parameters(
     sqlite3_stmt *statement,
     const struct planned_column_aggregate *plan
@@ -26958,6 +27566,11 @@ static int bind_update_multiple_changed_condition_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_update *plan
+);
+static int bind_update_row_scalar_changed_condition_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_row_scalar_expression *expression
 );
 static int bind_update_changed_condition_parameter(
     sqlite3_stmt *statement,

@@ -1043,7 +1043,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'LOCATE'",
+            .message_part = "near '('",
         }
     );
     failures += execute_error(
@@ -1316,7 +1316,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'STRCMP'",
+            .message_part = "near '('",
         }
     );
     failures += execute_error(

@@ -98,6 +98,8 @@ static int test_regexp_predicate_queries(void) {
     static const char *const negated_class_ids[] = {"4"};
     static const char *const not_prefix_ids[] = {"4", "5", "6", "8"};
     static const char *const aggregate_count[] = {"4"};
+    static const char *const integer_regexp_ids[] = {"1"};
+    static const char *const integer_not_regexp_ids[] = {"2", "3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -192,6 +194,26 @@ static int test_regexp_predicate_queries(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "aggregate source filter REGEXP predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE id REGEXP '^1$' ORDER BY id",
+            .values = integer_regexp_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "integer REGEXP casts subject to text",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE id <= 3 AND id NOT REGEXP '^1$' ORDER BY id",
+            .values = integer_not_regexp_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "integer NOT REGEXP casts subject to text",
         }
     );
 
@@ -448,15 +470,6 @@ static int test_regexp_predicate_diagnostics(void) {
 
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
     failures += populate_strings(database);
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE id REGEXP '^1$'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE REGEXP predicates support only string columns",
-        }
-    );
     failures += execute_error(
         database,
         "SELECT id FROM strings WHERE missing RLIKE '^a$'",

@@ -114,6 +114,17 @@ static int plan_grouped_having_operand(
             out_operand
         );
     }
+    if (operand->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return plan_grouped_having_row_scalar_operand(
+            database,
+            operand,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan,
+            out_operand
+        );
+    }
 
     rc = plan_grouped_having_aggregate_operand(
         database,
@@ -261,6 +272,147 @@ static int plan_grouped_having_identifier_operand(
     }
 
     set_unknown_having_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
+static int plan_grouped_having_row_scalar_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    enum planned_grouped_having_operand *out_operand
+) {
+    struct planned_row_scalar_expression expression = {0};
+    int rc = plan_row_scalar_expression(
+        database,
+        operand_node,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        &expression
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = validate_grouped_having_row_scalar_expression(
+            database,
+            out_plan,
+            table_columns,
+            table_column_count,
+            &expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->having.row_scalar_expression =
+            calloc(1U, sizeof(*out_plan->having.row_scalar_expression));
+        if (out_plan->having.row_scalar_expression == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_plan->having.row_scalar_expression = expression;
+        expression = (struct planned_row_scalar_expression){0};
+        *out_operand = PLANNED_GROUPED_HAVING_OPERAND_ROW_SCALAR;
+    }
+    planned_row_scalar_expression_deinit(&expression);
+    return rc;
+}
+
+static int validate_grouped_having_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "HAVING supports scalar expressions only over grouped or literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return validate_grouped_having_row_scalar_column(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            expression
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        if (expression->argument_count != 2U || expression->arguments == NULL) {
+            set_unsupported_error(
+                database,
+                "HAVING supports scalar expressions only over grouped or literal operands"
+            );
+            return MYLITE_ERROR;
+        }
+        for (size_t argument_index = 0U; argument_index < expression->argument_count;
+             ++argument_index) {
+            int rc = validate_grouped_having_row_scalar_expression(
+                database,
+                plan,
+                table_columns,
+                table_column_count,
+                &expression->arguments[argument_index]
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        }
+        return MYLITE_OK;
+    default:
+        set_unsupported_error(
+            database,
+            "HAVING supports scalar expressions only over grouped or literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+}
+
+static int validate_grouped_having_row_scalar_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+) {
+    int dependency_rc = MYLITE_OK;
+    size_t source_index =
+        expression->column_has_source_index ? expression->column_source_index : 0U;
+
+    if (grouped_projection_column_is_allowed(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            &expression->column,
+            source_index,
+            &dependency_rc
+        )) {
+        return MYLITE_OK;
+    }
+    if (dependency_rc != MYLITE_OK) {
+        return dependency_rc;
+    }
+
+    set_only_full_group_by_error(
+        database,
+        1U,
+        "HAVING clause",
+        planned_grouped_aggregate_source_resolution(plan, source_index),
+        &expression->column
+    );
     return MYLITE_ERROR;
 }
 

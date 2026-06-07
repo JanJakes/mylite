@@ -76,7 +76,12 @@ static int resolve_alter_table_column_replacement_plan(
         rc = reject_alter_table_modify_restricted_tables(database, out_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = resolve_alter_table_modify_original_column(database, columns, column_count, out_plan);
@@ -102,7 +107,12 @@ static int resolve_alter_table_column_replacement_plan(
         out_plan->is_metadata_only = true;
     }
     if (rc == MYLITE_OK) {
-        rc = complete_alter_table_modify_inline_key_columns(database, columns, column_count, out_plan);
+        rc = complete_alter_table_modify_inline_key_columns(
+            database,
+            columns,
+            column_count,
+            out_plan
+        );
     }
 
     free(columns);
@@ -396,9 +406,9 @@ static int validate_alter_table_modify_auto_increment(
     }
 
     for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-        const bool is_auto_increment =
-            column_index == plan->column_index ? plan->column.is_auto_increment
-                                               : columns[column_index].is_auto_increment;
+        const bool is_auto_increment = column_index == plan->column_index
+                                           ? plan->column.is_auto_increment
+                                           : columns[column_index].is_auto_increment;
 
         if (is_auto_increment) {
             ++auto_increment_count;
@@ -427,6 +437,9 @@ static int validate_alter_table_modify_auto_increment(
         return rc;
     }
     if (!alter_table_modify_auto_increment_has_leading_key(plan)) {
+        if (plan->defer_auto_increment_key_validation) {
+            return MYLITE_OK;
+        }
         set_wrong_auto_key_error(database);
         return MYLITE_ERROR;
     }
@@ -585,15 +598,24 @@ static int complete_alter_table_modify_column_plan(
     );
     bool supports_temporal_replacement =
         modify_column_temporal_replacement_supported(&out_plan->original_column, &out_plan->column);
-    bool supports_string_to_integer_replacement = modify_column_string_to_integer_replacement_supported(
-        &out_plan->original_column,
-        &out_plan->column
-    );
+    bool supports_numeric_replacement =
+        modify_column_numeric_replacement_supported(&out_plan->original_column, &out_plan->column);
+    bool supports_string_to_integer_replacement =
+        modify_column_string_to_integer_replacement_supported(
+            &out_plan->original_column,
+            &out_plan->column
+        );
+    bool supports_integer_to_string_replacement =
+        modify_column_integer_to_string_replacement_supported(
+            &out_plan->original_column,
+            &out_plan->column
+        );
     int rc = MYLITE_OK;
 
     if (!supports_char_varchar_replacement && !supports_text_family_replacement &&
         !supports_binary_string_replacement && !supports_temporal_replacement &&
-        !supports_string_to_integer_replacement &&
+        !supports_numeric_replacement && !supports_string_to_integer_replacement &&
+        !supports_integer_to_string_replacement &&
         (column_descriptor_is_string_family(&out_plan->original_column) ||
          column_descriptor_is_binary_string_family(&out_plan->original_column) ||
          column_descriptor_is_json(&out_plan->original_column) ||
@@ -784,10 +806,9 @@ static bool modify_column_char_varchar_widening_metadata_only(
     original_prefix_length = original_is_varchar
                                  ? varchar_descriptor_prefix_length(original_column->logical_type)
                                  : char_descriptor_prefix_length(original_column->logical_type);
-    replacement_prefix_length = replacement_is_varchar
-                                    ? varchar_descriptor_prefix_length(
-                                          replacement_column->logical_type)
-                                    : char_descriptor_prefix_length(replacement_column->logical_type);
+    replacement_prefix_length =
+        replacement_is_varchar ? varchar_descriptor_prefix_length(replacement_column->logical_type)
+                               : char_descriptor_prefix_length(replacement_column->logical_type);
 
     if (!parse_char_varchar_descriptor_length_literal(
             original_column->logical_type,
@@ -847,8 +868,7 @@ static bool modify_column_name_matches(
     return true;
 }
 
-static void planned_alter_table_modify_column_deinit(
-    struct planned_alter_table_modify_column *plan
+static void planned_alter_table_modify_column_deinit(struct planned_alter_table_modify_column *plan
 ) {
     if (plan == NULL) {
         return;

@@ -373,6 +373,8 @@ static int test_in_subquery_values_and_persistence(void) {
 }
 
 static int test_in_subquery_diagnostics(void) {
+    static const char *const id_column[] = {"id"};
+    static const char *const remaining_users[] = {"3", "4", "5"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -489,13 +491,17 @@ static int test_in_subquery_diagnostics(void) {
             .message_part = "IN subqueries support only WHERE",
         }
     );
-    failures += execute_error(
+    failures +=
+        execute_ok(database, "DELETE FROM users WHERE id IN (SELECT user_id FROM orders)", NULL);
+    failures += expect_query(
         database,
-        "DELETE FROM users WHERE id IN (SELECT user_id FROM orders)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "IN subqueries are supported only in SELECT WHERE",
+        (struct expected_query){
+            .sql = "SELECT id FROM users ORDER BY id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = remaining_users,
+            .row_count = 3U,
+            .context = "delete in subquery remaining users",
         }
     );
     failures += execute_error(

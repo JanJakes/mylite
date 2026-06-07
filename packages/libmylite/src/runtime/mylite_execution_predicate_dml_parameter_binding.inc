@@ -157,6 +157,20 @@ static int bind_select_predicate_node_parameters(
             parameter_index
         );
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON) {
+        return bind_select_scalar_aggregate_subquery_comparison_predicate_parameters(
+            statement,
+            node,
+            parameter_index
+        );
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN) {
+        return bind_select_scalar_aggregate_subquery_between_predicate_parameters(
+            statement,
+            node,
+            parameter_index
+        );
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_predicate_parameters(statement, node, parameter_index);
     }
@@ -275,6 +289,10 @@ static int bind_select_predicate_node_parameters_without_subqueries(
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
         return MYLITE_ERROR;
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON ||
+        node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN) {
+        return MYLITE_ERROR;
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_literal_predicate_parameters(statement, node, parameter_index);
     }
@@ -330,6 +348,91 @@ static int bind_select_scalar_subquery_in_predicate_parameters(
     return rc;
 }
 
+static int bind_select_scalar_aggregate_subquery_comparison_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = bind_scalar_aggregate_subquery_parameters(
+        statement,
+        node->subject_scalar_subquery,
+        parameter_index
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = bind_scalar_aggregate_subquery_or_value_parameters(
+            statement,
+            node->value_scalar_subquery,
+            &node->value,
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_select_scalar_aggregate_subquery_between_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = bind_scalar_aggregate_subquery_parameters(
+        statement,
+        node->subject_scalar_subquery,
+        parameter_index
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = bind_scalar_aggregate_subquery_or_value_parameters(
+            statement,
+            node->value_scalar_subquery,
+            &node->value,
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_scalar_aggregate_subquery_or_value_parameters(
+            statement,
+            node->upper_scalar_subquery,
+            &node->upper_value,
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_scalar_aggregate_subquery_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    int *parameter_index
+) {
+    if (subquery == NULL) {
+        return MYLITE_OK;
+    }
+
+    return bind_select_predicate_parameters_without_exists(
+        statement,
+        &subquery->subquery.predicate,
+        parameter_index
+    );
+}
+
+static int bind_scalar_aggregate_subquery_or_value_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    const struct planned_value *value,
+    int *parameter_index
+) {
+    int rc = bind_scalar_aggregate_subquery_parameters(statement, subquery, parameter_index);
+
+    if (rc == MYLITE_OK && subquery == NULL) {
+        rc = bind_planned_value_parameter(statement, *parameter_index, value);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+    return rc;
+}
+
 static int bind_select_in_value_list_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate_node *node,
@@ -376,8 +479,98 @@ static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_c
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
+    if (rc == MYLITE_OK) {
+        rc = bind_count_derived_source_parameters(statement, plan, &parameter_index);
+    }
 
     return rc;
+}
+
+static int bind_count_derived_source_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count *plan,
+    int *parameter_index
+) {
+    switch (plan->source_kind) {
+    case PLANNED_COUNT_SOURCE_DERIVED_SELECT:
+        return bind_select_parameters_at(statement, &plan->derived_select, parameter_index);
+    case PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR:
+        return bind_row_scalar_select_parameters_at(
+            statement,
+            &plan->derived_row_scalar_select,
+            parameter_index
+        );
+    case PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE:
+        return bind_grouped_aggregate_parameters_at(
+            statement,
+            plan->derived_grouped_aggregate,
+            true,
+            parameter_index
+        );
+    case PLANNED_COUNT_SOURCE_DERIVED_COMPOUND:
+        return bind_count_derived_compound_parameters(
+            statement,
+            &plan->derived_compound,
+            parameter_index
+        );
+    case PLANNED_COUNT_SOURCE_NONE:
+    case PLANNED_COUNT_SOURCE_TABLE:
+        return MYLITE_OK;
+    }
+    return MYLITE_ERROR;
+}
+
+static int bind_count_derived_compound_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count_derived_compound *compound_plan,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (compound_plan == NULL || compound_plan->branches == NULL || parameter_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t branch_index = 0U; rc == MYLITE_OK && branch_index < compound_plan->branch_count;
+         ++branch_index) {
+        rc = bind_count_derived_compound_branch_parameters(
+            statement,
+            &compound_plan->branches[branch_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_count_derived_compound_branch_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_count_derived_compound_branch *branch,
+    int *parameter_index
+) {
+    if (branch == NULL || parameter_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (branch->kind) {
+    case PLANNED_COUNT_SOURCE_DERIVED_SELECT:
+        return bind_select_parameters_at(statement, &branch->select, parameter_index);
+    case PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR:
+        return bind_row_scalar_select_parameters_at(
+            statement,
+            &branch->row_scalar_select,
+            parameter_index
+        );
+    case PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE:
+        return bind_grouped_aggregate_parameters_at(
+            statement,
+            branch->grouped_aggregate,
+            true,
+            parameter_index
+        );
+    case PLANNED_COUNT_SOURCE_NONE:
+    case PLANNED_COUNT_SOURCE_TABLE:
+    case PLANNED_COUNT_SOURCE_DERIVED_COMPOUND:
+        break;
+    }
+    return MYLITE_ERROR;
 }
 
 static int bind_column_aggregate_parameters(
@@ -399,6 +592,13 @@ static int bind_column_aggregate_parameters(
         if (rc == MYLITE_OK) {
             ++parameter_index;
         }
+    }
+    if (rc == MYLITE_OK && plan->aggregate_has_projection_rhs) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &plan->aggregate_projection_rhs,
+            &parameter_index
+        );
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
@@ -485,6 +685,14 @@ static int bind_grouped_aggregate_parameters_at(
         rc = bind_grouped_aggregate_row_scalar_expression_parameters(
             statement,
             &plan->aggregates[plan->having.aggregate_index],
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && plan->having.kind != PLANNED_GROUPED_HAVING_NONE &&
+        plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_ROW_SCALAR) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            plan->having.row_scalar_expression,
             parameter_index
         );
     }
@@ -650,6 +858,14 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
         rc = bind_update_multiple_assignment_parameters(statement, &parameter_index, plan);
     } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         rc = bind_update_date_interval_parameters(statement, &parameter_index, plan);
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        rc = MYLITE_OK;
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &plan->assignment_row_scalar_expression,
+            &parameter_index
+        );
     } else {
         rc = bind_update_assignment_parameter(statement, parameter_index, plan);
         if (rc == MYLITE_OK) {
@@ -680,15 +896,22 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(plan)) {
         rc = bind_update_multiple_changed_condition_parameters(statement, &parameter_index, plan);
-    } else if (
-        rc == MYLITE_OK && plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL
-    ) {
+    } else if (rc == MYLITE_OK &&
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         rc = bind_update_date_interval_parameters(statement, &parameter_index, plan);
-    } else if (
-        rc == MYLITE_OK &&
-        (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
-         !plan->assignment_value.is_null)
-    ) {
+    } else if (rc == MYLITE_OK &&
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        rc = MYLITE_OK;
+    } else if (rc == MYLITE_OK &&
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        rc = bind_update_row_scalar_changed_condition_parameters(
+            statement,
+            &parameter_index,
+            &plan->assignment_row_scalar_expression
+        );
+    } else if (rc == MYLITE_OK &&
+               (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
+                !plan->assignment_value.is_null)) {
         rc = bind_update_changed_condition_parameter(statement, parameter_index, plan);
     }
 
@@ -706,13 +929,21 @@ static int bind_update_multiple_assignment_parameters(
         if (planned_update_assignment_is_noop(&plan->assignments[index])) {
             continue;
         }
-        rc = bind_planned_value_parameter(
-            statement,
-            *parameter_index,
-            &plan->assignments[index].value
-        );
-        if (rc == MYLITE_OK) {
-            ++(*parameter_index);
+        if (plan->assignments[index].value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &plan->assignments[index].row_scalar_expression,
+                parameter_index
+            );
+        } else {
+            rc = bind_planned_value_parameter(
+                statement,
+                *parameter_index,
+                &plan->assignments[index].value
+            );
+            if (rc == MYLITE_OK) {
+                ++(*parameter_index);
+            }
         }
     }
 
@@ -804,6 +1035,14 @@ static int bind_update_multiple_changed_condition_parameters(
         if (planned_update_assignment_is_noop(&plan->assignments[index])) {
             continue;
         }
+        if (plan->assignments[index].value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+            rc = bind_update_row_scalar_changed_condition_parameters(
+                statement,
+                parameter_index,
+                &plan->assignments[index].row_scalar_expression
+            );
+            continue;
+        }
         if (plan->assignments[index].value.is_null) {
             continue;
         }
@@ -820,6 +1059,20 @@ static int bind_update_multiple_changed_condition_parameters(
     return rc;
 }
 
+static int bind_update_row_scalar_changed_condition_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_row_scalar_expression *expression
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t occurrence = 0U; rc == MYLITE_OK && occurrence < 3U; ++occurrence) {
+        rc = bind_row_scalar_expression_parameters(statement, expression, parameter_index);
+    }
+
+    return rc;
+}
+
 static int bind_update_assignment_parameter(
     sqlite3_stmt *statement,
     int parameter_index,
@@ -827,6 +1080,12 @@ static int bind_update_assignment_parameter(
 ) {
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return bind_int64_parameter(statement, parameter_index, plan->arithmetic_delta);
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return MYLITE_OK;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return MYLITE_OK;
     }
 
     return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
@@ -839,6 +1098,12 @@ static int bind_update_changed_condition_parameter(
 ) {
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return bind_int64_parameter(statement, parameter_index, plan->arithmetic_delta);
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return MYLITE_OK;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return MYLITE_OK;
     }
 
     return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);

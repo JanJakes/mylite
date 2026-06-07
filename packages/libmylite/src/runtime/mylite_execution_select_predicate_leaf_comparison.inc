@@ -121,7 +121,22 @@ static int plan_select_predicate_leaf_node(
             &node_index
         );
     } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
-        if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
+        bool scalar_aggregate_handled = false;
+
+        rc = plan_scalar_aggregate_subquery_between_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            out_predicate,
+            &node_index,
+            &scalar_aggregate_handled
+        );
+        if (rc != MYLITE_OK || scalar_aggregate_handled) {
+            /* handled above */
+        } else if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
             rc = plan_temporal_extract_between_predicate(
                 database,
                 predicate_node,
@@ -131,10 +146,8 @@ static int plan_select_predicate_leaf_node(
                 out_predicate,
                 &node_index
             );
-        } else if (
-            row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
-            PLANNED_ROW_SCALAR_CONVERSION_NONE
-        ) {
+        } else if (row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
+                   PLANNED_ROW_SCALAR_CONVERSION_NONE) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -309,7 +322,22 @@ static int plan_select_predicate_leaf_node_without_exists(
             &node_index
         );
     } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
-        if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
+        bool scalar_aggregate_handled = false;
+
+        rc = plan_scalar_aggregate_subquery_between_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            out_predicate,
+            &node_index,
+            &scalar_aggregate_handled
+        );
+        if (rc != MYLITE_OK || scalar_aggregate_handled) {
+            /* handled above */
+        } else if (predicate_node_is_temporal_extract_expression(child_at(predicate_node, 0U))) {
             rc = plan_temporal_extract_between_predicate(
                 database,
                 predicate_node,
@@ -319,10 +347,8 @@ static int plan_select_predicate_leaf_node_without_exists(
                 out_predicate,
                 &node_index
             );
-        } else if (
-            row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
-            PLANNED_ROW_SCALAR_CONVERSION_NONE
-        ) {
+        } else if (row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
+                   PLANNED_ROW_SCALAR_CONVERSION_NONE) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -454,6 +480,23 @@ static int plan_comparison_predicate(
         return row_scalar_function_rc;
     }
 
+    bool scalar_aggregate_subquery_handled = false;
+    int scalar_aggregate_subquery_rc = plan_scalar_aggregate_subquery_comparison_predicate(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        options,
+        predicate,
+        out_node_index,
+        &scalar_aggregate_subquery_handled
+    );
+
+    if (scalar_aggregate_subquery_handled || scalar_aggregate_subquery_rc != MYLITE_OK) {
+        return scalar_aggregate_subquery_rc;
+    }
+
     bool scalar_count_subquery_handled = false;
     int scalar_count_subquery_rc = plan_scalar_count_subquery_comparison_predicate(
         database,
@@ -516,6 +559,10 @@ static int plan_comparison_predicate(
 
     if (rc == MYLITE_OK) {
         rc = validate_comparison_predicate_column(database, &node);
+    }
+    if (rc == MYLITE_OK && comparison_operator_is_regexp(node.operator_kind) &&
+        !column_descriptor_is_string_family(&node.column)) {
+        node.regexp_cast_subject_as_text = true;
     }
     if (rc == MYLITE_OK) {
         rc = plan_comparison_predicate_value(
@@ -612,6 +659,485 @@ static int plan_scalar_count_subquery_comparison_predicate(
     }
 
     predicate->qualify_column_references = true;
+    return MYLITE_OK;
+}
+
+static int plan_scalar_aggregate_subquery_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *left_node = child_at(predicate_node, 0U);
+    const struct mylite_sql_ast_node *right_node = child_at(predicate_node, 1U);
+    bool left_is_scalar_aggregate = scalar_subquery_is_column_aggregate(left_node);
+    bool right_is_scalar_aggregate = scalar_subquery_is_column_aggregate(right_node);
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    size_t outer_source_count = 1U;
+    int rc = MYLITE_OK;
+
+    *out_handled = left_is_scalar_aggregate || right_is_scalar_aggregate;
+    if (!*out_handled) {
+        return MYLITE_OK;
+    }
+    if (options == NULL ||
+        (!options->allow_exists && !options->allow_scalar_count_subquery_comparison)) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subquery comparisons are supported only in SELECT WHERE"
+        );
+        return MYLITE_ERROR;
+    }
+    if (source_context == NULL) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subquery comparisons support only an outer table source"
+        );
+        return MYLITE_ERROR;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        outer_source_count = source_context->source_count;
+    }
+
+    if (left_is_scalar_aggregate) {
+        rc = allocate_scalar_aggregate_subquery(database, &node.subject_scalar_subquery);
+        if (rc == MYLITE_OK) {
+            rc = plan_scalar_aggregate_subquery_operand(
+                database,
+                left_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                node.subject_scalar_subquery,
+                outer_source_count
+            );
+        }
+    } else {
+        rc = resolve_predicate_column_with_source_index(
+            database,
+            left_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            &node.column,
+            &node.column_source_index
+        );
+        if (rc == MYLITE_OK) {
+            rc = validate_comparison_predicate_column(database, &node);
+        }
+    }
+    if (rc == MYLITE_OK && right_is_scalar_aggregate) {
+        rc = allocate_scalar_aggregate_subquery(database, &node.value_scalar_subquery);
+        if (rc == MYLITE_OK) {
+            rc = plan_scalar_aggregate_subquery_operand(
+                database,
+                right_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                node.value_scalar_subquery,
+                outer_source_count
+            );
+        }
+    } else if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(database, right_node, &node.value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_scalar_aggregate_subquery_deinit(node.subject_scalar_subquery);
+        free(node.subject_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(node.value_scalar_subquery);
+        free(node.value_scalar_subquery);
+        return rc;
+    }
+
+    predicate->qualify_column_references = true;
+    return MYLITE_OK;
+}
+
+static int plan_scalar_aggregate_subquery_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *subject_node = child_at(predicate_node, 0U);
+    const struct mylite_sql_ast_node *lower_node = child_at(predicate_node, 1U);
+    const struct mylite_sql_ast_node *upper_node = child_at(predicate_node, 2U);
+    bool subject_is_scalar_aggregate = scalar_subquery_is_column_aggregate(subject_node);
+    bool lower_is_scalar_aggregate = scalar_subquery_is_column_aggregate(lower_node);
+    bool upper_is_scalar_aggregate = scalar_subquery_is_column_aggregate(upper_node);
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    size_t outer_source_count = 1U;
+    int rc = MYLITE_OK;
+
+    *out_handled =
+        subject_is_scalar_aggregate || lower_is_scalar_aggregate || upper_is_scalar_aggregate;
+    if (!*out_handled) {
+        return MYLITE_OK;
+    }
+    if (options == NULL ||
+        (!options->allow_exists && !options->allow_scalar_count_subquery_comparison)) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subquery BETWEEN predicates are supported only in SELECT WHERE"
+        );
+        return MYLITE_ERROR;
+    }
+    if (source_context == NULL) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subquery BETWEEN predicates support only an outer table source"
+        );
+        return MYLITE_ERROR;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        outer_source_count = source_context->source_count;
+    }
+
+    if (subject_is_scalar_aggregate) {
+        rc = allocate_scalar_aggregate_subquery(database, &node.subject_scalar_subquery);
+        if (rc == MYLITE_OK) {
+            rc = plan_scalar_aggregate_subquery_operand(
+                database,
+                subject_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                node.subject_scalar_subquery,
+                outer_source_count
+            );
+        }
+    } else {
+        rc = resolve_predicate_column_with_source_index(
+            database,
+            subject_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            &node.column,
+            &node.column_source_index
+        );
+    }
+    if (rc == MYLITE_OK && lower_is_scalar_aggregate) {
+        rc = allocate_scalar_aggregate_subquery(database, &node.value_scalar_subquery);
+        if (rc == MYLITE_OK) {
+            rc = plan_scalar_aggregate_subquery_operand(
+                database,
+                lower_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                node.value_scalar_subquery,
+                outer_source_count
+            );
+        }
+    } else if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(database, lower_node, &node.value);
+    }
+    if (rc == MYLITE_OK && upper_is_scalar_aggregate) {
+        rc = allocate_scalar_aggregate_subquery(database, &node.upper_scalar_subquery);
+        if (rc == MYLITE_OK) {
+            rc = plan_scalar_aggregate_subquery_operand(
+                database,
+                upper_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                node.upper_scalar_subquery,
+                outer_source_count
+            );
+        }
+    } else if (rc == MYLITE_OK) {
+        rc = plan_where_scalar_literal_value(database, upper_node, &node.upper_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
+        planned_scalar_aggregate_subquery_deinit(node.subject_scalar_subquery);
+        free(node.subject_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(node.value_scalar_subquery);
+        free(node.value_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(node.upper_scalar_subquery);
+        free(node.upper_scalar_subquery);
+        return rc;
+    }
+
+    predicate->qualify_column_references = true;
+    return MYLITE_OK;
+}
+
+static int plan_scalar_aggregate_subquery_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *scalar_subquery,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_scalar_aggregate_subquery *out_subquery,
+    size_t outer_source_count
+) {
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    int rc = MYLITE_OK;
+
+    *out_subquery = (struct planned_scalar_aggregate_subquery){0};
+    out_subquery->subquery.inner_source_index = outer_source_count;
+    if (scalar_subquery == NULL || scalar_subquery->kind != MYLITE_SQL_AST_SCALAR_SUBQUERY ||
+        mylite_sql_ast_node_child_count(scalar_subquery) != 1U) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subquery supports only parenthesized SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    statement = child_at(scalar_subquery, 0U);
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "scalar aggregate subquery supports only SELECT");
+        return MYLITE_ERROR;
+    }
+    select_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    optional_clause = child_at(statement, 2U);
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subqueries do not support SELECT modifiers"
+        );
+        return MYLITE_ERROR;
+    }
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "scalar aggregate subqueries support only WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    rc = scalar_aggregate_subquery_select_expression(
+        database,
+        select_list,
+        &expression,
+        &out_subquery->function
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_exists_table_source(database, from_clause, &out_subquery->subquery);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_scalar_aggregate_subquery_column(
+            database,
+            expression,
+            out_subquery->function,
+            &out_subquery->subquery,
+            &out_subquery->column,
+            &out_subquery->column_source_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_exists_inner_predicate(
+            database,
+            where_clause,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_subquery->subquery
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_scalar_aggregate_subquery_deinit(out_subquery);
+    }
+    return rc;
+}
+
+static bool scalar_subquery_is_column_aggregate(const struct mylite_sql_ast_node *scalar_subquery) {
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    enum planned_column_aggregate_function function = PLANNED_COLUMN_AGGREGATE_NONE;
+
+    if (scalar_subquery == NULL || scalar_subquery->kind != MYLITE_SQL_AST_SCALAR_SUBQUERY ||
+        mylite_sql_ast_node_child_count(scalar_subquery) != 1U) {
+        return false;
+    }
+    statement = child_at(scalar_subquery, 0U);
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return false;
+    }
+    select_list = child_at(statement, 0U);
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        mylite_sql_ast_node_child_count(select_list) != 1U) {
+        return false;
+    }
+    item = child_at(select_list, 0U);
+    if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        return false;
+    }
+    expression = unwrap_parenthesized_expression(child_at(item, 0U));
+    function = column_aggregate_function_from_expression(expression);
+    return function == PLANNED_COLUMN_AGGREGATE_MIN || function == PLANNED_COLUMN_AGGREGATE_MAX ||
+           function == PLANNED_COLUMN_AGGREGATE_SUM || function == PLANNED_COLUMN_AGGREGATE_AVG;
+}
+
+static int scalar_aggregate_subquery_select_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node **out_expression,
+    enum planned_column_aggregate_function *out_function
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+
+    *out_expression = NULL;
+    *out_function = PLANNED_COLUMN_AGGREGATE_NONE;
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_scalar_subquery_column_count_error(database);
+        return MYLITE_ERROR;
+    }
+    item = child_at(select_list, 0U);
+    if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    expression = unwrap_parenthesized_expression(child_at(item, 0U));
+    *out_function = column_aggregate_function_from_expression(expression);
+    if (*out_function != PLANNED_COLUMN_AGGREGATE_MIN &&
+        *out_function != PLANNED_COLUMN_AGGREGATE_MAX &&
+        *out_function != PLANNED_COLUMN_AGGREGATE_SUM &&
+        *out_function != PLANNED_COLUMN_AGGREGATE_AVG) {
+        set_unsupported_error(
+            database,
+            "scalar aggregate subqueries support only MIN(), MAX(), SUM(), and AVG()"
+        );
+        return MYLITE_ERROR;
+    }
+
+    *out_expression = expression;
+    return MYLITE_OK;
+}
+
+static int plan_scalar_aggregate_subquery_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum planned_column_aggregate_function function,
+    const struct planned_exists_subquery *subquery,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+) {
+    struct select_source_context source_context = {0};
+    const struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    size_t source_index = 0U;
+    struct integer_column_range range;
+    int rc = scalar_aggregate_subquery_source_context(
+        subquery,
+        &source_context,
+        &columns,
+        &column_count
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = resolve_descriptor_column_reference_with_source_index(
+            database,
+            child_at(expression, 0U),
+            &source_context,
+            COLUMN_REFERENCE_FIELD,
+            column_aggregate_column_error(function),
+            columns,
+            column_count,
+            out_column,
+            &source_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = integer_range_for_column(
+            database,
+            out_column,
+            column_aggregate_integer_error(function),
+            &range
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_source_index = subquery->inner_source_index + source_index;
+    }
+    return rc;
+}
+
+static int scalar_aggregate_subquery_source_context(
+    const struct planned_exists_subquery *subquery,
+    struct select_source_context *out_source_context,
+    const struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    *out_source_context = (struct select_source_context){0};
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    if (subquery == NULL || !subquery->has_table_source) {
+        return MYLITE_ERROR;
+    }
+    if (subquery->source_count > 0U) {
+        return init_join_select_source_context(
+            subquery->sources,
+            subquery->source_count,
+            out_source_context
+        );
+    }
+
+    *out_source_context = (struct select_source_context){
+        .source = &subquery->source.source,
+        .has_alias = subquery->source.has_alias,
+    };
+    memcpy(out_source_context->alias, subquery->source.alias, sizeof(out_source_context->alias));
+    *out_columns = subquery->source.columns;
+    *out_column_count = subquery->source.column_count;
+    return MYLITE_OK;
+}
+
+static int allocate_scalar_aggregate_subquery(
+    struct mylite_db *database,
+    struct planned_scalar_aggregate_subquery **out_subquery
+) {
+    *out_subquery = calloc(1U, sizeof(**out_subquery));
+    if (*out_subquery == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -875,10 +1401,8 @@ static int plan_comparison_predicate_like_value(
     size_t table_column_count,
     struct planned_select_predicate_node *node
 ) {
-    node->like_uses_escape = (bool)!session_sql_mode_has(
-        &database->session,
-        MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
-    );
+    node->like_uses_escape = (bool
+    )!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES);
     int rc = validate_like_escape_clause(database, predicate_node);
 
     if (rc != MYLITE_OK) {
@@ -1427,8 +1951,9 @@ static int plan_same_scope_column_comparison_predicate(
     };
     int rc = MYLITE_OK;
 
-    if (node.operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL) {
-        set_unsupported_error(database, "WHERE column-to-column predicates support only =");
+    if (node.operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
+        node.operator_kind != MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
+        set_unsupported_error(database, "WHERE column-to-column predicates support only = and <>");
         return MYLITE_ERROR;
     }
 
@@ -1458,8 +1983,8 @@ static int plan_same_scope_column_comparison_predicate(
     if (!same_scope_column_comparison_is_supported(&node)) {
         set_unsupported_error(
             database,
-            "WHERE column-to-column predicates support only same-family integer or string "
-            "descriptor equality"
+            "WHERE column-to-column predicates support only same-family numeric or string "
+            "descriptor comparisons"
         );
         return MYLITE_ERROR;
     }
@@ -1919,12 +2444,11 @@ static bool predicate_node_is_find_in_set_expression(
     const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
-    return (predicate_node != NULL &&
-            predicate_node->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION) != 0;
+    return (predicate_node != NULL && predicate_node->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION
+           ) != 0;
 }
 
-static bool predicate_node_is_json_valid_expression(
-    const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_json_valid_expression(const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
     return (predicate_node != NULL && predicate_node->kind == MYLITE_SQL_AST_JSON_VALID_FUNCTION) !=
@@ -1944,8 +2468,8 @@ static bool predicate_node_is_regexp_like_expression(
     const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
-    return (predicate_node != NULL &&
-            predicate_node->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) != 0;
+    return (predicate_node != NULL && predicate_node->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION
+           ) != 0;
 }
 
 static bool predicate_node_is_string_length_expression(
@@ -1956,8 +2480,7 @@ static bool predicate_node_is_string_length_expression(
             mylite_execution_is_string_length_function_kind(predicate_node->kind)) != 0;
 }
 
-static bool predicate_node_is_substring_expression(
-    const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_substring_expression(const struct mylite_sql_ast_node *predicate_node
 ) {
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
     if (predicate_node == NULL) {

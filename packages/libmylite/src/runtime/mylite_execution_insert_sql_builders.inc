@@ -363,7 +363,7 @@ static int append_insert_select_compound_column_projection_sql(
         planned_select_qualifies_source_references(source)
     );
 
-    if (rc == MYLITE_OK && column_descriptor_is_string_family(column)) {
+    if (rc == MYLITE_OK && column_descriptor_uses_string_key_collation(column, true)) {
         rc = append_string_key_collation_sql(string);
     }
 
@@ -431,7 +431,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
         return expression->value.is_text;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return column_descriptor_is_string_family(&expression->column);
+        return column_descriptor_uses_string_key_collation(&expression->column, true);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
@@ -853,15 +853,16 @@ static bool insert_select_compound_output_uses_string_collation(
 
         if (branch->kind == PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE) {
             if (column_index < branch->source.column_count &&
-                column_descriptor_is_string_family(&branch->source.columns[column_index])) {
+                column_descriptor_uses_string_key_collation(
+                    &branch->source.columns[column_index],
+                    true
+                )) {
                 return true;
             }
-        } else if (
-            column_index < branch->row_source.item_count &&
-            row_scalar_expression_uses_string_collation(
-                &branch->row_source.items[column_index].expression
-            )
-        ) {
+        } else if (column_index < branch->row_source.item_count &&
+                   row_scalar_expression_uses_string_collation(
+                       &branch->row_source.items[column_index].expression
+                   )) {
             return true;
         }
     }

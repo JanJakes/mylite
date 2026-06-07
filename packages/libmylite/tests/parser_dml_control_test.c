@@ -2302,6 +2302,44 @@ static int test_update_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
+        parser_test_parse_sql("UPDATE counters SET n = n * id;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    assignment_list = parser_test_child_at(statement, 1U);
+    assignment = parser_test_child_at(assignment_list, 0U);
+    failures += parser_test_expect_operator(
+        parser_test_child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_MULTIPLY,
+        "update arithmetic multiply assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("UPDATE counters SET n = id;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    assignment_list = parser_test_child_at(statement, 1U);
+    assignment = parser_test_child_at(assignment_list, 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(assignment, 1U),
+        "id",
+        "update column-copy source"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE counters SET n = COALESCE(optional_n, 100);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    assignment_list = parser_test_child_at(statement, 1U);
+    assignment = parser_test_child_at(assignment_list, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(assignment, 1U),
+        MYLITE_SQL_AST_COALESCE_FUNCTION,
+        "update COALESCE assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
         parser_test_parse_sql("UPDATE counters SET n = n - 1;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
     assignment_list = parser_test_child_at(statement, 1U);

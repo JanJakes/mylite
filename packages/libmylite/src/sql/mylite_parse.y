@@ -25,6 +25,7 @@
     mylite_sql_parser_state_stack_overflow(state);
 }
 
+%right DEFAULT.
 %left OR.
 %left XOR.
 %left AND.
@@ -956,14 +957,14 @@ create_temporary_table_like_statement(A) ::=
     A = mylite_sql_parser_make_create_temporary_table_like_statement(state, C, E, T, S);
 }
 create_table_select_statement(A) ::=
-    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) create_table_select_as_opt
-    select_statement(S). {
-    A = mylite_sql_parser_make_create_table_select_statement(state, C, E, T, S);
+    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) table_option_list_opt(O)
+    create_table_select_as_opt select_statement(S). {
+    A = mylite_sql_parser_make_create_table_select_statement(state, C, E, T, O, S);
 }
 create_temporary_table_select_statement(A) ::=
-    CREATE(C) TEMPORARY TABLE create_if_not_exists_opt(E) table_name(T)
+    CREATE(C) TEMPORARY TABLE create_if_not_exists_opt(E) table_name(T) table_option_list_opt(O)
     create_table_select_as_opt select_statement(S). {
-    A = mylite_sql_parser_make_create_temporary_table_select_statement(state, C, E, T, S);
+    A = mylite_sql_parser_make_create_temporary_table_select_statement(state, C, E, T, O, S);
 }
 create_view_statement(A) ::= CREATE(C) VIEW table_name(T) AS select_statement(S). {
     A = mylite_sql_parser_make_create_view_statement(state, C, T, S);
@@ -3117,6 +3118,13 @@ update_value(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
 }
+update_value(A) ::= COALESCE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
+}
+update_value(A) ::= qualified_identifier(C). {
+    A = C;
+}
 update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) INTEGER(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_ADD,
@@ -3126,6 +3134,17 @@ update_value(A) ::= arithmetic_update_source_column(B) MINUS(T) INTEGER(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
         mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) arithmetic_update_source_column(C). {
+    A = mylite_sql_parser_make_binary_expression(state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+update_value(A) ::= arithmetic_update_source_column(B) MINUS(T) arithmetic_update_source_column(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+update_value(A) ::= arithmetic_update_source_column(B) STAR(T) arithmetic_update_source_column(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
 }
 update_value(A) ::= update_constant_arithmetic_value(B). {
     A = B;
@@ -3902,6 +3921,14 @@ having_predicate_atom(A) ::=
 having_operand(A) ::= qualified_identifier(B). {
     A = B;
 }
+having_operand(A) ::= qualified_identifier(B) PLUS(T) having_integer_value(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+having_operand(A) ::= qualified_identifier(B) MINUS(T) having_integer_value(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
 having_operand(A) ::= selected_grouped_aggregate_expression(B). {
     A = B;
 }
@@ -4039,6 +4066,27 @@ predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R)
         O.token,
         O.operator_kind,
         V);
+}
+predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R) BETWEEN(B)
+        predicate_range_value(V) AND predicate_range_value(E). {
+    A = mylite_sql_parser_make_between_predicate(
+        state,
+        mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R),
+        B,
+        V,
+        E);
+}
+predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R) NOT(N) BETWEEN(B)
+        predicate_range_value(V) AND predicate_range_value(E). {
+    A = mylite_sql_parser_make_not_predicate(
+        state,
+        N,
+        mylite_sql_parser_make_between_predicate(
+            state,
+            mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R),
+            B,
+            V,
+            E));
 }
 predicate_atom(A) ::= predicate_scalar_literal(V). {
     A = V;
@@ -4628,6 +4676,9 @@ predicate_range_value(A) ::= STRING(T). {
 predicate_range_value(A) ::= BIT_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
+predicate_range_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
     A = V;
@@ -4662,6 +4713,9 @@ predicate_comparison_value(A) ::= DATABASE(T) LPAREN RPAREN(R). {
 predicate_comparison_value(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
+}
+predicate_comparison_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
 }
 
 predicate_integer_value(A) ::= INTEGER(T). {
@@ -10575,12 +10629,15 @@ nullability(A) ::= NOT(N) NULL(T). {
         state, MYLITE_SQL_AST_NULLABILITY_NOT_NULL, N, T);
 }
 
-column_default(A) ::= DEFAULT(D) NULL(N). {
+column_default(A) ::= DEFAULT(D) NULL(N) column_default_null_repeat_opt. {
     A = mylite_sql_parser_make_column_default_null(state, D, N);
 }
 column_default(A) ::= DEFAULT(D) column_default_value(V). {
     A = mylite_sql_parser_make_column_default_value(state, D, V);
 }
+
+column_default_null_repeat_opt ::= . [DEFAULT]
+column_default_null_repeat_opt ::= DEFAULT NULL.
 
 column_default_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);

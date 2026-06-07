@@ -346,7 +346,8 @@ static int plan_insert_select_compound_branch(
     int rc = reject_compound_select_branch_shape(
         database,
         branch_statement,
-        MYLITE_SQL_AST_SET_OPERATOR_UNION
+        MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        false
     );
 
     *out_branch = (struct planned_insert_select_compound_branch){.modifier = modifier};

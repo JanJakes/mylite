@@ -109,6 +109,26 @@ static int show_index_part_prefix_value(
     size_t prefix_text_size,
     const char **out_prefix_value
 ) {
+    return index_part_display_prefix_value(
+        database,
+        index,
+        part,
+        prefix_text,
+        prefix_text_size,
+        out_prefix_value
+    );
+}
+
+static int index_part_display_prefix_value(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part,
+    char *prefix_text,
+    size_t prefix_text_size,
+    const char **out_prefix_value
+) {
+    bool matches_full_length = false;
+
     *out_prefix_value = NULL;
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
         *out_prefix_value = "32";
@@ -119,7 +139,12 @@ static int show_index_part_prefix_value(
         return MYLITE_OK;
     }
 
-    int rc = information_schema_format_i64(
+    int rc = index_part_prefix_matches_full_column_length(database, part, &matches_full_length);
+    if (rc != MYLITE_OK || matches_full_length) {
+        return rc;
+    }
+
+    rc = information_schema_format_i64(
         database,
         part->index_column.prefix_length,
         prefix_text,
@@ -130,6 +155,41 @@ static int show_index_part_prefix_value(
         *out_prefix_value = prefix_text;
     }
     return rc;
+}
+
+static int index_part_prefix_matches_full_column_length(
+    struct mylite_db *database,
+    const struct loaded_index_part *part,
+    bool *out_matches
+) {
+    size_t column_length = 0U;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (part == NULL || !part->index_column.has_prefix_length ||
+        part->index_column.prefix_length < 0) {
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_varchar(&part->column)) {
+        int rc = varchar_length_for_column(database, &part->column, &column_length);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    } else if (column_descriptor_is_char(&part->column)) {
+        int rc = char_length_for_column(database, &part->column, &column_length);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    } else {
+        return MYLITE_OK;
+    }
+
+    *out_matches = (uint64_t)part->index_column.prefix_length == (uint64_t)column_length;
+    return MYLITE_OK;
 }
 
 static const char *show_index_index_type_text(const struct loaded_index_info *index) {

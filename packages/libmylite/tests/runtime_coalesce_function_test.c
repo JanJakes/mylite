@@ -521,15 +521,7 @@ static int test_coalesce_function_unsupported_forms(void) {
             .message_part = "near 'ORDER'",
         }
     );
-    failures += execute_error(
-        database,
-        "UPDATE t SET id = COALESCE(1,2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'COALESCE'",
-        }
-    );
+    failures += execute_ok(database, "UPDATE t SET id = COALESCE(1,2)", NULL);
 
     mylite_close(database);
     remove_related_files(path);

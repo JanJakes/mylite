@@ -1,6 +1,7 @@
 static int plan_create_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool is_temporary_target,
     struct planned_create_table *out_plan
 ) {
     const struct mylite_sql_ast_node *item_list = child_at(statement, 1U);
@@ -42,7 +43,8 @@ static int plan_create_table(
     rc = validate_create_table_options(
         database,
         create_table_options_node(statement),
-        out_plan->target.table_name
+        out_plan->target.table_name,
+        is_temporary_target
     );
     if (rc != MYLITE_OK) {
         return rc;

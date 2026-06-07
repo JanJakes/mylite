@@ -114,6 +114,7 @@ static int test_temporary_create_table_select_success_and_metadata(void) {
     static const char *const zero_count[] = {"0"};
     static const char *const shadow_temp_rows[] = {"1"};
     static const char *const shadow_persistent_rows[] = {"99"};
+    static const char *const memory_rows[] = {"1", "10"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -219,6 +220,22 @@ static int test_temporary_create_table_select_success_and_metadata(void) {
         "SHOW TABLE STATUS FROM other LIKE 'tmp_as'",
         0U,
         "temporary ctas omitted from show table status"
+    );
+    failures += expect_statement(
+        database,
+        "CREATE TEMPORARY TABLE app.tmp_memory ENGINE=MEMORY "
+        "SELECT id, n FROM app.src WHERE id = 1",
+        (struct expected_statement){1, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n FROM app.tmp_memory",
+            .values = memory_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "temporary ctas table options copied rows",
+        }
     );
     failures += expect_statement(
         database,

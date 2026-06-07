@@ -99,8 +99,11 @@ static int test_update_success_persistence_rename_and_drop(void) {
     static const char *const all_i_eleven[] = {"11", "11", "11", "11"};
     static const char *const all_nulls[] = {NULL, NULL, NULL, NULL};
     static const char *const all_i_original[] = {"-2", "1", "2147483647", "0"};
+    static const char *const all_i_from_nn[] = {"5", "6", "7", "8"};
+    static const char *const coalesced_n_values[] = {"100", "9", "100", "9"};
     static const char *const all_iu_original[] = {"0", "2", "4294967295", "8"};
     static const char *const all_nn_original[] = {"5", "6", "7", "8"};
+    static const char *const scalar_aggregate_subquery_values[] = {"John", "3", "Ringo", "37"};
     static const char *const order_default_ids[] = {"1", "4"};
     static const char *const order_desc_ids[] = {"3"};
     static const char *const tie_group_ids[] = {"1", "2"};
@@ -194,6 +197,89 @@ static int test_update_success_persistence_rename_and_drop(void) {
         }
     );
     failures += expect_update_ok(database, "UPDATE upd_full SET i = 5", 0);
+
+    failures += create_numbers_table(database, "upd_column_copy");
+    failures += expect_update_ok(database, "UPDATE upd_column_copy SET i = nn", 4);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i FROM upd_column_copy ORDER BY id",
+            .values = all_i_from_nn,
+            .column_count = 1U,
+            .row_count = 4U,
+            .context = "column-copy update values",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE upd_float_copy (id INT, f FLOAT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO upd_float_copy VALUES (1, 0), (2, 0)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_update_ok(database, "UPDATE upd_float_copy SET f = id", 2);
+
+    failures +=
+        execute_ok(database, "CREATE TABLE upd_decimal_copy (id INT, d DECIMAL(10,2))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO upd_decimal_copy VALUES (1, 0), (2, 0)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_update_ok(database, "UPDATE upd_decimal_copy SET d = id", 2);
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE upd_scalar_aggregate_target (name VARCHAR(20), age INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO upd_scalar_aggregate_target VALUES ('Ringo', 5), ('John', 3)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE upd_scalar_aggregate_source (priority INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "INSERT INTO upd_scalar_aggregate_source VALUES (1), (7)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_update_ok(
+        database,
+        "UPDATE upd_scalar_aggregate_target SET age = "
+        "(SELECT MAX(priority) + 30 AS max_priority FROM upd_scalar_aggregate_source) "
+        "WHERE name = 'Ringo'",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT name, age FROM upd_scalar_aggregate_target ORDER BY name",
+            .values = scalar_aggregate_subquery_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "scalar aggregate subquery update assignment",
+        }
+    );
+
+    failures += create_numbers_table(database, "upd_coalesce");
+    failures += expect_update_ok(database, "UPDATE upd_coalesce SET i = COALESCE(n, 100)", 4);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i FROM upd_coalesce ORDER BY id",
+            .values = coalesced_n_values,
+            .column_count = 1U,
+            .row_count = 4U,
+            .context = "COALESCE update values",
+        }
+    );
 
     failures += create_numbers_table(database, "upd_null");
     failures += expect_update_ok(database, "UPDATE upd_null SET n = NULL WHERE n IS NULL", 0);
@@ -794,15 +880,6 @@ static int test_update_diagnostics(void) {
     failures += execute_error(
         database,
         "UPDATE numbers SET i = 1 / 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "UPDATE numbers SET i = nn",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

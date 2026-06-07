@@ -139,7 +139,8 @@ static bool modify_column_char_varchar_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 ) {
-    return (column_descriptor_is_char_or_varchar(original_column) &&
+    return ((column_descriptor_is_string_family(original_column) ||
+             column_descriptor_is_binary_string_family(original_column)) &&
             planned_column_is_char_or_varchar(replacement_column)) != 0;
 }
 
@@ -147,7 +148,8 @@ static bool modify_column_text_family_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 ) {
-    return (column_descriptor_is_string_family(original_column) &&
+    return ((column_descriptor_is_string_family(original_column) ||
+             column_descriptor_is_binary_string_family(original_column)) &&
             planned_column_is_text_family(replacement_column)) != 0;
 }
 
@@ -173,13 +175,47 @@ static bool modify_column_temporal_replacement_supported(
     return (original_is_temporal && replacement_is_temporal) != 0;
 }
 
+static bool modify_column_numeric_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    return (column_descriptor_is_numeric_replacement_family(original_column) &&
+            planned_column_is_numeric_replacement_family(replacement_column)) != 0;
+}
+
 static bool modify_column_string_to_integer_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 ) {
-    return (column_descriptor_is_string_family(original_column) &&
-            replacement_column != NULL && replacement_column->physical_type != NULL &&
+    return (column_descriptor_is_string_family(original_column) && replacement_column != NULL &&
+            replacement_column->physical_type != NULL &&
             strcmp(replacement_column->physical_type, "INTEGER") == 0) != 0;
+}
+
+static bool modify_column_integer_to_string_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    return (original_column != NULL && strcmp(original_column->physical_type, "INTEGER") == 0 &&
+            planned_column_is_string_family(replacement_column)) != 0;
+}
+
+static bool column_descriptor_is_numeric_replacement_family(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        return false;
+    }
+    return (strcmp(column->physical_type, "INTEGER") == 0 || column_descriptor_is_decimal(column) ||
+            column_descriptor_is_approximate(column)) != 0;
+}
+
+static bool planned_column_is_numeric_replacement_family(const struct planned_column *column) {
+    if (column == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    return (strcmp(column->physical_type, "INTEGER") == 0 || planned_column_is_decimal(column) ||
+            planned_column_is_approximate(column)) != 0;
 }
 
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node) {

@@ -490,14 +490,10 @@ static int test_joined_delete_diagnostics(void) {
             .message_part = "Column 'id' in where clause is ambiguous",
         }
     );
-    failures += execute_error(
+    failures += expect_delete_ok(
         database,
         "DELETE lefts FROM lefts JOIN rights ON lefts.k = rights.k WHERE lefts.id = rights.id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE column-to-column predicates are supported only inside EXISTS",
-        }
+        0
     );
     failures += execute_error(
         database,

@@ -389,6 +389,8 @@ static int execute_show_processlist_statement(
         "Info",
     };
     mylite_result *result = NULL;
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -403,16 +405,33 @@ static int execute_show_processlist_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = append_show_processlist_row(database, context, statement, result);
+        rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (rc != MYLITE_OK) {
+            set_runtime_error(database, "failed to collect SHOW PROCESSLIST sessions");
+        }
+    }
+    for (size_t session_index = 0U; rc == MYLITE_OK && session_index < session_count;
+         ++session_index) {
+        rc = append_show_processlist_row(
+            database,
+            context,
+            statement,
+            &sessions[session_index],
+            result
+        );
     }
     if (rc == MYLITE_OK) {
         rc = append_show_processlist_warning(database);
     }
     if (rc != MYLITE_OK) {
+        free(sessions);
         mylite_result_free(result);
         return rc;
     }
 
+    free(sessions);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -420,6 +439,7 @@ static int append_show_processlist_row(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
+    const struct mylite_processlist_session_snapshot *session,
     mylite_result *result
 ) {
     char connection_id_text[integer_text_capacity];
@@ -435,9 +455,9 @@ static int append_show_processlist_row(
         user,
         host,
         NULL,
-        "Query",
+        session->is_current ? "Query" : "Sleep",
         "0",
-        "init",
+        session->is_current ? "init" : NULL,
         NULL,
     };
 
@@ -445,19 +465,26 @@ static int append_show_processlist_row(
         connection_id_text,
         sizeof(connection_id_text),
         "%" PRIu64,
-        database->session.connection_id
+        session->connection_id
     );
     if (written < 0 || (size_t)written >= sizeof(connection_id_text)) {
         set_runtime_error(database, "failed to format SHOW PROCESSLIST Id");
         return MYLITE_ERROR;
     }
-    if (database->session.has_selected_schema) {
-        selected_schema = database->session.selected_schema;
+    if (session->has_selected_schema) {
+        selected_schema = session->selected_schema;
     }
     values[show_processlist_db_column] = selected_schema;
 
-    rc = format_show_processlist_user_host(database, user, sizeof(user), host, sizeof(host));
-    if (rc == MYLITE_OK) {
+    rc = format_processlist_user_host(
+        database,
+        session->client_user_identity,
+        user,
+        sizeof(user),
+        host,
+        sizeof(host)
+    );
+    if (rc == MYLITE_OK && session->is_current) {
         rc = copy_show_processlist_info(database, context, statement, &info);
     }
     if (rc == MYLITE_OK) {
@@ -472,14 +499,14 @@ static int append_show_processlist_row(
     return rc;
 }
 
-static int format_show_processlist_user_host(
+static int format_processlist_user_host(
     struct mylite_db *database,
+    const char *identity,
     char *user,
     size_t user_size,
     char *host,
     size_t host_size
 ) {
-    const char *identity = database->session.client_user_identity;
     const char *at_sign = strchr(identity, '@');
     const char *host_part = at_sign == NULL ? "" : at_sign + 1;
     size_t user_length = at_sign == NULL ? strlen(identity) : (size_t)(at_sign - identity);

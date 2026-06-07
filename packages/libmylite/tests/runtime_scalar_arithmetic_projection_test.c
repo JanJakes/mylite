@@ -280,6 +280,10 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
 static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     static const char *const columns_table_arithmetic[] = {"1+id"};
     static const char *const values_table_arithmetic[] = {NULL, "1", "2"};
+    static const char *const columns_count_arithmetic[] = {"COUNT(*)+3"};
+    static const char *const values_count_arithmetic[] = {"6"};
+    static const char *const columns_unsigned_table_arithmetic[] = {"age*3"};
+    static const char *const values_unsigned_table_arithmetic[] = {"81"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -294,6 +298,8 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     failures += execute_ok(database, "USE app", NULL);
     failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
     failures += execute_ok(database, "INSERT INTO t VALUES (0), (1), (NULL)", NULL);
+    failures += execute_ok(database, "CREATE TABLE unsigned_t(age INT UNSIGNED)", NULL);
+    failures += execute_ok(database, "INSERT INTO unsigned_t VALUES (27)", NULL);
 
     failures += execute_error(
         database,
@@ -457,6 +463,29 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .values = values_table_arithmetic,
             .row_count = 3U,
             .context = "table-backed scalar arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*)+3 FROM t",
+            .columns = columns_count_arithmetic,
+            .column_count = sizeof(columns_count_arithmetic) / sizeof(columns_count_arithmetic[0]),
+            .values = values_count_arithmetic,
+            .row_count = 1U,
+            .context = "table-backed count arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT age*3 FROM unsigned_t",
+            .columns = columns_unsigned_table_arithmetic,
+            .column_count = sizeof(columns_unsigned_table_arithmetic) /
+                            sizeof(columns_unsigned_table_arithmetic[0]),
+            .values = values_unsigned_table_arithmetic,
+            .row_count = 1U,
+            .context = "table-backed unsigned scalar arithmetic projection",
         }
     );
     failures += execute_error(

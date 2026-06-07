@@ -317,6 +317,31 @@ static int validate_modify_column_existing_rows(
         ++row_number;
         if (sqlite_type == SQLITE_NULL) {
             rc = validate_modify_column_null_value(database, &target_column, row_number);
+        } else if (column_descriptor_is_decimal(&target_column) &&
+                   (sqlite_type == SQLITE_INTEGER || sqlite_type == SQLITE_FLOAT)) {
+            const unsigned char *text = sqlite3_column_text(statement, 0);
+            int byte_count = sqlite3_column_bytes(statement, 0);
+
+            if (text == NULL || byte_count < 0) {
+                set_physical_sqlite_row_error(database);
+                rc = MYLITE_ERROR;
+            } else {
+                rc = validate_existing_decimal_text_for_column(
+                    database,
+                    (const char *)text,
+                    (size_t)byte_count,
+                    &target_column,
+                    row_number
+                );
+            }
+        } else if (column_descriptor_is_approximate(&target_column) &&
+                   (sqlite_type == SQLITE_INTEGER || sqlite_type == SQLITE_FLOAT)) {
+            rc = validate_existing_approximate_for_column(
+                database,
+                sqlite3_column_double(statement, 0),
+                &target_column,
+                row_number
+            );
         } else if (sqlite_type == SQLITE_INTEGER) {
             rc = validate_existing_integer_for_column(
                 database,
@@ -325,11 +350,18 @@ static int validate_modify_column_existing_rows(
                 row_number,
                 plan->integer_support_message
             );
-        } else if (
-            column_descriptor_is_binary_string_family(&target_column) &&
-            (sqlite_type == SQLITE_TEXT || sqlite_type == SQLITE_BLOB)
-        ) {
+        } else if (column_descriptor_is_binary_string_family(&target_column) &&
+                   (sqlite_type == SQLITE_TEXT || sqlite_type == SQLITE_BLOB)) {
             rc = validate_existing_binary_bytes_for_column(
+                database,
+                sqlite3_column_blob(statement, 0),
+                sqlite3_column_bytes(statement, 0),
+                &target_column,
+                row_number
+            );
+        } else if (sqlite_type == SQLITE_BLOB &&
+                   alter_table_modify_changes_binary_to_string(plan, &target_column)) {
+            rc = validate_existing_text_for_column(
                 database,
                 sqlite3_column_blob(statement, 0),
                 sqlite3_column_bytes(statement, 0),
@@ -416,6 +448,70 @@ static int validate_existing_integer_for_column(
     return MYLITE_OK;
 }
 
+static int validate_existing_approximate_for_column(
+    struct mylite_db *database,
+    double value,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+
+    if (rc != MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    if (!isfinite(value) || (info.is_unsigned && value < 0.0) ||
+        (info.type_class == APPROXIMATE_TYPE_FLOAT && fabs(value) > FLT_MAX)) {
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_existing_decimal_text_for_column(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    struct decimal_type_info info = {0};
+    struct planned_value value = {0};
+    bool is_negative = false;
+    size_t start = 0U;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || column == NULL || !column_descriptor_is_decimal(column)) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    if (text_length > 0U && text[0] == '-') {
+        is_negative = true;
+        start = 1U;
+    }
+    rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+    if (rc == MYLITE_OK) {
+        rc = canonicalize_decimal_text(
+            database,
+            text + start,
+            text_length - start,
+            is_negative,
+            &info,
+            column->name,
+            row_number,
+            false,
+            &value
+        );
+    }
+    planned_value_deinit(&value);
+    return rc;
+}
+
 static int validate_existing_text_for_column(
     struct mylite_db *database,
     const unsigned char *text,
@@ -458,6 +554,15 @@ static int validate_existing_text_for_column(
                 .text_length = (size_t)byte_count,
                 .row_number = row_number,
             }
+        );
+    }
+    if (column_descriptor_is_decimal(column)) {
+        return validate_existing_decimal_text_for_column(
+            database,
+            (const char *)text,
+            (size_t)byte_count,
+            column,
+            row_number
         );
     }
     if (strcmp(column->physical_type, "INTEGER") == 0) {

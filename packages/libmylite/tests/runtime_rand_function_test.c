@@ -590,6 +590,9 @@ static int test_rand_table_backed_selects(void) {
     static const char *const seeded_asc_limit_values[] = {"5", "4", "3"};
     static const char *const seeded_desc_limit_values[] = {"2", "1", "3"};
     static const char *const seeded_signed_limit_values[] = {"5", "4", "3"};
+    static const char *const rand_alias_order_columns[] = {"random_field"};
+    static const char *const rand_alias_order_values[] = {NULL, NULL, NULL, NULL, NULL};
+    static const bool rand_alias_order_ranges[] = {true};
     static const char *const rand_where_lt_values[] = {"5"};
     static const char *const rand_where_gt_values[] = {"0"};
     static const char *const option_value_column[] = {"option_value"};
@@ -758,6 +761,20 @@ static int test_rand_table_backed_selects(void) {
         (struct rand_order_id_set_query){
             .sql = "SELECT id FROM t ORDER BY RAND() LIMIT 5",
             .context = "unseeded rand order rowset",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND() AS random_field FROM t ORDER BY random_field ASC LIMIT 5",
+            .columns = rand_alias_order_columns,
+            .column_count = 1U,
+            .values = rand_alias_order_values,
+            .range_columns = rand_alias_order_ranges,
+            .row_count = rand_table_row_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "rand projection alias order",
         }
     );
     failures +=

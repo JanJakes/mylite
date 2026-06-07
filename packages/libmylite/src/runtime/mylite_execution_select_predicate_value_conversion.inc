@@ -142,10 +142,8 @@ static int convert_predicate_integer_string_literal(
             "WHERE supports only integer, boolean, and exact quoted integer predicate literals"
         );
         rc = MYLITE_ERROR;
-    } else if (
-        parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
-        parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
-    ) {
+    } else if (parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
+               parse_result != MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
         set_predicate_out_of_range_error(database, column->name);
         rc = MYLITE_ERROR;
     }
@@ -346,6 +344,12 @@ static int convert_predicate_value(
     }
     if (column_descriptor_is_bit(column)) {
         return convert_bit_literal(database, value_node, column, 1U, false, out_value);
+    }
+    if (column_descriptor_is_decimal(column)) {
+        return convert_decimal_literal(database, value_node, column, 1U, false, out_value);
+    }
+    if (column_descriptor_is_approximate(column)) {
+        return convert_approximate_literal(database, value_node, column, 1U, false, out_value);
     }
     if (column_descriptor_is_year(column)) {
         return convert_predicate_year_literal(database, value_node, column, out_value);

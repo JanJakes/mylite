@@ -85,8 +85,10 @@ static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *select_item = NULL;
     bool has_dual_source =
         (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) != 0;
-    bool has_table_source =
-        (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) != 0;
+    bool has_row_source =
+        (from_clause != NULL && (from_clause->kind == MYLITE_SQL_AST_FROM_TABLE ||
+                                 from_clause->kind == MYLITE_SQL_AST_FROM_JOIN ||
+                                 from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED)) != 0;
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
         select_list_is_wildcard(select_list)) {
@@ -119,24 +121,18 @@ static bool select_statement_is_row_scalar_projection_attempt(
         }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(expression) ||
-             (has_table_source &&
-              row_scalar_expression_contains_rand_function(expression)) ||
-             (has_table_source &&
-              row_scalar_expression_contains_any_value_function(expression)) ||
-             (has_table_source &&
-              row_scalar_expression_contains_conversion_expression(expression)) ||
-             (has_table_source &&
-              row_scalar_expression_is_concat_operator(expression)) ||
-             (has_table_source &&
+             (has_row_source && row_scalar_expression_contains_rand_function(expression)) ||
+             (has_row_source && row_scalar_expression_contains_any_value_function(expression)) ||
+             (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
+             (has_row_source && row_scalar_expression_is_concat_operator(expression)) ||
+             (has_row_source &&
               row_scalar_expression_contains_date_interval_second_function(expression)) ||
              row_scalar_expression_contains_statement_time_function(expression) ||
-             (has_table_source &&
-              row_scalar_expression_contains_control_flow_function(expression)) ||
-             (has_table_source &&
+             (has_row_source && row_scalar_expression_contains_control_flow_function(expression)) ||
+             (has_row_source &&
               row_scalar_expression_contains_integer_arithmetic_attempt(expression)) ||
-             (has_table_source && expression != NULL &&
-              expression->kind == MYLITE_SQL_AST_LITERAL) ||
-             (has_table_source && expression != NULL &&
+             (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
+             (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
             return true;
         }
@@ -1385,25 +1381,20 @@ static int row_scalar_integer_width_enter_frame(
         }
         return rc;
     }
-    return row_scalar_integer_width_push_result(
-        stack,
-        (struct row_scalar_integer_width_result){0}
-    );
+    return row_scalar_integer_width_push_result(stack, (struct row_scalar_integer_width_result){0});
 }
 
-static int row_scalar_integer_width_finish_unary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result operand = {0};
     int rc = row_scalar_integer_width_pop_result(stack, &operand);
 
     if (rc != MYLITE_OK || !operand.matched) {
-        return rc == MYLITE_OK
-                   ? row_scalar_integer_width_push_result(
-                         stack,
-                         (struct row_scalar_integer_width_result){0}
-                     )
-                   : rc;
+        return rc == MYLITE_OK ? row_scalar_integer_width_push_result(
+                                     stack,
+                                     (struct row_scalar_integer_width_result){0}
+                                 )
+                               : rc;
     }
     if (operand.width == UINT64_MAX) {
         return MYLITE_NOMEM;
@@ -1417,8 +1408,7 @@ static int row_scalar_integer_width_finish_unary_frame(
     );
 }
 
-static int row_scalar_integer_width_finish_binary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result left = {0};
     struct row_scalar_integer_width_result right = {0};
@@ -1428,12 +1418,11 @@ static int row_scalar_integer_width_finish_binary_frame(
         rc = row_scalar_integer_width_pop_result(stack, &left);
     }
     if (rc != MYLITE_OK || !left.matched || !right.matched) {
-        return rc == MYLITE_OK
-                   ? row_scalar_integer_width_push_result(
-                         stack,
-                         (struct row_scalar_integer_width_result){0}
-                     )
-                   : rc;
+        return rc == MYLITE_OK ? row_scalar_integer_width_push_result(
+                                     stack,
+                                     (struct row_scalar_integer_width_result){0}
+                                 )
+                               : rc;
     }
     if (left.width > UINT64_MAX - right.width) {
         return MYLITE_NOMEM;
@@ -1521,9 +1510,7 @@ static int row_scalar_integer_width_pop_result(
     return MYLITE_OK;
 }
 
-static void row_scalar_integer_width_stack_deinit(
-    struct row_scalar_integer_width_stack *stack
-) {
+static void row_scalar_integer_width_stack_deinit(struct row_scalar_integer_width_stack *stack) {
     if (stack == NULL) {
         return;
     }

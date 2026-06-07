@@ -182,6 +182,7 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     static const char *const row_count_rows[] = {"-1"};
     static const char *const warning_row_count_rows[] = {"0", "-1"};
     static const char *const hint_rows[] = {"1", "7"};
+    static const char *const not_equal_rows[] = {"2", "2"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -304,6 +305,17 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 3U,
             .context = "comma join string equality uses registered collation",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id FROM lefts, rights WHERE lefts.k <> rights.k "
+                   "ORDER BY lefts.id, rights.id",
+            .values = not_equal_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "cross join column inequality predicate",
         }
     );
     failures += expect_query_values(
@@ -803,9 +815,9 @@ static int test_inner_join_diagnostics(void) {
         database,
         "SELECT 1 FROM lefts JOIN rights ON lefts.k = rights.k HAVING id",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_column,
-            .sqlstate = "42S22",
-            .message_part = "Unknown column 'id' in 'having clause'",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "row-scalar SELECT supports only WHERE, ORDER BY, and LIMIT",
         }
     );
     failures += expect_error(
@@ -950,21 +962,13 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts, rights WHERE lefts.k <> rights.k",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE column-to-column predicates support only =",
-        }
-    );
-    failures += expect_error(
-        database,
         "SELECT lefts.id FROM lefts, rights WHERE lefts.k = rights.name",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE column-to-column predicates support only same-family integer "
-                            "or string descriptor equality",
+            .message_part =
+                "WHERE column-to-column predicates support only same-family numeric or string "
+                "descriptor comparisons",
         }
     );
     failures += expect_error(

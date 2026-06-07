@@ -8,6 +8,8 @@ static int plan_select_predicate(
 ) {
     const struct select_predicate_plan_options options = {
         .allow_exists = false,
+        .allow_scalar_count_subquery_comparison = true,
+        .allow_same_scope_column_reference_rhs = true,
     };
 
     return plan_select_predicate_with_options(
@@ -135,8 +137,7 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         }
         free(predicate->nodes[node_index].values);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
-            planned_row_scalar_expression_deinit(
-                predicate->nodes[node_index].row_scalar_expression
+            planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
             );
         }
         free(predicate->nodes[node_index].row_scalar_expression);
@@ -150,6 +151,16 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         free(predicate->nodes[node_index].exists_subquery);
         planned_in_subquery_deinit(predicate->nodes[node_index].in_subquery);
         free(predicate->nodes[node_index].in_subquery);
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].subject_scalar_subquery
+        );
+        free(predicate->nodes[node_index].subject_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].value_scalar_subquery
+        );
+        free(predicate->nodes[node_index].value_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].upper_scalar_subquery
+        );
+        free(predicate->nodes[node_index].upper_scalar_subquery);
     }
     free(predicate->nodes);
     *predicate = (struct planned_select_predicate){0};
@@ -171,8 +182,7 @@ static void planned_select_predicate_deinit_without_exists(
         }
         free(predicate->nodes[node_index].values);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
-            planned_row_scalar_expression_deinit(
-                predicate->nodes[node_index].row_scalar_expression
+            planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
             );
         }
         free(predicate->nodes[node_index].row_scalar_expression);
@@ -182,6 +192,16 @@ static void planned_select_predicate_deinit_without_exists(
             );
         }
         free(predicate->nodes[node_index].row_scalar_value_expression);
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].subject_scalar_subquery
+        );
+        free(predicate->nodes[node_index].subject_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].value_scalar_subquery
+        );
+        free(predicate->nodes[node_index].value_scalar_subquery);
+        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].upper_scalar_subquery
+        );
+        free(predicate->nodes[node_index].upper_scalar_subquery);
     }
     free(predicate->nodes);
     *predicate = (struct planned_select_predicate){0};
@@ -227,6 +247,17 @@ static void planned_in_subquery_deinit(struct planned_in_subquery *subquery) {
     free(subquery->join_conditions);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_in_subquery){0};
+}
+
+static void planned_scalar_aggregate_subquery_deinit(
+    struct planned_scalar_aggregate_subquery *subquery
+) {
+    if (subquery == NULL) {
+        return;
+    }
+
+    planned_exists_subquery_deinit(&subquery->subquery);
+    *subquery = (struct planned_scalar_aggregate_subquery){0};
 }
 
 static int merge_select_predicate_with_and(

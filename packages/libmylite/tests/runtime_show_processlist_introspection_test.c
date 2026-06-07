@@ -45,6 +45,7 @@ struct expected_show_processlist_result {
     const char *expected_db;
     const char *expected_info;
     size_t expected_info_length;
+    size_t expected_row_count;
     const char *context;
     char *out_connection_id;
     size_t out_connection_id_size;
@@ -67,6 +68,11 @@ static int test_independent_show_processlist_handles(void);
 static int expect_show_processlist_result(
     mylite_db *database,
     struct expected_show_processlist_result expectation
+);
+static int find_show_processlist_current_row(
+    const mylite_result *result,
+    const char *expected_info,
+    size_t *out_row
 );
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
 static int expect_connection_id(mylite_db *database, const char *expected, const char *context);
@@ -321,6 +327,7 @@ static int test_independent_show_processlist_handles(void) {
             .expected_db = "first_app",
             .expected_info = "SHOW PROCESSLIST",
             .expected_info_length = strlen("SHOW PROCESSLIST"),
+            .expected_row_count = 2U,
             .context = "first handle show processlist",
             .out_connection_id = first_id,
             .out_connection_id_size = sizeof(first_id),
@@ -333,6 +340,7 @@ static int test_independent_show_processlist_handles(void) {
             .expected_db = "second_app",
             .expected_info = "SHOW PROCESSLIST",
             .expected_info_length = strlen("SHOW PROCESSLIST"),
+            .expected_row_count = 2U,
             .context = "second handle show processlist",
             .out_connection_id = second_id,
             .out_connection_id_size = sizeof(second_id),
@@ -344,6 +352,16 @@ static int test_independent_show_processlist_handles(void) {
     }
 
     mylite_close(second);
+    failures += expect_show_processlist_result(
+        first,
+        (struct expected_show_processlist_result){
+            .sql = "SHOW PROCESSLIST",
+            .expected_db = "first_app",
+            .expected_info = "SHOW PROCESSLIST",
+            .expected_info_length = strlen("SHOW PROCESSLIST"),
+            .context = "first handle after closing second",
+        }
+    );
     mylite_close(first);
     remove_related_files(second_path);
     remove_related_files(first_path);
@@ -358,6 +376,9 @@ static int expect_show_processlist_result(
     mylite_result *result = NULL;
     const char *connection_id = NULL;
     const char *info = NULL;
+    size_t row_index = 0U;
+    size_t expected_row_count =
+        expectation.expected_row_count == 0U ? 1U : expectation.expected_row_count;
     int failures = 0;
 
     connection_id_copy[0] = '\0';
@@ -378,10 +399,12 @@ static int expect_show_processlist_result(
             expectation.context
         );
     }
-    failures += expect_size(mylite_result_row_count(result), 1U, expectation.context);
+    failures +=
+        expect_size(mylite_result_row_count(result), expected_row_count, expectation.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expectation.context);
     failures += expect_size(mylite_result_warning_count(result), 1U, expectation.context);
-    connection_id = mylite_result_value_text(result, 0U, show_processlist_id_column);
+    failures += find_show_processlist_current_row(result, expectation.expected_info, &row_index);
+    connection_id = mylite_result_value_text(result, row_index, show_processlist_id_column);
     failures += expect_decimal_text(connection_id, expectation.context);
     if (connection_id != NULL) {
         int written = snprintf(connection_id_copy, sizeof(connection_id_copy), "%s", connection_id);
@@ -391,36 +414,36 @@ static int expect_show_processlist_result(
         }
     }
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, show_processlist_user_column),
+        mylite_result_value_text(result, row_index, show_processlist_user_column),
         "root",
         expectation.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, show_processlist_host_column),
+        mylite_result_value_text(result, row_index, show_processlist_host_column),
         "%",
         expectation.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, show_processlist_db_column),
+        mylite_result_value_text(result, row_index, show_processlist_db_column),
         expectation.expected_db,
         expectation.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, show_processlist_command_column),
+        mylite_result_value_text(result, row_index, show_processlist_command_column),
         "Query",
         expectation.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, show_processlist_time_column),
+        mylite_result_value_text(result, row_index, show_processlist_time_column),
         "0",
         expectation.context
     );
     failures += expect_text_or_null(
-        mylite_result_value_text(result, 0U, show_processlist_state_column),
+        mylite_result_value_text(result, row_index, show_processlist_state_column),
         "init",
         expectation.context
     );
-    info = mylite_result_value_text(result, 0U, show_processlist_info_column);
+    info = mylite_result_value_text(result, row_index, show_processlist_info_column);
     failures += expect_text_or_null(info, expectation.expected_info, expectation.context);
     if (info == NULL) {
         fprintf(stderr, "%s: expected non-null processlist Info\n", expectation.context);
@@ -446,6 +469,30 @@ static int expect_show_processlist_result(
     failures += expect_row_count(database, -1, expectation.context);
     failures += expect_connection_id(database, connection_id_copy, expectation.context);
     return failures;
+}
+
+static int find_show_processlist_current_row(
+    const mylite_result *result,
+    const char *expected_info,
+    size_t *out_row
+) {
+    size_t row_count = mylite_result_row_count(result);
+
+    if (out_row == NULL) {
+        return 1;
+    }
+    *out_row = 0U;
+    for (size_t row = 0U; row < row_count; ++row) {
+        const char *info = mylite_result_value_text(result, row, show_processlist_info_column);
+
+        if (info != NULL && expected_info != NULL && strcmp(info, expected_info) == 0) {
+            *out_row = row;
+            return 0;
+        }
+    }
+
+    fprintf(stderr, "expected processlist row with Info %s\n", expected_info);
+    return 1;
 }
 
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context) {

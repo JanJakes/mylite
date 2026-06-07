@@ -2,6 +2,7 @@
 
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_table_lifecycle_table_option_statements(void);
 static int test_table_lifecycle_bool_identifier_statements(void);
 static int test_alter_table_multi_action_statements(void);
 static int test_create_table_generated_column_statements(void);
@@ -343,9 +344,6 @@ static int test_table_lifecycle_statements(void) {
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *column = NULL;
     const struct mylite_sql_ast_node *table_options = NULL;
-    const struct mylite_sql_ast_node *engine_option = NULL;
-    const struct mylite_sql_ast_node *charset_option = NULL;
-    const struct mylite_sql_ast_node *collation_option = NULL;
     const struct mylite_sql_ast_node *if_not_exists = NULL;
     const struct mylite_sql_ast_node *if_exists = NULL;
     const struct mylite_sql_ast_node *column_type = NULL;
@@ -1018,126 +1016,7 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "CREATE TABLE engine_forms (id INT) ENGINE=InnoDB;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    statement = parser_test_child_at(result.root, 0U);
-    table_options = parser_test_child_at(statement, 2U);
-    engine_option = parser_test_child_at(table_options, 0U);
-    failures += parser_test_expect_child_count(statement, 3U, "engine create child count");
-    failures += parser_test_expect_node(
-        table_options,
-        MYLITE_SQL_AST_TABLE_OPTION_LIST,
-        "create table options"
-    );
-    failures += parser_test_expect_child_count(table_options, 1U, "engine option list child count");
-    failures += parser_test_expect_node(
-        engine_option,
-        MYLITE_SQL_AST_TABLE_ENGINE_OPTION,
-        "create table engine option"
-    );
-    failures += parser_test_expect_span_text(
-        parser_test_child_at(engine_option, 0U),
-        "InnoDB",
-        "engine option name"
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE engine_space (id INT) ENGINE InnoDB;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE engine_string (id INT) ENGINE='InnoDB';",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    statement = parser_test_child_at(result.root, 0U);
-    table_options = parser_test_child_at(statement, 2U);
-    engine_option = parser_test_child_at(table_options, 0U);
-    failures += parser_test_expect_literal(
-        parser_test_child_at(engine_option, 0U),
-        MYLITE_SQL_AST_LITERAL_STRING,
-        "string engine"
-    );
-    failures += parser_test_expect_span_text(
-        parser_test_child_at(engine_option, 0U),
-        "'InnoDB'",
-        "string engine name"
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE engine_quoted (id INT) ENGINE=`InnoDB`;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE charset_options (id INT) DEFAULT CHARSET=utf8mb4 "
-        "COLLATE='utf8mb4_0900_ai_ci';",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    statement = parser_test_child_at(result.root, 0U);
-    table_options = parser_test_child_at(statement, 2U);
-    charset_option = parser_test_child_at(table_options, 0U);
-    collation_option = parser_test_child_at(table_options, 1U);
-    failures +=
-        parser_test_expect_child_count(table_options, 2U, "charset option list child count");
-    failures += parser_test_expect_node(
-        charset_option,
-        MYLITE_SQL_AST_TABLE_CHARSET_OPTION,
-        "create table charset option"
-    );
-    failures += parser_test_expect_span_text(
-        parser_test_child_at(charset_option, 0U),
-        "utf8mb4",
-        "charset option name"
-    );
-    failures += parser_test_expect_node(
-        collation_option,
-        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
-        "create table collation option"
-    );
-    failures += parser_test_expect_literal(
-        parser_test_child_at(collation_option, 0U),
-        MYLITE_SQL_AST_LITERAL_STRING,
-        "string collation"
-    );
-    failures += parser_test_expect_span_text(
-        parser_test_child_at(collation_option, 0U),
-        "'utf8mb4_0900_ai_ci'",
-        "collation option name"
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE character_set_space (id INT) DEFAULT CHARACTER SET utf8mb4;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE charset_space (id INT) CHARSET utf8mb4;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE default_collate (id INT) DEFAULT COLLATE utf8mb4_0900_ai_ci;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
+    failures += test_table_lifecycle_table_option_statements();
 
     failures +=
         parser_test_parse_sql("CREATE TABLE status (status INT);", MYLITE_SQL_PARSE_OK, &result);
@@ -2886,6 +2765,157 @@ static int test_table_lifecycle_statements(void) {
         parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_table_lifecycle_table_option_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *table_options = NULL;
+    const struct mylite_sql_ast_node *engine_option = NULL;
+    const struct mylite_sql_ast_node *charset_option = NULL;
+    const struct mylite_sql_ast_node *collation_option = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE engine_forms (id INT) ENGINE=InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    table_options = parser_test_child_at(statement, 2U);
+    engine_option = parser_test_child_at(table_options, 0U);
+    failures += parser_test_expect_child_count(statement, 3U, "engine create child count");
+    failures += parser_test_expect_node(
+        table_options,
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "create table options"
+    );
+    failures += parser_test_expect_child_count(table_options, 1U, "engine option list child count");
+    failures += parser_test_expect_node(
+        engine_option,
+        MYLITE_SQL_AST_TABLE_ENGINE_OPTION,
+        "create table engine option"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(engine_option, 0U),
+        "InnoDB",
+        "engine option name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE duplicate_null_default (id INT DEFAULT NULL DEFAULT NULL) ENGINE=InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    columns = parser_test_child_at(statement, 1U);
+    column = parser_test_child_at(columns, 0U);
+    failures += parser_test_expect_child_count(column, 3U, "duplicate null default column");
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "collapsed duplicate null default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE engine_space (id INT) ENGINE InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE engine_string (id INT) ENGINE='InnoDB';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    table_options = parser_test_child_at(statement, 2U);
+    engine_option = parser_test_child_at(table_options, 0U);
+    failures += parser_test_expect_literal(
+        parser_test_child_at(engine_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "string engine"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(engine_option, 0U),
+        "'InnoDB'",
+        "string engine name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE engine_quoted (id INT) ENGINE=`InnoDB`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE charset_options (id INT) DEFAULT CHARSET=utf8mb4 "
+        "COLLATE='utf8mb4_0900_ai_ci';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    table_options = parser_test_child_at(statement, 2U);
+    charset_option = parser_test_child_at(table_options, 0U);
+    collation_option = parser_test_child_at(table_options, 1U);
+    failures +=
+        parser_test_expect_child_count(table_options, 2U, "charset option list child count");
+    failures += parser_test_expect_node(
+        charset_option,
+        MYLITE_SQL_AST_TABLE_CHARSET_OPTION,
+        "create table charset option"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(charset_option, 0U),
+        "utf8mb4",
+        "charset option name"
+    );
+    failures += parser_test_expect_node(
+        collation_option,
+        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
+        "create table collation option"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(collation_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "string collation"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(collation_option, 0U),
+        "'utf8mb4_0900_ai_ci'",
+        "collation option name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE character_set_space (id INT) DEFAULT CHARACTER SET utf8mb4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE charset_space (id INT) CHARSET utf8mb4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE default_collate (id INT) DEFAULT COLLATE utf8mb4_0900_ai_ci;",
+        MYLITE_SQL_PARSE_OK,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -5001,6 +5031,8 @@ static int test_create_table_select_statements(void) {
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *from_clause = NULL;
     const struct mylite_sql_ast_node *if_not_exists = NULL;
+    const struct mylite_sql_ast_node *table_options = NULL;
+    const struct mylite_sql_ast_node *engine_option = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -5096,6 +5128,32 @@ static int test_create_table_select_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "CREATE TABLE copy ENGINE=InnoDB AS SELECT * FROM source;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    table_options = parser_test_child_at(statement, 2U);
+    engine_option = parser_test_child_at(table_options, 0U);
+    failures += parser_test_expect_child_count(statement, 3U, "ctas option child count");
+    failures += parser_test_expect_node(
+        table_options,
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "ctas table options"
+    );
+    failures += parser_test_expect_node(
+        engine_option,
+        MYLITE_SQL_AST_TABLE_ENGINE_OPTION,
+        "ctas engine option"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(engine_option, 0U),
+        "InnoDB",
+        "ctas engine name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TEMPORARY TABLE IF NOT EXISTS copy AS SELECT * FROM source;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -5134,6 +5192,31 @@ static int test_create_table_select_statements(void) {
         "create temporary table select without as"
     );
     failures += parser_test_expect_child_count(statement, 2U, "temporary ctas no-as child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TEMPORARY TABLE copy ENGINE=MEMORY SELECT * FROM source;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    table_options = parser_test_child_at(statement, 2U);
+    engine_option = parser_test_child_at(table_options, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT,
+        "temporary ctas table options statement"
+    );
+    failures += parser_test_expect_node(
+        table_options,
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "temporary ctas table options"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(engine_option, 0U),
+        "MEMORY",
+        "temporary ctas engine name"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(

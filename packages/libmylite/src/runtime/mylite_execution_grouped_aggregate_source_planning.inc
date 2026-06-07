@@ -46,7 +46,12 @@ static int plan_grouped_aggregate_source(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, out_columns, out_column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            out_columns,
+            out_column_count
+        );
     }
 
     return rc;
@@ -162,8 +167,7 @@ static int validate_grouped_projection_references(
         struct mylite_catalog_column_descriptor column = {0};
         size_t source_index = 0U;
 
-        if (grouped_aggregate_function_from_expression(
-                unwrap_parenthesized_expression(expression)
+        if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(expression)
             ) != PLANNED_GROUPED_AGGREGATE_NONE) {
             return MYLITE_OK;
         }
@@ -173,6 +177,14 @@ static int validate_grouped_projection_references(
             continue;
         }
         if (grouped_expression_is_temporal_group_key(expression)) {
+            item = item->next_sibling;
+            continue;
+        }
+        if (select_item_is_literal_projection(item)) {
+            item = item->next_sibling;
+            continue;
+        }
+        if (row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
             item = item->next_sibling;
             continue;
         }
@@ -236,7 +248,7 @@ static int validate_grouped_qualified_wildcard_reference(
         for (size_t index = 0U; index < source_context->source_count; ++index) {
             if (joined_source_matches_qualified_wildcard_parts(
                     &source_context->sources[index],
-                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 matched = true;
@@ -246,7 +258,7 @@ static int validate_grouped_qualified_wildcard_reference(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }

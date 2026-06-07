@@ -2350,6 +2350,7 @@ static int test_explicit_default_null_lifecycle(void) {
     static const char *const added_rows[] = {"1", NULL, "2", NULL};
     static const char *const omitted_added_rows[] = {"1", NULL, "2", NULL, "3", NULL};
     static const char *const renamed_column_row[] = {"renamed", "bigint", "YES", "", NULL, ""};
+    static const char *const blob_to_varchar_rows[] = {"payload"};
     static const char *const second_handle_rows[] = {NULL};
     char path[test_path_capacity];
     char second_path[test_path_capacity];
@@ -2497,6 +2498,42 @@ static int test_explicit_default_null_lifecycle(void) {
             .message_part = "Invalid default value for 'renamed'",
         }
     );
+
+    failures += expect_statement_ok(database, "CREATE TABLE string_convert (v BLOB)");
+    failures += expect_dml_ok(database, "INSERT INTO string_convert VALUES ('payload')", 1);
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE string_convert CHANGE v v VARCHAR(255) CHARACTER SET ascii "
+        "COLLATE ascii_general_ci DEFAULT NULL",
+        (struct expected_statement_result){.warning_count = 0U, .affected_rows = 1}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM string_convert",
+            .values = blob_to_varchar_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "binary string change to varchar preserves rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE float_modify (v FLOAT NULL)");
+    failures += expect_dml_ok(database, "INSERT INTO float_modify VALUES (1)", 1);
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE float_modify CHANGE v v FLOAT NOT NULL",
+        (struct expected_statement_result){.warning_count = 0U, .affected_rows = 0}
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE decimal_modify (v DECIMAL(1,0) NULL)");
+    failures += expect_dml_ok(database, "INSERT INTO decimal_modify VALUES (1)", 1);
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE decimal_modify CHANGE v v DECIMAL(1,0) NOT NULL",
+        (struct expected_statement_result){.warning_count = 0U, .affected_rows = 0}
+    );
+
     failures += execute_error(
         database,
         "CREATE TABLE unsupported_default (a INT DEFAULT 'abc')",

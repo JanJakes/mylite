@@ -608,6 +608,36 @@ static int test_filtered_select_diagnostics(void) {
             .context = "scalar truth logical predicate",
         }
     );
+    failures += expect_query_single_value(
+        database,
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers AS n1 "
+                   "WHERE n1.i < (SELECT AVG(n2.nn) FROM numbers AS n2)",
+            .expected = "2",
+            .context = "column compared to scalar aggregate subquery",
+        }
+    );
+    failures += expect_query_single_value(
+        database,
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers AS n1 "
+                   "WHERE (SELECT AVG(n2.nn) FROM numbers AS n2 WHERE n2.i = n1.i) > "
+                   "(SELECT AVG(n3.nn) FROM numbers AS n3)",
+            .expected = "1",
+            .context = "correlated scalar aggregate subquery comparison",
+        }
+    );
+    failures += expect_query_single_value(
+        database,
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers AS n1 "
+                   "WHERE (SELECT AVG(n2.nn) FROM numbers AS n2 WHERE n2.i = n1.i) "
+                   "BETWEEN (SELECT MIN(n3.nn) FROM numbers AS n3 WHERE n3.i <> n1.i) "
+                   "AND (SELECT AVG(n4.nn) FROM numbers AS n4 WHERE n4.i <> n1.i)",
+            .expected = "1",
+            .context = "correlated scalar aggregate subquery between predicate",
+        }
+    );
     failures += execute_error(
         database,
         "SELECT i FROM numbers WHERE ! (i = 1)",
@@ -663,13 +693,12 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE i REGEXP '1'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE REGEXP predicates support only string columns",
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE i REGEXP '^1$'",
+            .expected = "1",
+            .context = "integer regexp casts subject to text",
         }
     );
     failures += execute_error(

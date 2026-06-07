@@ -852,6 +852,11 @@ static bool insert_duplicate_assignment_targets_auto_increment(const struct plan
         if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
             continue;
         }
+        if (insert_duplicate_assignment_is_same_column_values_reference(
+                &plan->duplicate_update.assignments[index]
+            )) {
+            continue;
+        }
         if (plan->duplicate_update.assignments[index].assignment_column_index ==
             plan->auto_increment_column_index) {
             return true;
@@ -907,6 +912,14 @@ static bool insert_duplicate_assignment_is_noop(
     const struct planned_insert_duplicate_update_assignment *assignment
 ) {
     return (assignment != NULL && assignment->generated_default_noop) != 0;
+}
+
+static bool insert_duplicate_assignment_is_same_column_values_reference(
+    const struct planned_insert_duplicate_update_assignment *assignment
+) {
+    return assignment != NULL &&
+           assignment->value_kind == PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE &&
+           assignment->assignment_column_index == assignment->values_column_index;
 }
 
 static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan) {

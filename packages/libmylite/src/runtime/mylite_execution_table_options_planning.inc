@@ -1,7 +1,8 @@
 static int validate_create_table_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_options,
-    const char *table_name
+    const char *table_name,
+    bool is_temporary_target
 ) {
     const struct mylite_sql_ast_node *table_option = NULL;
     char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
@@ -37,7 +38,12 @@ static int validate_create_table_options(
             );
             has_collation = true;
         } else {
-            rc = validate_create_table_option(database, table_option, table_name);
+            rc = validate_create_table_option(
+                database,
+                table_option,
+                table_name,
+                is_temporary_target
+            );
         }
         table_option = table_option->next_sibling;
     }
@@ -195,10 +201,8 @@ static int track_schema_default_charset_option(
 
     if (normalized_charset[0] != '\0' && !validation->has_charset) {
         memcpy(validation->first_charset_name, normalized_charset, strlen(normalized_charset) + 1U);
-    } else if (
-        normalized_charset[0] != '\0' && validation->first_charset_name[0] != '\0' &&
-        strcmp(validation->first_charset_name, normalized_charset) != 0
-    ) {
+    } else if (normalized_charset[0] != '\0' && validation->first_charset_name[0] != '\0' &&
+               strcmp(validation->first_charset_name, normalized_charset) != 0) {
         set_conflicting_character_set_declarations_error(
             database,
             validation->first_charset_name,
@@ -242,7 +246,8 @@ static int track_schema_default_collation_option(
 static int validate_create_table_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_option,
-    const char *table_name
+    const char *table_name,
+    bool is_temporary_target
 ) {
     if (table_option == NULL) {
         set_parse_error(database, NULL);
@@ -250,7 +255,12 @@ static int validate_create_table_option(
     }
 
     if (table_option->kind == MYLITE_SQL_AST_TABLE_ENGINE_OPTION) {
-        return validate_create_table_engine_option(database, table_option, table_name);
+        return validate_create_table_engine_option(
+            database,
+            table_option,
+            table_name,
+            is_temporary_target
+        );
     }
     if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
         return validate_create_table_charset_option(database, table_option, true);
@@ -1062,7 +1072,8 @@ static int decode_table_comment_option(
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option,
-    const char *table_name
+    const char *table_name,
+    bool is_temporary_target
 ) {
     char engine_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
@@ -1088,23 +1099,20 @@ static int validate_create_table_engine_option(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!text_equals_ascii_case_insensitive(engine_name, "InnoDB")) {
-        if (session_sql_mode_has(
-                &database->session,
-                MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION
-            )) {
-            set_unknown_storage_engine_error(database, engine_name);
-            return MYLITE_ERROR;
-        }
-
-        rc = append_unknown_storage_engine_warning(database, engine_name);
-        if (rc == MYLITE_OK) {
-            rc = append_using_storage_engine_warning(database, table_name);
-        }
-        return rc;
+    if (text_equals_ascii_case_insensitive(engine_name, "InnoDB") ||
+        (is_temporary_target && text_equals_ascii_case_insensitive(engine_name, "MEMORY"))) {
+        return MYLITE_OK;
+    }
+    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION)) {
+        set_unknown_storage_engine_error(database, engine_name);
+        return MYLITE_ERROR;
     }
 
-    return MYLITE_OK;
+    rc = append_unknown_storage_engine_warning(database, engine_name);
+    if (rc == MYLITE_OK) {
+        rc = append_using_storage_engine_warning(database, table_name);
+    }
+    return rc;
 }
 
 static int append_unknown_storage_engine_warning(
@@ -1812,8 +1820,7 @@ static int append_decoded_table_option_name_escape(
     }
 }
 
-static const struct mylite_execution_catalog_character_set *character_set_by_name(
-    const char *name
+static const struct mylite_execution_catalog_character_set *character_set_by_name(const char *name
 ) {
     return mylite_execution_catalog_character_set_by_name(name);
 }
@@ -1907,7 +1914,13 @@ static int validate_sql_require_primary_key_for_table_descriptor(
 
     rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
+        rc = mylite_execution_load_primary_key_info(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &primary_key
+        );
     }
     if (rc == MYLITE_OK && !primary_key.has_primary_key) {
         set_sql_require_primary_key_error(database);

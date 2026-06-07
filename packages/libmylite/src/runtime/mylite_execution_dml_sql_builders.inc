@@ -10,6 +10,12 @@ static int build_delete_sql(const struct planned_delete *plan, char **out_sql) {
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
+    if (rc == MYLITE_OK && !plan->is_joined && plan->predicate.qualify_column_references) {
+        rc = mylite_dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK && !plan->is_joined && plan->predicate.qualify_column_references) {
+        rc = append_select_source_alias(&string, 0U);
+    }
     if (rc == MYLITE_OK && plan->is_joined) {
         rc = append_joined_delete_rowid_filter_sql(&string, plan, &next_parameter);
     } else if (rc == MYLITE_OK && plan->limit.has_limit) {
@@ -50,6 +56,12 @@ static int append_delete_rowid_limited_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK && plan->predicate.qualify_column_references) {
+        rc = mylite_dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK && plan->predicate.qualify_column_references) {
+        rc = append_select_source_alias(string, 0U);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
@@ -260,12 +272,52 @@ static bool planned_update_needs_target_alias(const struct planned_update *plan)
 
 static size_t update_assignment_parameter_count(const struct planned_update *plan) {
     if (planned_update_has_multiple_assignments(plan)) {
-        return planned_update_executable_assignment_count(plan);
+        size_t parameter_count = 0U;
+
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            const struct planned_update_assignment *assignment = &plan->assignments[index];
+
+            if (planned_update_assignment_is_noop(assignment)) {
+                continue;
+            }
+            if (assignment->value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+                parameter_count +=
+                    planned_row_scalar_expression_parameter_count(&assignment->row_scalar_expression
+                    );
+            } else {
+                ++parameter_count;
+            }
+        }
+        return parameter_count;
     }
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         return update_date_interval_parameter_count;
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return 0U;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return planned_row_scalar_expression_parameter_count(&plan->assignment_row_scalar_expression
+        );
+    }
     return 1U;
+}
+
+static size_t planned_row_scalar_expression_parameter_count(
+    const struct planned_row_scalar_expression *expression
+) {
+    size_t count = 0U;
+
+    if (expression == NULL) {
+        return 0U;
+    }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+        ++count;
+    }
+    for (size_t index = 0U; index < expression->argument_count; ++index) {
+        count += planned_row_scalar_expression_parameter_count(&expression->arguments[index]);
+    }
+    return count;
 }
 
 static int append_update_assignment_sql(
@@ -287,6 +339,21 @@ static int append_update_assignment_sql(
     }
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         return append_update_date_interval_assignment_sql(string, plan);
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return mylite_dynamic_string_append_quoted_identifier(
+            string,
+            plan->assignment_source_column.name
+        );
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        size_t next_parameter = 1U;
+
+        return append_row_scalar_expression_sql(
+            string,
+            &plan->assignment_row_scalar_expression,
+            &next_parameter
+        );
     }
     if (plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return mylite_dynamic_string_append(string, "?1");
@@ -314,6 +381,7 @@ static int append_update_multiple_assignments_sql(
     const struct planned_update *plan
 ) {
     size_t emitted_count = 0U;
+    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
@@ -333,7 +401,18 @@ static int append_update_multiple_assignments_sql(
             rc = mylite_dynamic_string_append(string, " = ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, emitted_count + 1U);
+            if (plan->assignments[index].value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+                rc = append_row_scalar_expression_sql(
+                    string,
+                    &plan->assignments[index].row_scalar_expression,
+                    &next_parameter
+                );
+            } else {
+                rc = append_numbered_parameter(string, next_parameter);
+                if (rc == MYLITE_OK) {
+                    ++next_parameter;
+                }
+            }
         }
         if (rc == MYLITE_OK) {
             ++emitted_count;
@@ -652,6 +731,12 @@ static int append_update_changed_condition_sql(
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
         return append_update_date_interval_changed_condition_sql(string, plan, next_parameter);
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return append_update_column_copy_changed_condition_sql(string, plan);
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return append_update_row_scalar_changed_condition_sql(string, plan, next_parameter);
+    }
     if (plan->assignment_value.is_null) {
         rc = mylite_dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
         if (rc == MYLITE_OK) {
@@ -686,6 +771,120 @@ static int append_update_changed_condition_sql(
     return rc;
 }
 
+static int append_update_row_scalar_changed_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    return append_update_assignment_row_scalar_changed_condition_sql(
+        string,
+        &plan->assignment_column,
+        &plan->assignment_row_scalar_expression,
+        next_parameter
+    );
+}
+
+static int append_update_assignment_row_scalar_changed_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NULL AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NOT NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NOT NULL AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " <> ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_update_column_copy_changed_condition_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_update *plan
+) {
+    int rc = mylite_dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NULL AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            string,
+            plan->assignment_source_column.name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NOT NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NOT NULL AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            string,
+            plan->assignment_source_column.name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " <> ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            string,
+            plan->assignment_source_column.name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_update_multiple_changed_condition_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
@@ -702,12 +901,21 @@ static int append_update_multiple_changed_condition_sql(
             rc = mylite_dynamic_string_append(string, " OR ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_update_assignment_changed_condition_sql(
-                string,
-                &plan->assignments[index].column,
-                &plan->assignments[index].value,
-                next_parameter
-            );
+            if (plan->assignments[index].value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+                rc = append_update_assignment_row_scalar_changed_condition_sql(
+                    string,
+                    &plan->assignments[index].column,
+                    &plan->assignments[index].row_scalar_expression,
+                    next_parameter
+                );
+            } else {
+                rc = append_update_assignment_changed_condition_sql(
+                    string,
+                    &plan->assignments[index].column,
+                    &plan->assignments[index].value,
+                    next_parameter
+                );
+            }
         }
         if (rc == MYLITE_OK) {
             ++emitted_count;

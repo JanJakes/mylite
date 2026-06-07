@@ -320,6 +320,8 @@ static int test_exists_values_and_persistence(void) {
 }
 
 static int test_exists_diagnostics(void) {
+    static const char *const id_column[] = {"id"};
+    static const char *const remaining_users[] = {"3", "4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -392,14 +394,22 @@ static int test_exists_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
         "DELETE FROM users "
         "WHERE EXISTS (SELECT 1 FROM orders AS o WHERE o.user_id = users.id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "EXISTS subqueries are supported only in SELECT WHERE",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users ORDER BY id",
+            .columns = id_column,
+            .column_count = 1U,
+            .values = remaining_users,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "delete exists subquery remaining users",
         }
     );
     failures += execute_error(

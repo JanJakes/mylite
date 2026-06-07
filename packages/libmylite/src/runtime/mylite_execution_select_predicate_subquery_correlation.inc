@@ -27,7 +27,8 @@ static int validate_comparison_predicate_column(
         return MYLITE_ERROR;
     }
     if (comparison_operator_is_regexp(node->operator_kind) &&
-        !column_descriptor_is_string_family(&node->column)) {
+        !column_descriptor_is_string_family(&node->column) &&
+        !join_condition_column_is_integer_family(&node->column)) {
         set_unsupported_error(database, "WHERE REGEXP predicates support only string columns");
         return MYLITE_ERROR;
     }
@@ -511,8 +512,9 @@ static int plan_column_comparison_predicate(
     int rc = MYLITE_OK;
 
     if (node.operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
+        node.operator_kind != MYLITE_SQL_AST_OPERATOR_NOT_EQUAL &&
         node.operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-        set_unsupported_error(database, "EXISTS correlated predicates support only = and <=>");
+        set_unsupported_error(database, "EXISTS correlated predicates support only =, <=>, and <>");
         return MYLITE_ERROR;
     }
 

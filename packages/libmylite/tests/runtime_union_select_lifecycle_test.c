@@ -206,6 +206,8 @@ static int test_scalar_union_values_and_metadata(void) {
 static int test_table_union_persistence_and_file_safety(void) {
     static const char *const columns_id_v[] = {"id", "v"};
     static const char *const values_string_case[] = {"4", "a"};
+    static const char *const values_order_desc[] = {"c", "b", "a"};
+    static const char *const values_order_desc_limit[] = {"c", "b"};
     static const char *const values_distinct[] = {
         "1",
         "a",
@@ -282,6 +284,31 @@ static int test_table_union_persistence_and_file_safety(void) {
             .values = values_string_case,
             .row_count = 1U,
             .context = "table string duplicate uses collation",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v AS name FROM t1 WHERE id IN (1, 2) "
+                   "UNION SELECT v AS name FROM t2 WHERE id = 3 ORDER BY name DESC",
+            .columns = (const char *const[]){"name"},
+            .column_count = 1U,
+            .values = values_order_desc,
+            .row_count = 3U,
+            .context = "compound final order by output alias",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v AS name FROM t1 WHERE id IN (1, 2) "
+                   "UNION SELECT v AS name FROM t2 WHERE id = 3 "
+                   "ORDER BY name DESC LIMIT 2 OFFSET 0",
+            .columns = (const char *const[]){"name"},
+            .column_count = 1U,
+            .values = values_order_desc_limit,
+            .row_count = 2U,
+            .context = "compound final order by and limit",
         }
     );
     failures += execute_ok(database, "DELETE FROM t1 WHERE id = 4", &result);

@@ -540,6 +540,8 @@ static int test_ascii_column_charset_collation_metadata(void) {
         "ascii",
         "ascii_bin",
     };
+    static const char *const ascii_binary_unique_count[] = {"2"};
+    static const char *const ascii_binary_unique_match[] = {"john"};
     static const char *const ascii_values[] = {"A", "B", "text", "bin"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -600,6 +602,34 @@ static int test_ascii_column_charset_collation_metadata(void) {
         ascii_binary_attr_metadata,
         1U,
         "ascii binary attribute metadata"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ascii_binary_unique("
+        "name VARCHAR(255) CHARACTER SET ascii BINARY, "
+        "UNIQUE KEY name (name))"
+    );
+    failures += execute_affected_ok(database, "INSERT INTO ascii_binary_unique VALUES ('John')", 1);
+    failures += execute_affected_ok(database, "INSERT INTO ascii_binary_unique VALUES ('john')", 1);
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM ascii_binary_unique",
+            .values = ascii_binary_unique_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "ascii binary unique key is case-sensitive",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT name FROM ascii_binary_unique WHERE name = 'john'",
+            .values = ascii_binary_unique_match,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "ascii binary predicate is case-sensitive",
+        }
     );
     failures += expect_column_character_metadata(
         database,

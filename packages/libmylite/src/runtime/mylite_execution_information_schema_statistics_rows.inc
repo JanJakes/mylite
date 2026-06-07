@@ -123,7 +123,8 @@ static int append_information_schema_statistics_base_rows(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc =
+        mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
@@ -197,17 +198,18 @@ static int append_information_schema_statistics_base_index_row(
             prefix_value = "32";
             index_type = "SPATIAL";
         }
-        if (!is_fulltext && !is_spatial && part->index_column.has_prefix_length) {
-            rc = information_schema_format_i64(
+        if (!is_fulltext && !is_spatial) {
+            rc = index_part_display_prefix_value(
                 database,
-                part->index_column.prefix_length,
+                index,
+                part,
                 prefix_text,
-                sizeof(prefix_text)
+                sizeof(prefix_text),
+                &prefix_value
             );
             if (rc != MYLITE_OK) {
                 return rc;
             }
-            prefix_value = prefix_text;
         }
         const char *values[information_schema_statistics_column_count] = {
             "def",

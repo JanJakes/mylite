@@ -36,8 +36,7 @@ static int plan_grouped_aggregate_projection_columns(
         size_t source_index = 0U;
         size_t expression_index = out_plan->projection_count + 1U;
 
-        if (grouped_aggregate_function_from_expression(
-                unwrap_parenthesized_expression(expression)
+        if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(expression)
             ) != PLANNED_GROUPED_AGGREGATE_NONE) {
             *out_first_aggregate_index = item_index;
             return MYLITE_OK;
@@ -64,6 +63,26 @@ static int plan_grouped_aggregate_projection_columns(
             );
         } else if (grouped_expression_is_temporal_group_key(expression)) {
             rc = plan_grouped_aggregate_temporal_projection(
+                database,
+                expression,
+                child_at(item, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+        } else if (select_item_is_literal_projection(item)) {
+            rc = plan_grouped_aggregate_literal_projection(
+                database,
+                expression,
+                child_at(item, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+        } else if (row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
+            rc = plan_grouped_aggregate_integer_arithmetic_projection(
                 database,
                 expression,
                 child_at(item, 1U),
@@ -244,6 +263,177 @@ static int plan_grouped_aggregate_temporal_projection(
     return rc;
 }
 
+static int plan_grouped_aggregate_literal_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    struct planned_row_scalar_expression row_scalar_expression = {0};
+    int rc = plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        &row_scalar_expression
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_projection_row_scalar_expression(
+            database,
+            out_plan,
+            &row_scalar_expression,
+            expression,
+            alias
+        );
+    }
+    planned_row_scalar_expression_deinit(&row_scalar_expression);
+    return rc;
+}
+
+static int plan_grouped_aggregate_integer_arithmetic_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    struct planned_row_scalar_expression row_scalar_expression = {0};
+    int rc = plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        &row_scalar_expression
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = validate_grouped_projection_row_scalar_expression(
+            database,
+            out_plan,
+            table_columns,
+            table_column_count,
+            &row_scalar_expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_projection_row_scalar_expression(
+            database,
+            out_plan,
+            &row_scalar_expression,
+            expression,
+            alias
+        );
+    }
+    planned_row_scalar_expression_deinit(&row_scalar_expression);
+    return rc;
+}
+
+static int validate_grouped_projection_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "GROUP BY supports scalar projections only over grouped or literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return validate_grouped_projection_row_scalar_column(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            expression
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        if (expression->argument_count != 2U || expression->arguments == NULL) {
+            set_unsupported_error(
+                database,
+                "GROUP BY supports scalar projections only over grouped or literal operands"
+            );
+            return MYLITE_ERROR;
+        }
+        for (size_t argument_index = 0U; argument_index < expression->argument_count;
+             ++argument_index) {
+            int rc = validate_grouped_projection_row_scalar_expression(
+                database,
+                plan,
+                table_columns,
+                table_column_count,
+                &expression->arguments[argument_index]
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        }
+        return MYLITE_OK;
+    default:
+        set_unsupported_error(
+            database,
+            "GROUP BY supports scalar projections only over grouped or literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+}
+
+static int validate_grouped_projection_row_scalar_column(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_row_scalar_expression *expression
+) {
+    int dependency_rc = MYLITE_OK;
+    size_t source_index =
+        expression->column_has_source_index ? expression->column_source_index : 0U;
+
+    if (grouped_projection_column_is_allowed(
+            database,
+            plan,
+            table_columns,
+            table_column_count,
+            &expression->column,
+            source_index,
+            &dependency_rc
+        )) {
+        return MYLITE_OK;
+    }
+    if (dependency_rc != MYLITE_OK) {
+        return dependency_rc;
+    }
+
+    set_only_full_group_by_error(
+        database,
+        1U,
+        "SELECT list",
+        planned_grouped_aggregate_source_resolution(plan, source_index),
+        &expression->column
+    );
+    return MYLITE_ERROR;
+}
+
 static int plan_grouped_aggregate_relaxed_row_scalar_projection(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -292,8 +482,7 @@ static bool grouped_expression_is_relaxed_row_scalar_projection(
 ) {
     expression = unwrap_parenthesized_expression(expression);
     return !session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
-           expression != NULL &&
-           expression->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION;
+           expression != NULL && expression->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION;
 }
 
 static bool grouped_relaxed_row_scalar_projection_is_allowed(
@@ -316,11 +505,8 @@ static bool grouped_relaxed_row_scalar_projection_is_allowed(
         format_argument->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
         format_argument->value.is_null || !format_argument->value.is_text ||
         format_argument->value.text_length != sizeof(archive_day_format) - 1U ||
-        memcmp(
-            format_argument->value.text,
-            archive_day_format,
-            sizeof(archive_day_format) - 1U
-        ) != 0) {
+        memcmp(format_argument->value.text, archive_day_format, sizeof(archive_day_format) - 1U) !=
+            0) {
         return false;
     }
 
@@ -402,7 +588,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -416,7 +602,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }
@@ -635,11 +821,10 @@ static bool grouped_row_scalar_projection_is_allowed(
     for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
         const struct planned_grouped_key *group = &plan->groups[group_index];
 
-        if (group->uses_row_scalar_expression &&
-            planned_grouped_row_scalar_expressions_match(
-                expression,
-                &group->row_scalar_expression
-            )) {
+        if (group->uses_row_scalar_expression && planned_grouped_row_scalar_expressions_match(
+                                                     expression,
+                                                     &group->row_scalar_expression
+                                                 )) {
             return true;
         }
     }
@@ -657,9 +842,8 @@ static bool planned_grouped_row_scalar_expressions_match(
         left->kind != PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT ||
         right->kind != PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT ||
         left->temporal_extract_kind != right->temporal_extract_kind ||
-        left->argument_count != right->argument_count ||
-        left->argument_count == 0U || right->argument_count == 0U ||
-        left->arguments == NULL || right->arguments == NULL) {
+        left->argument_count != right->argument_count || left->argument_count == 0U ||
+        right->argument_count == 0U || left->arguments == NULL || right->arguments == NULL) {
         return false;
     }
 
@@ -671,11 +855,10 @@ static bool planned_grouped_row_scalar_expressions_match(
     }
 
     return planned_grouped_row_scalar_columns_match(left_argument, right_argument) &&
-           (left->argument_count <= 3U ||
-            planned_grouped_row_scalar_value_arguments_match(
-                &left->arguments[3],
-                &right->arguments[3]
-            ));
+           (left->argument_count <= 3U || planned_grouped_row_scalar_value_arguments_match(
+                                              &left->arguments[3],
+                                              &right->arguments[3]
+                                          ));
 }
 
 static bool grouped_plan_has_temporal_key_on_column(
@@ -724,8 +907,7 @@ static bool planned_grouped_row_scalar_columns_match(
     const struct planned_row_scalar_expression *left,
     const struct planned_row_scalar_expression *right
 ) {
-    if (left == NULL || right == NULL ||
-        left->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
+    if (left == NULL || right == NULL || left->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
         right->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return false;
     }

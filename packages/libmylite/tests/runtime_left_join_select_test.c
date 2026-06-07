@@ -431,6 +431,10 @@ static int test_left_join_derived_grouped_source(void) {
     static const char *const post_count_rows[] = {"3", "1", "2"};
     static const char *const qualified_post_count_columns[] = {"ID", "post_count"};
     static const char *const qualified_post_count_rows[] = {"3", "1", "1", "2", "2", "3"};
+    static const char *const row_scalar_derived_columns[] = {"double_age", "name"};
+    static const char *const row_scalar_derived_rows[] = {"81", "George"};
+    static const char *const descriptor_derived_columns[] = {"name"};
+    static const char *const descriptor_derived_rows[] = {"George"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -495,6 +499,105 @@ static int test_left_join_derived_grouped_source(void) {
             .row_count = 3U,
             .context = "left join derived grouped source projects aggregate alias",
         }
+    );
+    failures += expect_statement(
+        database,
+        "CREATE TABLE people (id INT UNSIGNED NOT NULL AUTO_INCREMENT, "
+        "name VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '', "
+        "age INT UNSIGNED NOT NULL DEFAULT 0, job VARCHAR(255) NOT NULL DEFAULT 'Undefined', "
+        "PRIMARY KEY (id), UNIQUE KEY name (name), KEY ages (age))",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "CREATE TABLE tasks (tid INT UNSIGNED NOT NULL AUTO_INCREMENT, "
+        "pid INT UNSIGNED NOT NULL DEFAULT 0, task VARCHAR(255) NOT NULL DEFAULT '', "
+        "priority INT UNSIGNED NOT NULL DEFAULT 0, PRIMARY KEY (tid))",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO people(name, age, job) VALUES "
+        "('John',25,'Singer'),('George',27,'Singer'),('Ringo',28,'Drummer')",
+        (struct expected_statement){3, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO tasks(pid, task, priority) VALUES (2,'sing',2)",
+        (struct expected_statement){1, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT pq.double_age, pq.name FROM tasks tt JOIN "
+                   "(SELECT p.name AS name, p.id AS id, age*3 AS double_age FROM people p "
+                   "WHERE age = 27) pq ON pq.id = tt.pid",
+            .columns = row_scalar_derived_columns,
+            .values = row_scalar_derived_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "joined derived row-scalar expression source",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT `pq`.`double_age` AS `double_age`, `pq`.`name` AS `name` "
+                   "FROM `tasks` `tt` INNER JOIN "
+                   "(SELECT `p`.`name` AS `name`, `p`.`id` AS `id`, "
+                   "`age`*3 AS `double_age` FROM `people` `p` "
+                   "WHERE `age` = 27) `pq` ON `pq`.`id` = `tt`.`pid`",
+            .columns = row_scalar_derived_columns,
+            .values = row_scalar_derived_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "quoted joined derived row-scalar expression source",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t.name FROM "
+                   "(SELECT tt.pid AS pid, tt.task AS task FROM tasks tt WHERE priority = 2) tt2 "
+                   "INNER JOIN people t ON t.id = tt2.pid WHERE task = 'sing'",
+            .columns = descriptor_derived_columns,
+            .values = descriptor_derived_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "joined derived descriptor source with same-name aliases",
+        }
+    );
+    failures += expect_statement(
+        database,
+        "SET @@sql_mode = 'ANSI,TRADITIONAL'",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "PREPARE drupal_derived FROM 'SELECT \"pq\".\"double_age\" AS \"double_age\", "
+        "\"pq\".\"name\" AS \"name\" FROM \"tasks\" \"tt\" INNER JOIN "
+        "(SELECT \"p\".\"name\" AS \"name\", \"p\".\"id\" AS \"id\", "
+        "\"age\"*3 AS \"double_age\" FROM \"people\" \"p\" WHERE \"age\" = ?) "
+        "\"pq\" ON \"pq\".\"id\" = \"tt\".\"pid\"'",
+        (struct expected_statement){0, 0U}
+    );
+    failures +=
+        expect_statement(database, "SET @drupal_age = 27", (struct expected_statement){0, 0U});
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "EXECUTE drupal_derived USING @drupal_age",
+            .columns = row_scalar_derived_columns,
+            .values = row_scalar_derived_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "Drupal-style prepared joined derived row-scalar expression source",
+        }
+    );
+    failures += expect_statement(
+        database,
+        "DEALLOCATE PREPARE drupal_derived",
+        (struct expected_statement){0, 0U}
     );
 
     mylite_close(database);

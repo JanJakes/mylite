@@ -89,8 +89,214 @@ static int plan_update_assignment(
         out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return rc;
     }
+    rc = plan_update_column_copy_assignment(database, table_columns, table_column_count, out_plan);
+    if (rc != MYLITE_OK ||
+        out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return rc;
+    }
+    rc = plan_update_row_scalar_assignment(database, table_columns, table_column_count, out_plan);
+    if (rc != MYLITE_OK ||
+        out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return rc;
+    }
 
     return plan_update_scalar_subquery_assignment(database, out_plan);
+}
+
+static int plan_update_column_copy_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    char source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t source_index = 0U;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        value_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count != 1U) {
+        set_unsupported_error(
+            database,
+            "UPDATE column-copy assignment supports only unqualified source columns"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(value_node, source_name, sizeof(source_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, source_name, &source_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, source_name);
+        return MYLITE_ERROR;
+    }
+    if (!update_column_copy_source_target_types_are_compatible(
+            &table_columns[source_index],
+            &out_plan->assignment_column
+        )) {
+        set_unsupported_error(
+            database,
+            update_scalar_subquery_implicit_conversion_message(&out_plan->assignment_column)
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignment_source_column = table_columns[source_index];
+    out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY;
+    return MYLITE_OK;
+}
+
+static bool update_column_copy_source_target_types_are_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    if (source_column == NULL || target_column == NULL) {
+        return false;
+    }
+    if (column_descriptor_is_approximate(target_column) &&
+        strcmp(source_column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(target_column) &&
+        strcmp(source_column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    return update_scalar_subquery_source_target_types_are_compatible(source_column, target_column);
+}
+
+static int plan_update_row_scalar_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    bool planned = false;
+    int rc = MYLITE_OK;
+
+    if (out_plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
+    rc = plan_update_assignment_row_scalar_expression(
+        database,
+        value_node,
+        &out_plan->assignment_column,
+        table_column_count,
+        table_columns,
+        out_plan,
+        &out_plan->assignment_row_scalar_expression,
+        &planned
+    );
+    if (rc != MYLITE_OK || !planned) {
+        return rc;
+    }
+
+    out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR;
+    return MYLITE_OK;
+}
+
+static int plan_update_assignment_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    struct planned_update *plan,
+    struct planned_row_scalar_expression *out_expression,
+    bool *out_planned
+) {
+    struct select_source_context source_context = {0};
+    bool arithmetic_attempt = false;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || target_column == NULL || out_expression == NULL || out_planned == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_planned = false;
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (insert_value_is_unix_timestamp_arithmetic(value_node)) {
+        return MYLITE_OK;
+    }
+    arithmetic_attempt = row_scalar_expression_contains_integer_arithmetic_attempt(value_node);
+    if (!is_row_scalar_control_flow_expression(value_node) && !arithmetic_attempt) {
+        return MYLITE_OK;
+    }
+    if (arithmetic_attempt) {
+        struct integer_column_range range = {0};
+        bool is_constant_arithmetic = false;
+
+        rc = update_value_is_constant_arithmetic_expression(
+            database,
+            value_node,
+            &is_constant_arithmetic
+        );
+        if (rc != MYLITE_OK || is_constant_arithmetic) {
+            return rc;
+        }
+
+        rc = integer_range_for_column(
+            database,
+            target_column,
+            "UPDATE arithmetic assignment supports only integer columns",
+            &range
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (column_descriptor_is_auto_increment(target_column)) {
+        set_unsupported_error(
+            database,
+            "UPDATE row-scalar assignment does not support AUTO_INCREMENT targets"
+        );
+        return MYLITE_ERROR;
+    }
+    if (update_column_id_is_keyed(plan, target_column->column_id)) {
+        set_unsupported_error(
+            database,
+            "UPDATE row-scalar assignment does not support indexed targets"
+        );
+        return MYLITE_ERROR;
+    }
+
+    source_context.source = &plan->target;
+    rc = plan_row_scalar_expression(
+        database,
+        value_node,
+        true,
+        &source_context,
+        &plan->table,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    *out_planned = true;
+    return MYLITE_OK;
 }
 
 static int plan_update_multiple_assignments(
@@ -184,13 +390,35 @@ static int plan_update_multiple_assignment(
         return MYLITE_ERROR;
     }
     value_node = child_at(assignment, 1U);
+
+    out_plan->assignments[assignment_index].column = table_columns[column_index];
+    out_plan->assignments[assignment_index].value_node = value_node;
     if (!update_assignment_value_is_multi_constant_supported(value_node)) {
+        bool planned = false;
+
+        rc = plan_update_assignment_row_scalar_expression(
+            database,
+            value_node,
+            &out_plan->assignments[assignment_index].column,
+            table_column_count,
+            table_columns,
+            out_plan,
+            &out_plan->assignments[assignment_index].row_scalar_expression,
+            &planned
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (planned) {
+            out_plan->assignments[assignment_index].value_kind =
+                PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR;
+            return MYLITE_OK;
+        }
         set_update_multiple_assignment_unsupported_error(database);
         return MYLITE_ERROR;
     }
 
-    out_plan->assignments[assignment_index].column = table_columns[column_index];
-    out_plan->assignments[assignment_index].value_node = value_node;
+    out_plan->assignments[assignment_index].value_kind = PLANNED_UPDATE_ASSIGNMENT_VALUE;
 
     return MYLITE_OK;
 }
@@ -453,8 +681,7 @@ static int plan_update_arithmetic_assignment(
     operator_kind = mylite_sql_ast_node_operator(value_node);
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
         operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
-        set_update_arithmetic_unsupported_error(database);
-        return MYLITE_ERROR;
+        return MYLITE_OK;
     }
 
     source = child_at(value_node, 0U);
@@ -462,8 +689,7 @@ static int plan_update_arithmetic_assignment(
     if (source == NULL || source->kind != MYLITE_SQL_AST_IDENTIFIER || delta == NULL ||
         delta->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(delta) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_update_arithmetic_unsupported_error(database);
-        return MYLITE_ERROR;
+        return MYLITE_OK;
     }
 
     rc = copy_identifier_text(source, source_name, sizeof(source_name), database);
@@ -476,8 +702,7 @@ static int plan_update_arithmetic_assignment(
         return MYLITE_ERROR;
     }
     if (table_columns[source_index].column_id != out_plan->assignment_column.column_id) {
-        set_update_arithmetic_unsupported_error(database);
-        return MYLITE_ERROR;
+        return MYLITE_OK;
     }
 
     out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC;
@@ -728,6 +953,12 @@ static bool planned_update_assigns_auto_increment(const struct planned_update *p
     if (planned_update_has_multiple_assignments(plan)) {
         return planned_update_auto_increment_assignment(plan) != NULL;
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return false;
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return false;
+    }
     return column_descriptor_is_auto_increment(&plan->assignment_column);
 }
 
@@ -946,6 +1177,7 @@ static int plan_update_scalar_subquery_assignment(
 ) {
     const struct mylite_sql_ast_node *value_node = NULL;
     const struct mylite_sql_ast_node *statement = NULL;
+    bool handled = false;
     int rc = MYLITE_OK;
 
     if (out_plan == NULL) {
@@ -965,6 +1197,10 @@ static int plan_update_scalar_subquery_assignment(
     }
 
     statement = child_at(value_node, 0U);
+    rc = plan_update_scalar_aggregate_subquery_assignment(database, statement, out_plan, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = validate_update_scalar_subquery_select(database, statement);
     if (rc == MYLITE_OK) {
         rc = plan_select(database, statement, false, &out_plan->assignment_subquery);
@@ -982,6 +1218,254 @@ static int plan_update_scalar_subquery_assignment(
         out_plan->assignment_value_is_scalar_subquery = true;
     }
 
+    return rc;
+}
+
+static int plan_update_scalar_aggregate_subquery_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *select_item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *aggregate_expression = NULL;
+    const struct mylite_sql_ast_node *rhs_expression = NULL;
+    enum planned_column_aggregate_function function = PLANNED_COLUMN_AGGREGATE_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_OK;
+    }
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_options(statement) != 0U ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0 ||
+        mylite_sql_ast_node_select_locking_clause(statement) !=
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        return MYLITE_OK;
+    }
+    select_list = child_at(statement, 0U);
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        mylite_sql_ast_node_child_count(select_list) != 1U) {
+        return MYLITE_OK;
+    }
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        return MYLITE_OK;
+    }
+
+    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
+    rc = plan_update_scalar_aggregate_subquery_expression(
+        database,
+        expression,
+        out_plan,
+        &function,
+        &aggregate_expression,
+        &rhs_expression
+    );
+    if (rc != MYLITE_OK || function == PLANNED_COLUMN_AGGREGATE_NONE) {
+        return rc;
+    }
+    rc = plan_update_scalar_aggregate_subquery_source(
+        database,
+        statement,
+        function,
+        aggregate_expression,
+        out_plan
+    );
+    if (rc == MYLITE_OK && rhs_expression != NULL) {
+        rc = plan_update_scalar_aggregate_rhs_expression(database, rhs_expression, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->assignment_value_is_scalar_subquery = true;
+        out_plan->assignment_value_is_scalar_aggregate_expression_subquery = true;
+        *out_handled = true;
+    }
+
+    return rc;
+}
+
+static int plan_update_scalar_aggregate_subquery_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_update *out_plan,
+    enum planned_column_aggregate_function *out_function,
+    const struct mylite_sql_ast_node **out_aggregate_expression,
+    const struct mylite_sql_ast_node **out_rhs_expression
+) {
+    enum planned_column_aggregate_function function = PLANNED_COLUMN_AGGREGATE_NONE;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    const struct mylite_sql_ast_node *left = NULL;
+    const struct mylite_sql_ast_node *right = NULL;
+
+    (void)database;
+    if (out_function == NULL || out_aggregate_expression == NULL || out_rhs_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_function = PLANNED_COLUMN_AGGREGATE_NONE;
+    *out_aggregate_expression = NULL;
+    *out_rhs_expression = NULL;
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+
+    function = column_aggregate_function_from_expression(expression);
+    if (function != PLANNED_COLUMN_AGGREGATE_NONE) {
+        *out_function = function;
+        *out_aggregate_expression = expression;
+        return MYLITE_OK;
+    }
+    if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return MYLITE_OK;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        return MYLITE_OK;
+    }
+    left = unwrap_parenthesized_expression(child_at(expression, 0U));
+    right = unwrap_parenthesized_expression(child_at(expression, 1U));
+    function = column_aggregate_function_from_expression(left);
+    if (function == PLANNED_COLUMN_AGGREGATE_NONE) {
+        return MYLITE_OK;
+    }
+
+    out_plan->assignment_scalar_aggregate_has_rhs = true;
+    out_plan->assignment_scalar_aggregate_operator = operator_kind;
+    *out_function = function;
+    *out_aggregate_expression = left;
+    *out_rhs_expression = right;
+    return MYLITE_OK;
+}
+
+static int plan_update_scalar_aggregate_rhs_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *rhs_expression,
+    struct planned_update *out_plan
+) {
+    return plan_row_scalar_expression(
+        database,
+        rhs_expression,
+        false,
+        NULL,
+        NULL,
+        NULL,
+        0U,
+        &out_plan->assignment_scalar_aggregate_rhs
+    );
+}
+
+static int plan_update_scalar_aggregate_subquery_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    enum planned_column_aggregate_function function,
+    const struct mylite_sql_ast_node *aggregate_expression,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct select_source_context source_context = {0};
+    size_t table_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX &&
+        function != PLANNED_COLUMN_AGGREGATE_SUM) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar aggregate subquery assignment supports only MIN(), MAX(), and SUM()"
+        );
+        return MYLITE_ERROR;
+    }
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(
+                database,
+                "UPDATE scalar aggregate subquery assignment supports only WHERE"
+            );
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar aggregate subquery assignment supports only one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignment_scalar_aggregate.expression = child_at(select_item, 0U);
+    out_plan->assignment_scalar_aggregate.alias = child_at(select_item, 1U);
+    out_plan->assignment_scalar_aggregate.function = function;
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(from_clause, 0U),
+        &out_plan->assignment_scalar_aggregate.source,
+        &out_plan->assignment_scalar_aggregate.table
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_select_index_hints(
+            database,
+            from_clause,
+            &out_plan->assignment_scalar_aggregate.table
+        );
+    }
+    if (rc == MYLITE_OK &&
+        out_plan->assignment_scalar_aggregate.table.table_id == out_plan->table.table_id) {
+        set_update_table_used_error(database, out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = init_select_source_context(
+            database,
+            from_clause,
+            &out_plan->assignment_scalar_aggregate.source,
+            &source_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->assignment_scalar_aggregate.table.table_id,
+            &table_columns,
+            &table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_column_aggregate_column(
+            database,
+            aggregate_expression,
+            function,
+            &source_context,
+            table_columns,
+            table_column_count,
+            &out_plan->assignment_scalar_aggregate.aggregate_column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            &source_context,
+            table_columns,
+            table_column_count,
+            &out_plan->assignment_scalar_aggregate.predicate
+        );
+    }
+
+    free(table_columns);
     return rc;
 }
 
@@ -1905,6 +2389,9 @@ static int materialize_update_scalar_subquery_value(
     char *sql = NULL;
     int rc = MYLITE_OK;
 
+    if (plan->assignment_value_is_scalar_aggregate_expression_subquery) {
+        return materialize_update_scalar_aggregate_subquery_value(database, plan, out_value);
+    }
     if (!plan->assignment_value_is_scalar_subquery ||
         plan->assignment_subquery.column_count != 1U) {
         set_unsupported_error(
@@ -1936,6 +2423,136 @@ static int materialize_update_scalar_subquery_value(
         mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int materialize_update_scalar_aggregate_subquery_value(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int rc = build_update_scalar_aggregate_assignment_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_update_scalar_aggregate_assignment_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_update_scalar_subquery_value(database, statement, plan, out_value);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int build_update_scalar_aggregate_assignment_sql(
+    const struct planned_update *plan,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+
+    rc = mylite_dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = append_update_scalar_aggregate_assignment_sql(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            &string,
+            plan->assignment_scalar_aggregate.table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(
+            &string,
+            &plan->assignment_scalar_aggregate.predicate,
+            &next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_update_scalar_aggregate_assignment_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = append_column_aggregate_select_list_sql(
+        string,
+        &plan->assignment_scalar_aggregate,
+        next_parameter
+    );
+
+    if (rc == MYLITE_OK && plan->assignment_scalar_aggregate_has_rhs) {
+        if (plan->assignment_scalar_aggregate_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
+            rc = mylite_dynamic_string_append(string, " + ");
+        } else {
+            rc = mylite_dynamic_string_append(string, " - ");
+        }
+    }
+    if (rc == MYLITE_OK && plan->assignment_scalar_aggregate_has_rhs) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            &plan->assignment_scalar_aggregate_rhs,
+            next_parameter
+        );
+    }
+
+    return rc;
+}
+
+static int bind_update_scalar_aggregate_assignment_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan
+) {
+    int parameter_index = 1;
+    int rc = MYLITE_OK;
+
+    if (plan->assignment_scalar_aggregate_has_rhs) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &plan->assignment_scalar_aggregate_rhs,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(
+            statement,
+            &plan->assignment_scalar_aggregate.predicate,
+            &parameter_index
+        );
     }
 
     return rc;
@@ -1980,7 +2597,11 @@ static int step_update_scalar_subquery_value(
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
 
-    rc = materialize_update_scalar_subquery_sqlite_value(database, statement, plan, out_value);
+    if (plan->assignment_value_is_scalar_aggregate_expression_subquery) {
+        rc = materialize_update_scalar_aggregate_sqlite_value(database, statement, plan, out_value);
+    } else {
+        rc = materialize_update_scalar_subquery_sqlite_value(database, statement, plan, out_value);
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1995,6 +2616,39 @@ static int step_update_scalar_subquery_value(
     }
 
     return MYLITE_OK;
+}
+
+static int materialize_update_scalar_aggregate_sqlite_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+) {
+    const struct mylite_catalog_column_descriptor *target_column = &plan->assignment_column;
+    struct integer_column_range range = {0};
+    int sqlite_type = sqlite3_column_type(statement, 0);
+    int rc = MYLITE_OK;
+
+    if (sqlite_type == SQLITE_NULL) {
+        return convert_null_insert_value(database, target_column, plan->ignore_errors, out_value);
+    }
+    rc = integer_range_for_column(
+        database,
+        target_column,
+        "UPDATE scalar aggregate subquery assignment supports only integer targets",
+        &range
+    );
+    (void)range;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return materialize_update_scalar_subquery_integer_value(
+        database,
+        statement,
+        sqlite_type,
+        target_column,
+        out_value
+    );
 }
 
 static int materialize_update_scalar_subquery_sqlite_value(

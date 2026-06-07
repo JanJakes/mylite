@@ -72,30 +72,12 @@ static int build_count_sql(const struct planned_count *plan, char **out_sql) {
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = mylite_dynamic_string_append(&string, "SELECT COUNT(");
-    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_STAR) {
-        rc = mylite_dynamic_string_append(&string, "*");
-    }
-    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_COLUMN) {
-        rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->count_column.name);
-    }
-    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
-        rc = mylite_dynamic_string_append(&string, "DISTINCT ");
-        if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->count_column.name);
-        }
-    }
-    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_LITERAL) {
-        rc = append_numbered_parameter(&string, 1U);
-    }
+    rc = append_count_function_sql(&string, plan);
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, ") FROM ");
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+        rc = append_count_source_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -107,6 +89,169 @@ static int build_count_sql(const struct planned_count *plan, char **out_sql) {
     mylite_dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_count_function_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count *plan
+) {
+    int rc = mylite_dynamic_string_append(string, "SELECT COUNT(");
+
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_STAR) {
+        rc = mylite_dynamic_string_append(string, "*");
+    }
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_COLUMN) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->count_column.name);
+    }
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
+        rc = mylite_dynamic_string_append(string, "DISTINCT ");
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_quoted_identifier(string, plan->count_column.name);
+        }
+    }
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_LITERAL) {
+        rc = append_numbered_parameter(string, 1U);
+    }
+    return rc;
+}
+
+static int append_count_source_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->source_kind == PLANNED_COUNT_SOURCE_TABLE) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+        if (rc == MYLITE_OK && plan->predicate.qualify_column_references) {
+            rc = mylite_dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK && plan->predicate.qualify_column_references) {
+            rc = append_select_source_alias(string, 0U);
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+        }
+        return rc;
+    }
+
+    rc = mylite_dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = append_count_derived_source_query_sql(
+            string,
+            plan->source_kind,
+            &plan->derived_select,
+            &plan->derived_row_scalar_select,
+            plan->derived_grouped_aggregate,
+            &plan->derived_compound,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ") AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, "_mylite_count_source");
+    }
+    return rc;
+}
+
+static int append_count_derived_source_query_sql(
+    struct mylite_dynamic_string *string,
+    enum planned_count_source_kind kind,
+    const struct planned_select *select_plan,
+    const struct planned_row_scalar_select *row_scalar_plan,
+    const struct planned_grouped_aggregate *grouped_plan,
+    const struct planned_count_derived_compound *compound_plan,
+    size_t *next_parameter
+) {
+    switch (kind) {
+    case PLANNED_COUNT_SOURCE_DERIVED_SELECT:
+        return append_select_sql_query(string, select_plan, next_parameter);
+    case PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR:
+        return append_row_scalar_select_query_sql(string, row_scalar_plan, next_parameter);
+    case PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE:
+        return append_grouped_aggregate_query_sql(
+            string,
+            grouped_plan,
+            next_parameter,
+            true,
+            true,
+            true
+        );
+    case PLANNED_COUNT_SOURCE_DERIVED_COMPOUND:
+        return append_count_derived_compound_query_sql(string, compound_plan, next_parameter);
+    case PLANNED_COUNT_SOURCE_NONE:
+    case PLANNED_COUNT_SOURCE_TABLE:
+        break;
+    }
+    return MYLITE_ERROR;
+}
+
+static int append_count_derived_compound_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_derived_compound *compound_plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (compound_plan == NULL || compound_plan->branches == NULL ||
+        compound_plan->branch_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    rc = append_count_derived_compound_branch_sql(
+        string,
+        &compound_plan->branches[0],
+        next_parameter
+    );
+    for (size_t branch_index = 1U; rc == MYLITE_OK && branch_index < compound_plan->branch_count;
+         ++branch_index) {
+        const char *union_sql = union_modifier_sql(compound_plan->branches[branch_index].modifier);
+
+        if (union_sql == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, union_sql);
+        if (rc == MYLITE_OK) {
+            rc = append_count_derived_compound_branch_sql(
+                string,
+                &compound_plan->branches[branch_index],
+                next_parameter
+            );
+        }
+    }
+    return rc;
+}
+
+static int append_count_derived_compound_branch_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_count_derived_compound_branch *branch,
+    size_t *next_parameter
+) {
+    if (branch == NULL) {
+        return MYLITE_ERROR;
+    }
+    return append_count_derived_source_query_sql(
+        string,
+        branch->kind,
+        &branch->select,
+        &branch->row_scalar_select,
+        branch->grouped_aggregate,
+        NULL,
+        next_parameter
+    );
+}
+
+static const char *union_modifier_sql(enum mylite_sql_ast_union_modifier modifier) {
+    switch (modifier) {
+    case MYLITE_SQL_AST_UNION_MODIFIER_ALL:
+        return " UNION ALL ";
+    case MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT:
+        return " UNION ";
+    default:
+        return NULL;
+    }
 }
 
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql) {
@@ -205,6 +350,20 @@ static int append_column_aggregate_select_list_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && plan->aggregate_has_projection_rhs) {
+        if (plan->aggregate_projection_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
+            rc = mylite_dynamic_string_append(string, " + ");
+        } else {
+            rc = mylite_dynamic_string_append(string, " - ");
+        }
+    }
+    if (rc == MYLITE_OK && plan->aggregate_has_projection_rhs) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            &plan->aggregate_projection_rhs,
+            next_parameter
+        );
     }
 
     return rc;
@@ -608,7 +767,7 @@ static int append_grouped_identifier_alias_sql(
     if (source == NULL || source_size == 0U) {
         return MYLITE_ERROR;
     }
-    if (source[0] == '`') {
+    if (source[0] == '`' || source[0] == '"') {
         rc = copy_quoted_identifier_text(source, source_size, identifier, sizeof(identifier));
     } else {
         rc = copy_unquoted_identifier_text(source, source_size, identifier, sizeof(identifier));
@@ -685,8 +844,7 @@ static int append_grouped_aggregate_expression_sql(
     return rc;
 }
 
-static const char *grouped_aggregate_sql_function(
-    enum planned_grouped_aggregate_function function
+static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function
 ) {
     switch (function) {
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
@@ -780,6 +938,13 @@ static int append_grouped_having_operand_sql(
     }
     if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE) {
         return append_grouped_having_aggregate_sql(string, plan, next_parameter);
+    }
+    if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_ROW_SCALAR) {
+        return append_row_scalar_expression_sql(
+            string,
+            plan->having.row_scalar_expression,
+            next_parameter
+        );
     }
 
     return MYLITE_OK;
@@ -1208,6 +1373,22 @@ static int append_select_predicate_non_exists_node_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
         return append_select_scalar_subquery_in_predicate_sql(string, node, next_parameter);
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON) {
+        return append_select_scalar_aggregate_subquery_comparison_predicate_sql(
+            string,
+            predicate->qualify_column_references,
+            node,
+            next_parameter
+        );
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN) {
+        return append_select_scalar_aggregate_subquery_between_predicate_sql(
+            string,
+            predicate->qualify_column_references,
+            node,
+            next_parameter
+        );
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
         return append_select_scalar_count_subquery_comparison_predicate_sql(
             string,
@@ -1241,6 +1422,10 @@ static int append_select_predicate_non_subquery_node_sql(
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
+        return MYLITE_ERROR;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON ||
+        node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN) {
         return MYLITE_ERROR;
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
@@ -1344,8 +1529,8 @@ static int append_select_row_scalar_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
-    bool decimal_like = node->row_scalar_compare_as_real &&
-                        comparison_operator_is_like(node->operator_kind);
+    bool decimal_like =
+        node->row_scalar_compare_as_real && comparison_operator_is_like(node->operator_kind);
     int rc = MYLITE_OK;
 
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
@@ -1419,9 +1604,8 @@ static int append_select_row_scalar_regexp_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
-    const char *function_name =
-        node->row_scalar_regexp_case_sensitive ? "_mylite_regexp_cs_ascii" :
-                                                 "_mylite_regexp_ci_ascii";
+    const char *function_name = node->row_scalar_regexp_case_sensitive ? "_mylite_regexp_cs_ascii"
+                                                                       : "_mylite_regexp_ci_ascii";
     int rc = mylite_dynamic_string_append(string, function_name);
 
     if (rc == MYLITE_OK) {
@@ -1573,7 +1757,8 @@ static int append_select_scalar_subquery_in_predicate_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && column_descriptor_is_string_family(&node->in_subquery->column)) {
+    if (rc == MYLITE_OK &&
+        column_descriptor_uses_string_key_collation(&node->in_subquery->column, true)) {
         rc = append_string_key_collation_sql(string);
     }
     if (rc == MYLITE_OK) {
@@ -1581,6 +1766,173 @@ static int append_select_scalar_subquery_in_predicate_sql(
     }
 
     return rc;
+}
+
+static int append_select_scalar_aggregate_subquery_comparison_predicate_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    rc = append_scalar_aggregate_subquery_subject_sql(string, qualify_column, node, next_parameter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, comparison_operator_sql(node->operator_kind));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_scalar_aggregate_subquery_value_sql(
+            string,
+            node->value_scalar_subquery,
+            &node->value,
+            next_parameter
+        );
+    }
+    return rc;
+}
+
+static int append_select_scalar_aggregate_subquery_between_predicate_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc =
+        append_scalar_aggregate_subquery_subject_sql(string, qualify_column, node, next_parameter);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " BETWEEN ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_scalar_aggregate_subquery_value_sql(
+            string,
+            node->value_scalar_subquery,
+            &node->value,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_scalar_aggregate_subquery_value_sql(
+            string,
+            node->upper_scalar_subquery,
+            &node->upper_value,
+            next_parameter
+        );
+    }
+    return rc;
+}
+
+static int append_scalar_aggregate_subquery_subject_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    if (node->subject_scalar_subquery != NULL) {
+        return append_scalar_aggregate_subquery_operand_sql(
+            string,
+            node->subject_scalar_subquery,
+            next_parameter
+        );
+    }
+
+    return append_select_predicate_subject_sql(string, node, qualify_column);
+}
+
+static int append_scalar_aggregate_subquery_value_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    const struct planned_value *value,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery != NULL) {
+        return append_scalar_aggregate_subquery_operand_sql(string, subquery, next_parameter);
+    }
+
+    rc = append_numbered_parameter(string, *next_parameter);
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    (void)value;
+    return rc;
+}
+
+static int append_scalar_aggregate_subquery_operand_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_scalar_aggregate_subquery *subquery,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL || !subquery->subquery.has_table_source) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "(SELECT ");
+    if (rc == MYLITE_OK) {
+        rc =
+            mylite_dynamic_string_append(string, scalar_aggregate_sql_function(subquery->function));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_column_name_sql_for_source(
+            string,
+            &subquery->column,
+            subquery->column_source_index,
+            true
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ") FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_scalar_count_subquery_from_sql(string, &subquery->subquery, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql_without_exists(
+            string,
+            &subquery->subquery.predicate,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_function function) {
+    switch (function) {
+    case PLANNED_COLUMN_AGGREGATE_MIN:
+        return "MIN";
+    case PLANNED_COLUMN_AGGREGATE_MAX:
+        return "MAX";
+    case PLANNED_COLUMN_AGGREGATE_SUM:
+        return "SUM";
+    case PLANNED_COLUMN_AGGREGATE_AVG:
+        return "AVG";
+    case PLANNED_COLUMN_AGGREGATE_NONE:
+    case PLANNED_COLUMN_AGGREGATE_BIT_AND:
+    case PLANNED_COLUMN_AGGREGATE_BIT_OR:
+    case PLANNED_COLUMN_AGGREGATE_BIT_XOR:
+    case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
+        break;
+    }
+
+    return "";
 }
 
 static int append_select_scalar_count_subquery_comparison_predicate_sql(
@@ -1596,11 +1948,7 @@ static int append_select_scalar_count_subquery_comparison_predicate_sql(
 
     rc = mylite_dynamic_string_append(string, "(SELECT COUNT(*) FROM ");
     if (rc == MYLITE_OK) {
-        rc = append_scalar_count_subquery_from_sql(
-            string,
-            node->exists_subquery,
-            next_parameter
-        );
+        rc = append_scalar_count_subquery_from_sql(string, node->exists_subquery, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql_without_exists(
@@ -1793,7 +2141,7 @@ static int append_descriptor_value_sql_for_source(
     if (column_descriptor_is_time(column)) {
         return append_time_seconds_value_sql_for_source(string, column, source_index, qualify);
     }
-    if (column_descriptor_is_string_family(column)) {
+    if (column_descriptor_uses_string_key_collation(column, true)) {
         int rc =
             append_descriptor_column_name_sql_for_source(string, column, source_index, qualify);
 
@@ -2094,6 +2442,9 @@ static int append_select_regexp_predicate_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, ", ");
     }
+    if (rc == MYLITE_OK && node->regexp_cast_subject_as_text) {
+        rc = mylite_dynamic_string_append(string, "CAST(");
+    }
     if (rc == MYLITE_OK) {
         rc = append_descriptor_value_sql_for_source(
             string,
@@ -2101,6 +2452,9 @@ static int append_select_regexp_predicate_sql(
             node->column_source_index,
             qualify_column
         );
+    }
+    if (rc == MYLITE_OK && node->regexp_cast_subject_as_text) {
+        rc = mylite_dynamic_string_append(string, " AS TEXT)");
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
@@ -2539,9 +2893,11 @@ static int append_select_order_item_sql(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
-        item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
-        item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
+    if (item->kind == PLANNED_SELECT_ORDER_ITEM_ALIAS) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, item->alias);
+    } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
+               item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
+               item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
         if (next_parameter == NULL || item->expression == NULL) {
             return MYLITE_ERROR;
         }

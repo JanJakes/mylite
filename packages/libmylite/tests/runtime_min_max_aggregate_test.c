@@ -164,6 +164,15 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += expect_aggregate_query(
         database,
         (struct expected_aggregate_query){
+            .sql = "SELECT MAX(i) + 30 AS max_i FROM numbers",
+            .column = "max_i",
+            .value = "2147483677",
+            .context = "signed int maximum arithmetic projection",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
             .sql = "SELECT ALL MAX(i) FROM numbers",
             .column = "MAX(i)",
             .value = "2147483647",

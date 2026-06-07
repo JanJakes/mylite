@@ -376,6 +376,7 @@ static int test_multiple_assignment_errors_and_atomicity(void) {
         .message_part = "UPDATE multiple assignments",
     };
     static const char *const unchanged_after_error[] = {"1", "2", "3", "one"};
+    static const char *const arithmetic_assignment_row[] = {"2", "2", "3", "one"};
     static const char *const unchanged_key_after_error[] = {
         "71",
         "0",
@@ -439,10 +440,16 @@ static int test_multiple_assignment_errors_and_atomicity(void) {
         "UPDATE rows_t SET rows_t.a = 1, b = 2 WHERE id = 1",
         parse_unsupported
     );
-    failures += execute_error(
+    failures += expect_update_ok(database, "UPDATE rows_t SET a = a + 1, b = 2 WHERE id = 1", 1);
+    failures += expect_query_values(
         database,
-        "UPDATE rows_t SET a = a + 1, b = 2 WHERE id = 1",
-        parse_unsupported
+        (struct expected_query){
+            .sql = "SELECT a, b, nn, s FROM rows_t WHERE id = 1",
+            .values = arithmetic_assignment_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "multiple assignment same-column arithmetic row",
+        }
     );
     failures += execute_error(
         database,

@@ -55,6 +55,13 @@ static int plan_single_table_delete(
         rc = init_select_source_context(database, target_node, &out_plan->target, &source_context);
         predicate_source_context = &source_context;
     }
+    if (rc == MYLITE_OK && predicate_source_context == NULL &&
+        delete_where_clause_needs_source_context(where_clause)) {
+        source_context = (struct select_source_context){
+            .source = &out_plan->target,
+        };
+        predicate_source_context = &source_context;
+    }
     if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL)) {
         rc = mylite_execution_load_table_columns(
             database,
@@ -64,12 +71,18 @@ static int plan_single_table_delete(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_predicate(
+        const struct select_predicate_plan_options predicate_options = {
+            .allow_exists = true,
+            .allow_in_subquery = true,
+        };
+
+        rc = plan_select_predicate_with_options(
             database,
             where_clause,
             predicate_source_context,
             table_columns,
             table_column_count,
+            &predicate_options,
             &out_plan->predicate
         );
     }
@@ -105,6 +118,20 @@ static int plan_single_table_delete(
     }
 
     return rc;
+}
+
+static bool delete_where_clause_needs_source_context(const struct mylite_sql_ast_node *where_clause
+) {
+    for (const struct mylite_sql_ast_node *node = where_clause; node != NULL;
+         node = node->next_sibling) {
+        if (node->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+            return true;
+        }
+        if (delete_where_clause_needs_source_context(node->first_child)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int plan_joined_delete(

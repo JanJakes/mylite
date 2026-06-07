@@ -564,7 +564,7 @@ static int test_uuid_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'UUID_TO_BIN'",
+            .message_part = "near '('",
         }
     );
 

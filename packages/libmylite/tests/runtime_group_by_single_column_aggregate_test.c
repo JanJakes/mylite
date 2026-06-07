@@ -1703,8 +1703,7 @@ static int test_grouped_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+            .message_part = "GROUP BY supports selected descriptor-column aliases only",
         }
     );
     failures += expect_grouped_query(

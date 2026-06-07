@@ -425,7 +425,7 @@ static int test_hex_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'HEX'",
+            .message_part = "near '('",
         }
     );
 

@@ -143,6 +143,24 @@ static int test_arithmetic_success_persistence_and_limits(void) {
         "0",
     };
     static const char *const all_null_value[] = {NULL};
+    static const char *const row_expression_values[] = {
+        "1",
+        "5",
+        "99",
+        NULL,
+        "2",
+        "4",
+        "2",
+        "9",
+        "3",
+        "6",
+        "3",
+        "9",
+        "4",
+        "0",
+        "4",
+        "9",
+    };
     static const char *const renamed_value[] = {"3"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -201,6 +219,23 @@ static int test_arithmetic_success_persistence_and_limits(void) {
     );
     failures +=
         expect_update_ok(database, "UPDATE numbers SET i = i + 999999999999999999999 LIMIT 0", 0);
+
+    failures += create_numbers_table(database, "row_expr");
+    failures += expect_update_ok(database, "UPDATE row_expr SET i = nn * nn WHERE id = 2", 1);
+    failures +=
+        expect_update_ok(database, "UPDATE row_expr SET i = nn + id, n = nn * id WHERE id = 3", 1);
+    failures +=
+        expect_update_ok(database, "UPDATE row_expr SET i = i + 4, nn = 99 WHERE id = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, nn, n FROM row_expr ORDER BY id",
+            .values = row_expression_values,
+            .column_count = 4U,
+            .row_count = 4U,
+            .context = "row-scalar arithmetic update assignments",
+        }
+    );
 
     failures += create_numbers_table(database, "ordered_asc");
     failures +=
@@ -631,15 +666,7 @@ static int test_arithmetic_errors(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
-        database,
-        "UPDATE expressions SET i = nn + 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "UPDATE arithmetic assignment supports only same-column",
-        }
-    );
+    failures += expect_update_ok(database, "UPDATE expressions SET i = nn + 1", 1);
     failures += execute_error(
         database,
         "UPDATE expressions SET s = s + 1",

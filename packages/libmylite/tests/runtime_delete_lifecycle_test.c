@@ -500,6 +500,19 @@ static int test_delete_success_persistence_rename_and_drop(void) {
         "schema-qualified delete"
     );
 
+    failures += create_numbers_table(database, "del_subquery_source");
+    failures += create_numbers_table(database, "del_subquery_target");
+    failures += expect_delete_remaining(
+        database,
+        "del_subquery_target",
+        2,
+        "DELETE FROM del_subquery_target "
+        "WHERE id IN (SELECT id FROM del_subquery_source WHERE i IN (-2, 1))",
+        ids_3_4,
+        sizeof(ids_3_4) / sizeof(ids_3_4[0]),
+        "subquery IN predicate delete"
+    );
+
     failures += create_numbers_table(database, "del_persist");
     mylite_close(database);
     database = NULL;
@@ -872,15 +885,6 @@ static int test_delete_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DELETE FROM numbers WHERE id IN (SELECT id FROM numbers)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "IN subqueries are supported only in SELECT WHERE",
         }
     );
     failures += execute_error(

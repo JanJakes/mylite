@@ -16,6 +16,12 @@ static int handle_update_unique_key_conflict(
             sqlite_rc
         );
     }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
     if (executable_plan->assignment_value.is_null) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
@@ -196,10 +202,8 @@ static const struct planned_value *update_unique_key_assignment_value_for_part(
         return NULL;
     }
     if (planned_update_has_multiple_assignments(plan)) {
-        const struct planned_update_assignment *assignment = planned_update_assignment_for_column(
-            executable_plan,
-            part->index_column.column_id
-        );
+        const struct planned_update_assignment *assignment =
+            planned_update_assignment_for_column(executable_plan, part->index_column.column_id);
 
         return assignment == NULL ? NULL : &assignment->value;
     }

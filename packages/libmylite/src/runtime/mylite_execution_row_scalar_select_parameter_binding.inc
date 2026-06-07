@@ -68,6 +68,12 @@ static int bind_select_parameter_work_item(
         );
     case SELECT_PARAMETER_BIND_COMPOUND_SELECT:
         return bind_compound_select_parameters_at(statement, item->compound_plan, parameter_index);
+    case SELECT_PARAMETER_BIND_ROW_SCALAR_SELECT:
+        return bind_row_scalar_select_parameters_at(
+            statement,
+            item->row_scalar_plan,
+            parameter_index
+        );
     case SELECT_PARAMETER_BIND_SOURCE_LIST:
         return push_select_source_list_parameter_work(stack, item->sources, item->source_count);
     case SELECT_PARAMETER_BIND_SOURCE: {
@@ -77,12 +83,15 @@ static int bind_select_parameter_work_item(
             return MYLITE_OK;
         }
         if (item->source->derived_select == NULL &&
+            item->source->derived_row_scalar_select == NULL &&
             item->source->derived_grouped_aggregate == NULL &&
             item->source->derived_compound_select == NULL) {
             return MYLITE_ERROR;
         }
         if (item->source->derived_compound_select != NULL) {
             kind = SELECT_PARAMETER_BIND_COMPOUND_SELECT;
+        } else if (item->source->derived_row_scalar_select != NULL) {
+            kind = SELECT_PARAMETER_BIND_ROW_SCALAR_SELECT;
         } else if (item->source->derived_select == NULL) {
             kind = SELECT_PARAMETER_BIND_GROUPED_AGGREGATE;
         }
@@ -93,6 +102,7 @@ static int bind_select_parameter_work_item(
                 .plan = item->source->derived_select,
                 .grouped_plan = item->source->derived_grouped_aggregate,
                 .compound_plan = item->source->derived_compound_select,
+                .row_scalar_plan = item->source->derived_row_scalar_select,
             }
         );
     }

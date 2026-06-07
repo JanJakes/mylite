@@ -107,11 +107,7 @@ static int append_grouped_aggregate_result_columns(
         char *projection_alias_text = NULL;
 
         if (projection->alias != NULL) {
-            rc = copy_select_item_alias_text(
-                database,
-                projection->alias,
-                &projection_alias_text
-            );
+            rc = copy_select_item_alias_text(database, projection->alias, &projection_alias_text);
             if (rc != MYLITE_OK) {
                 return rc;
             }
@@ -244,6 +240,16 @@ static void planned_count_deinit(struct planned_count *plan) {
         return;
     }
 
+    if (plan->source_kind == PLANNED_COUNT_SOURCE_DERIVED_SELECT) {
+        planned_select_deinit(&plan->derived_select);
+    } else if (plan->source_kind == PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR) {
+        planned_row_scalar_select_deinit(&plan->derived_row_scalar_select);
+    } else if (plan->source_kind == PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE) {
+        planned_grouped_aggregate_deinit(plan->derived_grouped_aggregate);
+        free(plan->derived_grouped_aggregate);
+    } else if (plan->source_kind == PLANNED_COUNT_SOURCE_DERIVED_COMPOUND) {
+        planned_count_derived_compound_deinit(&plan->derived_compound);
+    }
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->count_literal);
     *plan = (struct planned_count){false};
@@ -305,88 +311,186 @@ static int plan_count_derived_table_source(
 ) {
     const struct mylite_sql_ast_node *source = nodes->from_clause;
     const struct mylite_sql_ast_node *statement = NULL;
-    const struct mylite_sql_ast_node *select_list = NULL;
-    const struct mylite_sql_ast_node *from_clause = NULL;
-    const struct mylite_sql_ast_node *where_clause = NULL;
-    const struct mylite_sql_ast_node *optional_clause = NULL;
-    struct planned_count_source_nodes inner_nodes = {0};
 
-    if (out_plan->function != PLANNED_COUNT_STAR) {
+    if (out_plan->function == PLANNED_COUNT_COLUMN ||
+        out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
         set_unsupported_error(database, count_descriptor_table_message(out_plan->function));
         return MYLITE_ERROR;
     }
     if (nodes->where_clause != NULL || nodes->order_clause != NULL) {
-        set_unsupported_error(database, "COUNT(*) derived table supports only inner WHERE");
+        set_unsupported_error(database, "COUNT derived table supports only inner query clauses");
         return MYLITE_ERROR;
     }
     if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED) {
-        set_unsupported_error(database, "COUNT(*) derived table supports only plain inner SELECT");
+        set_unsupported_error(database, "COUNT derived table requires an inner query");
         return MYLITE_ERROR;
     }
     statement = child_at(source, 0U);
-    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
-        set_unsupported_error(database, "COUNT(*) derived table supports only plain inner SELECT");
+    if (statement == NULL) {
+        set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
-        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
-        set_unsupported_error(database, "COUNT(*) derived table does not support inner modifiers");
-        return MYLITE_ERROR;
+    out_plan->has_source = true;
+    if (statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return plan_count_derived_select_statement(database, statement, out_plan);
+    }
+    if (statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        return plan_count_derived_compound_statement(database, statement, out_plan);
     }
 
-    select_list = child_at(statement, 0U);
-    from_clause = child_at(statement, 1U);
-    optional_clause = child_at(statement, 2U);
-    if (!count_derived_select_list_is_supported(select_list)) {
-        set_unsupported_error(
-            database,
-            "COUNT(*) derived table supports only integer literal inner projections"
-        );
-        return MYLITE_ERROR;
-    }
-    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
-        set_unsupported_error(
-            database,
-            "COUNT(*) derived table supports only descriptor-backed inner table reads"
-        );
-        return MYLITE_ERROR;
-    }
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            where_clause = optional_clause;
-        } else {
-            set_unsupported_error(database, "COUNT(*) derived table supports only inner WHERE");
-            return MYLITE_ERROR;
-        }
-        optional_clause = optional_clause->next_sibling;
-    }
-
-    inner_nodes = (struct planned_count_source_nodes){
-        .from_clause = from_clause,
-        .where_clause = where_clause,
-        .order_clause = NULL,
-        .count_expression = nodes->count_expression,
-    };
-    return plan_count_table_source(database, &inner_nodes, out_plan);
+    set_unsupported_error(database, "COUNT derived table supports only SELECT and UNION sources");
+    return MYLITE_ERROR;
 }
 
-static bool count_derived_select_list_is_supported(const struct mylite_sql_ast_node *select_list) {
-    const struct mylite_sql_ast_node *select_item = NULL;
-    const struct mylite_sql_ast_node *expression = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        mylite_sql_ast_node_child_count(select_list) != 1U) {
-        return false;
+static int plan_count_derived_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count *out_plan
+) {
+    if (select_statement_has_group_by_clause(statement)) {
+        out_plan->source_kind = PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE;
+        out_plan->derived_grouped_aggregate =
+            calloc(1U, sizeof(*out_plan->derived_grouped_aggregate));
+        if (out_plan->derived_grouped_aggregate == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        return plan_grouped_aggregate(database, statement, out_plan->derived_grouped_aggregate);
+    }
+    if (select_statement_is_row_scalar_projection_attempt(statement)) {
+        out_plan->source_kind = PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR;
+        return plan_row_scalar_select(
+            database,
+            statement,
+            false,
+            &out_plan->derived_row_scalar_select
+        );
     }
 
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
-        return false;
+    out_plan->source_kind = PLANNED_COUNT_SOURCE_DERIVED_SELECT;
+    return plan_select(database, statement, false, &out_plan->derived_select);
+}
+
+static int plan_count_derived_compound_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count *out_plan
+) {
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *term = NULL;
+    const struct mylite_sql_ast_node *branch = NULL;
+    size_t branch_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (terms == NULL || terms->kind != MYLITE_SQL_AST_UNION_TERM_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    out_plan->source_kind = PLANNED_COUNT_SOURCE_DERIVED_COMPOUND;
+    out_plan->derived_compound.branch_count = compound_select_branch_count(statement);
+    if (out_plan->derived_compound.branch_count == 0U ||
+        out_plan->derived_compound.branch_count >
+            SIZE_MAX / sizeof(*out_plan->derived_compound.branches)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->derived_compound.branches = calloc(
+        out_plan->derived_compound.branch_count,
+        sizeof(*out_plan->derived_compound.branches)
+    );
+    if (out_plan->derived_compound.branches == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
 
-    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
-    return expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL &&
-           mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_INTEGER;
+    branch = child_at(statement, 0U);
+    rc = plan_count_derived_compound_branch(
+        database,
+        branch,
+        &out_plan->derived_compound.branches[branch_index]
+    );
+    term = child_at(terms, 0U);
+    while (rc == MYLITE_OK && term != NULL) {
+        ++branch_index;
+        branch = child_at(term, 0U);
+        if (branch_index >= out_plan->derived_compound.branch_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        out_plan->derived_compound.branches[branch_index].modifier =
+            mylite_sql_ast_node_union_modifier(term);
+        rc = plan_count_derived_compound_branch(
+            database,
+            branch,
+            &out_plan->derived_compound.branches[branch_index]
+        );
+        term = term->next_sibling;
+    }
+    if (rc == MYLITE_OK && branch_index + 1U != out_plan->derived_compound.branch_count) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        planned_count_derived_compound_deinit(&out_plan->derived_compound);
+    }
+
+    return rc;
+}
+
+static int plan_count_derived_compound_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch,
+    struct planned_count_derived_compound_branch *out_branch
+) {
+    if (branch == NULL || branch->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "COUNT UNION derived table supports only SELECT branches");
+        return MYLITE_ERROR;
+    }
+    if (select_statement_has_group_by_clause(branch)) {
+        out_branch->kind = PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE;
+        out_branch->grouped_aggregate = calloc(1U, sizeof(*out_branch->grouped_aggregate));
+        if (out_branch->grouped_aggregate == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        return plan_grouped_aggregate(database, branch, out_branch->grouped_aggregate);
+    }
+    if (select_statement_is_row_scalar_projection_attempt(branch)) {
+        out_branch->kind = PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR;
+        return plan_row_scalar_select(database, branch, false, &out_branch->row_scalar_select);
+    }
+
+    out_branch->kind = PLANNED_COUNT_SOURCE_DERIVED_SELECT;
+    return plan_select(database, branch, false, &out_branch->select);
+}
+
+static void planned_count_derived_compound_deinit(struct planned_count_derived_compound *compound) {
+    if (compound == NULL) {
+        return;
+    }
+    for (size_t branch_index = 0U; branch_index < compound->branch_count; ++branch_index) {
+        planned_count_derived_compound_branch_deinit(&compound->branches[branch_index]);
+    }
+    free(compound->branches);
+    *compound = (struct planned_count_derived_compound){0};
+}
+
+static void planned_count_derived_compound_branch_deinit(
+    struct planned_count_derived_compound_branch *branch
+) {
+    if (branch == NULL) {
+        return;
+    }
+    if (branch->kind == PLANNED_COUNT_SOURCE_DERIVED_SELECT) {
+        planned_select_deinit(&branch->select);
+    } else if (branch->kind == PLANNED_COUNT_SOURCE_DERIVED_ROW_SCALAR) {
+        planned_row_scalar_select_deinit(&branch->row_scalar_select);
+    } else if (branch->kind == PLANNED_COUNT_SOURCE_DERIVED_GROUPED_AGGREGATE) {
+        planned_grouped_aggregate_deinit(branch->grouped_aggregate);
+        free(branch->grouped_aggregate);
+    }
+    *branch = (struct planned_count_derived_compound_branch){0};
 }
 
 static int plan_count_table_source(
@@ -400,6 +504,7 @@ static int plan_count_table_source(
     int rc = MYLITE_OK;
 
     out_plan->has_source = true;
+    out_plan->source_kind = PLANNED_COUNT_SOURCE_TABLE;
     rc = resolve_visible_table_reference(
         database,
         child_at(nodes->from_clause, 0U),
@@ -417,10 +522,9 @@ static int plan_count_table_source(
             &source_context
         );
     }
-    if (rc == MYLITE_OK &&
-        (nodes->where_clause != NULL || nodes->order_clause != NULL ||
-         out_plan->function == PLANNED_COUNT_COLUMN ||
-         out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
+    if (rc == MYLITE_OK && (nodes->where_clause != NULL || nodes->order_clause != NULL ||
+                            out_plan->function == PLANNED_COUNT_COLUMN ||
+                            out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
         rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
@@ -487,7 +591,10 @@ static int validate_count_order_clause(
         return MYLITE_OK;
     }
     if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-        set_unsupported_error(database, "COUNT aggregate supports only descriptor ORDER BY columns");
+        set_unsupported_error(
+            database,
+            "COUNT aggregate supports only descriptor ORDER BY columns"
+        );
         return MYLITE_ERROR;
     }
 
@@ -1005,12 +1112,22 @@ static bool select_statement_has_column_aggregate(const struct mylite_sql_ast_no
     select_item = child_at(select_list, 0U);
     while (select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+        const struct mylite_sql_ast_node *aggregate_expression = NULL;
+        const struct mylite_sql_ast_node *rhs_expression = NULL;
+        enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
         expression = unwrap_parenthesized_expression(expression);
-        if (column_aggregate_function_from_expression(expression) !=
-            PLANNED_COLUMN_AGGREGATE_NONE) {
+        if (column_aggregate_function_from_projection_expression(
+                expression,
+                &aggregate_expression,
+                &operator_kind,
+                &rhs_expression
+            ) != PLANNED_COLUMN_AGGREGATE_NONE) {
             return true;
         }
+        (void)aggregate_expression;
+        (void)rhs_expression;
+        (void)operator_kind;
         select_item = select_item->next_sibling;
     }
 
@@ -1028,6 +1145,9 @@ static int plan_column_aggregate(
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *aggregate_expression = NULL;
+    const struct mylite_sql_ast_node *rhs_expression = NULL;
+    enum mylite_sql_ast_operator projection_operator = MYLITE_SQL_AST_OPERATOR_NONE;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
@@ -1039,7 +1159,12 @@ static int plan_column_aggregate(
     out_plan->expression = expression;
     out_plan->alias = child_at(select_item, 1U);
     expression = unwrap_parenthesized_expression(expression);
-    out_plan->function = column_aggregate_function_from_expression(expression);
+    out_plan->function = column_aggregate_function_from_projection_expression(
+        expression,
+        &aggregate_expression,
+        &projection_operator,
+        &rhs_expression
+    );
     if (mylite_sql_ast_node_child_count(select_list) != 1U) {
         if (out_plan->function == PLANNED_COLUMN_AGGREGATE_NONE) {
             out_plan->function = select_list_column_aggregate_function(select_list);
@@ -1105,13 +1230,11 @@ static int plan_column_aggregate(
                 table_column_count,
                 out_plan
             );
-        } else if (
-            out_plan->function == PLANNED_COLUMN_AGGREGATE_SUM &&
-            column_aggregate_sum_argument_is_row_scalar_expression(expression)
-        ) {
+        } else if (out_plan->function == PLANNED_COLUMN_AGGREGATE_SUM &&
+                   column_aggregate_sum_argument_is_row_scalar_expression(aggregate_expression)) {
             rc = plan_column_aggregate_row_scalar_expression(
                 database,
-                expression,
+                aggregate_expression,
                 &source_context,
                 &out_plan->table,
                 table_columns,
@@ -1121,13 +1244,29 @@ static int plan_column_aggregate(
         } else {
             rc = plan_column_aggregate_column(
                 database,
-                expression,
+                aggregate_expression,
                 out_plan->function,
                 &source_context,
                 table_columns,
                 table_column_count,
                 &out_plan->aggregate_column
             );
+        }
+    }
+    if (rc == MYLITE_OK && rhs_expression != NULL) {
+        rc = plan_row_scalar_expression(
+            database,
+            rhs_expression,
+            false,
+            NULL,
+            NULL,
+            NULL,
+            0U,
+            &out_plan->aggregate_projection_rhs
+        );
+        if (rc == MYLITE_OK) {
+            out_plan->aggregate_has_projection_rhs = true;
+            out_plan->aggregate_projection_operator = projection_operator;
         }
     }
     if (rc == MYLITE_OK) {
@@ -1154,6 +1293,7 @@ static void planned_column_aggregate_deinit(struct planned_column_aggregate *pla
     planned_select_order_deinit(&plan->aggregate_order);
     planned_value_deinit(&plan->separator);
     planned_row_scalar_expression_deinit(&plan->aggregate_row_scalar_expression);
+    planned_row_scalar_expression_deinit(&plan->aggregate_projection_rhs);
     *plan = (struct planned_column_aggregate){0};
 }
 
@@ -1189,6 +1329,63 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
     }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
+}
+
+static enum planned_column_aggregate_function column_aggregate_function_from_projection_expression(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_aggregate_expression,
+    enum mylite_sql_ast_operator *out_operator,
+    const struct mylite_sql_ast_node **out_rhs_expression
+) {
+    enum planned_column_aggregate_function function = PLANNED_COLUMN_AGGREGATE_NONE;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    const struct mylite_sql_ast_node *left = NULL;
+    const struct mylite_sql_ast_node *right = NULL;
+
+    if (out_aggregate_expression != NULL) {
+        *out_aggregate_expression = NULL;
+    }
+    if (out_rhs_expression != NULL) {
+        *out_rhs_expression = NULL;
+    }
+    if (out_operator != NULL) {
+        *out_operator = MYLITE_SQL_AST_OPERATOR_NONE;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    function = column_aggregate_function_from_expression(expression);
+    if (function != PLANNED_COLUMN_AGGREGATE_NONE) {
+        if (out_aggregate_expression != NULL) {
+            *out_aggregate_expression = expression;
+        }
+        return function;
+    }
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return PLANNED_COLUMN_AGGREGATE_NONE;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        return PLANNED_COLUMN_AGGREGATE_NONE;
+    }
+    left = unwrap_parenthesized_expression(child_at(expression, 0U));
+    right = unwrap_parenthesized_expression(child_at(expression, 1U));
+    function = column_aggregate_function_from_expression(left);
+    if (function == PLANNED_COLUMN_AGGREGATE_NONE ||
+        (function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX &&
+         function != PLANNED_COLUMN_AGGREGATE_SUM)) {
+        return PLANNED_COLUMN_AGGREGATE_NONE;
+    }
+    if (out_aggregate_expression != NULL) {
+        *out_aggregate_expression = left;
+    }
+    if (out_rhs_expression != NULL) {
+        *out_rhs_expression = right;
+    }
+    if (out_operator != NULL) {
+        *out_operator = operator_kind;
+    }
+    return function;
 }
 
 static enum planned_column_aggregate_function select_list_column_aggregate_function(
@@ -1611,8 +1808,8 @@ static int append_grouped_aggregate_sqlite_row(
     mylite_result *result
 ) {
     struct mylite_result_cell *cells = NULL;
-    char (*projection_buffers)[approximate_numeric_text_capacity] = NULL;
-    char (*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
+    char(*projection_buffers)[approximate_numeric_text_capacity] = NULL;
+    char(*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
     int sqlite_column_index = 0;
     size_t result_column_count = plan->projection_count + plan->aggregate_count;
     int rc = MYLITE_OK;

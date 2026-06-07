@@ -8,7 +8,8 @@ static bool select_statement_has_count_having_clause(const struct mylite_sql_ast
 
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_HAVING_CLAUSE &&
-            count_having_comparison_uses_count_star(count_having_comparison_node(optional_clause))) {
+            count_having_comparison_uses_count_star(count_having_comparison_node(optional_clause)
+            )) {
             return true;
         }
         optional_clause = optional_clause->next_sibling;
@@ -94,9 +95,8 @@ static int plan_count_having_select(
     if (rc == MYLITE_OK) {
         out_plan->descriptor_projection.source = source;
         out_plan->descriptor_projection.table = table;
-        out_plan->descriptor_projection.is_distinct =
-            mylite_sql_ast_node_select_modifier(statement) ==
-            MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+        out_plan->descriptor_projection.is_distinct = mylite_sql_ast_node_select_modifier(statement
+                                                      ) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
         copy_plan_source_alias_if_present(&out_plan->descriptor_projection, &source_context);
 
         out_plan->row_projection.has_source = true;
@@ -357,9 +357,7 @@ static const struct mylite_sql_ast_node *count_having_comparison_node(
     return predicate;
 }
 
-static bool count_having_comparison_uses_count_star(
-    const struct mylite_sql_ast_node *comparison
-) {
+static bool count_having_comparison_uses_count_star(const struct mylite_sql_ast_node *comparison) {
     const struct mylite_sql_ast_node *operand = NULL;
 
     if (comparison == NULL) {
@@ -411,12 +409,7 @@ static int execute_count_having_select_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = append_count_having_select_result_columns(
-            database,
-            result,
-            plan,
-            &metadata_context
-        );
+        rc = append_count_having_select_result_columns(database, result, plan, &metadata_context);
     }
     if (rc == MYLITE_OK) {
         rc = build_count_having_select_sql(plan, &sql);
@@ -506,8 +499,7 @@ static int append_count_having_row_scalar_result_columns(
 
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->row_projection.item_count;
          ++item_index) {
-        const struct planned_row_scalar_select_item *item =
-            &plan->row_projection.items[item_index];
+        const struct planned_row_scalar_select_item *item = &plan->row_projection.items[item_index];
         const char *literal_label = count_having_row_scalar_literal_label(item);
 
         if (literal_label != NULL) {
@@ -559,6 +551,7 @@ static int build_count_having_select_sql(
 ) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
+    const struct planned_select_predicate *inner_predicate = NULL;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -588,8 +581,7 @@ static int build_count_having_select_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " FROM ");
     }
-    if (rc == MYLITE_OK &&
-        plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
+    if (rc == MYLITE_OK && plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
         rc = mylite_dynamic_string_append_quoted_identifier(
             &string,
             plan->descriptor_projection.table.physical_name
@@ -600,8 +592,16 @@ static int build_count_having_select_sql(
             plan->row_projection.table.physical_name
         );
     }
-    if (rc == MYLITE_OK &&
-        plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
+    inner_predicate = plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR
+                          ? &plan->descriptor_projection.predicate
+                          : &plan->row_projection.predicate;
+    if (rc == MYLITE_OK && inner_predicate->qualify_column_references) {
+        rc = mylite_dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK && inner_predicate->qualify_column_references) {
+        rc = append_select_source_alias(&string, 0U);
+    }
+    if (rc == MYLITE_OK && plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
         rc = append_select_predicate_sql(
             &string,
             &plan->descriptor_projection.predicate,
@@ -631,10 +631,9 @@ static int append_count_having_outer_select_list_sql(
     struct mylite_dynamic_string *string,
     const struct planned_count_having_select *plan
 ) {
-    size_t projection_count =
-        plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR
-            ? plan->descriptor_projection.column_count
-            : plan->row_projection.item_count;
+    size_t projection_count = plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR
+                                  ? plan->descriptor_projection.column_count
+                                  : plan->row_projection.item_count;
     int rc = MYLITE_OK;
 
     if (projection_count == 0U) {
@@ -647,10 +646,12 @@ static int append_count_having_outer_select_list_sql(
         if (rc == MYLITE_OK) {
             rc = append_count_having_projection_alias(string, index);
         }
-        if (rc == MYLITE_OK &&
-            plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR &&
+        if (rc == MYLITE_OK && plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR &&
             plan->descriptor_projection.is_distinct &&
-            column_descriptor_is_string_family(&plan->descriptor_projection.columns[index])) {
+            column_descriptor_uses_string_key_collation(
+                &plan->descriptor_projection.columns[index],
+                true
+            )) {
             rc = append_string_key_collation_sql(string);
         }
     }
@@ -663,10 +664,9 @@ static int append_count_having_inner_select_list_sql(
     const struct planned_count_having_select *plan,
     size_t *next_parameter
 ) {
-    size_t projection_count =
-        plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR
-            ? plan->descriptor_projection.column_count
-            : plan->row_projection.item_count;
+    size_t projection_count = plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR
+                                  ? plan->descriptor_projection.column_count
+                                  : plan->row_projection.item_count;
     int rc = MYLITE_OK;
 
     if (projection_count == 0U) {
@@ -676,13 +676,8 @@ static int append_count_having_inner_select_list_sql(
         if (index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
-        if (rc == MYLITE_OK &&
-            plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
-            rc = append_select_projection_column_sql(
-                string,
-                &plan->descriptor_projection,
-                index
-            );
+        if (rc == MYLITE_OK && plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
+            rc = append_select_projection_column_sql(string, &plan->descriptor_projection, index);
         } else if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
                 string,
@@ -706,13 +701,10 @@ static int append_count_having_projection_alias(
     size_t projection_index
 ) {
     enum { count_having_projection_alias_capacity = 64U };
+
     char alias[count_having_projection_alias_capacity];
-    int written = snprintf(
-        alias,
-        sizeof(alias),
-        "_mylite_count_having_projection_%zu",
-        projection_index
-    );
+    int written =
+        snprintf(alias, sizeof(alias), "_mylite_count_having_projection_%zu", projection_index);
 
     if (written < 0 || (size_t)written >= sizeof(alias)) {
         return MYLITE_NOMEM;
@@ -767,8 +759,7 @@ static int bind_count_having_select_parameters(
             );
         }
     }
-    if (rc == MYLITE_OK &&
-        plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
+    if (rc == MYLITE_OK && plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
         rc = bind_select_predicate_parameters(
             statement,
             &plan->descriptor_projection.predicate,

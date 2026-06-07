@@ -368,7 +368,7 @@ static int append_create_table_primary_key_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_planned_key_part_sql(string, &plan->columns[column_index]);
+            rc = append_planned_key_part_sql(string, plan, &plan->columns[column_index]);
         }
         if (rc == MYLITE_OK && plan->primary_key_parts[part_index].sort_direction ==
                                    MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
@@ -459,11 +459,12 @@ static int append_create_table_index_sql_close(struct mylite_dynamic_string *str
 
 static int append_planned_key_part_sql(
     struct mylite_dynamic_string *string,
+    const struct planned_create_table *plan,
     const struct planned_column *column
 ) {
     int rc = mylite_dynamic_string_append_quoted_identifier(string, column->name);
 
-    if (rc == MYLITE_OK && planned_column_is_char_or_varchar(column)) {
+    if (rc == MYLITE_OK && planned_column_uses_string_key_collation(plan, column, false)) {
         rc = append_string_key_collation_sql(string);
     }
 
@@ -480,7 +481,7 @@ static int append_planned_secondary_key_part_sql(
     int rc = MYLITE_OK;
 
     if (!part->has_prefix_length) {
-        rc = append_planned_key_part_sql(string, column);
+        rc = append_planned_key_part_sql(string, plan, column);
     } else {
         rc = mylite_dynamic_string_append(string, "substr(");
     }
@@ -501,7 +502,8 @@ static int append_planned_secondary_key_part_sql(
     if (rc == MYLITE_OK && part->has_prefix_length) {
         rc = mylite_dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && part->has_prefix_length && planned_column_is_string_family(column)) {
+    if (rc == MYLITE_OK && part->has_prefix_length &&
+        planned_column_uses_string_key_collation(plan, column, true)) {
         rc = append_string_key_collation_sql(string);
     }
     if (rc == MYLITE_OK && part->sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
@@ -531,7 +533,7 @@ static int append_loaded_key_part_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_quoted_identifier(string, part->column.name);
     }
-    if (rc == MYLITE_OK && column_descriptor_is_char_or_varchar(&part->column)) {
+    if (rc == MYLITE_OK && column_descriptor_uses_string_key_collation(&part->column, false)) {
         rc = append_string_key_collation_sql(string);
     }
 
@@ -572,7 +574,7 @@ static int append_loaded_prefix_key_part_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && column_descriptor_is_string_family(&part->column)) {
+    if (rc == MYLITE_OK && column_descriptor_uses_string_key_collation(&part->column, true)) {
         rc = append_string_key_collation_sql(string);
     }
 
@@ -611,11 +613,65 @@ static int append_loaded_key_part_parameter_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && column_descriptor_is_string_family(&part->column)) {
+    if (rc == MYLITE_OK && column_descriptor_uses_string_key_collation(&part->column, true)) {
         rc = append_string_key_collation_sql(string);
     }
 
     return rc;
+}
+
+static bool planned_column_uses_string_key_collation(
+    const struct planned_create_table *plan,
+    const struct planned_column *column,
+    bool include_text_family
+) {
+    const char *collation_name = NULL;
+
+    if (column == NULL) {
+        return false;
+    }
+    if (include_text_family) {
+        if (!planned_column_is_string_family(column)) {
+            return false;
+        }
+    } else if (!planned_column_is_char_or_varchar(column)) {
+        return false;
+    }
+
+    if (column->collation_name[0] != '\0') {
+        collation_name = column->collation_name;
+    } else if (plan != NULL && plan->default_collation[0] != '\0') {
+        collation_name = plan->default_collation;
+    }
+    return !string_key_collation_name_is_binary(collation_name);
+}
+
+static bool column_descriptor_uses_string_key_collation(
+    const struct mylite_catalog_column_descriptor *column,
+    bool include_text_family
+) {
+    if (column == NULL) {
+        return false;
+    }
+    if (include_text_family) {
+        if (!column_descriptor_is_string_family(column)) {
+            return false;
+        }
+    } else if (!column_descriptor_is_char_or_varchar(column)) {
+        return false;
+    }
+    return !string_key_collation_name_is_binary(column->collation_name);
+}
+
+static bool string_key_collation_name_is_binary(const char *name) {
+    if (name == NULL || name[0] == '\0') {
+        return false;
+    }
+    return (text_equals_ascii_case_insensitive(name, "binary") ||
+            text_equals_ascii_case_insensitive(name, "ascii_bin") ||
+            text_equals_ascii_case_insensitive(name, "utf8mb3_bin") ||
+            text_equals_ascii_case_insensitive(name, "utf8mb4_bin") ||
+            text_equals_ascii_case_insensitive(name, "utf8mb4_0900_bin")) != 0;
 }
 
 static int append_string_key_collation_sql(struct mylite_dynamic_string *string) {

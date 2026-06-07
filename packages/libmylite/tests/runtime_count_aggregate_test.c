@@ -460,6 +460,144 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .context = "left joined count star",
         }
     );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT 1 AS expression FROM numbers WHERE id <> nn) AS subquery",
+            .column = "COUNT(*)",
+            .value = "4",
+            .context = "derived row-scalar count with same-scope comparison",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT 1 AS expression FROM numbers "
+                   "WHERE id IN (SELECT id FROM numbers WHERE n < 30)) AS subquery",
+            .column = "COUNT(*)",
+            .value = "2",
+            .context = "derived row-scalar count with IN subquery predicate",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT 1 AS expression FROM "
+                   "(SELECT id FROM numbers WHERE n < 30) t) AS subquery",
+            .column = "COUNT(*)",
+            .value = "2",
+            .context = "derived row-scalar count from nested derived source",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT DISTINCT n FROM numbers) AS subquery",
+            .column = "COUNT(*)",
+            .value = "3",
+            .context = "derived distinct descriptor count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT 1 AS expression FROM numbers ORDER BY id LIMIT 2 OFFSET 1) "
+                   "AS subquery",
+            .column = "COUNT(*)",
+            .value = "2",
+            .context = "derived row-scalar limit count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT n AS group_n, COUNT(*) AS c FROM numbers "
+                   "GROUP BY n HAVING COUNT(*) > 0) AS subquery",
+            .column = "COUNT(*)",
+            .value = "3",
+            .context = "derived grouped aggregate count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT n AS group_n, 1 AS expression FROM numbers GROUP BY n) AS subquery",
+            .column = "COUNT(*)",
+            .value = "3",
+            .context = "derived grouped count with literal projection",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT n AS group_n, n + 1 AS expression, 1 AS expression_2 "
+                   "FROM numbers GROUP BY n HAVING n + 1 > 0) AS subquery",
+            .column = "COUNT(*)",
+            .value = "2",
+            .context = "derived grouped count with arithmetic having",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) FROM "
+                   "(SELECT id FROM numbers WHERE id = 1 "
+                   "UNION ALL SELECT id FROM numbers WHERE id = 2) AS subquery",
+            .column = "COUNT(*)",
+            .value = "2",
+            .context = "derived descriptor union all count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) AS expression FROM "
+                   "(SELECT 1 AS expression FROM numbers WHERE n IN (20, 30) "
+                   "UNION ALL SELECT 1 AS expression FROM numbers WHERE n = 20) subquery",
+            .column = "expression",
+            .value = "5",
+            .context = "derived row-scalar union all count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(1) FROM "
+                   "(SELECT 1 AS expression FROM numbers LIMIT 2) AS subquery",
+            .column = "COUNT(1)",
+            .value = "2",
+            .context = "derived literal count",
+        }
+    );
+    failures += execute_ok(database, "SET @@sql_mode = 'ANSI'", NULL);
+    failures += execute_ok(
+        database,
+        "PREPARE drupal_count FROM 'SELECT COUNT(*) AS \"expression\" FROM "
+        "(SELECT 1 AS \"expression\" FROM \"numbers\" \"t\" WHERE \"n\" IN (?, ?) "
+        "UNION ALL SELECT 1 AS \"expression\" FROM \"numbers\" \"t\" WHERE \"n\" = ?) "
+        "\"subquery\"'",
+        NULL
+    );
+    failures += execute_ok(database, "SET @first_n = 20, @second_n = 30, @third_n = 20", NULL);
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "EXECUTE drupal_count USING @first_n, @second_n, @third_n",
+            .column = "expression",
+            .value = "5",
+            .context = "prepared Drupal-style derived row-scalar union all count",
+        }
+    );
+    failures += execute_ok(database, "DEALLOCATE PREPARE drupal_count", NULL);
+    failures += execute_ok(database, "SET @@sql_mode = ''", NULL);
     failures += execute_ok(database, "ALTER TABLE numbers ALTER COLUMN n SET INVISIBLE", &result);
     mylite_result_free(result);
     result = NULL;

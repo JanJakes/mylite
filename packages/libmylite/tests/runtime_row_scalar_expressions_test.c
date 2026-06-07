@@ -606,6 +606,8 @@ static int test_table_backed_signed_integer_arithmetic(void) {
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_status[] = {"-1", "0"};
     static const char *const columns_no_match[] = {"b+2"};
+    static const char *const columns_unsigned_arithmetic[] = {"u+1"};
+    static const char *const values_unsigned_arithmetic[] = {"5", "6", "7"};
     static const char *const columns_string_arithmetic[] = {"v+1"};
     static const char *const values_string_arithmetic[] = {"1", "1", "1"};
     char path[test_path_capacity];
@@ -739,13 +741,16 @@ static int test_table_backed_signed_integer_arithmetic(void) {
             .message_part = "BIGINT value is out of range in scalar arithmetic expression",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT u+1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed integer arithmetic projection does not support unsigned",
+        (struct expected_query){
+            .sql = "SELECT u+1 FROM t ORDER BY id",
+            .columns = columns_unsigned_arithmetic,
+            .column_count =
+                sizeof(columns_unsigned_arithmetic) / sizeof(columns_unsigned_arithmetic[0]),
+            .values = values_unsigned_arithmetic,
+            .row_count = 3U,
+            .context = "unsigned integer arithmetic projection",
         }
     );
     failures += expect_query(
@@ -801,7 +806,7 @@ static int test_table_backed_wildcard_aggregates_and_constants(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "COUNT aggregate supports exactly one aggregate select item",
+            .message_part = "SUM(column) supports exactly one aggregate select item",
         }
     );
     mylite_close(database);

@@ -1216,7 +1216,7 @@ static int test_string_slice_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'SUBSTRING_INDEX'",
+            .message_part = "near '('",
         }
     );
     failures += execute_error(

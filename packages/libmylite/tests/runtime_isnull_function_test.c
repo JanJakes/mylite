@@ -525,7 +525,7 @@ static int test_isnull_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'ISNULL'",
+            .message_part = "near '('",
         }
     );
 

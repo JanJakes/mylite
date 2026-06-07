@@ -2815,13 +2815,16 @@ static int test_where_and_predicates(void) {
             .context = "scalar truth and predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE id = nn AND id = 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "column-to-column predicates are supported only inside EXISTS",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE id = nn AND id = 2",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "same-scope column comparison conjunction",
         }
     );
 
@@ -3628,6 +3631,18 @@ static int test_where_scalar_literal_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "literal-left ordered predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM (SELECT 1 FROM numbers WHERE id <> nn) AS subquery",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row scalar derived column comparison predicate",
         }
     );
     failures += expect_result(

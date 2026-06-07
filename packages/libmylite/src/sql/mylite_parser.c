@@ -1415,6 +1415,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_select_statement
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists_clause,
     struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options,
     struct mylite_sql_ast_node *select_statement
 ) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
@@ -1436,6 +1437,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_select_statement
     if (if_not_exists_clause != NULL) {
         mylite_sql_ast_node_append_child(statement, if_not_exists_clause);
     }
+    if (table_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, table_options);
+    }
     return statement;
 }
 
@@ -1444,6 +1448,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_select
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists_clause,
     struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options,
     struct mylite_sql_ast_node *select_statement
 ) {
     struct mylite_sql_ast_node *statement = mylite_sql_parser_make_create_table_select_statement(
@@ -1451,6 +1456,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_select
         create_token,
         if_not_exists_clause,
         table_name,
+        table_options,
         select_statement
     );
 

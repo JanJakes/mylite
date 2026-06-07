@@ -41,6 +41,7 @@ static int plan_select(
         .allow_exists = true,
         .allow_in_subquery = true,
         .allow_scalar_subquery_in_literal = true,
+        .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
     };
     bool allow_field_order = allow_order_by_field;
@@ -1063,6 +1064,29 @@ static int plan_derived_select_source_child(
                 out_source
             );
         }
+    } else if (rc == MYLITE_OK &&
+               select_statement_is_row_scalar_projection_attempt(select_statement)) {
+        out_source->derived_row_scalar_select =
+            calloc(1U, sizeof(*out_source->derived_row_scalar_select));
+        if (out_source->derived_row_scalar_select == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_row_scalar_select(
+                database,
+                select_statement,
+                false,
+                out_source->derived_row_scalar_select
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = copy_derived_row_scalar_select_source_columns(
+                database,
+                out_source->derived_row_scalar_select,
+                out_source
+            );
+        }
     } else if (rc == MYLITE_OK) {
         out_source->derived_select = calloc(1U, sizeof(*out_source->derived_select));
         if (out_source->derived_select == NULL) {
@@ -1212,8 +1236,12 @@ static int validate_derived_compound_select_branch_shape(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *branch
 ) {
-    int rc =
-        reject_compound_select_branch_shape(database, branch, MYLITE_SQL_AST_SET_OPERATOR_UNION);
+    int rc = reject_compound_select_branch_shape(
+        database,
+        branch,
+        MYLITE_SQL_AST_SET_OPERATOR_UNION,
+        false
+    );
 
     if (rc == MYLITE_OK && select_statement_has_group_by_clause(branch)) {
         set_unsupported_error(
@@ -1236,11 +1264,28 @@ static int validate_derived_select_output_columns(
     for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
         if (derived_plan->column_aliases != NULL &&
             derived_plan->column_aliases[column_index] != NULL) {
-            set_unsupported_error(
+            char *alias_text = NULL;
+            int rc = copy_select_item_alias_text(
                 database,
-                "joined source derived tables do not yet support output column aliases"
+                derived_plan->column_aliases[column_index],
+                &alias_text
             );
-            return MYLITE_ERROR;
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            if (!text_equals_ascii_case_insensitive(
+                    alias_text,
+                    derived_plan->columns[column_index].name
+                )) {
+                free(alias_text);
+                set_unsupported_error(
+                    database,
+                    "joined source derived descriptor tables support only same-name output aliases"
+                );
+                return MYLITE_ERROR;
+            }
+            free(alias_text);
         }
     }
     return MYLITE_OK;
@@ -1269,8 +1314,129 @@ static int copy_derived_select_source_columns(
         derived_plan->columns,
         derived_plan->column_count * sizeof(*out_source->columns)
     );
+    for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
+        if (derived_plan->column_aliases != NULL &&
+            derived_plan->column_aliases[column_index] != NULL) {
+            char *alias_text = NULL;
+            int rc = copy_select_item_alias_text(
+                database,
+                derived_plan->column_aliases[column_index],
+                &alias_text
+            );
+
+            if (rc != MYLITE_OK) {
+                free(out_source->columns);
+                out_source->columns = NULL;
+                return rc;
+            }
+            size_t alias_size = strlen(alias_text);
+
+            if (alias_size >= sizeof(out_source->columns[column_index].name)) {
+                free(alias_text);
+                free(out_source->columns);
+                out_source->columns = NULL;
+                set_identifier_too_long_error(database, "alias");
+                return MYLITE_ERROR;
+            }
+            memcpy(out_source->columns[column_index].name, alias_text, alias_size + 1U);
+            free(alias_text);
+        }
+    }
     out_source->column_count = derived_plan->column_count;
     return MYLITE_OK;
+}
+
+static int copy_derived_row_scalar_select_source_columns(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *derived_plan,
+    struct planned_select_source *out_source
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    int rc = MYLITE_OK;
+
+    if (derived_plan == NULL || out_source == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (derived_plan->item_count > SIZE_MAX / sizeof(*columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    columns = calloc(derived_plan->item_count, sizeof(*columns));
+    if (columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < derived_plan->item_count;
+         ++item_index) {
+        rc = make_derived_row_scalar_source_column(
+            database,
+            &derived_plan->items[item_index],
+            item_index,
+            &columns[item_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(columns);
+        return rc;
+    }
+
+    out_source->columns = columns;
+    out_source->column_count = derived_plan->item_count;
+    return MYLITE_OK;
+}
+
+static int make_derived_row_scalar_source_column(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select_item *item,
+    size_t output_index,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    int rc = MYLITE_OK;
+
+    if (item == NULL || out_column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        *out_column = item->expression.column;
+    } else if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC ||
+               item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+        *out_column = (struct mylite_catalog_column_descriptor){
+            .column_id = (int64_t)output_index + 1,
+            .ordinal_position = (int64_t)output_index + 1,
+            .is_nullable = true,
+            .is_visible = true,
+        };
+        memcpy(out_column->logical_type, "BIGINT", sizeof("BIGINT"));
+        memcpy(out_column->physical_type, "INTEGER", sizeof("INTEGER"));
+    } else {
+        set_unsupported_error(
+            database,
+            "joined source derived row-scalar tables support only column and integer expression "
+            "outputs"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (item->alias != NULL) {
+        if (item->alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            set_unsupported_error(
+                database,
+                "joined source derived row-scalar tables support only identifier output aliases"
+            );
+            return MYLITE_ERROR;
+        }
+        rc =
+            copy_identifier_text(item->alias, out_column->name, sizeof(out_column->name), database);
+    } else if (item->expression.kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        set_unsupported_error(
+            database,
+            "joined source derived row-scalar expression outputs require aliases"
+        );
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
 }
 
 static int copy_derived_compound_select_source_columns(
@@ -1702,10 +1868,8 @@ static int match_select_index_hint_name(
     if (index != NULL && context != NULL &&
         text_equals_ascii_case_insensitive(index->name, context->name)) {
         context->exact_match = true;
-    } else if (
-        index != NULL && context != NULL &&
-        text_has_ascii_case_insensitive_prefix(index->name, context->name)
-    ) {
+    } else if (index != NULL && context != NULL &&
+               text_has_ascii_case_insensitive_prefix(index->name, context->name)) {
         ++context->prefix_match_count;
     }
     return MYLITE_OK;
@@ -1744,8 +1908,7 @@ static int reject_duplicate_select_source_reference(
     return MYLITE_OK;
 }
 
-static const char *planned_select_source_reference_name(
-    const struct planned_select_source *source
+static const char *planned_select_source_reference_name(const struct planned_select_source *source
 ) {
     if (source->has_alias) {
         return source->alias;
@@ -1806,10 +1969,8 @@ static int plan_joined_select_condition_with_extra_predicate(
          joined_select_on_node_is_primary_condition(left_node))) {
         primary_node = left_node;
         extra_node = right_node;
-    } else if (
-        joined_select_on_node_is_descriptor_equality(right_node) ||
-        joined_select_on_node_is_primary_condition(right_node)
-    ) {
+    } else if (joined_select_on_node_is_descriptor_equality(right_node) ||
+               joined_select_on_node_is_primary_condition(right_node)) {
         primary_node = right_node;
         extra_node = left_node;
     } else {
@@ -1979,8 +2140,8 @@ static bool join_condition_columns_are_compatible(
     const struct mylite_catalog_column_descriptor *left,
     const struct mylite_catalog_column_descriptor *right
 ) {
-    if (join_condition_column_is_integer_family(left)) {
-        return join_condition_column_is_integer_family(right);
+    if (column_descriptor_is_numeric_replacement_family(left)) {
+        return column_descriptor_is_numeric_replacement_family(right);
     }
     if (column_descriptor_is_string_family(left)) {
         return column_descriptor_is_string_family(right);
@@ -2021,6 +2182,11 @@ static void planned_select_deinit(struct planned_select *plan) {
             planned_select_deinit_shallow(derived_source->derived_select);
             free(derived_source->derived_select);
             derived_source->derived_select = NULL;
+        }
+        if (derived_source->derived_row_scalar_select != NULL) {
+            planned_row_scalar_select_deinit(derived_source->derived_row_scalar_select);
+            free(derived_source->derived_row_scalar_select);
+            derived_source->derived_row_scalar_select = NULL;
         }
         if (derived_source->derived_grouped_aggregate != NULL) {
             planned_grouped_aggregate_deinit(derived_source->derived_grouped_aggregate);
@@ -2097,6 +2263,9 @@ static struct planned_select_source *planned_select_find_deepest_derived_source(
                 descended = true;
                 break;
             }
+            if (source->derived_row_scalar_select != NULL) {
+                deepest_source = source;
+            }
             if (source->derived_grouped_aggregate != NULL) {
                 deepest_source = source;
             }
@@ -2118,6 +2287,11 @@ static void planned_select_source_deinit(struct planned_select_source *source) {
         free(source->derived_select);
         source->derived_select = NULL;
     }
+    if (source->derived_row_scalar_select != NULL) {
+        planned_row_scalar_select_deinit(source->derived_row_scalar_select);
+        free(source->derived_row_scalar_select);
+        source->derived_row_scalar_select = NULL;
+    }
     if (source->derived_grouped_aggregate != NULL) {
         planned_grouped_aggregate_deinit(source->derived_grouped_aggregate);
         free(source->derived_grouped_aggregate);
@@ -2136,6 +2310,7 @@ static void planned_select_source_deinit_shallow(struct planned_select_source *s
         return;
     }
     assert(source->derived_select == NULL);
+    assert(source->derived_row_scalar_select == NULL);
     assert(source->derived_grouped_aggregate == NULL);
     assert(source->derived_compound_select == NULL);
     free(source->columns);
@@ -2214,13 +2389,27 @@ static int plan_row_scalar_select(
         if (rc == MYLITE_OK) {
             item_source_context = &source_context;
         }
+    } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        out_plan->has_source = true;
+        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        if (rc == MYLITE_OK) {
+            rc = plan_row_scalar_select_derived_source(
+                database,
+                from_clause,
+                out_plan,
+                &source_context
+            );
+        }
+        if (rc == MYLITE_OK) {
+            item_source_context = &source_context;
+        }
     } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
     } else if (from_clause != NULL) {
         set_unsupported_error(
             database,
-            "row-scalar SELECT supports only no-source, DUAL, descriptor table, or joined "
-            "descriptor table sources"
+            "row-scalar SELECT supports only no-source, DUAL, descriptor table, joined "
+            "descriptor table, or derived table sources"
         );
         return MYLITE_ERROR;
     }
@@ -2382,9 +2571,79 @@ static int plan_row_scalar_select_join_source(
     return rc;
 }
 
+static int plan_row_scalar_select_derived_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_row_scalar_select *out_plan,
+    struct select_source_context *out_source_context
+) {
+    int rc = MYLITE_OK;
+
+    out_plan->sources = calloc(1U, sizeof(*out_plan->sources));
+    if (out_plan->sources == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->source_count = 1U;
+    rc = plan_joined_select_derived_source(database, from_clause, &out_plan->sources[0]);
+    if (rc == MYLITE_OK) {
+        rc = init_join_select_source_context(
+            out_plan->sources,
+            out_plan->source_count,
+            out_source_context
+        );
+    }
+
+    return rc;
+}
+
 static int plan_row_scalar_select_row_envelope(
     struct mylite_db *database,
     const struct row_scalar_select_clauses *clauses,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_order_by_field,
+    struct planned_row_scalar_select *out_plan
+) {
+    const struct select_predicate_plan_options predicate_options = {
+        .allow_exists = true,
+        .allow_in_subquery = true,
+        .allow_scalar_subquery_in_literal = true,
+        .allow_same_scope_column_reference_rhs = true,
+        .allow_date_format_numeric_predicate = true,
+    };
+    int rc = plan_select_predicate_with_options(
+        database,
+        clauses->where_clause,
+        source_context,
+        table_columns,
+        table_column_count,
+        &predicate_options,
+        &out_plan->predicate
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_select_order(
+            database,
+            clauses->order_clause,
+            source_context,
+            table_columns,
+            table_column_count,
+            allow_order_by_field,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
+    }
+
+    return rc;
+}
+
+static int plan_row_scalar_select_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -2396,33 +2655,145 @@ static int plan_row_scalar_select_row_envelope(
         .column_aliases = NULL,
         .column_count = 0U,
     };
-    int rc = plan_select_predicate(
+    bool handled = false;
+    int rc = plan_row_scalar_select_order_alias(
         database,
-        clauses->where_clause,
-        source_context,
-        table_columns,
-        table_column_count,
-        &out_plan->predicate
+        order_clause,
+        out_plan,
+        &out_plan->order,
+        &handled
     );
 
-    if (rc == MYLITE_OK) {
-        rc = plan_select_order(
-            database,
-            clauses->order_clause,
-            source_context,
-            &order_alias_plan,
-            table_columns,
-            table_column_count,
-            allow_order_by_field,
-            true,
-            &out_plan->order
-        );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
     }
-    if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
+    return plan_select_order(
+        database,
+        order_clause,
+        source_context,
+        &order_alias_plan,
+        table_columns,
+        table_column_count,
+        allow_order_by_field,
+        true,
+        &out_plan->order
+    );
+}
+
+static int plan_row_scalar_select_order_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct planned_row_scalar_select *select_plan,
+    struct planned_select_order *out_order,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *order_items = NULL;
+
+    *out_handled = false;
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        return MYLITE_OK;
     }
 
-    return rc;
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
+
+        if (mylite_sql_ast_node_child_count(order_items) != 1U || item == NULL ||
+            item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+            return MYLITE_OK;
+        }
+        return plan_row_scalar_select_order_alias_item(
+            database,
+            (struct select_order_ast_item_nodes){
+                .order_key = child_at(item, 0U),
+                .direction = child_at(item, 1U),
+            },
+            select_plan,
+            out_order,
+            out_handled
+        );
+    }
+
+    return plan_row_scalar_select_order_alias_item(
+        database,
+        (struct select_order_ast_item_nodes){
+            .order_key = child_at(order_clause, 0U),
+            .direction = child_at(order_clause, 1U),
+        },
+        select_plan,
+        out_order,
+        out_handled
+    );
+}
+
+static int plan_row_scalar_select_order_alias_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct planned_row_scalar_select *select_plan,
+    struct planned_select_order *out_order,
+    bool *out_handled
+) {
+    struct planned_select_order_item item = {
+        .kind = PLANNED_SELECT_ORDER_ITEM_ALIAS,
+        .direction = PLANNED_SELECT_ORDER_ASC,
+    };
+    char *order_name = NULL;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (item_nodes.order_key == NULL || item_nodes.order_key->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+    rc = copy_select_item_identifier_alias_text(database, item_nodes.order_key, &order_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < select_plan->item_count;
+         ++item_index) {
+        const struct planned_row_scalar_select_item *select_item = &select_plan->items[item_index];
+        char *alias_text = NULL;
+
+        if (select_item->alias == NULL) {
+            continue;
+        }
+        rc = copy_select_item_alias_text(database, select_item->alias, &alias_text);
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        if (text_equals_ascii_case_insensitive(alias_text, order_name)) {
+            if (found) {
+                free(alias_text);
+                set_ambiguous_order_column_error(database, order_name);
+                rc = MYLITE_ERROR;
+                break;
+            }
+            snprintf(item.alias, sizeof(item.alias), "%s", alias_text);
+            found = true;
+        }
+        free(alias_text);
+    }
+    free(order_name);
+    if (rc != MYLITE_OK || !found) {
+        return rc;
+    }
+
+    apply_select_order_item_direction(item_nodes.direction, &item);
+    *out_order = (struct planned_select_order){
+        .has_order = true,
+        .direction = item.direction,
+        .qualify_column_reference = false,
+    };
+    rc = append_planned_select_order_item(out_order, item);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    *out_handled = true;
+    return MYLITE_OK;
 }
 
 static int plan_row_scalar_select_tableless_filter(
@@ -2496,8 +2867,7 @@ static int plan_row_scalar_select_exists_filter(
     return rc;
 }
 
-static bool row_scalar_select_where_is_exists_filter(
-    const struct mylite_sql_ast_node *where_clause
+static bool row_scalar_select_where_is_exists_filter(const struct mylite_sql_ast_node *where_clause
 ) {
     const struct mylite_sql_ast_node *predicate = NULL;
 

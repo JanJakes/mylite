@@ -16,10 +16,19 @@ static int bootstrap_sqlite_connection(struct mylite_db *database);
 static int initialize_file_backed_catalog(struct mylite_db *database);
 static void destroy_database_handle(struct mylite_db *database);
 static int sqlite_status_to_mylite(int sqlite_status);
+static void register_processlist_session(struct mylite_db *database);
+static void unregister_processlist_session(struct mylite_db *database);
+static sqlite3_mutex *processlist_registry_mutex(void);
+static void sort_processlist_session_snapshots(
+    struct mylite_processlist_session_snapshot *sessions,
+    size_t count
+);
 static void initialize_session_state(struct mylite_session_state *session);
 static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure);
 static uint64_t allocate_session_connection_id(void);
 static void copy_session_text(char *destination, size_t destination_size, const char *source);
+
+static struct mylite_db *processlist_registry_head = NULL;
 
 int mylite_open_memory(mylite_db **out_db) {
     struct mylite_db *database = NULL;
@@ -132,6 +141,70 @@ const struct mylite_session_state *mylite_connection_session_state(const struct 
     return &database->session;
 }
 
+int mylite_connection_collect_processlist_sessions(
+    const struct mylite_db *current,
+    struct mylite_processlist_session_snapshot **out_sessions,
+    size_t *out_count
+) {
+    sqlite3_mutex *mutex = NULL;
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+
+    if (out_sessions == NULL || out_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_sessions = NULL;
+    *out_count = 0U;
+    mutex = processlist_registry_mutex();
+    if (mutex != NULL) {
+        sqlite3_mutex_enter(mutex);
+    }
+
+    for (struct mylite_db *database = processlist_registry_head; database != NULL;
+         database = database->processlist_next) {
+        ++count;
+    }
+    if (count > 0U) {
+        sessions = calloc(count, sizeof(*sessions));
+        if (sessions == NULL) {
+            if (mutex != NULL) {
+                sqlite3_mutex_leave(mutex);
+            }
+            return MYLITE_NOMEM;
+        }
+    }
+    for (struct mylite_db *database = processlist_registry_head; database != NULL;
+         database = database->processlist_next) {
+        sessions[index].connection_id = database->session.connection_id;
+        sessions[index].has_selected_schema = database->session.has_selected_schema;
+        sessions[index].is_current = database == current;
+        copy_session_text(
+            sessions[index].selected_schema,
+            sizeof(sessions[index].selected_schema),
+            database->session.selected_schema
+        );
+        copy_session_text(
+            sessions[index].client_user_identity,
+            sizeof(sessions[index].client_user_identity),
+            database->session.client_user_identity
+        );
+        ++index;
+    }
+
+    if (mutex != NULL) {
+        sqlite3_mutex_leave(mutex);
+    }
+    if (count > 1U) {
+        sort_processlist_session_snapshots(sessions, count);
+    }
+
+    *out_sessions = sessions;
+    *out_count = count;
+    return MYLITE_OK;
+}
+
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database) {
     if (database == NULL) {
         return NULL;
@@ -169,6 +242,7 @@ static int allocate_database_handle(struct mylite_db **out_database) {
     mylite_diagnostics_init(&database->previous_diagnostics);
     initialize_session_state(&database->session);
     mylite_catalog_init(&database->catalog);
+    register_processlist_session(database);
     *out_database = database;
 
     return MYLITE_OK;
@@ -244,6 +318,7 @@ static void destroy_database_handle(struct mylite_db *database) {
         return;
     }
 
+    unregister_processlist_session(database);
     if (database->sqlite != NULL && database->session.user_transaction_active) {
         (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
         database->session.user_transaction_active = false;
@@ -313,6 +388,59 @@ static int sqlite_status_to_mylite(int sqlite_status) {
     }
 
     return MYLITE_ERROR;
+}
+
+static void register_processlist_session(struct mylite_db *database) {
+    sqlite3_mutex *mutex = processlist_registry_mutex();
+
+    if (mutex != NULL) {
+        sqlite3_mutex_enter(mutex);
+    }
+    database->processlist_next = processlist_registry_head;
+    processlist_registry_head = database;
+    if (mutex != NULL) {
+        sqlite3_mutex_leave(mutex);
+    }
+}
+
+static void unregister_processlist_session(struct mylite_db *database) {
+    sqlite3_mutex *mutex = processlist_registry_mutex();
+    struct mylite_db **cursor = &processlist_registry_head;
+
+    if (mutex != NULL) {
+        sqlite3_mutex_enter(mutex);
+    }
+    while (*cursor != NULL) {
+        if (*cursor == database) {
+            *cursor = database->processlist_next;
+            database->processlist_next = NULL;
+            break;
+        }
+        cursor = &(*cursor)->processlist_next;
+    }
+    if (mutex != NULL) {
+        sqlite3_mutex_leave(mutex);
+    }
+}
+
+static sqlite3_mutex *processlist_registry_mutex(void) {
+    return sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP1);
+}
+
+static void sort_processlist_session_snapshots(
+    struct mylite_processlist_session_snapshot *sessions,
+    size_t count
+) {
+    for (size_t index = 1U; index < count; ++index) {
+        struct mylite_processlist_session_snapshot session = sessions[index];
+        size_t position = index;
+
+        while (position > 0U && sessions[position - 1U].connection_id > session.connection_id) {
+            sessions[position] = sessions[position - 1U];
+            --position;
+        }
+        sessions[position] = session;
+    }
 }
 
 static void initialize_session_state(struct mylite_session_state *session) {

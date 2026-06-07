@@ -189,6 +189,14 @@ static int execute_select_statement(
             out_result
         );
     }
+    if (select_statement_has_column_aggregate(statement)) {
+        return execute_column_aggregate_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
     rc = execute_scalar_or_row_scalar_select_if_needed(
         database,
         statement,
@@ -213,14 +221,6 @@ static int execute_select_statement(
     }
     if (select_statement_has_count_aggregate(statement)) {
         return execute_count_select_statement(
-            database,
-            statement,
-            apply_sql_select_limit,
-            out_result
-        );
-    }
-    if (select_statement_has_column_aggregate(statement)) {
-        return execute_column_aggregate_select_statement(
             database,
             statement,
             apply_sql_select_limit,
@@ -407,6 +407,9 @@ static int execute_compound_select_statement(
         ++branch_index;
         term = term->next_sibling;
     }
+    if (rc == MYLITE_OK) {
+        rc = apply_compound_select_final_order_and_limit(database, statement, result);
+    }
 
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -448,7 +451,7 @@ static int execute_compound_select_branch_results(
         return MYLITE_NOMEM;
     }
 
-    rc = reject_compound_select_branch_shape(database, branch, operator_kind);
+    rc = reject_compound_select_branch_shape(database, branch, operator_kind, false);
     if (rc == MYLITE_OK) {
         rc = execute_select_statement(
             database,
@@ -468,7 +471,12 @@ static int execute_compound_select_branch_results(
 
         ++branch_index;
         branch = child_at(term, 0U);
-        rc = reject_compound_select_branch_shape(database, branch, operator_kind);
+        rc = reject_compound_select_branch_shape(
+            database,
+            branch,
+            operator_kind,
+            branch_index + 1U == results.count
+        );
         if (rc == MYLITE_OK) {
             rc = execute_select_statement(database, context, branch, false, &branch_result);
         }
@@ -575,8 +583,7 @@ static int init_compound_row_comparison_columns(
     return MYLITE_OK;
 }
 
-static void deinit_compound_row_comparison_columns(
-    struct compound_row_comparison_columns *columns
+static void deinit_compound_row_comparison_columns(struct compound_row_comparison_columns *columns
 ) {
     if (columns == NULL) {
         return;
@@ -670,10 +677,295 @@ static void apply_sql_select_limit_to_result(
     }
 }
 
+static int apply_compound_select_final_order_and_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result
+) {
+    const struct mylite_sql_ast_node *final_branch = compound_select_final_branch(statement);
+    int rc = MYLITE_OK;
+
+    if (final_branch == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = apply_compound_select_final_order(
+        database,
+        result,
+        child_with_kind(final_branch, MYLITE_SQL_AST_ORDER_BY_CLAUSE)
+    );
+    if (rc == MYLITE_OK) {
+        rc = apply_compound_select_final_limit(
+            database,
+            result,
+            child_with_kind(final_branch, MYLITE_SQL_AST_LIMIT_CLAUSE)
+        );
+    }
+
+    return rc;
+}
+
+static const struct mylite_sql_ast_node *compound_select_final_branch(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *term = child_at(terms, 0U);
+    const struct mylite_sql_ast_node *branch = child_at(statement, 0U);
+
+    while (term != NULL) {
+        branch = child_at(term, 0U);
+        term = term->next_sibling;
+    }
+    return branch;
+}
+
+static int apply_compound_select_final_order(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *order_clause
+) {
+    const struct mylite_sql_ast_node *order_key = NULL;
+    size_t column_index = 0U;
+    bool descending = false;
+    int rc = MYLITE_OK;
+
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    rc = compound_select_order_key_and_direction(database, order_clause, &order_key, &descending);
+    if (rc == MYLITE_OK) {
+        rc = compound_select_order_column_index(database, result, order_key, &column_index);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    compound_select_sort_result(result, column_index, descending);
+    return MYLITE_OK;
+}
+
+static int compound_select_order_key_and_direction(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct mylite_sql_ast_node **out_order_key,
+    bool *out_descending
+) {
+    const struct mylite_sql_ast_node *first_child = child_at(order_clause, 0U);
+
+    *out_order_key = NULL;
+    *out_descending = false;
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        if (mylite_sql_ast_node_child_count(first_child) != 1U) {
+            set_unsupported_error(database, "UNION ORDER BY supports only one output column");
+            return MYLITE_ERROR;
+        }
+        const struct mylite_sql_ast_node *item = child_at(first_child, 0U);
+
+        if (item == NULL || item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        *out_order_key = child_at(item, 0U);
+        *out_descending = mylite_sql_ast_node_order_direction(child_at(item, 1U)) ==
+                          MYLITE_SQL_AST_ORDER_DIRECTION_DESC;
+        return MYLITE_OK;
+    }
+
+    *out_order_key = first_child;
+    *out_descending = mylite_sql_ast_node_order_direction(child_at(order_clause, 1U)) ==
+                      MYLITE_SQL_AST_ORDER_DIRECTION_DESC;
+    return MYLITE_OK;
+}
+
+static int compound_select_order_column_index(
+    struct mylite_db *database,
+    const mylite_result *result,
+    const struct mylite_sql_ast_node *order_key,
+    size_t *out_column_index
+) {
+    char *order_name = NULL;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (order_key == NULL || order_key->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "UNION ORDER BY supports only output column names");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_select_item_identifier_alias_text(database, order_key, &order_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    for (size_t index = 0U; index < mylite_result_column_count(result); ++index) {
+        const char *column_name = mylite_result_column_name(result, index);
+
+        if (column_name != NULL && text_equals_ascii_case_insensitive(column_name, order_name)) {
+            if (found) {
+                set_ambiguous_order_column_error(database, order_name);
+                free(order_name);
+                return MYLITE_ERROR;
+            }
+            *out_column_index = index;
+            found = true;
+        }
+    }
+
+    if (!found) {
+        set_unknown_column_error(database, order_name);
+        free(order_name);
+        return MYLITE_ERROR;
+    }
+
+    free(order_name);
+    return MYLITE_OK;
+}
+
+static void compound_select_sort_result(
+    mylite_result *result,
+    size_t column_index,
+    bool descending
+) {
+    size_t row_count = mylite_result_row_count(result);
+
+    for (size_t index = 1U; index < row_count; ++index) {
+        size_t position = index;
+
+        while (position > 0U && compound_select_compare_order_rows(
+                                    result,
+                                    position,
+                                    position - 1U,
+                                    column_index,
+                                    descending
+                                ) < 0) {
+            compound_select_swap_result_rows(result, position, position - 1U);
+            --position;
+        }
+    }
+}
+
+static int compound_select_compare_order_rows(
+    const mylite_result *result,
+    size_t left_row,
+    size_t right_row,
+    size_t column_index,
+    bool descending
+) {
+    const void *left = mylite_result_value_bytes(result, left_row, column_index);
+    const void *right = mylite_result_value_bytes(result, right_row, column_index);
+    size_t left_size = mylite_result_value_size(result, left_row, column_index);
+    size_t right_size = mylite_result_value_size(result, right_row, column_index);
+    size_t common_size = left_size < right_size ? left_size : right_size;
+    int comparison = 0;
+
+    if (left == NULL && right == NULL) {
+        return 0;
+    }
+    if (left == NULL) {
+        comparison = -1;
+    } else if (right == NULL) {
+        comparison = 1;
+    } else {
+        comparison = memcmp(left, right, common_size);
+        if (comparison == 0) {
+            if (left_size < right_size) {
+                comparison = -1;
+            } else if (left_size > right_size) {
+                comparison = 1;
+            }
+        }
+    }
+    return descending ? -comparison : comparison;
+}
+
+static void compound_select_swap_result_rows(mylite_result *result, size_t left, size_t right) {
+    size_t column_count = mylite_result_column_count(result);
+
+    if (result == NULL || left == right) {
+        return;
+    }
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        size_t left_index = (left * column_count) + column_index;
+        size_t right_index = (right * column_count) + column_index;
+        char *value = result->values[left_index];
+        size_t size = result->value_sizes[left_index];
+
+        result->values[left_index] = result->values[right_index];
+        result->value_sizes[left_index] = result->value_sizes[right_index];
+        result->values[right_index] = value;
+        result->value_sizes[right_index] = size;
+    }
+}
+
+static int apply_compound_select_final_limit(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_sql_ast_node *limit_clause
+) {
+    struct planned_select_limit limit = {0};
+    int rc = MYLITE_OK;
+
+    if (limit_clause == NULL) {
+        return MYLITE_OK;
+    }
+    rc = plan_select_limit(database, limit_clause, &limit);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (limit.has_offset && limit.offset > 0) {
+        compound_select_discard_result_prefix(result, (uint64_t)limit.offset);
+    }
+    if (limit.has_limit && limit.row_count >= 0 &&
+        (uint64_t)mylite_result_row_count(result) > (uint64_t)limit.row_count) {
+        mylite_result_truncate_rows(result, (size_t)limit.row_count);
+    }
+    return MYLITE_OK;
+}
+
+static void compound_select_discard_result_prefix(mylite_result *result, uint64_t offset) {
+    size_t column_count = 0U;
+    size_t row_count = 0U;
+    size_t removed_values = 0U;
+    size_t kept_values = 0U;
+
+    if (result == NULL || offset == 0U) {
+        return;
+    }
+    row_count = mylite_result_row_count(result);
+    if (offset >= (uint64_t)row_count) {
+        mylite_result_truncate_rows(result, 0U);
+        return;
+    }
+
+    column_count = mylite_result_column_count(result);
+    removed_values = ((size_t)offset) * column_count;
+    kept_values = (row_count - (size_t)offset) * column_count;
+    for (size_t index = 0U; index < removed_values; ++index) {
+        free(result->values[index]);
+        result->values[index] = NULL;
+        result->value_sizes[index] = 0U;
+    }
+    memmove(
+        (void *)result->values,
+        (const void *)(result->values + removed_values),
+        kept_values * sizeof(*result->values)
+    );
+    memmove(
+        result->value_sizes,
+        result->value_sizes + removed_values,
+        kept_values * sizeof(*result->value_sizes)
+    );
+    memset((void *)(result->values + kept_values), 0, removed_values * sizeof(*result->values));
+    memset(result->value_sizes + kept_values, 0, removed_values * sizeof(*result->value_sizes));
+    result->row_count = row_count - (size_t)offset;
+}
+
 static int reject_compound_select_branch_shape(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *branch,
-    enum mylite_sql_ast_set_operator operator_kind
+    enum mylite_sql_ast_set_operator operator_kind,
+    bool allow_final_order_limit
 ) {
     if (branch == NULL || branch->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         set_unsupported_error(database, compound_select_non_select_branch_error(operator_kind));
@@ -687,11 +979,12 @@ static int reject_compound_select_branch_shape(
         set_unsupported_error(database, compound_select_options_error(operator_kind));
         return MYLITE_ERROR;
     }
-    if (child_with_kind(branch, MYLITE_SQL_AST_ORDER_BY_CLAUSE) != NULL) {
+    if (!allow_final_order_limit &&
+        child_with_kind(branch, MYLITE_SQL_AST_ORDER_BY_CLAUSE) != NULL) {
         set_unsupported_error(database, compound_select_order_by_error(operator_kind));
         return MYLITE_ERROR;
     }
-    if (child_with_kind(branch, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+    if (!allow_final_order_limit && child_with_kind(branch, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
         set_unsupported_error(database, compound_select_limit_error(operator_kind));
         return MYLITE_ERROR;
     }
@@ -1153,10 +1446,8 @@ static int merge_compound_string_collation_columns(
         if (compound_result_column_uses_bytewise_collation(branch_result, column_index)) {
             columns->bytewise_collation_columns[column_index] = true;
             columns->string_collation_columns[column_index] = false;
-        } else if (
-            !columns->bytewise_collation_columns[column_index] &&
-            compound_result_column_uses_string_collation(branch_result, column_index)
-        ) {
+        } else if (!columns->bytewise_collation_columns[column_index] &&
+                   compound_result_column_uses_string_collation(branch_result, column_index)) {
             columns->string_collation_columns[column_index] = true;
         }
     }
@@ -1256,8 +1547,7 @@ static bool compound_select_item_uses_string_collation(
     return compound_expression_uses_string_collation(child_at(select_item, 0U));
 }
 
-static bool compound_expression_uses_string_collation(
-    const struct mylite_sql_ast_node *expression
+static bool compound_expression_uses_string_collation(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {
@@ -1365,8 +1655,7 @@ static bool compound_select_item_uses_binary_collation(
     return compound_expression_uses_binary_collation(child_at(select_item, 0U));
 }
 
-static bool compound_expression_uses_binary_collation(
-    const struct mylite_sql_ast_node *expression
+static bool compound_expression_uses_binary_collation(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {
@@ -1760,8 +2049,7 @@ static int select_source_targets_information_schema(
         return MYLITE_NOMEM;
     }
     while (rc == MYLITE_OK && source_stack.count != 0U && !*out_matches) {
-        const struct mylite_sql_ast_node *current_source =
-            source_stack.items[--source_stack.count];
+        const struct mylite_sql_ast_node *current_source = source_stack.items[--source_stack.count];
 
         if (current_source->kind == MYLITE_SQL_AST_FROM_TABLE) {
             rc = table_source_targets_information_schema(database, current_source, out_matches);
@@ -1827,8 +2115,8 @@ static int derived_source_targets_information_schema(
 ) {
     const struct mylite_sql_ast_node *inner_statement = child_at(source, 0U);
 
-    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED ||
-        statement_stack == NULL || out_matches == NULL) {
+    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_DERIVED || statement_stack == NULL ||
+        out_matches == NULL) {
         return MYLITE_MISUSE;
     }
     *out_matches = false;

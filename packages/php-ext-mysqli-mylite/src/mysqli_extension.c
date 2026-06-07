@@ -62,12 +62,14 @@
 #define MYLITE_MYSQLI_FIELD_TYPE_BLOB 252
 #define MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING 253
 #define MYLITE_MYSQLI_FIELD_TYPE_STRING 254
+#define MYLITE_MYSQLI_MAX_ALLOWED_PACKET 67108864U
 
 enum mylite_mysqli_error_code {
     MYLITE_MYSQLI_ERROR_NONE = 0,
     MYLITE_MYSQLI_ERROR_CLIENT = 2000,
     MYLITE_MYSQLI_ERROR_CONNECTION = 2002,
     MYLITE_MYSQLI_ERROR_PARSE = 1064,
+    MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE = 1153,
     MYLITE_MYSQLI_ERROR_UNSUPPORTED = 1235,
     MYLITE_MYSQLI_ERROR_EXEC = 1105,
 };
@@ -76,6 +78,7 @@ typedef struct {
     mylite_db *database;
     zend_string *path;
     zend_string *error;
+    zend_string *info;
     char sqlstate[6];
     zend_long affected_rows;
     zend_long insert_id;
@@ -210,6 +213,7 @@ static bool mylite_mysqli_execute_bridge_statement(
     size_t sql_length,
     zval *out_result
 );
+static bool mylite_mysqli_reject_oversized_packet(mylite_mysqli_link *link, size_t sql_length);
 static bool mylite_mysqli_buffer_result(
     mylite_mysqli_link *link,
     const mylite_result *source,
@@ -237,6 +241,7 @@ static zend_string *mylite_mysqli_param_to_sql(zval *value);
 static uint32_t mylite_mysqli_count_markers(const char *sql, size_t sql_length);
 static bool mylite_mysqli_match_autocommit_off_assignment(const char *sql, size_t sql_length);
 static void mylite_mysqli_set_ok_result(mylite_mysqli_link *link, zval *out_result);
+static bool mylite_mysqli_set_link_info(mylite_mysqli_link *link, const char *info);
 static const char *mylite_mysqli_skip_space(const char *cursor, const char *end);
 static bool mylite_mysqli_consume_keyword(
     const char **cursor,
@@ -1363,13 +1368,17 @@ PHP_FUNCTION(mysqli_insert_id) {
 
 PHP_FUNCTION(mysqli_info) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mysql;
-    RETURN_NULL();
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (link->info == NULL) {
+        RETURN_NULL();
+    }
+    RETURN_STR_COPY(link->info);
 }
 
 PHP_FUNCTION(mysqli_warning_count) {
@@ -3957,6 +3966,9 @@ static void mylite_mysqli_link_free(zend_object *object) {
         zend_string_release(link->path);
     }
     zend_string_release(link->error);
+    if (link->info != NULL) {
+        zend_string_release(link->info);
+    }
     if (!Z_ISUNDEF(link->last_result)) {
         zval_ptr_dtor(&link->last_result);
     }
@@ -4328,6 +4340,9 @@ static bool mylite_mysqli_execute_sql(
     }
 
     mylite_mysqli_clear_error(link);
+    if (mylite_mysqli_reject_oversized_packet(link, sql_length)) {
+        return false;
+    }
     if (mylite_mysqli_execute_bridge_statement(link, sql, sql_length, out_result)) {
         return true;
     }
@@ -4368,6 +4383,21 @@ static bool mylite_mysqli_execute_bridge_statement(
     return true;
 }
 
+static bool mylite_mysqli_reject_oversized_packet(mylite_mysqli_link *link, size_t sql_length) {
+    if (sql_length <= (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+        return false;
+    }
+
+    mylite_mysqli_set_error(
+        link,
+        MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
+        "08S01",
+        "Got a packet bigger than 'max_allowed_packet' bytes"
+    );
+    mylite_mysqli_report_link_error(link);
+    return true;
+}
+
 static bool mylite_mysqli_buffer_result(
     mylite_mysqli_link *link,
     const mylite_result *source,
@@ -4390,6 +4420,11 @@ static bool mylite_mysqli_buffer_result(
 
     link->field_count = (zend_long)column_count;
     link->warning_count = (zend_long)mylite_result_warning_count(source);
+    if (!mylite_mysqli_set_link_info(link, mylite_result_info(source))) {
+        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
     if (column_count == 0U) {
         link->affected_rows = (zend_long)mylite_result_affected_rows(source);
         link->insert_id = (zend_long)mylite_result_insert_id(source);
@@ -4780,8 +4815,29 @@ static void mylite_mysqli_set_ok_result(mylite_mysqli_link *link, zval *out_resu
     link->warning_count = 0;
     link->affected_rows = 0;
     link->insert_id = 0;
+    if (!mylite_mysqli_set_link_info(link, NULL)) {
+        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
+        ZVAL_FALSE(out_result);
+        return;
+    }
     ZVAL_TRUE(out_result);
     mylite_mysqli_update_link_properties(link);
+}
+
+static bool mylite_mysqli_set_link_info(mylite_mysqli_link *link, const char *info) {
+    zend_string *new_info = NULL;
+
+    if (info != NULL) {
+        new_info = zend_string_init(info, strlen(info), false);
+        if (new_info == NULL) {
+            return false;
+        }
+    }
+    if (link->info != NULL) {
+        zend_string_release(link->info);
+    }
+    link->info = new_info;
+    return true;
 }
 
 static const char *mylite_mysqli_skip_space(const char *cursor, const char *end) {
@@ -5013,6 +5069,7 @@ static void mylite_mysqli_set_error(
     }
     zend_string_release(link->error);
     link->error = zend_string_init(message, strlen(message), false);
+    (void)mylite_mysqli_set_link_info(link, NULL);
     link->error_code = error_code;
     memcpy(link->sqlstate, sqlstate, 5U);
     link->sqlstate[5] = '\0';
@@ -5179,7 +5236,17 @@ static void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
         strlen("host_info"),
         "MyLite embedded"
     );
-    zend_update_property_null(mylite_mysqli_link_ce, &link->std, "info", strlen("info"));
+    if (link->info == NULL) {
+        zend_update_property_null(mylite_mysqli_link_ce, &link->std, "info", strlen("info"));
+    } else {
+        zend_update_property_str(
+            mylite_mysqli_link_ce,
+            &link->std,
+            "info",
+            strlen("info"),
+            zend_string_copy(link->info)
+        );
+    }
     zend_update_property_long(
         mylite_mysqli_link_ce,
         &link->std,

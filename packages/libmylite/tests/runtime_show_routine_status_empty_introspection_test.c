@@ -226,6 +226,13 @@ static int test_show_routine_status_diagnostics_and_unsupported_forms(void) {
             .context = "no selected schema function status like",
         }
     );
+    failures += expect_show_routine_status_empty_result(
+        database,
+        (struct expected_show_routine_status_empty_result){
+            .sql = "SHOW PROCEDURE STATUS WHERE Name = 'missing'",
+            .context = "no selected schema procedure status where",
+        }
+    );
     failures += execute_statement_ok(database, "USE app");
 
     failures += execute_error(
@@ -264,13 +271,18 @@ static int test_show_routine_status_diagnostics_and_unsupported_forms(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_show_routine_status_empty_result(
         database,
-        "SHOW PROCEDURE STATUS WHERE Name = 'routine_proc'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_show_routine_status_empty_result){
+            .sql = "SHOW PROCEDURE STATUS WHERE Name = 'routine_proc'",
+            .context = "selected schema procedure status where",
+        }
+    );
+    failures += expect_show_routine_status_empty_result(
+        database,
+        (struct expected_show_routine_status_empty_result){
+            .sql = "SHOW FUNCTION STATUS WHERE Db = 'app'",
+            .context = "selected schema function status where",
         }
     );
     failures += execute_error(

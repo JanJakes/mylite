@@ -906,8 +906,41 @@ static int test_show_routine_status_empty_introspection_statements(void) {
 
     failures += parser_test_parse_sql(
         "SHOW PROCEDURE STATUS WHERE Name = 'routine_proc';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT,
+        "show procedure status where"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 1U, "show procedure status where child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "procedure status where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW FUNCTION STATUS WHERE Db = 'test';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT,
+        "show function status where"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 1U, "show function status where child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "function status where clause"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -1346,10 +1379,24 @@ static int test_show_grants_statement(void) {
         parser_test_parse_sql("SHOW GRANTS FOR root;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SHOW GRANTS FOR 'root'@'%';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures += parser_test_parse_sql("SHOW GRANTS FOR 'root'@'%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT,
+        "show grants named account"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 2U, "show grants named account child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "'root'",
+        "show grants named user"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 1U),
+        "@'%'",
+        "show grants named host"
     );
     mylite_sql_parse_result_deinit(&result);
 

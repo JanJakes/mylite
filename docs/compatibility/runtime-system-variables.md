@@ -16,6 +16,11 @@ value`, and `RESET PERSIST` are accepted as embedded admin no-ops with warning
 `1105`; MyLite does not maintain a persisted system-variable file or shared
 server-global mutable state.
 
+Unsupported broad server-global, session, and local `SET` variants that are not
+handled by the per-variable runtime are accepted as embedded utility no-ops
+with warning `1105`; MyLite does not mutate absent variables or shared server
+state through this fallback path.
+
 | Variable | Status | Notes |
 | --- | --- | --- |
 | `activate_all_roles_on_login` | ❌ | Value, scope, SET, diagnostics |

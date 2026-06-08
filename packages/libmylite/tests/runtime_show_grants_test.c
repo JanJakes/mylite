@@ -15,6 +15,7 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_no_such_grant = 1141,
     show_grants_column_count = 1,
     show_grants_row_count = 2,
     status_column_count = 2,
@@ -98,6 +99,7 @@ static int test_show_grants_current_user_forms(void) {
     failures += expect_show_grants(database, "SHOW GRANTS FOR CURRENT_USER");
     failures += expect_show_grants(database, "Show Grants For Current_User");
     failures += expect_show_grants(database, "SHOW GRANTS FOR CURRENT_USER()");
+    failures += expect_show_grants(database, "SHOW GRANTS FOR 'root'@'%'");
 
     mylite_close(database);
     return failures;
@@ -195,10 +197,10 @@ static int test_show_grants_unsupported_diagnostics(void) {
             .message_part = "You have an error in your SQL syntax",
         },
         {
-            .sql = "SHOW GRANTS FOR 'root'@'%'",
-            .code = mysql_error_parse,
+            .sql = "SHOW GRANTS FOR 'missing'@'%'",
+            .code = mysql_error_no_such_grant,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "There is no such grant defined for user 'missing' on host '%'",
         },
         {
             .sql = "SHOW GRANTS FOR CURRENT_USER USING 'r'",

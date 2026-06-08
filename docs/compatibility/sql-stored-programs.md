@@ -23,7 +23,7 @@ Stored-program body statements, variables, control flow, cursors, handlers, and 
 | `OPEN` cursor | ❌ | Cursor open lifecycle |
 | `FETCH` cursor | ❌ | Cursor fetch into variables and NOT FOUND handling |
 | `CLOSE` cursor | ❌ | Cursor close lifecycle |
-| `GET DIAGNOSTICS` | ❌ | Current and stacked diagnostics retrieval |
+| `GET DIAGNOSTICS` | ⚪ | Parsed and rejected with unsupported utility diagnostics; no current or stacked diagnostics assignment surface |
 | `SIGNAL` | ❌ | User-raised SQLSTATE and condition item semantics |
 | `RESIGNAL` | ❌ | Handler rethrow and diagnostics mutation |
 

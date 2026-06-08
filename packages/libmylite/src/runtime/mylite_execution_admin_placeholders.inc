@@ -27,6 +27,35 @@ static int execute_unsupported_stored_program_statement(struct mylite_db *databa
     return MYLITE_ERROR;
 }
 
+static int execute_utility_noop_statement(struct mylite_db *database, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_embedded_utility_noop,
+        "HY000",
+        "MyLite accepted this utility statement as an embedded no-op"
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_unsupported_utility_statement(struct mylite_db *database) {
+    set_unsupported_error(database, "utility statement is not supported");
+    return MYLITE_ERROR;
+}
+
 static bool set_statement_is_persist_noop(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *assignment_list = NULL;
     const struct mylite_sql_ast_node *assignment = NULL;

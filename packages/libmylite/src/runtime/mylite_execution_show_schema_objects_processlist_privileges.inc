@@ -347,6 +347,10 @@ static int execute_show_routine_status_statement(
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
+    if (like_node != NULL && like_node->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+        like_node = NULL;
+    }
+
     rc = make_show_like_filter(database, like_node, &filter);
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -609,13 +613,22 @@ static int append_information_schema_profiling_warning(struct mylite_db *databas
     );
 }
 
-static int execute_show_grants_statement(struct mylite_db *database, mylite_result **out_result) {
+static int execute_show_grants_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
     static const char *const result_columns[show_grants_result_column_count] = {
         "Grants for root@%",
     };
     mylite_result *result = NULL;
-    int rc = mylite_result_create(&result);
+    int rc = MYLITE_OK;
 
+    if (!show_grants_statement_targets_embedded_root(statement)) {
+        return set_show_grants_no_such_grant_error(database, statement);
+    }
+
+    rc = mylite_result_create(&result);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }
@@ -646,6 +659,142 @@ static int execute_show_grants_statement(struct mylite_db *database, mylite_resu
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static bool show_grants_statement_targets_embedded_root(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *user = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *host = child_at(statement, 1U);
+
+    if (user == NULL && host == NULL) {
+        return true;
+    }
+    if (user == NULL || host == NULL) {
+        return false;
+    }
+    return show_grants_user_span_equals(&user->span, "root") &&
+           show_grants_host_span_equals(&host->span, "%");
+}
+
+static int set_show_grants_no_such_grant_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    char user[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char host[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const struct mylite_sql_ast_node *user_node = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *host_node = child_at(statement, 1U);
+    int written = 0;
+
+    if (copy_show_grants_account_part(
+            user_node == NULL ? NULL : &user_node->span,
+            false,
+            user,
+            sizeof(user)
+        ) != MYLITE_OK ||
+        copy_show_grants_account_part(
+            host_node == NULL ? NULL : &host_node->span,
+            true,
+            host,
+            sizeof(host)
+        ) != MYLITE_OK) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    written = snprintf(
+        message,
+        sizeof(message),
+        "There is no such grant defined for user '%s' on host '%s'",
+        user,
+        host
+    );
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_no_such_grant,
+        "42000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static bool show_grants_user_span_equals(
+    const struct mylite_sql_source_span *span,
+    const char *expected
+) {
+    return show_grants_quoted_span_text_matches(span, 0U, expected);
+}
+
+static bool show_grants_host_span_equals(
+    const struct mylite_sql_source_span *span,
+    const char *expected
+) {
+    return show_grants_quoted_span_text_matches(span, 1U, expected);
+}
+
+static bool show_grants_quoted_span_text_matches(
+    const struct mylite_sql_source_span *span,
+    size_t offset,
+    const char *expected
+) {
+    const char *text = NULL;
+    size_t expected_length = 0U;
+    size_t length = 0U;
+    char quote = '\0';
+
+    if (span == NULL || span->text == NULL || span->length <= offset || expected == NULL) {
+        return false;
+    }
+    expected_length = strlen(expected);
+    text = span->text + offset;
+    length = span->length - offset;
+    quote = text[0];
+    if ((quote == '\'' || quote == '"' || quote == '`') && length >= 2U &&
+        text[length - 1U] == quote) {
+        ++text;
+        length -= 2U;
+    }
+    return length == expected_length && memcmp(text, expected, expected_length) == 0;
+}
+
+static int copy_show_grants_account_part(
+    const struct mylite_sql_source_span *span,
+    bool skip_at,
+    char *buffer,
+    size_t buffer_size
+) {
+    const char *text = NULL;
+    size_t length = 0U;
+    size_t offset = skip_at ? 1U : 0U;
+    char quote = '\0';
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return MYLITE_NOMEM;
+    }
+    buffer[0] = '\0';
+    if (span == NULL || span->text == NULL || span->length <= offset) {
+        return MYLITE_OK;
+    }
+
+    text = span->text + offset;
+    length = span->length - offset;
+    quote = text[0];
+    if ((quote == '\'' || quote == '"' || quote == '`') && length >= 2U &&
+        text[length - 1U] == quote) {
+        ++text;
+        length -= 2U;
+    }
+    if (length >= buffer_size) {
+        length = buffer_size - 1U;
+    }
+    memcpy(buffer, text, length);
+    buffer[length] = '\0';
+    return MYLITE_OK;
 }
 
 static int execute_show_privileges_statement(

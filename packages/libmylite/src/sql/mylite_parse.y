@@ -1380,11 +1380,11 @@ show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) IN identifier(D) show_l
     A = mylite_sql_parser_make_show_open_tables_statement(state, S, T, D, L);
 }
 
-show_routine_status_statement(A) ::= SHOW(S) PROCEDURE STATUS(T) show_like_clause_opt(L). {
+show_routine_status_statement(A) ::= SHOW(S) PROCEDURE STATUS(T) show_catalog_filter_opt(L). {
     A = mylite_sql_parser_make_show_routine_status_statement(
         state, S, T, MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT, L);
 }
-show_routine_status_statement(A) ::= SHOW(S) FUNCTION STATUS(T) show_like_clause_opt(L). {
+show_routine_status_statement(A) ::= SHOW(S) FUNCTION STATUS(T) show_catalog_filter_opt(L). {
     A = mylite_sql_parser_make_show_routine_status_statement(
         state, S, T, MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT, L);
 }
@@ -1406,6 +1406,10 @@ show_grants_statement(A) ::= SHOW(S) GRANTS FOR CURRENT_USER(C). {
 }
 show_grants_statement(A) ::= SHOW(S) GRANTS FOR CURRENT_USER LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_show_grants_statement(state, S, R);
+}
+show_grants_statement(A) ::= SHOW(S) GRANTS FOR STRING(U) user_variable(H). {
+    A = mylite_sql_parser_make_show_grants_for_account_statement(
+        state, S, mylite_sql_parser_make_literal(state, U, MYLITE_SQL_AST_LITERAL_STRING), H);
 }
 
 show_warnings_statement(A) ::= SHOW(S) WARNINGS(W) limit_clause_opt(L). {

@@ -59,6 +59,8 @@ enum placeholder_statement_kind {
     PLACEHOLDER_STATEMENT_NONE = 0,
     PLACEHOLDER_STATEMENT_ADMIN_NOOP = 1,
     PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM = 2,
+    PLACEHOLDER_STATEMENT_UTILITY_NOOP = 3,
+    PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY = 4,
 };
 
 struct placeholder_statement_scan {
@@ -109,6 +111,12 @@ static bool append_placeholder_statement_token(
 static enum placeholder_statement_kind classify_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static enum placeholder_statement_kind classify_schema_security_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_utility_admin_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
 static enum placeholder_statement_kind classify_create_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -120,6 +128,13 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
 );
 static enum placeholder_statement_kind classify_set_placeholder_statement(
     const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_show_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_text(
+    const struct placeholder_statement_scan *scan,
+    const char *text
 );
 static bool placeholder_scan_token_text_equals(
     const struct placeholder_statement_scan *scan,
@@ -386,7 +401,8 @@ static enum mylite_sql_parse_status try_parse_placeholder_statement(
     scan.tokens = tokens;
     kind = classify_placeholder_statement(&scan);
     if (kind == PLACEHOLDER_STATEMENT_NONE ||
-        (kind == PLACEHOLDER_STATEMENT_ADMIN_NOOP && scan.has_non_trailing_semicolon)) {
+        ((kind == PLACEHOLDER_STATEMENT_ADMIN_NOOP || kind == PLACEHOLDER_STATEMENT_UTILITY_NOOP) &&
+         scan.has_non_trailing_semicolon)) {
         free(tokens);
         return MYLITE_SQL_PARSE_OK;
     }
@@ -490,10 +506,23 @@ static bool append_placeholder_statement_token(
 static enum placeholder_statement_kind classify_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
+    enum placeholder_statement_kind kind;
+
     if (scan == NULL || scan->token_count == 0U) {
         return PLACEHOLDER_STATEMENT_NONE;
     }
 
+    kind = classify_schema_security_placeholder_statement(scan);
+    if (kind != PLACEHOLDER_STATEMENT_NONE) {
+        return kind;
+    }
+
+    return classify_utility_admin_placeholder_statement(scan);
+}
+
+static enum placeholder_statement_kind classify_schema_security_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
     if (placeholder_scan_token_text_equals(scan, 0U, "CALL")) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
     }
@@ -514,8 +543,25 @@ static enum placeholder_statement_kind classify_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 0U, "REVOKE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 0U, "SET")) {
-        return classify_set_placeholder_statement(scan);
+
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_utility_admin_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 0U, "XA") ||
+        placeholder_scan_token_text_equals(scan, 0U, "HANDLER")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "GET") &&
+        placeholder_scan_token_text_equals(scan, 1U, "DIAGNOSTICS")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "ANALYZE") &&
+        placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
+        placeholder_scan_contains_text(scan, "HISTOGRAM")) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 0U, "RESET") ||
         placeholder_scan_token_text_equals(scan, 0U, "FLUSH") ||
@@ -532,16 +578,25 @@ static enum placeholder_statement_kind classify_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 1U, "INDEX")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 0U, "SHOW") &&
-        placeholder_scan_token_text_equals(scan, 1U, "CREATE")) {
-        if (placeholder_scan_token_text_equals(scan, 2U, "FUNCTION") ||
-            placeholder_scan_token_text_equals(scan, 2U, "TRIGGER") ||
-            placeholder_scan_token_text_equals(scan, 2U, "EVENT")) {
-            return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
-        }
-        if (placeholder_scan_token_text_equals(scan, 2U, "USER")) {
-            return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
-        }
+    if (placeholder_scan_token_text_equals(scan, 0U, "LOAD") &&
+        placeholder_scan_token_text_equals(scan, 1U, "DATA")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "SET")) {
+        return classify_set_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "INSTALL") &&
+        (placeholder_scan_token_text_equals(scan, 1U, "COMPONENT") ||
+         placeholder_scan_token_text_equals(scan, 1U, "PLUGIN"))) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "UNINSTALL") &&
+        (placeholder_scan_token_text_equals(scan, 1U, "COMPONENT") ||
+         placeholder_scan_token_text_equals(scan, 1U, "PLUGIN"))) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "SHOW")) {
+        return classify_show_placeholder_statement(scan);
     }
 
     return PLACEHOLDER_STATEMENT_NONE;
@@ -554,6 +609,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
         placeholder_scan_token_text_equals(scan, 1U, "RESOURCE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
 
     for (size_t index = 1U;
@@ -577,6 +635,9 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 1U, "INSTANCE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "PROCEDURE") ||
         placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||
         placeholder_scan_token_text_equals(scan, 1U, "EVENT")) {
@@ -592,6 +653,9 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
         placeholder_scan_token_text_equals(scan, 1U, "RESOURCE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||
         placeholder_scan_token_text_equals(scan, 1U, "TRIGGER") ||
@@ -613,11 +677,59 @@ static enum placeholder_statement_kind classify_set_placeholder_statement(
         placeholder_scan_token_text_starts_with(scan, 1U, "@@PERSIST_ONLY.")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
+    if (placeholder_scan_token_text_equals(scan, 1U, "GLOBAL") ||
+        placeholder_scan_token_text_equals(scan, 1U, "SESSION") ||
+        placeholder_scan_token_text_equals(scan, 1U, "LOCAL") ||
+        placeholder_scan_token_text_starts_with(scan, 1U, "@@GLOBAL.") ||
+        placeholder_scan_token_text_starts_with(scan, 1U, "@@SESSION.") ||
+        placeholder_scan_token_text_starts_with(scan, 1U, "@@LOCAL.")) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "DEFAULT") &&
         placeholder_scan_token_text_equals(scan, 2U, "ROLE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_show_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "CREATE")) {
+        if (placeholder_scan_token_text_equals(scan, 2U, "FUNCTION") ||
+            placeholder_scan_token_text_equals(scan, 2U, "TRIGGER") ||
+            placeholder_scan_token_text_equals(scan, 2U, "EVENT")) {
+            return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+        }
+        if (placeholder_scan_token_text_equals(scan, 2U, "USER")) {
+            return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+        }
+    }
+    if ((placeholder_scan_token_text_equals(scan, 1U, "PROCEDURE") ||
+         placeholder_scan_token_text_equals(scan, 1U, "FUNCTION")) &&
+        placeholder_scan_token_text_equals(scan, 2U, "CODE")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "PROFILE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "PROFILES")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool placeholder_scan_contains_text(
+    const struct placeholder_statement_scan *scan,
+    const char *text
+) {
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, text)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool placeholder_scan_token_text_equals(
@@ -668,6 +780,10 @@ static enum mylite_sql_ast_node_kind ast_kind_for_placeholder_statement(
         return MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT;
     case PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM:
         return MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT;
+    case PLACEHOLDER_STATEMENT_UTILITY_NOOP:
+        return MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT;
+    case PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY:
+        return MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT;
     case PLACEHOLDER_STATEMENT_NONE:
         break;
     }
@@ -3080,6 +3196,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_statement(
         MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT,
         span_join(span_from_token(&show_token), span_from_token(&end_token))
     );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_for_account_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *user,
+    struct mylite_sql_ast_node *host
+) {
+    struct mylite_sql_source_span span;
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (user == NULL || host == NULL) {
+        return NULL;
+    }
+    span = span_join(span_from_token(&show_token), host->span);
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, user);
+    mylite_sql_ast_node_append_child(statement, host);
+    return statement;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(

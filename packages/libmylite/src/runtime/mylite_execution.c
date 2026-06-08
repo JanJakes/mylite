@@ -3937,6 +3937,8 @@ static int execute_set_statement(
 );
 static int execute_admin_noop_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_unsupported_stored_program_statement(struct mylite_db *database);
+static int execute_utility_noop_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_unsupported_utility_statement(struct mylite_db *database);
 static bool set_statement_is_persist_noop(const struct mylite_sql_ast_node *statement);
 static bool set_assignment_target_is_persist_noop(const struct mylite_sql_ast_node *target);
 static bool span_starts_with_ascii_case_insensitive(
@@ -8293,7 +8295,36 @@ static int execute_show_processlist_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int execute_show_grants_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_show_grants_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static bool show_grants_statement_targets_embedded_root(const struct mylite_sql_ast_node *statement
+);
+static int set_show_grants_no_such_grant_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static bool show_grants_user_span_equals(
+    const struct mylite_sql_source_span *span,
+    const char *expected
+);
+static bool show_grants_host_span_equals(
+    const struct mylite_sql_source_span *span,
+    const char *expected
+);
+static bool show_grants_quoted_span_text_matches(
+    const struct mylite_sql_source_span *span,
+    size_t offset,
+    const char *expected
+);
+static int copy_show_grants_account_part(
+    const struct mylite_sql_source_span *span,
+    bool skip_at,
+    char *buffer,
+    size_t buffer_size
+);
 static int execute_show_privileges_statement(
     struct mylite_db *database,
     mylite_result **out_result

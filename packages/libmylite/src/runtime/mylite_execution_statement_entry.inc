@@ -160,6 +160,10 @@ static int execute_non_prepared_statement(
         return execute_admin_noop_statement(database, out_result);
     case MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT:
         return execute_unsupported_stored_program_statement(database);
+    case MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT:
+        return execute_utility_noop_statement(database, out_result);
+    case MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT:
+        return execute_unsupported_utility_statement(database);
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
         return execute_set_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
@@ -361,7 +365,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
         return execute_show_processlist_statement(database, context, statement, out_result);
     case MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT:
-        return execute_show_grants_statement(database, out_result);
+        return execute_show_grants_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT:
         return execute_show_privileges_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT:

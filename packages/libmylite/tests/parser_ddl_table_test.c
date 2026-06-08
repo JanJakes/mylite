@@ -4606,8 +4606,14 @@ static int test_table_maintenance_statements(void) {
 
     failures += parser_test_parse_sql(
         "ANALYZE TABLE t UPDATE HISTOGRAM ON c;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        "analyze histogram placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 

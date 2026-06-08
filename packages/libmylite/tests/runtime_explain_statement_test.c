@@ -103,6 +103,17 @@ static int test_explain_placeholder_results(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "EXPLAIN SELECT * FROM t1 WHERE MATCH(title) AGAINST ('needle')",
+            .columns = traditional_columns,
+            .column_count = sizeof(traditional_columns) / sizeof(traditional_columns[0]),
+            .values = traditional_values,
+            .row_count = 1U,
+            .context = "traditional EXPLAIN unsupported child placeholder",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "EXPLAIN UPDATE t SET id = 1",
             .columns = traditional_columns,
             .column_count = sizeof(traditional_columns) / sizeof(traditional_columns[0]),
@@ -120,6 +131,17 @@ static int test_explain_placeholder_results(void) {
             .values = json_values,
             .row_count = 1U,
             .context = "json EXPLAIN SELECT",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "EXPLAIN FORMAT=JSON SELECT ROW_NUMBER() RESPECT NULLS OVER () FROM t1",
+            .columns = json_columns,
+            .column_count = 1U,
+            .values = json_values,
+            .row_count = 1U,
+            .context = "json EXPLAIN unsupported child placeholder",
         }
     );
     failures += expect_query(
@@ -178,6 +200,11 @@ static int test_explain_placeholder_errors(void) {
     failures += execute_error_contains(
         database,
         "EXPLAIN FORMAT=CSV SELECT 1",
+        "EXPLAIN supports FORMAT=TRADITIONAL, JSON, or TREE"
+    );
+    failures += execute_error_contains(
+        database,
+        "EXPLAIN FORMAT=CSV SELECT * FROM t1 WHERE MATCH(title) AGAINST ('needle')",
         "EXPLAIN supports FORMAT=TRADITIONAL, JSON, or TREE"
     );
 

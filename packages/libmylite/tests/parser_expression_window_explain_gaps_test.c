@@ -36,6 +36,10 @@ static int test_explain_query_forms(void) {
         "EXPLAIN FORMAT=TREE SELECT 1",
         "EXPLAIN ANALYZE SELECT 1",
         "EXPLAIN ANALYZE FORMAT=TREE SELECT 1",
+        "EXPLAIN SELECT * FROM t1 WHERE MATCH(title) AGAINST ('needle')",
+        "EXPLAIN FORMAT=JSON SELECT ROW_NUMBER() RESPECT NULLS OVER () FROM t1",
+        "EXPLAIN FORMAT=CSV SELECT * FROM t1 WHERE MATCH(title) AGAINST ('needle')",
+        "EXPLAIN ANALYZE FORMAT=JSON SELECT * FROM t1 WHERE MATCH(title) AGAINST ('needle')",
         "EXPLAIN TABLE numbers",
         "EXPLAIN VALUES ROW(1), ROW(2)",
         "EXPLAIN INSERT INTO numbers VALUES (1)",
@@ -74,6 +78,11 @@ static int test_explain_query_forms(void) {
         "EXPLAIN FORMAT=DEFAULT SELECT 1",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "EXPLAIN FORMAT DEFAULT"
+    );
+    failures += parse_status(
+        "EXPLAIN FOR CONNECTION 1",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "EXPLAIN FOR CONNECTION"
     );
 
     return failures;

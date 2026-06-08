@@ -49,8 +49,11 @@ rejected because MySQL restricts `EXPLAIN ANALYZE` to tree output. MyLite keeps
 `EXPLAIN FORMAT=JSON ANALYZE` as a syntax error.
 
 The placeholder does not validate whether referenced user tables exist or
-whether the child statement would be executable. `INTO`, `FOR SCHEMA`,
-`FOR DATABASE`, and `FOR CONNECTION` remain unsupported.
+whether the child statement would be executable. If the normal grammar cannot
+parse the child query, a post-parse fallback still accepts query-form `EXPLAIN`
+prefixes and builds the same placeholder `EXPLAIN` node, preserving
+format/analyze diagnostics. `INTO`, `FOR SCHEMA`, `FOR DATABASE`, and
+`FOR CONNECTION` remain unsupported.
 
 ### Window grammar
 

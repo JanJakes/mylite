@@ -670,6 +670,8 @@ static int test_auto_increment_user_rollback_high_water(void) {
     static const char *const explicit_rollback_row[] = {"11", "20"};
     static const char *const update_rollback_rows[] = {"1", "10", "21", "30"};
     static const char *const savepoint_rollback_row[] = {"2", "20"};
+    static const char *const batch_a_rollback_row[] = {"2", "20"};
+    static const char *const batch_b_rollback_row[] = {"6", "60"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -831,6 +833,72 @@ static int test_auto_increment_user_rollback_high_water(void) {
             .context = "savepoint rollback does not reuse generated id",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE batch_a_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE batch_b_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT) AUTO_INCREMENT=5"
+    );
+    failures += expect_statement_ok(database, "START TRANSACTION");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO batch_a_tx(v) VALUES(10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO batch_b_tx(v) VALUES(50)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_ok(database, "ROLLBACK");
+    failures += expect_show_table_status_auto_increment(
+        database,
+        "batch_a_tx",
+        "2",
+        "batch first rollback status"
+    );
+    failures += expect_show_table_status_auto_increment(
+        database,
+        "batch_b_tx",
+        "5",
+        "batch second rollback explicit status"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO batch_a_tx(v) VALUES(20)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO batch_b_tx(v) VALUES(60)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM batch_a_tx",
+            .values = batch_a_rollback_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "batched persistent rollback preserves first high counter",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM batch_b_tx",
+            .values = batch_b_rollback_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "batched persistent rollback preserves second high counter",
+        }
+    );
+    failures +=
+        expect_show_table_status_auto_increment(database, "batch_a_tx", "3", "batch first status");
+    failures +=
+        expect_show_table_status_auto_increment(database, "batch_b_tx", "5", "batch second status");
 
     mylite_close(database);
     remove_related_files(path);
@@ -1152,18 +1220,24 @@ static int test_auto_increment_type_families_and_diagnostics(void) {
 static int test_auto_increment_independent_handles(void) {
     static const char *const first_rows[] = {"1", "10"};
     static const char *const second_rows[] = {"5", "50"};
+    static const char *const shared_rollback_rows[] = {"2", "20"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
+    char shared_path[test_path_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
+    mylite_db *shared_first = NULL;
+    mylite_db *shared_second = NULL;
     int failures = 0;
 
     if (make_test_path(first_path, sizeof(first_path), "first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "second") != 0) {
+        make_test_path(second_path, sizeof(second_path), "second") != 0 ||
+        make_test_path(shared_path, sizeof(shared_path), "shared") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
+    remove_related_files(shared_path);
 
     failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
     failures += expect_statement_ok(first, "CREATE DATABASE app");
@@ -1212,8 +1286,51 @@ static int test_auto_increment_independent_handles(void) {
     failures += expect_show_table_status_auto_increment(first, "t", "2", "first handle status");
     failures += expect_show_table_status_auto_increment(second, "t", "5", "second handle status");
 
+    failures +=
+        expect_int(mylite_open(shared_path, &shared_first), MYLITE_OK, "open shared first file");
+    failures += expect_statement_ok(shared_first, "CREATE DATABASE app");
+    failures += expect_statement_ok(shared_first, "USE app");
+    failures += expect_statement_ok(
+        shared_first,
+        "CREATE TABLE shared_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures +=
+        expect_int(mylite_open(shared_path, &shared_second), MYLITE_OK, "open shared second file");
+    failures += expect_statement_ok(shared_second, "USE app");
+    failures += expect_statement_ok(shared_first, "START TRANSACTION");
+    failures += expect_statement_result(
+        shared_first,
+        "INSERT INTO shared_tx(v) VALUES(10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_ok(shared_first, "ROLLBACK");
+    failures += expect_statement_result(
+        shared_second,
+        "INSERT INTO shared_tx(v) VALUES(20)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        shared_second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM shared_tx",
+            .values = shared_rollback_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "shared handle rollback high water visibility",
+        }
+    );
+    failures += expect_show_table_status_auto_increment(
+        shared_second,
+        "shared_tx",
+        "3",
+        "shared handle rollback status"
+    );
+
+    mylite_close(shared_second);
+    mylite_close(shared_first);
     mylite_close(second);
     mylite_close(first);
+    remove_related_files(shared_path);
     remove_related_files(second_path);
     remove_related_files(first_path);
 

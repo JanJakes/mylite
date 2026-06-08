@@ -3972,8 +3972,24 @@ static int record_persistent_auto_increment_high_water(
     int64_t next_value
 );
 static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *database);
-static int apply_persistent_auto_increment_high_water(
+static bool has_persistent_auto_increment_high_water_updates(
+    const struct mylite_session_state *session
+);
+static int begin_persistent_auto_increment_high_water_reconciliation(
     struct mylite_db *database,
+    bool *out_started_transaction
+);
+static int commit_persistent_auto_increment_high_water_reconciliation(struct mylite_db *database);
+static void rollback_persistent_auto_increment_high_water_reconciliation(
+    const struct mylite_db *database
+);
+static int apply_persistent_auto_increment_high_waters(
+    struct mylite_db *database,
+    const struct mylite_session_auto_increment_high_water *high_waters,
+    size_t high_water_count
+);
+static int apply_persistent_auto_increment_high_water(
+    sqlite3_stmt *statement,
     const struct mylite_session_auto_increment_high_water *high_water
 );
 static void clear_persistent_auto_increment_high_waters(struct mylite_db *database);

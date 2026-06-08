@@ -250,18 +250,31 @@ static int record_persistent_auto_increment_high_water(
 
 static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *database) {
     struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    bool started_transaction = false;
     int rc = MYLITE_OK;
 
-    if (session == NULL || session->auto_increment_high_water_count == 0U) {
+    if (session == NULL || session->auto_increment_high_water_count == 0U ||
+        !has_persistent_auto_increment_high_water_updates(session)) {
         return MYLITE_OK;
     }
 
-    for (size_t index = 0U; rc == MYLITE_OK && index < session->auto_increment_high_water_count;
-         ++index) {
-        rc = apply_persistent_auto_increment_high_water(
+    rc = begin_persistent_auto_increment_high_water_reconciliation(database, &started_transaction);
+    if (rc == MYLITE_OK) {
+        rc = apply_persistent_auto_increment_high_waters(
             database,
-            &session->auto_increment_high_waters[index]
+            session->auto_increment_high_waters,
+            session->auto_increment_high_water_count
         );
+    }
+    if (started_transaction) {
+        if (rc == MYLITE_OK) {
+            rc = commit_persistent_auto_increment_high_water_reconciliation(database);
+            if (rc != MYLITE_OK) {
+                rollback_persistent_auto_increment_high_water_reconciliation(database);
+            }
+        } else {
+            rollback_persistent_auto_increment_high_water_reconciliation(database);
+        }
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to reconcile auto-increment counters");
@@ -269,11 +282,83 @@ static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *dat
     return rc;
 }
 
-static int apply_persistent_auto_increment_high_water(
+static bool has_persistent_auto_increment_high_water_updates(
+    const struct mylite_session_state *session
+) {
+    for (size_t index = 0U; index < session->auto_increment_high_water_count; ++index) {
+        const struct mylite_session_auto_increment_high_water *high_water =
+            &session->auto_increment_high_waters[index];
+
+        if (high_water->table_id > 0 && high_water->next_value > 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static int begin_persistent_auto_increment_high_water_reconciliation(
     struct mylite_db *database,
-    const struct mylite_session_auto_increment_high_water *high_water
+    bool *out_started_transaction
+) {
+    int rc = MYLITE_OK;
+
+    *out_started_transaction = false;
+    if (database->session.user_transaction_active ||
+        sqlite3_get_autocommit(database->sqlite) == 0) {
+        return MYLITE_OK;
+    }
+
+    rc = normalize_sqlite_control_rc(
+        database,
+        execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+    );
+
+    if (rc == MYLITE_OK) {
+        *out_started_transaction = true;
+    }
+    return rc;
+}
+
+static int commit_persistent_auto_increment_high_water_reconciliation(struct mylite_db *database) {
+    return normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+}
+
+static void rollback_persistent_auto_increment_high_water_reconciliation(
+    const struct mylite_db *database
+) {
+    (void)execute_sqlite_control_sql(database, "ROLLBACK");
+}
+
+static int apply_persistent_auto_increment_high_waters(
+    struct mylite_db *database,
+    const struct mylite_session_auto_increment_high_water *high_waters,
+    size_t high_water_count
 ) {
     sqlite3_stmt *statement = NULL;
+    int rc = prepare_sqlite_statement(
+        database,
+        "UPDATE _mylite_catalog_tables "
+        "SET auto_increment_next = ?1 "
+        "WHERE table_id = ?2 AND auto_increment_next < ?1",
+        &statement
+    );
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < high_water_count; ++index) {
+        rc = apply_persistent_auto_increment_high_water(statement, &high_waters[index]);
+    }
+
+    rc = finalize_sqlite_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        mylite_catalog_invalidate_descriptor_cache(database);
+    }
+    return rc;
+}
+
+static int apply_persistent_auto_increment_high_water(
+    sqlite3_stmt *statement,
+    const struct mylite_session_auto_increment_high_water *high_water
+) {
     int sqlite_rc = SQLITE_OK;
     int rc = MYLITE_OK;
 
@@ -281,13 +366,11 @@ static int apply_persistent_auto_increment_high_water(
         return MYLITE_OK;
     }
 
-    rc = prepare_sqlite_statement(
-        database,
-        "UPDATE _mylite_catalog_tables "
-        "SET auto_increment_next = ?1 "
-        "WHERE table_id = ?2 AND auto_increment_next < ?1",
-        &statement
-    );
+    sqlite_rc = sqlite3_reset(statement);
+    if (sqlite_rc == SQLITE_OK) {
+        sqlite_rc = sqlite3_clear_bindings(statement);
+    }
+    rc = mylite_sqlite_status_to_mylite(sqlite_rc);
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_bind_int64(statement, 1, (sqlite3_int64)high_water->next_value);
         rc = mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -302,7 +385,7 @@ static int apply_persistent_auto_increment_high_water(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    return finalize_sqlite_statement(statement, rc);
+    return rc;
 }
 
 static void clear_persistent_auto_increment_high_waters(struct mylite_db *database) {

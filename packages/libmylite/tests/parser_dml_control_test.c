@@ -211,6 +211,42 @@ static int test_set_fixed_system_variable_statement(void) {
         parser_test_expect_child_count(assignment_list, 2U, "set assignment list supports commas");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SET character_set_client = utf8mb4, character_set_results = utf8mb4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    assignment_list = parser_test_child_at(statement, 0U);
+    assignment = parser_test_child_at(assignment_list, 0U);
+    failures += parser_test_expect_child_count(
+        assignment_list,
+        2U,
+        "set character assignment list supports commas"
+    );
+    value = parser_test_child_at(assignment, 1U);
+    failures += parser_test_expect_node(
+        value,
+        MYLITE_SQL_AST_IDENTIFIER,
+        "set character_set_client identifier value"
+    );
+    failures +=
+        parser_test_expect_span_text(value, "utf8mb4", "set character_set_client identifier span");
+    assignment = parser_test_child_at(assignment_list, 1U);
+    target = parser_test_child_at(assignment, 0U);
+    value = parser_test_child_at(assignment, 1U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(target, 0U),
+        "character_set_results",
+        "set character_set_results target"
+    );
+    failures += parser_test_expect_node(
+        value,
+        MYLITE_SQL_AST_IDENTIFIER,
+        "set character_set_results identifier value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("SET @name = 1, @other := @@sql_mode;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);

@@ -37,8 +37,9 @@ Runtime probes verified the following behavior for this slice:
 - Names longer than 64 UTF-8 characters fail with `3061 / 42000`.
 - `SET @a = 1`, `SET @b := 'x'`, and comma-separated user-variable assignments
   succeed and report `ROW_COUNT() == 0`.
-- `SET @d = 1.0` and signed fixed-decimal forms preserve MySQL-visible decimal
-  text for scalar readback in the admitted fixed-decimal subset.
+- `SET @d = 1.0`, `SET @f = 1e18`, and signed fixed-decimal or floating-point
+  forms preserve MySQL-visible source text for scalar readback in the admitted
+  numeric subset.
 - `SET @old_sql_mode = @@sql_mode, sql_mode = 'NO_ENGINE_SUBSTITUTION'`
   evaluates atomically and left-to-right for the successful observed subset.
 - `SET sql_mode = @old_sql_mode` restores from a user variable containing a
@@ -74,7 +75,11 @@ Supported assignment values:
 - `NULL`;
 - decimal integer literals with optional unary `+` or `-`;
 - fixed-decimal literals with optional unary `+` or `-`;
+- floating-point literals with optional unary `+` or `-`;
 - ordinary string literals without embedded `NUL` bytes;
+- hex and bit literals without embedded `NUL` bytes after decoding;
+- charset-introduced string, hex, and bit literals with optional `COLLATE`
+  clauses, without charset conversion;
 - boolean keywords `TRUE`, `FALSE`, `ON`, and `OFF`;
 - existing scalar system variables, such as `@@sql_mode`;
 - existing user variables, such as `@old_sql_mode`;
@@ -83,16 +88,18 @@ Supported assignment values:
 The value stored in a user variable is MyLite-owned session data. Integer and
 boolean values are stored in their MySQL-visible text form (`1`, `0`, `-2`,
 etc.); fixed-decimal values are stored as source text after removing an
-optional unary `+`; string values are stored after MyLite string-literal
-decoding; `NULL` is stored as SQL `NULL`. This keeps scalar result readback
-and system-variable restoration deterministic without adding a new public
-value type.
+optional unary `+`; floating-point values are stored as source text in the
+string-backed value family; string values are stored after MyLite
+string-literal decoding; hex and bit values are stored after byte decoding;
+`NULL` is stored as SQL `NULL`. This keeps scalar result readback and
+system-variable restoration deterministic without adding a new public value
+type.
 
-The following remain unsupported: exponent-form floating literals, hex/bit
-literals, temporal literals, JSON values, arbitrary arithmetic assignment
-expressions, function calls, subqueries, parameters, column references,
-assignment outside `SET` except the later top-level `SELECT ... INTO @vars`
-slice, and binary-string values containing embedded `NUL` bytes.
+The following remain unsupported: temporal literals, JSON values, arbitrary
+arithmetic assignment expressions, function calls, subqueries, parameters,
+column references, assignment outside `SET` except the later top-level
+`SELECT ... INTO @vars` slice, charset conversion for introduced literals, and
+binary-string values containing embedded `NUL` bytes.
 
 ### SET
 
@@ -178,11 +185,22 @@ user_variable_set_value ::= ON.
 user_variable_set_value ::= OFF.
 user_variable_set_value ::= INTEGER.
 user_variable_set_value ::= DECIMAL.
+user_variable_set_value ::= FLOAT.
 user_variable_set_value ::= PLUS INTEGER.
 user_variable_set_value ::= PLUS DECIMAL.
+user_variable_set_value ::= PLUS FLOAT.
 user_variable_set_value ::= MINUS INTEGER.
 user_variable_set_value ::= MINUS DECIMAL.
+user_variable_set_value ::= MINUS FLOAT.
 user_variable_set_value ::= STRING_LITERAL.
+user_variable_set_value ::= HEX_LITERAL.
+user_variable_set_value ::= BIT_LITERAL.
+user_variable_set_value ::= charset_introducer STRING_LITERAL.
+user_variable_set_value ::= charset_introducer STRING_LITERAL COLLATE option_name.
+user_variable_set_value ::= charset_introducer HEX_LITERAL.
+user_variable_set_value ::= charset_introducer HEX_LITERAL COLLATE option_name.
+user_variable_set_value ::= charset_introducer BIT_LITERAL.
+user_variable_set_value ::= charset_introducer BIT_LITERAL COLLATE option_name.
 user_variable_set_value ::= user_variable.
 user_variable_set_value ::= SYSTEM_VARIABLE.
 user_variable_set_value ::= LPAREN user_variable_set_value RPAREN.

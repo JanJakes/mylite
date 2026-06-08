@@ -677,33 +677,36 @@ use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
 }
 
-set_connection_charset_statement(A) ::= SET(S) NAMES option_name(C) set_names_collate_opt(L). {
-    A = mylite_sql_parser_make_set_names_statement(state, S, C, L);
-}
-set_connection_charset_statement(A) ::= SET(S) NAMES DEFAULT(D). {
-    A = mylite_sql_parser_make_set_names_statement(
+set_connection_charset_statement(A) ::=
+    SET(S) NAMES set_connection_charset_target(C) set_names_collate_opt(L) set_tail_opt(T). {
+    A = mylite_sql_parser_attach_set_tail_assignment_list(
         state,
-        S,
-        mylite_sql_parser_make_set_character_set_default_target(state, D),
-        NULL);
+        mylite_sql_parser_make_set_names_statement(state, S, C, L),
+        T);
 }
-set_connection_charset_statement(A) ::= SET(S) CHARACTER SET option_name(C). {
-    A = mylite_sql_parser_make_set_character_set_statement(state, S, C);
-}
-set_connection_charset_statement(A) ::= SET(S) CHARACTER SET DEFAULT(D). {
-    A = mylite_sql_parser_make_set_character_set_statement(
+set_connection_charset_statement(A) ::=
+    SET(S) CHARACTER SET set_connection_charset_target(C) set_tail_opt(T). {
+    A = mylite_sql_parser_attach_set_tail_assignment_list(
         state,
-        S,
-        mylite_sql_parser_make_set_character_set_default_target(state, D));
+        mylite_sql_parser_make_set_character_set_statement(state, S, C),
+        T);
 }
-set_connection_charset_statement(A) ::= SET(S) CHARSET option_name(C). {
-    A = mylite_sql_parser_make_set_character_set_statement(state, S, C);
-}
-set_connection_charset_statement(A) ::= SET(S) CHARSET DEFAULT(D). {
-    A = mylite_sql_parser_make_set_character_set_statement(
+set_connection_charset_statement(A) ::=
+    SET(S) CHARSET set_connection_charset_target(C) set_tail_opt(T). {
+    A = mylite_sql_parser_attach_set_tail_assignment_list(
         state,
-        S,
-        mylite_sql_parser_make_set_character_set_default_target(state, D));
+        mylite_sql_parser_make_set_character_set_statement(state, S, C),
+        T);
+}
+
+set_connection_charset_target(A) ::= option_name(C). {
+    A = C;
+}
+set_connection_charset_target(A) ::= BINARY(B). {
+    A = mylite_sql_parser_make_identifier(state, B);
+}
+set_connection_charset_target(A) ::= DEFAULT(D). {
+    A = mylite_sql_parser_make_set_character_set_default_target(state, D);
 }
 
 set_names_collate_opt(A) ::= . {
@@ -711,6 +714,13 @@ set_names_collate_opt(A) ::= . {
 }
 set_names_collate_opt(A) ::= COLLATE option_name(C). {
     A = C;
+}
+
+set_tail_opt(A) ::= . {
+    A = NULL;
+}
+set_tail_opt(A) ::= COMMA set_assignment_list(L). {
+    A = L;
 }
 
 set_assignment_statement(A) ::= SET(S) set_assignment_list(L). {
@@ -774,6 +784,12 @@ set_system_variable_value(A) ::= UTC(T). {
 set_system_variable_value(A) ::= SERIALIZABLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+set_system_variable_value(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+set_system_variable_value(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 set_system_variable_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
@@ -831,6 +847,30 @@ set_system_variable_value(A) ::= NULL(T). {
 set_system_variable_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
+set_system_variable_value(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+set_system_variable_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+set_system_variable_value(A) ::= charset_introducer STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+set_system_variable_value(A) ::= charset_introducer STRING(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+set_system_variable_value(A) ::= charset_introducer HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+set_system_variable_value(A) ::= charset_introducer HEX_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+set_system_variable_value(A) ::= charset_introducer BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+set_system_variable_value(A) ::= charset_introducer BIT_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
 set_system_variable_value(A) ::= user_variable(T). {
     A = T;
 }
@@ -844,6 +884,9 @@ user_variable_set_value(A) ::= INTEGER(T). {
 user_variable_set_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
 }
+user_variable_set_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
 user_variable_set_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
@@ -854,6 +897,11 @@ user_variable_set_value(A) ::= PLUS(P) DECIMAL(T). {
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
+user_variable_set_value(A) ::= PLUS(P) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
 user_variable_set_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
@@ -863,6 +911,11 @@ user_variable_set_value(A) ::= MINUS(M) DECIMAL(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+user_variable_set_value(A) ::= MINUS(M) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
 }
 user_variable_set_value(A) ::= TRUE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
@@ -881,6 +934,30 @@ user_variable_set_value(A) ::= NULL(T). {
 }
 user_variable_set_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+user_variable_set_value(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+user_variable_set_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+user_variable_set_value(A) ::= charset_introducer STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+user_variable_set_value(A) ::= charset_introducer STRING(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+user_variable_set_value(A) ::= charset_introducer HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+user_variable_set_value(A) ::= charset_introducer HEX_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+user_variable_set_value(A) ::= charset_introducer BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+user_variable_set_value(A) ::= charset_introducer BIT_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 user_variable_set_value(A) ::= SYSTEM_VARIABLE(T). {
     A = mylite_sql_parser_make_system_variable(state, T);

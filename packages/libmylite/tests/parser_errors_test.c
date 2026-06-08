@@ -183,13 +183,6 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SET character_set_client = utf8mb4, character_set_results = utf8mb4;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parser_test_parse_sql("SET NAMES ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

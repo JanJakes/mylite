@@ -345,11 +345,14 @@ static int evaluate_user_variable_assignment_value(
             }
             return rc;
         }
-        if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL) {
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
             return copy_user_variable_source_text_value(
                 database,
                 unwrapped,
-                MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL,
+                literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL
+                    ? MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL
+                    : MYLITE_SESSION_USER_VARIABLE_VALUE_STRING,
                 out_cell,
                 out_value_kind
             );
@@ -358,14 +361,19 @@ static int evaluate_user_variable_assignment_value(
     if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         const struct mylite_sql_ast_node *unary_value = child_at(unwrapped, 0U);
 
-        if (unary_value != NULL && unary_value->kind == MYLITE_SQL_AST_LITERAL &&
-            mylite_sql_ast_node_literal_kind(unary_value) == MYLITE_SQL_AST_LITERAL_DECIMAL) {
+        if (unary_value != NULL && unary_value->kind == MYLITE_SQL_AST_LITERAL) {
+            literal_kind = mylite_sql_ast_node_literal_kind(unary_value);
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
             return copy_user_variable_source_text_value(
                 database,
                 mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_POSITIVE
                     ? unary_value
                     : unwrapped,
-                MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL,
+                literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL
+                    ? MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL
+                    : MYLITE_SESSION_USER_VARIABLE_VALUE_STRING,
                 out_cell,
                 out_value_kind
             );

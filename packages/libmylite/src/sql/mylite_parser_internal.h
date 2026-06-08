@@ -416,6 +416,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_ast_node *charset_name,
     struct mylite_sql_ast_node *collation_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_attach_set_tail_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement,
+    struct mylite_sql_ast_node *assignment_list
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,

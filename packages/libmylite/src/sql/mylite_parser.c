@@ -1990,6 +1990,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_attach_set_tail_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement,
+    struct mylite_sql_ast_node *assignment_list
+) {
+    (void)state;
+
+    if (statement == NULL || assignment_list == NULL) {
+        return statement;
+    }
+    mylite_sql_ast_node_append_child(statement, assignment_list);
+    mylite_sql_ast_node_set_span(statement, span_join(statement->span, assignment_list->span));
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,

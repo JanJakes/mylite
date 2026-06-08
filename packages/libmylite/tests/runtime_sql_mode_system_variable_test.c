@@ -580,6 +580,13 @@ static int test_sql_mode_assignment_and_effects(void) {
         "0",
         "0",
     };
+    static const char *const traditional_values[] = {
+        "STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+        "ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_ENGINE_SUBSTITUTION",
+        default_sql_mode,
+        "0",
+        "0",
+    };
     static const char *const only_full_group_by_values[] = {
         "ONLY_FULL_GROUP_BY",
         default_sql_mode,
@@ -914,6 +921,18 @@ static int test_sql_mode_assignment_and_effects(void) {
             .context = "NO_BACKSLASH_ESCAPES assignment",
         }
     );
+    failures += execute_statement_ok(database, "SET sql_mode = TRADITIONAL");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = traditional_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "bare identifier TRADITIONAL sql_mode assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'");
     failures += execute_statement_ok(database, "CREATE TABLE slash_strings (v VARCHAR(10))");
     failures += execute_statement_ok(database, "INSERT INTO slash_strings VALUES ('a\\')");
     failures += expect_query_result(

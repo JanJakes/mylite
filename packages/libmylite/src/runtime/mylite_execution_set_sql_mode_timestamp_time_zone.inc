@@ -2,6 +2,7 @@ static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
 ) {
+    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char *decoded = NULL;
     uint64_t modes = 0U;
     int rc = MYLITE_OK;
@@ -12,6 +13,20 @@ static int apply_set_sql_mode_value(
     }
     if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
         return set_session_sql_mode(database, MYLITE_SESSION_SQL_MODE_DEFAULT_BITS);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        rc = copy_identifier_text(value_node, identifier, sizeof(identifier), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = parse_sql_mode_text(database, identifier, &modes);
+        if (rc == MYLITE_OK) {
+            rc = append_set_sql_mode_warnings(database, modes);
+        }
+        if (rc == MYLITE_OK) {
+            rc = set_session_sql_mode(database, modes);
+        }
+        return rc;
     }
     if (value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {

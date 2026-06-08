@@ -2,16 +2,18 @@
 
 ## Status
 
-This feature specifies a narrow connection-bootstrap slice for:
+This feature originally specified a narrow connection-bootstrap slice for:
 
 - `SET NAMES`
 - `SET CHARACTER SET`
 - `SET CHARSET`
 
 It builds on the existing fixed `utf8mb4` / `utf8mb4_0900_ai_ci` connection,
-server, and database character-set baseline. This is not full character-set
-state management. MyLite accepts only statement forms that leave the current
-fixed connection variables unchanged.
+server, and database character-set baseline. Later slices broadened the
+runtime to track admitted session charset/collation readback values and to
+accept comma-separated tail assignments; see
+[baseline SET value syntax](../baseline-set-value-syntax/specs.md). This is
+still not full character-set conversion or protocol character-set negotiation.
 
 ## Sources
 
@@ -61,11 +63,11 @@ Observed against the local `mysql:8.4.9` runtime with the client invoked using
 - Successful statements return no row result set, leave `@@warning_count` and
   `@@error_count` at `0`, and make following `ROW_COUNT()` return `0`.
 - `SET NAMES utf8mb4 COLLATE utf8mb4_bin` succeeds in MySQL and changes only
-  `@@collation_connection` among the tested connection variables. MyLite
-  defers this wider mutable collation surface.
+  `@@collation_connection` among the tested connection variables. Later MyLite
+  slices admit this readback behavior for supported catalog collations.
 - MySQL accepts many other supported client character sets such as `latin1`.
-  MyLite defers them because string conversion, string column types, and
-  collation semantics are outside the current baseline.
+  Later MyLite slices admit focused metadata/readback behavior for additional
+  catalog character sets while still deferring conversion semantics.
 - `SET NAMES` without a value, `SET NAMES NULL`,
   `SET NAMES utf8mb4, latin1`, and
   `SET CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci` are syntax errors
@@ -110,16 +112,14 @@ The implementation must add:
 
 This feature must not implement:
 
-- general `SET` variable assignment;
+- general `SET` variable assignment beyond the later documented tail-assignment
+  slice;
 - mutable `@@character_set_client`, `@@character_set_connection`,
   `@@character_set_results`, or `@@collation_connection` state beyond
-  accepting fixed no-op forms;
-- non-`utf8mb4` client character sets;
-- non-`utf8mb4_0900_ai_ci` connection collations;
+  documented session readback;
 - `SET NAMES ... COLLATE DEFAULT`;
-- `SET character_set_results = NULL`, `SET collation_connection = ...`,
-  `SET @@session...`, persisted variables, global variables, or `SET_VAR`
-  optimizer hints;
+- `SET character_set_results = NULL`, persisted variables, global variables,
+  or `SET_VAR` optimizer hints;
 - character-set conversion, string literal introducers, string column types,
   binary/text/blob data, collation coercibility, string comparison behavior, or
   protocol character-set metadata;
@@ -186,10 +186,12 @@ option_name ::= identifier.
 option_name ::= STRING.
 ```
 
-The grammar deliberately does not admit comma-separated assignments,
+The original grammar deliberately did not admit comma-separated assignments,
 `COLLATE` after `SET CHARACTER SET`, global/session scopes, parameters,
 expressions, functions, introducers, numeric literals, `NULL`, or multiple
-`SET` clauses.
+`SET` clauses. Comma-separated tail assignments after admitted connection
+character-set statements are specified by the later baseline SET value syntax
+slice.
 
 ## Runtime Semantics
 

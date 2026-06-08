@@ -4120,6 +4120,16 @@ static int apply_set_connection_character_set_statement(
     const struct mylite_sql_ast_node *statement,
     bool allow_collation
 );
+static int apply_set_connection_character_set_tail_assignments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list
+);
+static const struct mylite_sql_ast_node *set_connection_character_set_collation_clause(
+    const struct mylite_sql_ast_node *statement
+);
+static const struct mylite_sql_ast_node *set_connection_character_set_assignment_list(
+    const struct mylite_sql_ast_node *statement
+);
 static int validate_set_connection_character_set_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *target

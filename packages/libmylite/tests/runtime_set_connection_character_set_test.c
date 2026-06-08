@@ -16,8 +16,10 @@
 enum {
     test_path_capacity = 1024,
     charset_value_column_count = 7,
+    set_names_tail_column_count = 6,
     mysql_error_parse = 1064,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_unknown_system_variable = 1193,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
 };
@@ -109,6 +111,23 @@ static int test_set_connection_character_set_success_and_persistence(void) {
         "0",
         "0",
     };
+    static const char *const binary_charset_values[] = {
+        "binary",
+        "binary",
+        "binary",
+        "binary",
+        "0",
+        "0",
+        "0",
+    };
+    static const char *const set_names_tail_values[] = {
+        "utf8mb4",
+        "utf8mb4_bin",
+        "ok",
+        "0",
+        "0",
+        "0",
+    };
     static const char *const reopened_charset_values[] = {
         "utf8mb4",
         "utf8mb4",
@@ -180,6 +199,35 @@ static int test_set_connection_character_set_success_and_persistence(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "set names canonicalizes legacy collation",
+        }
+    );
+    failures += expect_set_ok(database, "SET NAMES binary");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@character_set_connection, "
+                   "@@character_set_results, @@collation_connection, @@warning_count, "
+                   "@@error_count, ROW_COUNT()",
+            .values = binary_charset_values,
+            .column_count = charset_value_column_count,
+            .row_count = 1U,
+            .context = "set names binary values",
+        }
+    );
+    failures += expect_set_ok(
+        database,
+        "SET NAMES utf8mb4, collation_connection = utf8mb4_bin, @set_names_tail = "
+        "_latin1 X'6F6B' COLLATE latin1_swedish_ci"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@collation_connection, @set_names_tail, "
+                   "@@warning_count, @@error_count, ROW_COUNT()",
+            .values = set_names_tail_values,
+            .column_count = set_names_tail_column_count,
+            .row_count = 1U,
+            .context = "set names tail assignment values",
         }
     );
     failures += expect_set_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_bin");
@@ -259,6 +307,14 @@ static int test_set_connection_character_set_diagnostics(void) {
         "0",
         "0",
         "0",
+    };
+    static const char *const rollback_values[] = {
+        "latin1",
+        "latin1_swedish_ci",
+        "before",
+        "1",
+        "1",
+        "-1",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -355,6 +411,28 @@ static int test_set_connection_character_set_diagnostics(void) {
             .column_count = charset_value_column_count,
             .row_count = 1U,
             .context = "set character_set_client keeps fixed values",
+        }
+    );
+    failures += expect_set_ok(database, "SET NAMES latin1");
+    failures += expect_set_ok(database, "SET @set_names_tail_rollback = 'before'");
+    failures += execute_error(
+        database,
+        "SET NAMES binary, @set_names_tail_rollback = 'after', no_such_system_var = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@collation_connection, "
+                   "@set_names_tail_rollback, @@warning_count, @@error_count, ROW_COUNT()",
+            .values = rollback_values,
+            .column_count = set_names_tail_column_count,
+            .row_count = 1U,
+            .context = "failed set names tail restores session state",
         }
     );
 

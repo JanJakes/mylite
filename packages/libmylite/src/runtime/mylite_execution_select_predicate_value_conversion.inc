@@ -29,7 +29,8 @@ static int convert_predicate_integer_literal(
     if (!boolean_literal_magnitude(literal, &magnitude)) {
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
             (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
-             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING &&
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_HEX)) {
             set_unsupported_error(
                 database,
                 "WHERE supports only integer, boolean, and exact quoted integer predicate literals"
@@ -46,6 +47,15 @@ static int convert_predicate_integer_literal(
                 return MYLITE_ERROR;
             }
             return convert_predicate_integer_string_literal(database, literal, column, out_value);
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_HEX) {
+            return convert_predicate_integer_hex_literal(
+                database,
+                literal,
+                column,
+                is_negative,
+                out_value
+            );
         }
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
@@ -67,6 +77,39 @@ static int convert_predicate_integer_literal(
     }
     out_value->is_null = false;
 
+    return MYLITE_OK;
+}
+
+static int convert_predicate_integer_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_negative,
+    struct planned_value *out_value
+) {
+    uint64_t magnitude = 0U;
+    bool overflow = false;
+    int rc = parse_dml_hex_literal_magnitude(database, literal, &magnitude, &overflow);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (overflow) {
+        set_predicate_out_of_range_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_integer_for_predicate(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &out_value->integer
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_null = false;
     return MYLITE_OK;
 }
 

@@ -39,7 +39,7 @@ int main(void) {
 }
 
 static int test_select_where_predicates(void) {
-    static const char *const in_predicate_values[] = {"-2", "+1", "NULL", "TRUE", "FALSE"};
+    static const char *const in_predicate_values[] = {"-2", "+1", "0x41", "NULL", "TRUE", "FALSE"};
 
     static const struct {
         const char *sql;
@@ -132,6 +132,11 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id = 0x41;",
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id IS NULL;",
             MYLITE_SQL_AST_OPERATOR_IS_NULL,
             MYLITE_SQL_AST_IS_NULL_PREDICATE,
@@ -214,6 +219,18 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE 0x1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "hex scalar literal truth predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE -1;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -256,6 +273,24 @@ static int test_select_where_predicates(void) {
         ),
         "id",
         "literal-left column predicate column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE 0x1 = id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "hex literal-left column predicate"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -387,6 +422,35 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id BETWEEN 0x1 AND 0x41;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "hex between lower bound"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            2U
+        ),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "hex between upper bound"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id NOT BETWEEN -2 AND 1;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -470,7 +534,7 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "SELECT id FROM simple_lifecycle WHERE id IN (-2, +1, NULL, TRUE, FALSE);",
+        "SELECT id FROM simple_lifecycle WHERE id IN (-2, +1, 0x41, NULL, TRUE, FALSE);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -537,8 +601,8 @@ static int test_select_where_predicates(void) {
             ),
             2U
         ),
-        "NULL",
-        "in predicate null value"
+        "0x41",
+        "in predicate hex value"
     );
     mylite_sql_parse_result_deinit(&result);
 

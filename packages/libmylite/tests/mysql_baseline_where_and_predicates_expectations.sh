@@ -134,6 +134,53 @@ expect_output \
     "SELECT id FROM numbers WHERE i = 1 && nn = 6;" \
     "$DATABASE"
 
+expect_output \
+    "hex integer equality predicate" \
+    "2" \
+    "SELECT id FROM numbers WHERE i = 0x1;" \
+    "$DATABASE"
+
+expect_output \
+    "hex unsigned equality predicate" \
+    "3" \
+    "SELECT id FROM numbers WHERE iu = 0xffffffff;" \
+    "$DATABASE"
+
+expect_output \
+    "hex scalar truth predicate" \
+    "4" \
+    "SELECT COUNT(*) FROM numbers WHERE 0x1;" \
+    "$DATABASE"
+
+expect_output \
+    "hex scalar false predicate" \
+    "0" \
+    "SELECT COUNT(*) FROM numbers WHERE 0x0;" \
+    "$DATABASE"
+
+expect_output \
+    "hex literal-left equality predicate" \
+    "2" \
+    "SELECT id FROM numbers WHERE 0x1 = i;" \
+    "$DATABASE"
+
+expected_hex_in_rows=$(cat <<'EOF'
+2
+4
+EOF
+)
+expect_output \
+    "hex in predicate" \
+    "$expected_hex_in_rows" \
+    "SELECT id FROM numbers WHERE i IN (0x0, 0x1) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "hex between predicate" \
+    "$expected_hex_in_rows" \
+    "SELECT id FROM numbers WHERE i BETWEEN 0x0 AND 0x1 ORDER BY id;" \
+    "$DATABASE"
+
 expected_symbol_warnings=$(cat <<'EOF'
 Warning	1287	'&&' is deprecated and will be removed in a future release. Please use AND instead
 Warning	1287	'&&' is deprecated and will be removed in a future release. Please use AND instead

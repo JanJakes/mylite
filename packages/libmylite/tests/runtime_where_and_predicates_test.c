@@ -83,6 +83,10 @@ int main(void) {
 static int test_where_and_predicates(void) {
     static const char *const and_row[] = {"2"};
     static const char *const exact_integer_string_row[] = {"2"};
+    static const char *const hex_equal_row[] = {"2"};
+    static const char *const hex_unsigned_equal_row[] = {"3"};
+    static const char *const hex_in_rows[] = {"2", "4"};
+    static const char *const hex_between_rows[] = {"2", "4"};
     static const char *const truncated_zero_string_row[] = {"4"};
     static const char *const truncated_prefix_string_row[] = {"2"};
     static const char *const nested_row[] = {"2"};
@@ -323,6 +327,54 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "exact quoted integer comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 0x1",
+            .values = hex_equal_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex integer comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu = 0xffffffff",
+            .values = hex_unsigned_equal_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex unsigned comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (0x0, 0x1) ORDER BY id",
+            .values = hex_in_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN 0x0 AND 0x1 ORDER BY id",
+            .values = hex_between_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex between predicate",
         }
     );
     failures += expect_result(
@@ -2666,15 +2718,6 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM numbers WHERE i IN (0x1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT id FROM numbers WHERE i IN (?)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -3612,6 +3655,30 @@ static int test_where_scalar_literal_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 0x1",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex scalar truth predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 0x0",
+            .values = count_empty_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex scalar false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE 1 = i",
             .values = id_two_row,
             .column_count = 1U,
@@ -3619,6 +3686,18 @@ static int test_where_scalar_literal_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "literal-left equality predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE 0x1 = i",
+            .values = id_two_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "hex literal-left equality predicate",
         }
     );
     failures += expect_result(

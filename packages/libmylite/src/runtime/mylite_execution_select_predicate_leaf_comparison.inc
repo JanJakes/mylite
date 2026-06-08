@@ -2088,6 +2088,10 @@ static int plan_where_scalar_literal_value(
         mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
         return plan_where_scalar_exact_integer_string_literal_value(database, literal, out_value);
     }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_HEX) {
+        return plan_where_scalar_hex_literal_value(database, literal, out_value);
+    }
 
     rc = mylite_execution_string_slice_signed_integer_value(
         database,
@@ -2108,6 +2112,33 @@ static int plan_where_scalar_literal_value(
     if (is_null) {
         out_value->integer = 0;
     }
+    return MYLITE_OK;
+}
+
+static int plan_where_scalar_hex_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_value *out_value
+) {
+    const uint64_t signed_positive_max = 9223372036854775807ULL;
+    uint64_t magnitude = 0U;
+    bool overflow = false;
+    int rc = parse_dml_hex_literal_magnitude(database, literal, &magnitude, &overflow);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (overflow || magnitude > signed_positive_max) {
+        set_unsupported_error(
+            database,
+            "WHERE scalar literal integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value =
+        (struct planned_value){.is_null = false, .is_text = false, .integer = (int64_t)magnitude};
     return MYLITE_OK;
 }
 
@@ -2359,6 +2390,7 @@ static bool predicate_node_is_scalar_literal_expression(
     }
     switch (mylite_sql_ast_node_literal_kind(literal)) {
     case MYLITE_SQL_AST_LITERAL_INTEGER:
+    case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_TRUE:
     case MYLITE_SQL_AST_LITERAL_FALSE:
     case MYLITE_SQL_AST_LITERAL_NULL:

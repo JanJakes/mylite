@@ -19663,6 +19663,11 @@ static int plan_where_scalar_literal_value(
     const struct mylite_sql_ast_node *expression,
     struct planned_value *out_value
 );
+static int plan_where_scalar_hex_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_value *out_value
+);
 static int plan_where_scalar_exact_integer_string_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
@@ -20525,6 +20530,13 @@ static int convert_predicate_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_predicate_integer_hex_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_negative,
     struct planned_value *out_value
 );
 static int convert_predicate_integer_string_literal(

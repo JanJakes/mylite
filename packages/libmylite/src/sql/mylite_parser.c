@@ -55,6 +55,23 @@ struct column_attribute_positions {
     size_t generated;
 };
 
+enum placeholder_statement_kind {
+    PLACEHOLDER_STATEMENT_NONE = 0,
+    PLACEHOLDER_STATEMENT_ADMIN_NOOP = 1,
+    PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM = 2,
+};
+
+struct placeholder_statement_scan {
+    const struct mylite_sql_token *tokens;
+    size_t token_count;
+    bool has_non_trailing_semicolon;
+};
+
+enum {
+    placeholder_initial_token_capacity = 16,
+    placeholder_create_scan_token_limit = 12,
+};
+
 static bool map_lexer_token(
     const struct mylite_sql_parser_state *state,
     const struct mylite_sql_lexer *lexer,
@@ -71,6 +88,57 @@ static bool lexer_token_has_immediate_left_paren(
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parse_error error
+);
+static enum mylite_sql_parse_status try_parse_placeholder_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_token **out_tokens,
+    size_t *out_token_count,
+    bool *out_has_non_trailing_semicolon
+);
+static bool append_placeholder_statement_token(
+    const struct mylite_sql_token *token,
+    struct mylite_sql_token **tokens,
+    size_t *token_count,
+    size_t *token_capacity
+);
+static enum placeholder_statement_kind classify_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_create_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_alter_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_drop_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_set_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_token_text_equals(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    const char *text
+);
+static bool placeholder_scan_token_text_starts_with(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    const char *prefix
+);
+static bool placeholder_token_is_semicolon(const struct mylite_sql_token *token);
+static enum mylite_sql_ast_node_kind ast_kind_for_placeholder_statement(
+    enum placeholder_statement_kind kind
+);
+static enum mylite_sql_parse_status finish_placeholder_statement_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum placeholder_statement_kind kind
 );
 static bool is_comment_token(enum mylite_sql_token_kind kind);
 static bool map_keyword_token(
@@ -249,6 +317,15 @@ enum mylite_sql_parse_status mylite_sql_parse(
     if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
         out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
     }
+    if (out_result->status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
+        enum mylite_sql_parse_status placeholder_status =
+            try_parse_placeholder_statement(config, out_result, &handled);
+
+        if (handled) {
+            out_result->status = placeholder_status;
+        }
+    }
 
     return out_result->status;
 }
@@ -279,6 +356,362 @@ const char *mylite_sql_parse_status_name(enum mylite_sql_parse_status status) {
     }
 
     return "unknown";
+}
+
+static enum mylite_sql_parse_status try_parse_placeholder_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+) {
+    struct mylite_sql_token *tokens = NULL;
+    struct placeholder_statement_scan scan = {0};
+    enum placeholder_statement_kind kind = PLACEHOLDER_STATEMENT_NONE;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+
+    status = scan_placeholder_statement_tokens(
+        config,
+        &tokens,
+        &scan.token_count,
+        &scan.has_non_trailing_semicolon
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
+    scan.tokens = tokens;
+    kind = classify_placeholder_statement(&scan);
+    if (kind == PLACEHOLDER_STATEMENT_NONE ||
+        (kind == PLACEHOLDER_STATEMENT_ADMIN_NOOP && scan.has_non_trailing_semicolon)) {
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    status = finish_placeholder_statement_parse(config, result, kind);
+    *out_handled = true;
+    free(tokens);
+    return status;
+}
+
+static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_token **out_tokens,
+    size_t *out_token_count,
+    bool *out_has_non_trailing_semicolon
+) {
+    struct mylite_sql_lexer lexer;
+    struct mylite_sql_token *tokens = NULL;
+    size_t token_count = 0U;
+    size_t token_capacity = 0U;
+    bool saw_semicolon = false;
+
+    if (out_tokens == NULL || out_token_count == NULL || out_has_non_trailing_semicolon == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_tokens = NULL;
+    *out_token_count = 0U;
+    *out_has_non_trailing_semicolon = false;
+
+    mylite_sql_lexer_init(
+        &lexer,
+        (struct mylite_sql_lexer_config){
+            .input = config.input,
+            .length = config.length,
+            .modes = config.modes,
+        }
+    );
+    for (;;) {
+        struct mylite_sql_token token;
+
+        if (mylite_sql_lexer_next(&lexer, &token) != 0) {
+            free(tokens);
+            return MYLITE_SQL_PARSE_MISUSE;
+        }
+        if (is_comment_token(token.kind)) {
+            continue;
+        }
+        if (token.kind == MYLITE_SQL_TOKEN_ERROR) {
+            free(tokens);
+            return MYLITE_SQL_PARSE_LEXER_ERROR;
+        }
+        if (token.kind == MYLITE_SQL_TOKEN_EOF) {
+            break;
+        }
+        if (placeholder_token_is_semicolon(&token)) {
+            saw_semicolon = true;
+            continue;
+        }
+        if (saw_semicolon) {
+            *out_has_non_trailing_semicolon = true;
+        }
+        if (!append_placeholder_statement_token(&token, &tokens, &token_count, &token_capacity)) {
+            free(tokens);
+            return MYLITE_SQL_PARSE_NOMEM;
+        }
+    }
+
+    *out_tokens = tokens;
+    *out_token_count = token_count;
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool append_placeholder_statement_token(
+    const struct mylite_sql_token *token,
+    struct mylite_sql_token **tokens,
+    size_t *token_count,
+    size_t *token_capacity
+) {
+    struct mylite_sql_token *grown = NULL;
+    size_t new_capacity = 0U;
+
+    if (*token_count == *token_capacity) {
+        new_capacity =
+            *token_capacity == 0U ? placeholder_initial_token_capacity : *token_capacity * 2U;
+        if (new_capacity < *token_capacity) {
+            return false;
+        }
+        grown = (struct mylite_sql_token *)realloc(*tokens, new_capacity * sizeof(**tokens));
+        if (grown == NULL) {
+            return false;
+        }
+        *tokens = grown;
+        *token_capacity = new_capacity;
+    }
+
+    (*tokens)[*token_count] = *token;
+    ++*token_count;
+    return true;
+}
+
+static enum placeholder_statement_kind classify_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->token_count == 0U) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+
+    if (placeholder_scan_token_text_equals(scan, 0U, "CALL")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return classify_create_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "ALTER")) {
+        return classify_alter_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "DROP")) {
+        return classify_drop_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "RENAME") &&
+        placeholder_scan_token_text_equals(scan, 1U, "USER")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "GRANT") ||
+        placeholder_scan_token_text_equals(scan, 0U, "REVOKE")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "SET")) {
+        return classify_set_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "RESET") ||
+        placeholder_scan_token_text_equals(scan, 0U, "FLUSH") ||
+        placeholder_scan_token_text_equals(scan, 0U, "PURGE") ||
+        placeholder_scan_token_text_equals(scan, 0U, "KILL") ||
+        placeholder_scan_token_text_equals(scan, 0U, "CACHE") ||
+        placeholder_scan_token_text_equals(scan, 0U, "RESTART") ||
+        placeholder_scan_token_text_equals(scan, 0U, "SHUTDOWN") ||
+        placeholder_scan_token_text_equals(scan, 0U, "CLONE") ||
+        placeholder_scan_token_text_equals(scan, 0U, "BINLOG")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "LOAD") &&
+        placeholder_scan_token_text_equals(scan, 1U, "INDEX")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "SHOW") &&
+        placeholder_scan_token_text_equals(scan, 1U, "CREATE")) {
+        if (placeholder_scan_token_text_equals(scan, 2U, "FUNCTION") ||
+            placeholder_scan_token_text_equals(scan, 2U, "TRIGGER") ||
+            placeholder_scan_token_text_equals(scan, 2U, "EVENT")) {
+            return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+        }
+        if (placeholder_scan_token_text_equals(scan, 2U, "USER")) {
+            return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+        }
+    }
+
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_create_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "USER") ||
+        placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "RESOURCE")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+
+    for (size_t index = 1U;
+         index < scan->token_count && index < placeholder_create_scan_token_limit;
+         ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "PROCEDURE") ||
+            placeholder_scan_token_text_equals(scan, index, "FUNCTION") ||
+            placeholder_scan_token_text_equals(scan, index, "TRIGGER") ||
+            placeholder_scan_token_text_equals(scan, index, "EVENT")) {
+            return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+        }
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_alter_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "USER") ||
+        placeholder_scan_token_text_equals(scan, 1U, "RESOURCE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "INSTANCE")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "PROCEDURE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||
+        placeholder_scan_token_text_equals(scan, 1U, "EVENT")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_drop_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "USER") ||
+        placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "RESOURCE")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||
+        placeholder_scan_token_text_equals(scan, 1U, "TRIGGER") ||
+        placeholder_scan_token_text_equals(scan, 1U, "EVENT")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_set_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "PASSWORD") ||
+        placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "RESOURCE") ||
+        placeholder_scan_token_text_equals(scan, 1U, "PERSIST") ||
+        placeholder_scan_token_text_equals(scan, 1U, "PERSIST_ONLY") ||
+        placeholder_scan_token_text_starts_with(scan, 1U, "@@PERSIST.") ||
+        placeholder_scan_token_text_starts_with(scan, 1U, "@@PERSIST_ONLY.")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "DEFAULT") &&
+        placeholder_scan_token_text_equals(scan, 2U, "ROLE")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool placeholder_scan_token_text_equals(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    const char *text
+) {
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    return token_text_equals(&scan->tokens[index], text);
+}
+
+static bool placeholder_scan_token_text_starts_with(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    const char *prefix
+) {
+    const struct mylite_sql_token *token = NULL;
+    size_t prefix_size = strlen(prefix);
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    if (token->length < prefix_size) {
+        return false;
+    }
+    for (size_t offset = 0U; offset < prefix_size; ++offset) {
+        if (ascii_upper((unsigned char)token->text[offset]) !=
+            ascii_upper((unsigned char)prefix[offset])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool placeholder_token_is_semicolon(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == ';';
+}
+
+static enum mylite_sql_ast_node_kind ast_kind_for_placeholder_statement(
+    enum placeholder_statement_kind kind
+) {
+    switch (kind) {
+    case PLACEHOLDER_STATEMENT_ADMIN_NOOP:
+        return MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT;
+    case PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM:
+        return MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT;
+    case PLACEHOLDER_STATEMENT_NONE:
+        break;
+    }
+    return MYLITE_SQL_AST_SCRIPT;
+}
+
+static enum mylite_sql_parse_status finish_placeholder_statement_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum placeholder_statement_kind kind
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_ast_node *statement = NULL;
+    struct mylite_sql_ast_node *script = NULL;
+
+    mylite_sql_ast_deinit(&result->ast);
+    memset(result, 0, sizeof(*result));
+    result->status = MYLITE_SQL_PARSE_OK;
+    mylite_sql_ast_init(&result->ast);
+
+    state = (struct mylite_sql_parser_state){
+        .result = result,
+        .modes = config.modes,
+        .accepted = true,
+    };
+    statement = mylite_sql_parser_make_raw_statement(
+        &state,
+        ast_kind_for_placeholder_statement(kind),
+        (struct mylite_sql_source_span){
+            .text = config.input,
+            .length = config.length,
+            .offset = 0U,
+            .line = 1U,
+            .column = 1U,
+        }
+    );
+    script = mylite_sql_parser_make_script_with_statement(&state, statement);
+    if (statement == NULL || script == NULL) {
+        result->status = MYLITE_SQL_PARSE_NOMEM;
+        return result->status;
+    }
+
+    mylite_sql_parser_state_set_root(&state, script);
+    return result->status;
 }
 
 void mylite_sql_parser_state_set_root(
@@ -2908,13 +3341,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statemen
 struct mylite_sql_ast_node *mylite_sql_parser_make_call_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token call_token,
-    struct mylite_sql_ast_node *procedure_name
+    struct mylite_sql_ast_node *procedure_name,
+    struct mylite_sql_ast_node *arguments
 ) {
     struct mylite_sql_source_span span = span_from_token(&call_token);
     struct mylite_sql_ast_node *statement = NULL;
 
     if (procedure_name != NULL) {
         span = span_join(span, procedure_name->span);
+    }
+    if (arguments != NULL) {
+        span = span_join(span, arguments->span);
     }
 
     statement = make_node(state, MYLITE_SQL_AST_CALL_STATEMENT, span);
@@ -2923,7 +3360,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_call_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, procedure_name);
+    mylite_sql_ast_node_append_child(statement, arguments);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_raw_statement(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_source_span span
+) {
+    return make_node(state, statement_kind, span);
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(

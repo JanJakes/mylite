@@ -3935,6 +3935,14 @@ static int execute_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_admin_noop_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_unsupported_stored_program_statement(struct mylite_db *database);
+static bool set_statement_is_persist_noop(const struct mylite_sql_ast_node *statement);
+static bool set_assignment_target_is_persist_noop(const struct mylite_sql_ast_node *target);
+static bool span_starts_with_ascii_case_insensitive(
+    const struct mylite_sql_source_span *span,
+    const char *prefix
+);
 static int execute_prepare_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -29498,6 +29506,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_set_connection_charset.inc"
 
 #include "mylite_execution_set_assignments.inc"
+
+#include "mylite_execution_admin_placeholders.inc"
 
 #include "mylite_execution_prepared_statement_support.inc"
 

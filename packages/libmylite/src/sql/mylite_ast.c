@@ -2082,6 +2082,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "drop_procedure_statement";
     case MYLITE_SQL_AST_CALL_STATEMENT:
         return "call_statement";
+    case MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT:
+        return "admin_noop_statement";
+    case MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT:
+        return "unsupported_stored_program_statement";
     case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
         return "explain_statement";
     case MYLITE_SQL_AST_EXPLAIN_FORMAT:

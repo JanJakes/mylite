@@ -2619,10 +2619,13 @@ load_data_column_list(A) ::= LPAREN identifier_list(L) RPAREN. {
 }
 
 call_statement(A) ::= CALL(C) table_name(P). {
-    A = mylite_sql_parser_make_call_statement(state, C, P);
+    A = mylite_sql_parser_make_call_statement(state, C, P, NULL);
 }
 call_statement(A) ::= CALL(C) table_name(P) LPAREN RPAREN. {
-    A = mylite_sql_parser_make_call_statement(state, C, P);
+    A = mylite_sql_parser_make_call_statement(state, C, P, NULL);
+}
+call_statement(A) ::= CALL(C) table_name(P) LPAREN function_argument_list(L) RPAREN. {
+    A = mylite_sql_parser_make_call_statement(state, C, P, L);
 }
 
 delete_statement(A) ::=

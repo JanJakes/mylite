@@ -885,7 +885,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statemen
 struct mylite_sql_ast_node *mylite_sql_parser_make_call_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token call_token,
-    struct mylite_sql_ast_node *procedure_name
+    struct mylite_sql_ast_node *procedure_name,
+    struct mylite_sql_ast_node *arguments
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_raw_statement(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_source_span span
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
     struct mylite_sql_parser_state *state,

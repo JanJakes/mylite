@@ -156,6 +156,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
         return execute_set_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT:
+        return execute_admin_noop_statement(database, out_result);
+    case MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT:
+        return execute_unsupported_stored_program_statement(database);
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
         return execute_set_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:

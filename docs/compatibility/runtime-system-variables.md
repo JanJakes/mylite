@@ -10,6 +10,12 @@ for the fixed variables in the runtime registry defined by
 Variables outside that registry remain absent from `SHOW VARIABLES`, and
 Performance Schema variable tables remain unsupported.
 
+Persisted-variable server management forms such as `SET PERSIST`,
+`SET PERSIST_ONLY`, `SET @@PERSIST.name = value`, `SET @@PERSIST_ONLY.name =
+value`, and `RESET PERSIST` are accepted as embedded admin no-ops with warning
+`1105`; MyLite does not maintain a persisted system-variable file or shared
+server-global mutable state.
+
 | Variable | Status | Notes |
 | --- | --- | --- |
 | `activate_all_roles_on_login` | ❌ | Value, scope, SET, diagnostics |

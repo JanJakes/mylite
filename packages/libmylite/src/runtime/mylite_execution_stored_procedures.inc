@@ -240,7 +240,14 @@ static int execute_call_statement(
 ) {
     struct stored_procedure_target target = {0};
     struct mylite_session_stored_procedure *procedure = NULL;
-    int rc = resolve_stored_procedure_target(database, child_at(statement, 0U), &target);
+    int rc = MYLITE_OK;
+
+    if (child_at(statement, 1U) != NULL) {
+        set_unsupported_error(database, "stored procedure arguments are not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_stored_procedure_target(database, child_at(statement, 0U), &target);
 
     if (rc != MYLITE_OK) {
         return rc;

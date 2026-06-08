@@ -175,6 +175,7 @@ enum {
     mysql_warning_truncated_incorrect_double = 1292,
     mysql_warning_truncated_incorrect_integer = 1292,
     mysql_warning_cast_complement = 1105,
+    mysql_warning_embedded_admin_noop = 1105,
     mysql_warning_truncated_incorrect_temporal = 1292,
     mysql_error_incorrect_date_value = 1292,
     mysql_error_incorrect_time_value = 1292,

@@ -87,7 +87,13 @@ static int execute_set_statement(
     mylite_result **out_result
 ) {
     mylite_result *result = NULL;
-    int rc = mylite_result_create(&result);
+    int rc = MYLITE_OK;
+
+    if (set_statement_is_persist_noop(statement)) {
+        return execute_admin_noop_statement(database, out_result);
+    }
+
+    rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
         set_nomem_error(database);

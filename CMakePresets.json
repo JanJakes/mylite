@@ -25,6 +25,24 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
       }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI release build",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "php-ci",
+      "displayName": "CI release build with PHP extensions",
+      "inherits": "ci",
+      "binaryDir": "${sourceDir}/build/php-ci",
+      "cacheVariables": {
+        "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -35,6 +53,14 @@
     {
       "name": "php-dev",
       "configurePreset": "php-dev"
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci"
+    },
+    {
+      "name": "php-ci",
+      "configurePreset": "php-ci"
     },
     {
       "name": "format",
@@ -69,6 +95,20 @@
     {
       "name": "php-dev",
       "configurePreset": "php-dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "php-ci",
+      "configurePreset": "php-ci",
       "output": {
         "outputOnFailure": true
       }

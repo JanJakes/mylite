@@ -109,6 +109,22 @@ static bool append_placeholder_statement_token(
     size_t *token_count,
     size_t *token_capacity
 );
+static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static bool scan_is_create_table_partition_statement(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_partition_index
+);
+static bool create_table_partition_suffix_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t partition_index
+);
+static bool token_is_left_paren(const struct mylite_sql_token *token);
+static bool token_is_right_paren(const struct mylite_sql_token *token);
 static enum placeholder_statement_kind classify_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -417,6 +433,12 @@ static enum mylite_sql_parse_status try_parse_placeholder_statement(
         return status;
     }
     scan.tokens = tokens;
+    status = try_parse_create_table_partition_statement(config, result, &scan, out_handled);
+    if (*out_handled) {
+        free(tokens);
+        return status;
+    }
+
     kind = classify_placeholder_statement(&scan);
     if (kind == PLACEHOLDER_STATEMENT_NONE ||
         ((kind == PLACEHOLDER_STATEMENT_ADMIN_NOOP || kind == PLACEHOLDER_STATEMENT_UTILITY_NOOP) &&
@@ -523,6 +545,133 @@ static bool append_placeholder_statement_token(
     (*tokens)[*token_count] = *token;
     ++*token_count;
     return true;
+}
+
+static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    struct mylite_sql_parse_result prefix_result;
+    size_t partition_index = 0U;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    if (!scan_is_create_table_partition_statement(scan, &partition_index)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    status = mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = config.input,
+            .length = scan->tokens[partition_index].offset,
+            .modes = config.modes,
+        },
+        &prefix_result
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    mylite_sql_ast_deinit(&result->ast);
+    *result = prefix_result;
+    *out_handled = true;
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool scan_is_create_table_partition_statement(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_partition_index
+) {
+    size_t table_index = 1U;
+    int paren_depth = 0;
+
+    if (scan == NULL || out_partition_index == NULL || scan->token_count < 6U ||
+        !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, table_index, "TEMPORARY")) {
+        ++table_index;
+    }
+    if (!placeholder_scan_token_text_equals(scan, table_index, "TABLE")) {
+        return false;
+    }
+
+    for (size_t index = table_index + 1U; index + 1U < scan->token_count; ++index) {
+        if (paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, "PARTITION") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "BY") &&
+            create_table_partition_suffix_is_supported(scan, index)) {
+            *out_partition_index = index;
+            return true;
+        }
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+static bool create_table_partition_suffix_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t partition_index
+) {
+    int paren_depth = 0;
+    bool saw_method = false;
+    bool saw_method_paren = false;
+
+    if (partition_index + 2U >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, partition_index, "PARTITION") ||
+        !placeholder_scan_token_text_equals(scan, partition_index + 1U, "BY")) {
+        return false;
+    }
+    for (size_t index = partition_index + 2U; index < scan->token_count; ++index) {
+        if (paren_depth == 0 &&
+            (placeholder_scan_token_text_equals(scan, index, "SELECT") ||
+             placeholder_scan_token_text_equals(scan, index, "AS") ||
+             placeholder_scan_token_text_equals(scan, index, "IGNORE") ||
+             placeholder_scan_token_text_equals(scan, index, "REPLACE"))) {
+            return false;
+        }
+        if (!saw_method &&
+            (placeholder_scan_token_text_equals(scan, index, "HASH") ||
+             placeholder_scan_token_text_equals(scan, index, "KEY") ||
+             placeholder_scan_token_text_equals(scan, index, "RANGE") ||
+             placeholder_scan_token_text_equals(scan, index, "LIST"))) {
+            saw_method = true;
+        }
+        if (saw_method && token_is_left_paren(&scan->tokens[index])) {
+            saw_method_paren = true;
+        }
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+        }
+    }
+    return saw_method && saw_method_paren && paren_depth == 0;
+}
+
+static bool token_is_left_paren(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == '(';
+}
+
+static bool token_is_right_paren(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == ')';
 }
 
 static enum placeholder_statement_kind classify_placeholder_statement(

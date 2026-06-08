@@ -6,15 +6,15 @@ Partitioning clauses, options, and partition maintenance compatibility.
 | --- | --- | --- |
 | `PARTITION` selection | ❌ | Explicit partition selection syntax and errors |
 | Partition maintenance | ❌ | Partition maintenance ALTER actions |
-| `PARTITION BY RANGE` | ❌ | Range partition syntax |
-| `PARTITION BY RANGE COLUMNS` | ❌ | Range columns syntax and comparison semantics |
-| `PARTITION BY LIST` | ❌ | List partition syntax and value matching |
-| `PARTITION BY LIST COLUMNS` | ❌ | List columns syntax and tuple matching |
-| `PARTITION BY HASH` | ❌ | Hash partition syntax and function semantics |
-| `PARTITION BY LINEAR HASH` | ❌ | Linear hash partition syntax |
-| `PARTITION BY KEY` | ❌ | Key partition syntax and default key selection |
-| `PARTITION BY LINEAR KEY` | ❌ | Linear key partition syntax |
-| Subpartitioning | ❌ | HASH/KEY subpartition syntax and metadata |
-| Partition options | ❌ | Partition options and metadata |
+| `PARTITION BY RANGE` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY RANGE COLUMNS` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY LIST` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY LIST COLUMNS` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY HASH` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY LINEAR HASH` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY KEY` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| `PARTITION BY LINEAR KEY` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
+| Subpartitioning | ⚪ | `CREATE TABLE` subpartition suffix syntax is accepted and ignored; no subpartition metadata |
+| Partition options | ⚪ | `CREATE TABLE` partition definitions/options are accepted and ignored; no partition metadata |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

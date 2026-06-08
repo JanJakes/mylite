@@ -2683,7 +2683,18 @@ static int plan_row_scalar_select_order(
         .column_count = 0U,
     };
     bool handled = false;
-    int rc = plan_row_scalar_select_order_alias(
+    int rc = plan_row_scalar_select_order_ordinals(
+        database,
+        order_clause,
+        out_plan->item_count,
+        &out_plan->order,
+        &handled
+    );
+
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    rc = plan_row_scalar_select_order_alias(
         database,
         order_clause,
         out_plan,
@@ -2705,6 +2716,131 @@ static int plan_row_scalar_select_order(
         true,
         &out_plan->order
     );
+}
+
+static int plan_row_scalar_select_order_ordinals(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    size_t selected_item_count,
+    struct planned_select_order *out_order,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *order_items = NULL;
+    int rc = MYLITE_OK;
+
+    *out_handled = false;
+    if (order_clause == NULL || order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        return MYLITE_OK;
+    }
+
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
+
+        while (item != NULL) {
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM ||
+                !select_order_key_is_integer_ordinal(child_at(item, 0U))) {
+                planned_select_order_deinit(out_order);
+                return MYLITE_OK;
+            }
+            rc = plan_row_scalar_select_order_ordinal_item_and_append(
+                database,
+                (struct select_order_ast_item_nodes){
+                    .order_key = child_at(item, 0U),
+                    .direction = child_at(item, 1U),
+                },
+                selected_item_count,
+                out_order
+            );
+            if (rc != MYLITE_OK) {
+                planned_select_order_deinit(out_order);
+                return rc;
+            }
+            item = item->next_sibling;
+        }
+    } else {
+        if (!select_order_key_is_integer_ordinal(child_at(order_clause, 0U))) {
+            return MYLITE_OK;
+        }
+        rc = plan_row_scalar_select_order_ordinal_item_and_append(
+            database,
+            (struct select_order_ast_item_nodes){
+                .order_key = child_at(order_clause, 0U),
+                .direction = child_at(order_clause, 1U),
+            },
+            selected_item_count,
+            out_order
+        );
+        if (rc != MYLITE_OK) {
+            planned_select_order_deinit(out_order);
+            return rc;
+        }
+    }
+
+    if (out_order->item_count == 0U) {
+        return MYLITE_OK;
+    }
+    out_order->has_order = true;
+    out_order->direction = out_order->items[0U].direction;
+    out_order->qualify_column_reference = false;
+    *out_handled = true;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_select_order_ordinal_item_and_append(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    size_t selected_item_count,
+    struct planned_select_order *out_order
+) {
+    struct planned_select_order_item item = {
+        .kind = PLANNED_SELECT_ORDER_ITEM_ORDINAL,
+        .direction = PLANNED_SELECT_ORDER_ASC,
+    };
+    int rc = parse_select_order_ordinal(
+        database,
+        item_nodes.order_key,
+        selected_item_count,
+        &item.ordinal
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    apply_select_order_item_direction(item_nodes.direction, &item);
+    rc = append_planned_select_order_item(out_order, item);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int parse_select_order_ordinal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    size_t selected_item_count,
+    size_t *out_ordinal
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(order_key);
+    uint64_t ordinal = 0U;
+    char *display_text = NULL;
+
+    if (out_ordinal == NULL || literal == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_ordinal = 0U;
+    if (parse_unsigned_integer_literal(&literal->span, &ordinal) == MYLITE_OK && ordinal >= 1U &&
+        ordinal <= (uint64_t)selected_item_count) {
+        *out_ordinal = (size_t)ordinal;
+        return MYLITE_OK;
+    }
+
+    if (copy_source_span_text(database, &literal->span, &display_text) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    set_unknown_order_column_error(database, display_text);
+    free(display_text);
+    return MYLITE_ERROR;
 }
 
 static int plan_row_scalar_select_order_alias(

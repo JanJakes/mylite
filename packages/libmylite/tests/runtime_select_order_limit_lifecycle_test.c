@@ -130,6 +130,14 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     static const char *const multi_n_desc_id_desc[] = {"4", "2", "3", "1"};
     static const char *const multi_n_id_desc_limit[] = {"3", "1", "4"};
     static const char *const multi_bool_id[] = {"4", "2", "3", "1"};
+    static const char *const ordinal_id_desc[] = {"4", "3", "2", "1"};
+    static const char *const ordinal_distinct_n_desc[] = {"9", NULL};
+    static const char *const row_scalar_ordinal_desc[] = {
+        "4-qux",
+        "3-food new",
+        "2-bar",
+        "1-foo old",
+    };
     static const char *const like_title_nn_desc[] = {"3", "1", "4", "2"};
     static const char *const case_title_id[] = {"3", "1", "2", "4"};
     static const char *const case_logical_title_id[] = {"3", "1", "2", "4"};
@@ -526,6 +534,33 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .values = multi_bool_id,
             .value_count = sizeof(multi_bool_id) / sizeof(multi_bool_id[0]),
             .context = "multi-key boolean ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY 1 DESC",
+            .values = ordinal_id_desc,
+            .value_count = sizeof(ordinal_id_desc) / sizeof(ordinal_id_desc[0]),
+            .context = "ordinal descriptor ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY 1 DESC",
+            .values = ordinal_distinct_n_desc,
+            .value_count = sizeof(ordinal_distinct_n_desc) / sizeof(ordinal_distinct_n_desc[0]),
+            .context = "distinct ordinal ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONCAT(id, '-', title) FROM ordered_numbers ORDER BY 1 DESC",
+            .values = row_scalar_ordinal_desc,
+            .value_count = sizeof(row_scalar_ordinal_desc) / sizeof(row_scalar_ordinal_desc[0]),
+            .context = "row-scalar ordinal ordering",
         }
     );
     failures += expect_query_values(
@@ -1506,6 +1541,33 @@ static int test_order_limit_diagnostics(void) {
             .message_part = "SELECT DISTINCT supports ORDER BY only on selected columns",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ordered_numbers ORDER BY 0",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column '0' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ordered_numbers ORDER BY 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column '2' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONCAT(id, '-', title) FROM ordered_numbers ORDER BY 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column '2' in 'order clause'",
+        }
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -1620,15 +1682,11 @@ static int test_order_limit_diagnostics(void) {
     failures += expect_result_value(result, 0U, 0U, "1", "multi-key limit first row");
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "SELECT id FROM ordered_numbers ORDER BY 1 LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures += execute_ok(database, "SELECT id FROM ordered_numbers ORDER BY 1 LIMIT 1", &result);
+    failures += expect_size(mylite_result_row_count(result), 1U, "ordinal limit row count");
+    failures += expect_result_value(result, 0U, 0U, "1", "ordinal limit first row");
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_query_values(
         database,
         (struct expected_query){

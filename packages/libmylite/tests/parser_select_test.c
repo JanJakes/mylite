@@ -1769,6 +1769,53 @@ static int test_select_order_limit_clauses(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id, nn FROM simple_lifecycle ORDER BY 1 DESC, 2 ASC LIMIT 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    order_items = parser_test_child_at(order_clause, 0U);
+    failures += parser_test_expect_node(
+        order_items,
+        MYLITE_SQL_AST_ORDER_BY_ITEM_LIST,
+        "ordinal order list"
+    );
+    order_item = parser_test_child_at(order_items, 0U);
+    failures += parser_test_expect_literal(
+        parser_test_child_at(order_item, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "first ordinal order key"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_item, 0U),
+        "1",
+        "first ordinal order key text"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "first ordinal direction"
+    );
+    order_item = parser_test_child_at(order_items, 1U);
+    failures += parser_test_expect_literal(
+        parser_test_child_at(order_item, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "second ordinal order key"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_item, 0U),
+        "2",
+        "second ordinal order key text"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "second ordinal direction"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle ORDER BY FIELD(name, 'b', 'a') DESC LIMIT 2;",
         MYLITE_SQL_PARSE_OK,
         &result

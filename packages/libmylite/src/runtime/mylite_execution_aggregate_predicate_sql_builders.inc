@@ -2895,6 +2895,12 @@ static int append_select_order_item_sql(
     }
     if (item->kind == PLANNED_SELECT_ORDER_ITEM_ALIAS) {
         rc = mylite_dynamic_string_append_quoted_identifier(string, item->alias);
+    } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_ORDINAL) {
+        enum { order_ordinal_text_capacity = 32 };
+        char ordinal_text[order_ordinal_text_capacity];
+
+        snprintf(ordinal_text, sizeof(ordinal_text), "%zu", item->ordinal);
+        rc = mylite_dynamic_string_append(string, ordinal_text);
     } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
                item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
                item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {

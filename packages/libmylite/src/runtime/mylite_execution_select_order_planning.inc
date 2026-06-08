@@ -232,24 +232,28 @@ static int plan_select_order_ast_item(
         return rc;
     }
 
-    rc = resolve_order_alias(
-        database,
-        item_nodes.order_key,
-        select_plan,
-        &out_item->column,
-        &out_item->column_source_index,
-        &resolved_alias
-    );
-    if (rc == MYLITE_OK && !resolved_alias) {
-        rc = resolve_order_column(
+    if (select_order_key_is_integer_ordinal(item_nodes.order_key)) {
+        rc = plan_select_order_ordinal(database, item_nodes.order_key, select_plan, out_item);
+    } else {
+        rc = resolve_order_alias(
             database,
             item_nodes.order_key,
-            source_context,
-            table_columns,
-            table_column_count,
+            select_plan,
             &out_item->column,
-            &out_item->column_source_index
+            &out_item->column_source_index,
+            &resolved_alias
         );
+        if (rc == MYLITE_OK && !resolved_alias) {
+            rc = resolve_order_column(
+                database,
+                item_nodes.order_key,
+                source_context,
+                table_columns,
+                table_column_count,
+                &out_item->column,
+                &out_item->column_source_index
+            );
+        }
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -275,6 +279,29 @@ static int plan_select_order_ast_item(
 
     apply_select_order_item_direction(item_nodes.direction, out_item);
 
+    return MYLITE_OK;
+}
+
+static int plan_select_order_ordinal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct planned_select *select_plan,
+    struct planned_select_order_item *out_item
+) {
+    size_t ordinal = 0U;
+
+    if (select_plan == NULL || select_plan->columns == NULL ||
+        select_plan->column_source_indexes == NULL) {
+        set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
+        return MYLITE_ERROR;
+    }
+    if (parse_select_order_ordinal(database, order_key, select_plan->column_count, &ordinal) !=
+        MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+
+    out_item->column = select_plan->columns[ordinal - 1U];
+    out_item->column_source_index = select_plan->column_source_indexes[ordinal - 1U];
     return MYLITE_OK;
 }
 
@@ -330,6 +357,12 @@ static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_
         item = item->next_sibling;
     }
     return false;
+}
+
+static bool select_order_key_is_integer_ordinal(const struct mylite_sql_ast_node *order_key) {
+    order_key = unwrap_parenthesized_expression(order_key);
+    return order_key != NULL && order_key->kind == MYLITE_SQL_AST_LITERAL &&
+           mylite_sql_ast_node_literal_kind(order_key) == MYLITE_SQL_AST_LITERAL_INTEGER;
 }
 
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key) {

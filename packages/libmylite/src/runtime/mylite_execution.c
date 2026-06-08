@@ -2099,6 +2099,7 @@ enum planned_select_order_item_kind {
     PLANNED_SELECT_ORDER_ITEM_RAND = 2,
     PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR = 3,
     PLANNED_SELECT_ORDER_ITEM_ALIAS = 4,
+    PLANNED_SELECT_ORDER_ITEM_ORDINAL = 5,
 };
 
 struct select_predicate_plan_options {
@@ -2246,6 +2247,7 @@ struct planned_select_order_item {
     size_t column_source_index;
     struct planned_row_scalar_expression *expression;
     char alias[select_item_alias_capacity];
+    size_t ordinal;
 };
 
 struct planned_select_order {
@@ -11822,6 +11824,25 @@ static int plan_row_scalar_select_order(
     bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
 );
+static int plan_row_scalar_select_order_ordinals(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    size_t selected_item_count,
+    struct planned_select_order *out_order,
+    bool *out_handled
+);
+static int plan_row_scalar_select_order_ordinal_item_and_append(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    size_t selected_item_count,
+    struct planned_select_order *out_order
+);
+static int parse_select_order_ordinal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    size_t selected_item_count,
+    size_t *out_ordinal
+);
 static int plan_row_scalar_select_order_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
@@ -20910,6 +20931,12 @@ static int plan_select_order_ast_item(
     bool allow_rand_order,
     struct planned_select_order_item *out_item
 );
+static int plan_select_order_ordinal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct planned_select *select_plan,
+    struct planned_select_order_item *out_item
+);
 static void apply_select_order_item_direction(
     const struct mylite_sql_ast_node *direction,
     struct planned_select_order_item *out_item
@@ -20919,6 +20946,7 @@ static bool select_order_column_needs_integer_validation(
 );
 static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items);
 static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_node *order_items);
+static bool select_order_key_is_integer_ordinal(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_searched_case_expression(const struct mylite_sql_ast_node *order_key

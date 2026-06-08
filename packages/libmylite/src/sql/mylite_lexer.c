@@ -94,6 +94,26 @@ static bool scan_unquoted_identifier(
     unsigned int flags,
     struct mylite_sql_token *out_token
 );
+static bool identifier_span_is_charset_introducer(
+    const struct mylite_sql_lexer *lexer,
+    size_t start,
+    size_t end
+);
+static bool starts_literal_after_charset_introducer(
+    const struct mylite_sql_lexer *lexer,
+    size_t cursor
+);
+static bool identifier_span_is_temporal_literal_introducer(
+    const struct mylite_sql_lexer *lexer,
+    size_t start,
+    size_t end
+);
+static bool identifier_span_equals_keyword(
+    const struct mylite_sql_lexer *lexer,
+    size_t start,
+    size_t end,
+    const char *keyword
+);
 static bool scan_system_variable(
     struct mylite_sql_lexer *lexer,
     struct mylite_token_start start,
@@ -1219,6 +1239,10 @@ const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind) {
         return "operator";
     case MYLITE_SQL_TOKEN_PUNCTUATION:
         return "punctuation";
+    case MYLITE_SQL_TOKEN_CHARSET_INTRODUCER:
+        return "charset_introducer";
+    case MYLITE_SQL_TOKEN_TEMPORAL_LITERAL_INTRODUCER:
+        return "temporal_literal_introducer";
     }
 
     return "unknown";
@@ -1807,21 +1831,115 @@ static bool scan_unquoted_identifier(
     struct mylite_token_start start = make_token_start(lexer, flags);
     unsigned int keyword_flags = 0U;
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_IDENTIFIER;
+    size_t end = 0U;
 
     while (is_identifier_part(peek_at(lexer, 0U))) {
         advance_one(lexer);
     }
+    end = lexer->offset;
 
-    if (mylite_sql_keyword_lookup(
-            &lexer->input[start.offset],
-            lexer->offset - start.offset,
-            &keyword_flags
-        )) {
+    if (identifier_span_is_charset_introducer(lexer, start.offset, end)) {
+        kind = MYLITE_SQL_TOKEN_CHARSET_INTRODUCER;
+    } else if (identifier_span_is_temporal_literal_introducer(lexer, start.offset, end)) {
+        kind = MYLITE_SQL_TOKEN_TEMPORAL_LITERAL_INTRODUCER;
+    } else if (mylite_sql_keyword_lookup(
+                   &lexer->input[start.offset],
+                   end - start.offset,
+                   &keyword_flags
+               )) {
         kind = MYLITE_SQL_TOKEN_KEYWORD;
     }
 
     set_token(lexer, out_token, kind, start);
     out_token->keyword_flags = keyword_flags;
+    return true;
+}
+
+static bool identifier_span_is_charset_introducer(
+    const struct mylite_sql_lexer *lexer,
+    size_t start,
+    size_t end
+) {
+    size_t cursor = end;
+
+    if (lexer == NULL || lexer->input == NULL || start >= end || lexer->input[start] != '_') {
+        return false;
+    }
+    if (end - start < 2U) {
+        return false;
+    }
+    while (cursor < lexer->length && is_space((unsigned char)lexer->input[cursor])) {
+        ++cursor;
+    }
+    return starts_literal_after_charset_introducer(lexer, cursor);
+}
+
+static bool starts_literal_after_charset_introducer(
+    const struct mylite_sql_lexer *lexer,
+    size_t cursor
+) {
+    unsigned char first = 0U;
+    unsigned char second = 0U;
+
+    if (lexer == NULL || lexer->input == NULL || cursor >= lexer->length) {
+        return false;
+    }
+    first = (unsigned char)lexer->input[cursor];
+    second = cursor + 1U < lexer->length ? (unsigned char)lexer->input[cursor + 1U] : 0U;
+    if (first == '\'' || first == '"') {
+        return true;
+    }
+    if ((first == 'X' || first == 'x' || first == 'B' || first == 'b') && second == '\'') {
+        return true;
+    }
+    if (first == '0' && (second == 'X' || second == 'x' || second == 'B' || second == 'b')) {
+        return true;
+    }
+    return false;
+}
+
+static bool identifier_span_is_temporal_literal_introducer(
+    const struct mylite_sql_lexer *lexer,
+    size_t start,
+    size_t end
+) {
+    size_t cursor = end;
+
+    if (lexer == NULL || lexer->input == NULL || start >= end) {
+        return false;
+    }
+    if (!identifier_span_equals_keyword(lexer, start, end, "DATE") &&
+        !identifier_span_equals_keyword(lexer, start, end, "TIME") &&
+        !identifier_span_equals_keyword(lexer, start, end, "TIMESTAMP")) {
+        return false;
+    }
+    while (cursor < lexer->length && is_space((unsigned char)lexer->input[cursor])) {
+        ++cursor;
+    }
+    return cursor < lexer->length &&
+           (lexer->input[cursor] == '\'' ||
+            (lexer->input[cursor] == '"' && (lexer->modes & MYLITE_SQL_MODE_ANSI_QUOTES) == 0U));
+}
+
+static bool identifier_span_equals_keyword(
+    const struct mylite_sql_lexer *lexer,
+    size_t start,
+    size_t end,
+    const char *keyword
+) {
+    size_t keyword_length = keyword == NULL ? 0U : strlen(keyword);
+
+    if (lexer == NULL || lexer->input == NULL || end < start || end - start != keyword_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < keyword_length; ++index) {
+        unsigned char actual = (unsigned char)lexer->input[start + index];
+        unsigned char expected = (unsigned char)keyword[index];
+
+        if ((unsigned char)ascii_upper(actual) != expected) {
+            return false;
+        }
+    }
     return true;
 }
 

@@ -292,33 +292,6 @@ static int test_explain_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "EXPLAIN SELECT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "EXPLAIN FORMAT=JSON SELECT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "EXPLAIN ANALYZE SELECT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "EXPLAIN FOR CONNECTION 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -344,16 +317,6 @@ static int test_explain_diagnostics_and_unsupported_forms(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "EXPLAIN UPDATE numbers SET id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

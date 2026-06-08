@@ -5574,6 +5574,11 @@ static int execute_values_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_explain_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_select_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -29469,6 +29474,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 }
 
 #include "mylite_execution_statement_entry.inc"
+
+#include "mylite_execution_explain_statement.inc"
 
 #include "mylite_execution_statement_session_handlers.inc"
 

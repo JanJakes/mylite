@@ -406,6 +406,24 @@ static int test_window_function_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id, ROW_NUMBER() OVER w AS rn FROM posts WINDOW w AS (ORDER BY id)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "does not yet support WINDOW clauses",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id, ROW_NUMBER() OVER (ORDER BY id ROWS CURRENT ROW) AS rn FROM posts",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only PARTITION BY and ORDER BY",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT id, LAG(missing) OVER (ORDER BY id) AS previous FROM posts",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,

@@ -2,6 +2,11 @@
 
 Window-only ranking, distribution, navigation, and frame-value functions.
 
+The parser also admits MySQL-shaped named windows, `OVER window_name`,
+expression and multi-key partition/order clauses, and `ROWS` / `RANGE` frame
+clauses. Those broader forms are parse-level compatibility only unless they fit
+the executable baseline described per function below.
+
 | Function | Status | Notes |
 | --- | --- | --- |
 | `CUME_DIST()` | 🟡 | Limited projection-only `CUME_DIST() OVER (...)` in the baseline row-scalar window envelope; no named windows, explicit frames, expression keys, multiple keys, joins, grouped selects, predicates, DML contexts, or aggregate windows. See [baseline window rank and navigation functions](../specs/baseline-window-rank-navigation-functions/specs.md). |

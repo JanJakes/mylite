@@ -356,7 +356,7 @@ static int test_row_number_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "window functions support only descriptor columns in ORDER BY",
         }
     );
     failures += execute_error(
@@ -365,7 +365,7 @@ static int test_row_number_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "window functions support only descriptor columns in PARTITION BY",
         }
     );
     failures += execute_error(
@@ -375,7 +375,16 @@ static int test_row_number_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "ROW_NUMBER() supports only PARTITION BY and ORDER BY",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id, ROW_NUMBER() OVER (base_window ORDER BY id) AS rn FROM posts",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ROW_NUMBER() supports only PARTITION BY and ORDER BY",
         }
     );
 

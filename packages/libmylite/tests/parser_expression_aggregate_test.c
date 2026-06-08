@@ -2641,21 +2641,18 @@ static int test_group_concat_aggregate(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT GROUP_CONCAT(id + 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT GROUP_CONCAT(id + 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT GROUP_CONCAT(id ORDER BY 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT GROUP_CONCAT(id ORDER BY id, n) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

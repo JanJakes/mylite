@@ -484,6 +484,24 @@ static int test_group_concat_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT GROUP_CONCAT(IFNULL(name, '') ORDER BY id) FROM diag",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP_CONCAT(column) supports only descriptor columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT GROUP_CONCAT(name ORDER BY id, sort_n) FROM diag",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP_CONCAT ORDER BY supports only one descriptor column",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT GROUP_CONCAT(blob_col) FROM diag",
         (struct expected_sql_error){
             .code = mysql_error_parse,

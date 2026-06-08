@@ -2464,6 +2464,12 @@ static int collect_row_scalar_select_clauses(
             out_clauses->order_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
             out_clauses->limit_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_WINDOW_DEFINITION_LIST) {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT does not yet support WINDOW clauses"
+            );
+            return MYLITE_ERROR;
         } else {
             set_unsupported_error(
                 database,

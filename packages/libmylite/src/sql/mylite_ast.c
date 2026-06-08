@@ -1856,6 +1856,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "window_partition_clause";
     case MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE:
         return "window_order_clause";
+    case MYLITE_SQL_AST_WINDOW_REFERENCE:
+        return "window_reference";
+    case MYLITE_SQL_AST_WINDOW_DEFINITION:
+        return "window_definition";
+    case MYLITE_SQL_AST_WINDOW_DEFINITION_LIST:
+        return "window_definition_list";
+    case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
+        return "window_frame_clause";
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND:
+        return "window_frame_bound";
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
         return "limit_clause";
     case MYLITE_SQL_AST_DELETE_STATEMENT:
@@ -2072,6 +2082,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "drop_procedure_statement";
     case MYLITE_SQL_AST_CALL_STATEMENT:
         return "call_statement";
+    case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
+        return "explain_statement";
+    case MYLITE_SQL_AST_EXPLAIN_FORMAT:
+        return "explain_format";
+    case MYLITE_SQL_AST_EXPLAIN_ANALYZE:
+        return "explain_analyze";
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
         return "show_index_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:

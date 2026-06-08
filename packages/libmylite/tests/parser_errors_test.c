@@ -530,18 +530,18 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("EXPLAIN t FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("EXPLAIN SELECT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parser_test_parse_sql(
-        "EXPLAIN FORMAT=JSON SELECT 1;",
+        "EXPLAIN FORMAT=DEFAULT SELECT 1;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("EXPLAIN ANALYZE SELECT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql(
+        "EXPLAIN FORMAT=JSON ANALYZE SELECT 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

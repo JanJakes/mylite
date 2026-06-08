@@ -59,7 +59,8 @@ static bool statement_result_is_select(
         return false;
     }
     if (statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT ||
-        statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_EXPLAIN_STATEMENT) {
         return true;
     }
     if (statement->kind != MYLITE_SQL_AST_EXECUTE_STATEMENT || result == NULL) {
@@ -311,6 +312,8 @@ static int execute_non_prepared_statement(
         return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_VALUES_STATEMENT:
         return execute_values_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
+        return execute_explain_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CALL_STATEMENT:
         return execute_call_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT: {
@@ -640,7 +643,14 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_WINDOW_SPEC:
     case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:
     case MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE:
+    case MYLITE_SQL_AST_WINDOW_REFERENCE:
+    case MYLITE_SQL_AST_WINDOW_DEFINITION:
+    case MYLITE_SQL_AST_WINDOW_DEFINITION_LIST:
+    case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_EXPLAIN_FORMAT:
+    case MYLITE_SQL_AST_EXPLAIN_ANALYZE:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:

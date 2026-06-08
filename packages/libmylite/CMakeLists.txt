@@ -219,6 +219,10 @@ if(BUILD_TESTING)
     mylite_parser_expression_aggregate_test
     tests/parser_expression_aggregate_test.c
   )
+  mylite_add_parser_test(
+    mylite_parser_expression_window_explain_gaps_test
+    tests/parser_expression_window_explain_gaps_test.c
+  )
   mylite_add_parser_test(mylite_parser_ddl_table_test tests/parser_ddl_table_test.c)
   mylite_add_parser_test(mylite_parser_types_test tests/parser_types_test.c)
   mylite_add_parser_test(
@@ -473,6 +477,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_optimizer_hints_noop_test)
+
+  add_executable(mylite_runtime_explain_statement_test
+    tests/runtime_explain_statement_test.c
+  )
+  target_link_libraries(mylite_runtime_explain_statement_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_explain_statement_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_explain_statement_test)
 
   add_executable(mylite_runtime_scalar_arithmetic_projection_test
     tests/runtime_scalar_arithmetic_projection_test.c
@@ -5374,6 +5389,10 @@ if(BUILD_TESTING)
     NAME libmylite.parser.expression_aggregate
     COMMAND mylite_parser_expression_aggregate_test
   )
+  add_test(
+    NAME libmylite.parser.expression_window_explain_gaps
+    COMMAND mylite_parser_expression_window_explain_gaps_test
+  )
   add_test(NAME libmylite.parser.ddl_table COMMAND mylite_parser_ddl_table_test)
   add_test(NAME libmylite.parser.types COMMAND mylite_parser_types_test)
   add_test(
@@ -5457,6 +5476,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.optimizer_hints_noop
     COMMAND mylite_runtime_optimizer_hints_noop_test
+  )
+  add_test(
+    NAME libmylite.runtime.explain_statement
+    COMMAND mylite_runtime_explain_statement_test
   )
   add_test(
     NAME libmylite.runtime.scalar_arithmetic_projection

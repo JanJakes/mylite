@@ -565,7 +565,7 @@ static int validate_existing_text_for_column(
             row_number
         );
     }
-    if (strcmp(column->physical_type, "INTEGER") == 0) {
+    if (column_descriptor_physical_type_equals(column, "INTEGER")) {
         return validate_existing_text_integer_for_column(
             database,
             (const char *)text,

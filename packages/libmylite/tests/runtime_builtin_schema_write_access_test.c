@@ -516,7 +516,13 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
 static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
     if (actual == NULL || expected == NULL) {
         if (actual != expected) {
-            fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
+            fprintf(
+                stderr,
+                "%s: expected %s, got %s\n",
+                context,
+                expected == NULL ? "NULL" : expected,
+                actual == NULL ? "NULL" : actual
+            );
             return 1;
         }
         return 0;

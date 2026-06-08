@@ -361,6 +361,25 @@ static bool column_default_kind_materializes_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) != 0;
 }
 
+static bool column_descriptor_physical_type_equals(
+    const struct mylite_catalog_column_descriptor *column,
+    const char *physical_type
+) {
+    size_t physical_type_length = 0U;
+
+    if (column == NULL || column->physical_type[0] == '\0' || physical_type == NULL) {
+        return false;
+    }
+
+    physical_type_length = strlen(physical_type);
+    if (physical_type_length >= sizeof(column->physical_type)) {
+        return false;
+    }
+
+    return (memcmp(column->physical_type, physical_type, physical_type_length) == 0 &&
+            column->physical_type[physical_type_length] == '\0') != 0;
+}
+
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
     bool has_varchar_logical_type = false;
     bool has_text_physical_type = false;

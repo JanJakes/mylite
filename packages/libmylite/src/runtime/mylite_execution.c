@@ -17305,6 +17305,10 @@ static bool column_default_kind_is_expression(enum mylite_catalog_column_default
 static bool column_default_kind_materializes_value(
     enum mylite_catalog_column_default_kind default_kind
 );
+static bool column_descriptor_physical_type_equals(
+    const struct mylite_catalog_column_descriptor *column,
+    const char *physical_type
+);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_char(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_national_char_or_varchar(

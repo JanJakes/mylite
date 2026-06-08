@@ -379,6 +379,24 @@ static int test_window_function_diagnostics(void) {
 
     failures += execute_error(
         database,
+        "SELECT COUNT(*) OVER () FROM posts",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "aggregate window functions are not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id, SUM(id) OVER (PARTITION BY author_id ORDER BY id) AS running_id FROM posts",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "aggregate window functions are not supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT RANK(1) OVER ()",
         (struct expected_sql_error){
             .code = mysql_error_parse,

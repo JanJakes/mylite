@@ -7107,6 +7107,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_attach_function_window_clause(
+    struct mylite_sql_ast_node *function,
+    struct mylite_sql_ast_node *window_clause
+) {
+    if (function == NULL || window_clause == NULL) {
+        return function;
+    }
+    mylite_sql_ast_node_append_child(function, window_clause);
+    mylite_sql_ast_node_set_span(function, span_join(function->span, window_clause->span));
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_row_number_window_function_with_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -7160,6 +7172,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_function_with_clause(
     mylite_sql_ast_node_append_child(function, argument_list);
     mylite_sql_ast_node_append_child(function, window_clause);
     return function;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_empty_window_spec(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token over_token,
+    struct mylite_sql_token right_paren
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_WINDOW_SPEC,
+        span_join(span_from_token(&over_token), span_from_token(&right_paren))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_spec(

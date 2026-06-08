@@ -79,6 +79,7 @@
 %type cast_decimal_precision_opt { int }
 %type cast_float_precision_opt { int }
 %type window_frame_unit { struct mylite_sql_token }
+%type aggregate_window_opt { struct mylite_sql_ast_node * }
 %type alter_table_option_tail_opt { struct mylite_sql_alter_table_options }
 %type alter_table_algorithm_lock_option_list { struct mylite_sql_alter_table_options }
 %type alter_table_algorithm_lock_option { struct mylite_sql_alter_table_options }
@@ -5602,6 +5603,16 @@ over_clause(A) ::= OVER identifier(N). {
     A = mylite_sql_parser_make_window_reference(state, N);
 }
 
+aggregate_window_opt(A) ::= . {
+    A = NULL;
+}
+aggregate_window_opt(A) ::= OVER(T) LPAREN window_spec_opt(W) RPAREN(R). {
+    A = W == NULL ? mylite_sql_parser_make_empty_window_spec(state, T, R) : W;
+}
+aggregate_window_opt(A) ::= OVER identifier(N). {
+    A = mylite_sql_parser_make_window_reference(state, N);
+}
+
 window_clause_opt(A) ::= . {
     A = NULL;
 }
@@ -8400,21 +8411,31 @@ expression(A) ::= CONNECTION_ID(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR, B, R);
 }
-expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_zero_argument_function(
-        state, T, L, MYLITE_SQL_AST_COUNT_STAR_FUNCTION, R);
+expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_zero_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_STAR_FUNCTION, R),
+        W);
 }
-expression(A) ::= COUNT(T) LPAREN(L) DISTINCT qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R);
+expression(A) ::= COUNT(T) LPAREN(L) DISTINCT qualified_identifier(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= COUNT(T) LPAREN(L) DISTINCT LPAREN qualified_identifier(B) RPAREN RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R);
+expression(A) ::= COUNT(T) LPAREN(L) DISTINCT LPAREN qualified_identifier(B) RPAREN RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R);
+expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R),
+        W);
 }
 expression(A) ::= COUNT(T) LPAREN(L) count_nullif_predicate_expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
@@ -8450,37 +8471,57 @@ count_nullif_predicate(A) ::=
             .escape = E,
         });
 }
-expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= AVG(T) LPAREN qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_one_argument_function(
-        state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= AVG(T) LPAREN qualified_identifier(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_one_argument_function(
+            state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= BIT_AND(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= BIT_AND(T) LPAREN(L) qualified_identifier(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= BIT_OR(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= BIT_OR(T) LPAREN(L) qualified_identifier(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= BIT_XOR(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION, B, R);
+expression(A) ::= BIT_XOR(T) LPAREN(L) qualified_identifier(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION, B, R),
+        W);
 }
 expression(A) ::= GROUP_CONCAT(T) LPAREN(L) expression(B)
-    group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R). {
-    A = mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R);
+    group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R),
+        W);
 }
 expression(A) ::= ANY_VALUE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(

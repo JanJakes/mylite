@@ -1800,6 +1800,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
     struct mylite_sql_ast_node *separator,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_attach_function_window_clause(
+    struct mylite_sql_ast_node *function,
+    struct mylite_sql_ast_node *window_clause
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_row_number_window_function_with_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -1817,6 +1821,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_function_with_clause(
     enum mylite_sql_ast_node_kind function_kind,
     struct mylite_sql_window_function_arguments arguments,
     struct mylite_sql_ast_node *window_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_empty_window_spec(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token over_token,
+    struct mylite_sql_token right_paren
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_spec(
     struct mylite_sql_parser_state *state,

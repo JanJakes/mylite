@@ -2,6 +2,7 @@
 
 static int test_explain_query_forms(void);
 static int test_window_grammar_forms(void);
+static int test_aggregate_window_ast_shape(void);
 static int test_type_and_literal_forms(void);
 static int test_group_concat_expression_forms(void);
 static int parse_ok(const char *sql, const char *context);
@@ -22,6 +23,7 @@ int main(void) {
 
     failures += test_explain_query_forms();
     failures += test_window_grammar_forms();
+    failures += test_aggregate_window_ast_shape();
     failures += test_type_and_literal_forms();
     failures += test_group_concat_expression_forms();
 
@@ -106,6 +108,19 @@ static int test_window_grammar_forms(void) {
         "SELECT LAST_VALUE(value) OVER (ORDER BY id ROWS BETWEEN CURRENT ROW AND UNBOUNDED "
         "FOLLOWING) FROM numbers",
         "SELECT NTH_VALUE(value, 2) OVER (ORDER BY id) FROM numbers",
+        "SELECT id, COUNT(*) OVER () FROM numbers",
+        "SELECT id, COUNT(id) OVER w FROM numbers WINDOW w AS (PARTITION BY grp ORDER BY id)",
+        "SELECT id, COUNT(DISTINCT id) OVER () FROM numbers",
+        "SELECT id, COUNT(DISTINCT(id)) OVER () FROM numbers",
+        "SELECT id, SUM(value) OVER (PARTITION BY grp ORDER BY id ROWS BETWEEN UNBOUNDED "
+        "PRECEDING AND CURRENT ROW) FROM numbers",
+        "SELECT MIN(value) OVER w, MAX(value) OVER w, AVG(value) OVER w "
+        "FROM numbers WINDOW w AS (ORDER BY id)",
+        "SELECT BIT_AND(value) OVER (), BIT_OR(value) OVER (), BIT_XOR(value) OVER () "
+        "FROM numbers",
+        "SELECT GROUP_CONCAT(name ORDER BY id DESC SEPARATOR '|') OVER w "
+        "FROM numbers WINDOW w AS (ORDER BY id)",
+        "SELECT COUNT(*) OVER () + SUM(value) OVER () FROM numbers",
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -135,6 +150,32 @@ static int test_window_grammar_forms(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_aggregate_window_ast_shape(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *function = NULL;
+    int failures =
+        parser_test_parse_sql("SELECT COUNT(*) OVER () FROM numbers", MYLITE_SQL_PARSE_OK, &result);
+
+    statement = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(statement, 0U);
+    function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "aggregate window function"
+    );
+    failures += parser_test_expect_child_count(function, 1U, "aggregate window child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(function, 0U),
+        MYLITE_SQL_AST_WINDOW_SPEC,
+        "aggregate window clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
     return failures;
 }
 

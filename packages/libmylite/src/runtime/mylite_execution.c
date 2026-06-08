@@ -5606,6 +5606,12 @@ static int execute_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static bool select_statement_has_aggregate_window_expression(
+    const struct mylite_sql_ast_node *statement
+);
+static bool ast_node_has_aggregate_window_expression(const struct mylite_sql_ast_node *node);
+static bool ast_node_is_aggregate_function(const struct mylite_sql_ast_node *node);
+static bool ast_node_is_window_clause_marker(const struct mylite_sql_ast_node *node);
 static int execute_select_into_user_variables_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

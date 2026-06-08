@@ -5,7 +5,10 @@ Window-only ranking, distribution, navigation, and frame-value functions.
 The parser also admits MySQL-shaped named windows, `OVER window_name`,
 expression and multi-key partition/order clauses, and `ROWS` / `RANGE` frame
 clauses. Those broader forms are parse-level compatibility only unless they fit
-the executable baseline described per function below.
+the executable baseline described per function below. Common aggregate-window
+forms such as `COUNT(*) OVER (...)` and `SUM(column) OVER (...)` are also
+parse-level compatibility only and are rejected on execution; see
+[parser aggregate window syntax](../specs/parser-aggregate-window-syntax/specs.md).
 
 | Function | Status | Notes |
 | --- | --- | --- |

@@ -111,6 +111,10 @@ static int execute_select_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (select_statement_has_aggregate_window_expression(statement)) {
+        set_unsupported_error(database, "aggregate window functions are not supported");
+        return MYLITE_ERROR;
+    }
     rc = select_statement_targets_information_schema(
         database,
         statement,
@@ -254,6 +258,70 @@ static int execute_select_statement(
         apply_sql_select_limit,
         out_result
     );
+}
+
+static bool select_statement_has_aggregate_window_expression(
+    const struct mylite_sql_ast_node *statement
+) {
+    return ast_node_has_aggregate_window_expression(statement);
+}
+
+static bool ast_node_has_aggregate_window_expression(const struct mylite_sql_ast_node *node) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (node == NULL) {
+        return false;
+    }
+    if (ast_node_is_aggregate_function(node)) {
+        child = child_at(node, 0U);
+        while (child != NULL) {
+            if (ast_node_is_window_clause_marker(child)) {
+                return true;
+            }
+            child = child->next_sibling;
+        }
+    }
+    child = child_at(node, 0U);
+    while (child != NULL) {
+        if (ast_node_has_aggregate_window_expression(child)) {
+            return true;
+        }
+        child = child->next_sibling;
+    }
+    return false;
+}
+
+static bool ast_node_is_aggregate_function(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return false;
+    }
+
+    switch (node->kind) {
+    case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION:
+    case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool ast_node_is_window_clause_marker(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return false;
+    }
+    return node->kind == MYLITE_SQL_AST_WINDOW_SPEC ||
+           node->kind == MYLITE_SQL_AST_WINDOW_REFERENCE;
 }
 
 static int execute_grouped_select_statement(

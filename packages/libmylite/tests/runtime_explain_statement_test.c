@@ -114,6 +114,17 @@ static int test_explain_placeholder_results(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "EXPLAIN SELECT COUNT(*) OVER () FROM t1",
+            .columns = traditional_columns,
+            .column_count = sizeof(traditional_columns) / sizeof(traditional_columns[0]),
+            .values = traditional_values,
+            .row_count = 1U,
+            .context = "traditional EXPLAIN aggregate window child placeholder",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "EXPLAIN UPDATE t SET id = 1",
             .columns = traditional_columns,
             .column_count = sizeof(traditional_columns) / sizeof(traditional_columns[0]),

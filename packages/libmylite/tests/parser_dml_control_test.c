@@ -1390,6 +1390,25 @@ static int test_insert_on_duplicate_key_update_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "INSERT INTO simple_lifecycle VALUES "
+        "(CONVERT(_ucs2 0x0041 USING utf8mb4), CONCAT('a', REPEAT('b', 2)), "
+        "DATE '2024-01-02') "
+        "ON DUPLICATE KEY UPDATE amount = CONVERT('7' USING utf8mb4);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    clause = parser_test_child_at(statement, 3U);
+    assignments = parser_test_child_at(clause, 0U);
+    assignment = parser_test_child_at(assignments, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(assignment, 1U),
+        MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION,
+        "duplicate scalar convert assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -2414,6 +2433,32 @@ static int test_update_statement(void) {
         "UPDATE simple_lifecycle SET amount = UNIX_TIMESTAMP(1);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE simple_lifecycle SET "
+        "name = _utf8mb4'abc', "
+        "created_at = STR_TO_DATE('2024-05-06 07:08:09', '%Y-%m-%d %H:%i:%s'), "
+        "elapsed = SEC_TO_TIME(3661);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    assignment_list = parser_test_child_at(statement, 1U);
+    failures +=
+        parser_test_expect_child_count(assignment_list, 3U, "update scalar assignment count");
+    assignment = parser_test_child_at(assignment_list, 1U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(assignment, 1U),
+        MYLITE_SQL_AST_STR_TO_DATE_FUNCTION,
+        "update STR_TO_DATE assignment"
+    );
+    assignment = parser_test_child_at(assignment_list, 2U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(assignment, 1U),
+        MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION,
+        "update SEC_TO_TIME assignment"
     );
     mylite_sql_parse_result_deinit(&result);
 

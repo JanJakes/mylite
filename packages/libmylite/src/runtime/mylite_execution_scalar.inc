@@ -289,6 +289,8 @@ static int session_scalar_value(
         return mylite_execution_scalar_json_array_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
         return mylite_execution_scalar_json_object_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+        return scalar_concat_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
         return mylite_execution_scalar_concat_ws_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:

@@ -3048,6 +3048,9 @@ insert_value(A) ::= rand_expression(B). {
 insert_value(A) ::= insert_unix_timestamp_value(B). {
     A = B;
 }
+insert_value(A) ::= dml_constant_scalar_value(B). {
+    A = B;
+}
 
 insert_unix_timestamp_value(A) ::= insert_unix_timestamp_now(B). {
     A = B;
@@ -3169,6 +3172,9 @@ update_value(A) ::= insert_unix_timestamp_value(B). {
 update_value(A) ::= rand_expression(B). {
     A = B;
 }
+update_value(A) ::= dml_constant_scalar_value(B). {
+    A = B;
+}
 update_value(A) ::=
     DATE_ADD(T) LPAREN(L) arithmetic_update_source_column(C)
     COMMA INTERVAL update_date_interval_interval(I) date_interval_unit(U) RPAREN(R). {
@@ -3233,6 +3239,38 @@ update_value(A) ::= update_constant_arithmetic_value(B). {
 }
 update_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
+
+dml_constant_scalar_value(A) ::= charset_introducer STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+dml_constant_scalar_value(A) ::= charset_introducer HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+dml_constant_scalar_value(A) ::= charset_introducer BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+dml_constant_scalar_value(A) ::= TEMPORAL_LITERAL_INTRODUCER STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+dml_constant_scalar_value(A) ::= cast_convert_expression(B). {
+    A = B;
+}
+dml_constant_scalar_value(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
+dml_constant_scalar_value(A) ::= REPEAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_REPEAT_FUNCTION, B, C, R);
+}
+dml_constant_scalar_value(A) ::= STR_TO_DATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_STR_TO_DATE_FUNCTION, B, C, R);
+}
+dml_constant_scalar_value(A) ::= SEC_TO_TIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION, B, R);
 }
 
 arithmetic_update_source_column(A) ::= IDENTIFIER(T). {

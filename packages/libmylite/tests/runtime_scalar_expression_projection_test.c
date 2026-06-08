@@ -1104,6 +1104,8 @@ static int test_scalar_binary_literal_projection(void) {
 static int test_scalar_expression_projection_unsupported_forms(void) {
     static const char *const column_one[] = {"one"};
     static const char *const value_one[] = {"1"};
+    static const char *const column_id[] = {"id"};
+    static const char *const value_two[] = {"2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1389,13 +1391,16 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .message_part = "CONVERT USING BINARY supports only string literals",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET id = CAST(2 AS BINARY)", NULL);
+    failures += expect_query(
         database,
-        "UPDATE t SET id = CAST(1 AS BINARY)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+        (struct expected_query){
+            .sql = "SELECT id FROM t",
+            .columns = column_id,
+            .column_count = 1U,
+            .values = value_two,
+            .row_count = 1U,
+            .context = "DML CAST AS BINARY assignment",
         }
     );
     failures += execute_error(

@@ -955,20 +955,16 @@ static int test_datetime_diagnostics(void) {
         "INSERT IGNORE INTO dates VALUES (1, 20240102)",
         (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO dates VALUES (1, TIMESTAMP '2024-01-02 00:00:00')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near",
-        }
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM dates",
-            .values = (const char *const[]){"5"},
+            .values = (const char *const[]){"6"},
             .column_count = 1U,
             .row_count = 1U,
             .context = "datetime INSERT IGNORE adjusted rows",

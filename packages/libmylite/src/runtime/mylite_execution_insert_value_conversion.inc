@@ -110,6 +110,468 @@ static int convert_dml_rand_value(
     return rc;
 }
 
+static int convert_dml_constant_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
+    size_t row_number,
+    bool ignore_errors,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    bool auto_increment_null_generates,
+    bool *out_handled,
+    struct planned_value *out_value
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (!dml_value_is_constant_scalar_expression(value_node)) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+
+    rc = session_scalar_value(database, value_node, &cell);
+    if (rc == MYLITE_OK) {
+        rc = append_session_scalar_cell_warnings(database, &cell);
+    }
+    if (rc == MYLITE_OK && cell.value == NULL) {
+        if (auto_increment_null_generates && column_descriptor_is_auto_increment(column)) {
+            planned_value_deinit(out_value);
+            *out_value =
+                (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        } else {
+            rc = convert_null_insert_value(database, column, ignore_errors, out_value);
+        }
+    } else if (rc == MYLITE_OK) {
+        rc = convert_dml_scalar_cell_for_column(
+            database,
+            &cell,
+            column,
+            diagnostic_column_name,
+            row_number,
+            ignore_errors,
+            allow_string_truncation_adjustment,
+            warn_on_trailing_space_truncation,
+            out_value
+        );
+    }
+
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static bool dml_value_is_constant_scalar_expression(
+    const struct mylite_sql_ast_node *value_node
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL) {
+        return false;
+    }
+    switch (value_node->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+    case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int convert_dml_scalar_cell_for_column(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
+    size_t row_number,
+    bool ignore_errors,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    struct planned_value *out_value
+) {
+    struct decimal_type_info decimal_info = {0};
+    struct approximate_type_info approximate_info = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (cell == NULL || column == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (column_descriptor_is_char(column)) {
+        return convert_dml_scalar_cell_text_value(
+            database,
+            cell,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            false,
+            out_value
+        );
+    }
+    if (column_descriptor_is_varchar(column)) {
+        return convert_dml_scalar_cell_text_value(
+            database,
+            cell,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            false,
+            out_value
+        );
+    }
+    if (column_descriptor_is_text_family(column)) {
+        return convert_dml_scalar_cell_text_value(
+            database,
+            cell,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            warn_on_trailing_space_truncation,
+            out_value
+        );
+    }
+    if (column_descriptor_is_binary_string_family(column)) {
+        return convert_dml_scalar_cell_binary_value(
+            database,
+            cell,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+
+    rc = copy_dml_scalar_cell_text(
+        database,
+        cell,
+        "DML constant scalar values do not support NUL bytes for this target",
+        false,
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (column_descriptor_is_json(column)) {
+        return normalize_json_value(
+            database,
+            text,
+            text_length,
+            diagnostic_column_name == NULL ? column->name : diagnostic_column_name,
+            out_value
+        );
+    }
+    if (column_descriptor_is_year(column)) {
+        return convert_year_string_value(
+            database,
+            text,
+            text_length,
+            column,
+            row_number,
+            dml_allows_missing_default_adjustment(database, ignore_errors),
+            out_value
+        );
+    }
+    if (column_descriptor_is_date(column)) {
+        return convert_relaxed_date_storage_text(
+            database,
+            text,
+            text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (column_descriptor_is_time(column)) {
+        return canonicalize_time_text(
+            database,
+            text,
+            text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (column_descriptor_is_datetime(column)) {
+        return convert_relaxed_datetime_storage_text(
+            database,
+            text,
+            text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            database == NULL ? 0 : database->session.time_zone_offset_minutes,
+            out_value
+        );
+    }
+    if (column_descriptor_is_timestamp(column)) {
+        return convert_relaxed_timestamp_storage_text(
+            database,
+            text,
+            text_length,
+            column->name,
+            row_number,
+            ignore_errors,
+            0,
+            out_value
+        );
+    }
+    if (column_descriptor_is_decimal(column)) {
+        rc = decimal_type_info_for_logical_type(column->logical_type, &decimal_info);
+        if (rc == MYLITE_OK) {
+            rc = convert_decimal_string_text(
+                database,
+                text,
+                text_length,
+                column,
+                row_number,
+                ignore_errors,
+                &decimal_info,
+                out_value
+            );
+        }
+        free(text);
+        return rc;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        rc = approximate_type_info_for_logical_type(column->logical_type, &approximate_info);
+        if (rc == MYLITE_OK) {
+            rc = convert_approximate_string_text(
+                database,
+                text,
+                text_length,
+                column,
+                row_number,
+                ignore_errors,
+                &approximate_info,
+                out_value
+            );
+        }
+        free(text);
+        return rc;
+    }
+    if (column_descriptor_is_bit(column)) {
+        rc = convert_dml_scalar_cell_bit_value(
+            database,
+            text,
+            text_length,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+        free(text);
+        return rc;
+    }
+    if (column_descriptor_is_spatial(column)) {
+        free(text);
+        set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_integer_string_text(
+        database,
+        text,
+        text_length,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+    free(text);
+    return rc;
+}
+
+static int convert_dml_scalar_cell_text_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    struct planned_value *out_value
+) {
+    struct char_text_conversion conversion = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = copy_dml_scalar_cell_text(
+        database,
+        cell,
+        "DML constant scalar string values do not support invalid NUL bytes",
+        false,
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    conversion = (struct char_text_conversion){
+        .text = text,
+        .text_length = text_length,
+        .row_number = row_number,
+    };
+    if (column_descriptor_is_char(column)) {
+        rc = convert_char_text(
+            database,
+            column,
+            &conversion,
+            allow_string_truncation_adjustment
+        );
+    } else if (column_descriptor_is_varchar(column)) {
+        rc = convert_varchar_text(
+            database,
+            column,
+            &conversion,
+            allow_string_truncation_adjustment
+        );
+    } else {
+        rc = convert_text_family_text(
+            database,
+            column,
+            &conversion,
+            allow_string_truncation_adjustment,
+            warn_on_trailing_space_truncation
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(text);
+        return rc;
+    }
+    return assign_text_value(database, text, conversion.text_length, out_value);
+}
+
+static int convert_dml_scalar_cell_binary_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = copy_dml_scalar_cell_text(
+        database,
+        cell,
+        "invalid binary string scalar value",
+        true,
+        &bytes,
+        &byte_count
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = convert_binary_bytes_for_column(
+            database,
+            column,
+            row_number,
+            ignore_errors,
+            &bytes,
+            &byte_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(bytes);
+        return rc;
+    }
+    return assign_blob_value(database, bytes, byte_count, out_value);
+}
+
+static int convert_dml_scalar_cell_bit_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    uint64_t magnitude = 0U;
+    bool parse_overflow = false;
+    int rc = bit_string_bytes_to_magnitude(text, text_length, &magnitude, &parse_overflow);
+
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "BIT values support only integer, boolean, bit, string, hex, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (parse_overflow) {
+        if (!ignore_errors) {
+            set_data_too_long_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        return clip_bit_value_for_column(database, column, row_number, false, out_value);
+    }
+    return convert_bit_value_magnitude(
+        database,
+        column,
+        magnitude,
+        false,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int copy_dml_scalar_cell_text(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const char *nul_message,
+    bool allow_nul,
+    char **out_text,
+    size_t *out_text_length
+) {
+    const char *value = cell == NULL ? NULL : cell->value;
+    size_t value_length = 0U;
+    char *copy = NULL;
+
+    if (value == NULL || out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    value_length = cell->has_value_size ? cell->value_size : strlen(value);
+    if (!allow_nul && memchr(value, '\0', value_length) != NULL) {
+        set_unsupported_error(database, nul_message);
+        return MYLITE_ERROR;
+    }
+    copy = malloc(value_length + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (value_length != 0U) {
+        memcpy(copy, value, value_length);
+    }
+    copy[value_length] = '\0';
+
+    *out_text = copy;
+    *out_text_length = value_length;
+    return MYLITE_OK;
+}
+
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -174,6 +636,22 @@ static int convert_insert_value(
         row_number,
         allow_string_truncation_adjustment,
         false,
+        &handled,
+        out_value
+    );
+    if (handled) {
+        return rc;
+    }
+    rc = convert_dml_constant_scalar_value(
+        database,
+        value_node,
+        column,
+        diagnostic_column_name,
+        row_number,
+        ignore_errors,
+        allow_string_truncation_adjustment,
+        false,
+        true,
         &handled,
         out_value
     );
@@ -854,6 +1332,26 @@ static int convert_auto_increment_insert_value(
          mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL)) {
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return MYLITE_OK;
+    }
+    {
+        bool handled = false;
+        int rc = convert_dml_constant_scalar_value(
+            database,
+            value_node,
+            column,
+            NULL,
+            row_number,
+            ignore_errors,
+            dml_allows_string_truncation_adjustment(database, ignore_errors),
+            false,
+            true,
+            &handled,
+            out_value
+        );
+
+        if (handled || rc != MYLITE_OK) {
+            return rc;
+        }
     }
 
     return convert_integer_literal(

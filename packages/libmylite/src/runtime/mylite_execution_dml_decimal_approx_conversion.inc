@@ -112,10 +112,6 @@ static int convert_decimal_string_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
-    struct mylite_execution_dml_numeric_token_scan scan = {0};
-    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
-    enum mylite_execution_dml_numeric_parse_result parse_result =
-        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
     int rc = decode_sql_string_literal(
         database,
         literal,
@@ -130,35 +126,67 @@ static int convert_decimal_string_literal(
         return rc;
     }
 
+    rc = convert_decimal_string_text(
+        database,
+        text,
+        text_length,
+        column,
+        row_number,
+        ignore_errors,
+        info,
+        out_value
+    );
+    free(text);
+    return rc;
+}
+
+static int convert_decimal_string_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+) {
+    struct mylite_execution_dml_numeric_token_scan scan = {0};
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
+
+    if (text == NULL || column == NULL || info == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
     parse_result = mylite_execution_scan_dml_numeric_string_text(text, text_length, &scan);
     if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         if (!adjust_errors) {
             set_incorrect_decimal_value_error(database, text, column->name, row_number);
-            rc = MYLITE_ERROR;
-        } else {
-            rc = append_incorrect_decimal_value_warning(database, text, column->name, row_number);
-            if (rc == MYLITE_OK) {
-                rc = build_decimal_zero_value(database, info, out_value);
-            }
+            return MYLITE_ERROR;
         }
-    } else if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED && !adjust_errors) {
-        set_incorrect_decimal_value_error(database, text, column->name, row_number);
-        rc = MYLITE_ERROR;
-    } else {
-        rc = convert_decimal_scanned_string_literal(
-            database,
-            text,
-            &scan,
-            parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED,
-            column,
-            row_number,
-            adjust_errors,
-            info,
-            out_value
-        );
+        int rc =
+            append_incorrect_decimal_value_warning(database, text, column->name, row_number);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return build_decimal_zero_value(database, info, out_value);
     }
-    free(text);
-    return rc;
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED && !adjust_errors) {
+        set_incorrect_decimal_value_error(database, text, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    return convert_decimal_scanned_string_literal(
+        database,
+        text,
+        &scan,
+        parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED,
+        column,
+        row_number,
+        adjust_errors,
+        info,
+        out_value
+    );
 }
 
 static int convert_decimal_hex_literal(
@@ -602,10 +630,6 @@ static int convert_approximate_string_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
-    struct mylite_execution_dml_numeric_token_scan scan = {0};
-    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
-    enum mylite_execution_dml_numeric_parse_result parse_result =
-        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
     int rc = decode_sql_string_literal(
         database,
         literal,
@@ -620,32 +644,62 @@ static int convert_approximate_string_literal(
         return rc;
     }
 
+    rc = convert_approximate_string_text(
+        database,
+        text,
+        text_length,
+        column,
+        row_number,
+        ignore_errors,
+        info,
+        out_value
+    );
+    free(text);
+    return rc;
+}
+
+static int convert_approximate_string_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+) {
+    struct mylite_execution_dml_numeric_token_scan scan = {0};
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
+
+    if (text == NULL || column == NULL || info == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
     parse_result = mylite_execution_scan_dml_numeric_string_text(text, text_length, &scan);
     if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         if (!adjust_errors) {
             set_data_truncated_error(database, column->name, row_number);
-            rc = MYLITE_ERROR;
-        } else {
-            rc = append_data_truncated_warning(database, column->name, row_number);
-            if (rc == MYLITE_OK) {
-                rc = assign_approximate_value(0.0, out_value);
-            }
+            return MYLITE_ERROR;
         }
-    } else {
-        rc = convert_approximate_scanned_string_literal(
-            database,
-            text,
-            &scan,
-            parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED,
-            column,
-            row_number,
-            adjust_errors,
-            info,
-            out_value
-        );
+        int rc = append_data_truncated_warning(database, column->name, row_number);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return assign_approximate_value(0.0, out_value);
     }
-    free(text);
-    return rc;
+    return convert_approximate_scanned_string_literal(
+        database,
+        text,
+        &scan,
+        parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED,
+        column,
+        row_number,
+        adjust_errors,
+        info,
+        out_value
+    );
 }
 
 static int convert_approximate_scanned_string_literal(

@@ -220,6 +220,7 @@ static int scalar_concat_operator_value(
     char *result = NULL;
     size_t argument_count = 0U;
     size_t next_argument = 0U;
+    size_t result_length = 0U;
     int rc = count_row_scalar_concat_operator_arguments(database, expression, &argument_count);
 
     if (out_cell == NULL) {
@@ -261,7 +262,7 @@ static int scalar_concat_operator_value(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = scalar_concat_operator_result(arguments, argument_count, &result);
+        rc = scalar_concat_operator_result(arguments, argument_count, &result, &result_length);
     }
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
@@ -269,6 +270,8 @@ static int scalar_concat_operator_value(
     if (rc == MYLITE_OK && result != NULL) {
         out_cell->owned_text = result;
         out_cell->value = out_cell->owned_text;
+        out_cell->value_size = result_length;
+        out_cell->has_value_size = true;
         result = NULL;
     }
 
@@ -280,6 +283,168 @@ static int scalar_concat_operator_value(
     free((void *)owned_texts);
     free(cells);
     free(arguments);
+    return rc;
+}
+
+static int scalar_concat_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct mylite_string_concat_argument *arguments = NULL;
+    struct session_scalar_cell *cells = NULL;
+    char **owned_texts = NULL;
+    char *result = NULL;
+    size_t argument_count = 0U;
+    size_t next_argument = 0U;
+    size_t result_length = 0U;
+    int rc = count_row_scalar_concat_function_arguments(database, expression, &argument_count);
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument_count == 0U || argument_count > SIZE_MAX / sizeof(*arguments) ||
+        argument_count > SIZE_MAX / sizeof(*cells) ||
+        argument_count > SIZE_MAX / sizeof(*owned_texts)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    arguments = (struct mylite_string_concat_argument *)calloc(argument_count, sizeof(*arguments));
+    cells = (struct session_scalar_cell *)calloc(argument_count, sizeof(*cells));
+    owned_texts = (char **)calloc(argument_count, sizeof(*owned_texts));
+    if (arguments == NULL || cells == NULL || owned_texts == NULL) {
+        free(arguments);
+        free(cells);
+        free((void *)owned_texts);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = evaluate_concat_function_scalar_arguments(
+        database,
+        expression,
+        cells,
+        owned_texts,
+        arguments,
+        argument_count,
+        &next_argument
+    );
+    if (rc == MYLITE_OK && next_argument != argument_count) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = scalar_concat_operator_result(arguments, argument_count, &result, &result_length);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    if (rc == MYLITE_OK && result != NULL) {
+        out_cell->owned_text = result;
+        out_cell->value = out_cell->owned_text;
+        out_cell->value_size = result_length;
+        out_cell->has_value_size = true;
+        result = NULL;
+    }
+
+    free(result);
+    for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+        free(owned_texts[argument_index]);
+        session_scalar_cell_deinit(&cells[argument_index]);
+    }
+    free((void *)owned_texts);
+    free(cells);
+    free(arguments);
+    return rc;
+}
+
+static int evaluate_concat_function_scalar_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cells,
+    char **owned_texts,
+    struct mylite_string_concat_argument *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || cells == NULL || owned_texts == NULL || arguments == NULL ||
+        inout_next_argument == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        if (current == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+            const struct mylite_sql_ast_node *function_arguments = child_at(current, 0U);
+            size_t function_argument_count = 0U;
+
+            if (mylite_sql_ast_node_child_count(current) != 1U ||
+                function_arguments == NULL ||
+                function_arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+                set_unsupported_error(database, "CONCAT() requires one or more arguments");
+                rc = MYLITE_ERROR;
+                break;
+            }
+            function_argument_count = mylite_sql_ast_node_child_count(function_arguments);
+            if (function_argument_count == 0U) {
+                set_unsupported_error(database, "CONCAT() requires one or more arguments");
+                rc = MYLITE_ERROR;
+                break;
+            }
+            for (size_t index = 0U; index < function_argument_count; ++index) {
+                const struct mylite_sql_ast_node *argument =
+                    child_at(function_arguments, function_argument_count - index - 1U);
+
+                if (!scalar_arithmetic_node_stack_push(&stack, argument)) {
+                    set_nomem_error(database);
+                    rc = MYLITE_NOMEM;
+                    break;
+                }
+            }
+            continue;
+        }
+        if (*inout_next_argument >= argument_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+
+        rc = evaluate_concat_operator_scalar_argument(
+            database,
+            current,
+            &cells[*inout_next_argument],
+            &owned_texts[*inout_next_argument],
+            &arguments[*inout_next_argument].text,
+            &arguments[*inout_next_argument].text_length,
+            &arguments[*inout_next_argument].is_null
+        );
+        if (rc == MYLITE_OK) {
+            ++(*inout_next_argument);
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
     return rc;
 }
 
@@ -403,6 +568,8 @@ static int evaluate_concat_operator_scalar_argument(
         rc = concat_operator_scalar_arithmetic_argument_value(database, expression, inout_cell);
     } else if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         rc = scalar_subquery_value(database, expression, inout_cell);
+    } else if (concat_operator_scalar_argument_is_nested_scalar_value(expression)) {
+        rc = session_scalar_value(database, expression, inout_cell);
     } else {
         rc = mylite_execution_string_length_session_scalar_argument_value(database, expression, inout_cell);
     }
@@ -415,7 +582,8 @@ static int evaluate_concat_operator_scalar_argument(
     }
 
     *out_text = inout_cell->value;
-    *out_text_length = strlen(inout_cell->value);
+    *out_text_length =
+        inout_cell->has_value_size ? inout_cell->value_size : strlen(inout_cell->value);
     return MYLITE_OK;
 }
 
@@ -450,16 +618,19 @@ static int concat_operator_scalar_arithmetic_argument_value(
 static int scalar_concat_operator_result(
     const struct mylite_string_concat_argument *arguments,
     size_t argument_count,
-    char **out_text
+    char **out_text,
+    size_t *out_text_length
 ) {
     char *result = NULL;
     size_t total_length = 0U;
     size_t offset = 0U;
 
-    if (arguments == NULL || argument_count == 0U || out_text == NULL) {
+    if (arguments == NULL || argument_count == 0U || out_text == NULL ||
+        out_text_length == NULL) {
         return MYLITE_MISUSE;
     }
     *out_text = NULL;
+    *out_text_length = 0U;
 
     for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
         const struct mylite_string_concat_argument *argument = &arguments[argument_index];
@@ -493,6 +664,7 @@ static int scalar_concat_operator_result(
     }
     result[offset] = '\0';
     *out_text = result;
+    *out_text_length = total_length;
     return MYLITE_OK;
 }
 
@@ -513,7 +685,37 @@ static bool concat_operator_scalar_argument_is_admitted(
     if (concat_operator_scalar_argument_is_integer_arithmetic_expression(expression)) {
         return true;
     }
+    if (concat_operator_scalar_argument_is_nested_scalar_value(expression)) {
+        return true;
+    }
     return mylite_execution_string_length_scalar_argument_is_admitted(expression);
+}
+
+static bool concat_operator_scalar_argument_is_nested_scalar_value(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+    case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static bool concat_operator_scalar_argument_is_integer_arithmetic_expression(

@@ -103,11 +103,6 @@ static int convert_integer_string_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
-    bool is_negative = false;
-    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
-    uint64_t magnitude = 0U;
-    enum mylite_execution_dml_numeric_parse_result parse_result =
-        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
     int rc = decode_sql_string_literal(
         database,
         literal,
@@ -122,70 +117,99 @@ static int convert_integer_string_literal(
         return rc;
     }
 
+    rc = convert_integer_string_text(
+        database,
+        text,
+        text_length,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+    free(text);
+    return rc;
+}
+
+static int convert_integer_string_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    bool is_negative = false;
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
+    uint64_t magnitude = 0U;
+    enum mylite_execution_dml_numeric_parse_result parse_result =
+        MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID;
+
+    if (text == NULL || column == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
     parse_result =
         mylite_execution_parse_dml_integer_string_text(text, text_length, &magnitude, &is_negative);
     if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_INVALID) {
         if (!adjust_errors) {
             set_incorrect_integer_value_error(database, text, column->name, row_number);
-            rc = MYLITE_ERROR;
-        } else {
-            rc = append_incorrect_integer_value_warning(database, text, column->name, row_number);
-            if (rc == MYLITE_OK) {
-                *out_value = (struct planned_value){
-                    .is_null = false,
-                    .is_text = false,
-                    .integer = 0,
-                };
-            }
+            return MYLITE_ERROR;
         }
-    } else if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OVERFLOW) {
+        int rc = append_incorrect_integer_value_warning(database, text, column->name, row_number);
+        if (rc == MYLITE_OK) {
+            *out_value = (struct planned_value){
+                .is_null = false,
+                .is_text = false,
+                .integer = 0,
+            };
+        }
+        return rc;
+    }
+    if (parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OVERFLOW) {
         if (!adjust_errors) {
             set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        out_value->is_null = false;
+        return clip_integer_for_column(
+            database,
+            is_negative,
+            column,
+            row_number,
+            &out_value->integer
+        );
+    }
+
+    bool exceeds_range = false;
+    int rc = dml_integer_value_exceeds_column_range(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &exceeds_range
+    );
+
+    if (rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED &&
+        !exceeds_range) {
+        if (!adjust_errors) {
+            set_data_truncated_error(database, column->name, row_number);
             rc = MYLITE_ERROR;
         } else {
-            out_value->is_null = false;
-            rc = clip_integer_for_column(
-                database,
-                is_negative,
-                column,
-                row_number,
-                &out_value->integer
-            );
+            rc = append_data_truncated_warning(database, column->name, row_number);
         }
-    } else {
-        bool exceeds_range = false;
-
-        rc = dml_integer_value_exceeds_column_range(
+    }
+    if (rc == MYLITE_OK) {
+        out_value->is_null = false;
+        rc = convert_integer_for_column_with_policy(
             database,
             magnitude,
             is_negative,
             column,
-            &exceeds_range
+            row_number,
+            adjust_errors,
+            &out_value->integer
         );
-        if (rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED &&
-            !exceeds_range) {
-            if (!adjust_errors) {
-                set_data_truncated_error(database, column->name, row_number);
-                rc = MYLITE_ERROR;
-            } else {
-                rc = append_data_truncated_warning(database, column->name, row_number);
-            }
-        }
-        if (rc == MYLITE_OK) {
-            out_value->is_null = false;
-            rc = convert_integer_for_column_with_policy(
-                database,
-                magnitude,
-                is_negative,
-                column,
-                row_number,
-                adjust_errors,
-                &out_value->integer
-            );
-        }
     }
-
-    free(text);
     return rc;
 }
 

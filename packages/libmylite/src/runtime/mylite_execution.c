@@ -13257,6 +13257,20 @@ static int scalar_concat_operator_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int scalar_concat_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_concat_function_scalar_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cells,
+    char **owned_texts,
+    struct mylite_string_concat_argument *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+);
 static int evaluate_concat_operator_scalar_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -13283,9 +13297,13 @@ static int concat_operator_scalar_arithmetic_argument_value(
 static int scalar_concat_operator_result(
     const struct mylite_string_concat_argument *arguments,
     size_t argument_count,
-    char **out_text
+    char **out_text,
+    size_t *out_text_length
 );
 static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
+);
+static bool concat_operator_scalar_argument_is_nested_scalar_value(
+    const struct mylite_sql_ast_node *expression
 );
 static bool concat_operator_scalar_argument_is_integer_arithmetic_expression(
     const struct mylite_sql_ast_node *expression
@@ -18020,6 +18038,65 @@ static int convert_insert_value(
     bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
+static int convert_dml_constant_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
+    size_t row_number,
+    bool ignore_errors,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    bool auto_increment_null_generates,
+    bool *out_handled,
+    struct planned_value *out_value
+);
+static bool dml_value_is_constant_scalar_expression(const struct mylite_sql_ast_node *value_node);
+static int convert_dml_scalar_cell_for_column(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *diagnostic_column_name,
+    size_t row_number,
+    bool ignore_errors,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    struct planned_value *out_value
+);
+static int convert_dml_scalar_cell_text_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_string_truncation_adjustment,
+    bool warn_on_trailing_space_truncation,
+    struct planned_value *out_value
+);
+static int convert_dml_scalar_cell_binary_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_dml_scalar_cell_bit_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int copy_dml_scalar_cell_text(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const char *nul_message,
+    bool allow_nul,
+    char **out_text,
+    size_t *out_text_length
+);
 static bool insert_value_is_unix_timestamp_arithmetic(const struct mylite_sql_ast_node *value_node);
 static int convert_insert_unix_timestamp_arithmetic_value(
     struct mylite_db *database,
@@ -18244,6 +18321,15 @@ static int convert_integer_string_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_integer_string_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
 static int parse_dml_hex_literal_magnitude(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
@@ -18442,6 +18528,16 @@ static int convert_decimal_string_literal(
     const struct decimal_type_info *info,
     struct planned_value *out_value
 );
+static int convert_decimal_string_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+);
 static int convert_decimal_hex_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
@@ -18502,6 +18598,16 @@ static int convert_approximate_literal(
 static int convert_approximate_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+);
+static int convert_approximate_string_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,

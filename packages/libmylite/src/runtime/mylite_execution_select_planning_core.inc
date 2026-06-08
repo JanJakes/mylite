@@ -32,7 +32,7 @@ static int plan_select(
     struct planned_select *out_plan
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     struct select_optional_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
@@ -206,7 +206,8 @@ static int collect_select_optional_clauses(
     const struct mylite_sql_ast_node *statement,
     struct select_optional_clauses *out_clauses
 ) {
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
 
     *out_clauses = (struct select_optional_clauses){0};
     while (optional_clause != NULL) {
@@ -218,6 +219,8 @@ static int collect_select_optional_clauses(
             out_clauses->order_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
             out_clauses->limit_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            /* SELECT ... INTO is handled after normal SELECT execution. */
         } else {
             set_unsupported_error(
                 database,
@@ -2336,7 +2339,7 @@ static int plan_row_scalar_select(
     struct planned_row_scalar_select *out_plan
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct select_source_context *item_source_context = NULL;
     struct row_scalar_select_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
@@ -2361,7 +2364,11 @@ static int plan_row_scalar_select(
 
     if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) {
         out_plan->has_source = true;
-        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        rc = collect_row_scalar_select_clauses(
+            database,
+            select_statement_optional_clause_start(statement),
+            &clauses
+        );
         if (rc == MYLITE_OK) {
             rc = plan_row_scalar_select_source(
                 database,
@@ -2377,7 +2384,11 @@ static int plan_row_scalar_select(
         }
     } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JOIN) {
         out_plan->has_source = true;
-        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        rc = collect_row_scalar_select_clauses(
+            database,
+            select_statement_optional_clause_start(statement),
+            &clauses
+        );
         if (rc == MYLITE_OK) {
             rc = plan_row_scalar_select_join_source(
                 database,
@@ -2391,7 +2402,11 @@ static int plan_row_scalar_select(
         }
     } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
         out_plan->has_source = true;
-        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        rc = collect_row_scalar_select_clauses(
+            database,
+            select_statement_optional_clause_start(statement),
+            &clauses
+        );
         if (rc == MYLITE_OK) {
             rc = plan_row_scalar_select_derived_source(
                 database,
@@ -2404,7 +2419,11 @@ static int plan_row_scalar_select(
             item_source_context = &source_context;
         }
     } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
-        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        rc = collect_row_scalar_select_clauses(
+            database,
+            select_statement_optional_clause_start(statement),
+            &clauses
+        );
     } else if (from_clause != NULL) {
         set_unsupported_error(
             database,
@@ -2464,6 +2483,8 @@ static int collect_row_scalar_select_clauses(
             out_clauses->order_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
             out_clauses->limit_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            /* SELECT ... INTO is handled after normal SELECT execution. */
         } else if (optional_clause->kind == MYLITE_SQL_AST_WINDOW_DEFINITION_LIST) {
             set_unsupported_error(
                 database,

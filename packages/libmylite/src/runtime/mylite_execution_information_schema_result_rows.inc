@@ -198,7 +198,8 @@ static int information_schema_projection_value(
             out_value
         );
     }
-    if (query->projection_kinds[projection_index] == INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL) {
+    if (query->projection_kinds[projection_index] ==
+        INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL) {
         return information_schema_integer_literal_projection_value(
             database,
             query->projection_expressions[projection_index],
@@ -637,7 +638,8 @@ static int information_schema_matching_row_indexes(
     size_t **out_indexes,
     size_t *out_index_count
 ) {
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
     const struct mylite_sql_ast_node *where_clause = NULL;
     size_t *indexes = NULL;
     size_t index_count = 0U;
@@ -679,8 +681,7 @@ static int information_schema_matching_row_indexes(
         bool matches = true;
 
         if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
-            information_schema_row_is_connection_control_failed_login_attempts(
-                rows->rows[row_index]
+            information_schema_row_is_connection_control_failed_login_attempts(rows->rows[row_index]
             ) &&
             !includes_connection_control_failed_login_attempts) {
             continue;
@@ -726,7 +727,7 @@ static int information_schema_includes_connection_control_failed_login_attempts(
         return MYLITE_OK;
     }
 
-    optional_clause = child_at(statement, 2U);
+    optional_clause = select_statement_optional_clause_start(statement);
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             return information_schema_predicate_includes_connection_control_failed_login_attempts(
@@ -772,11 +773,9 @@ static int information_schema_predicate_includes_connection_control_failed_login
                 predicate,
                 out_includes_table
             );
-        } else if (
-            predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-            predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-            predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE
-        ) {
+        } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+                   predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+                   predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
             rc = information_schema_predicate_stack_push_binary_children(
                 database,
                 &stack,
@@ -891,11 +890,8 @@ static void information_schema_sort_tables_default_row_indexes(
         size_t scan = index;
 
         while (scan > 0U &&
-               information_schema_compare_tables_default_rows(
-                   rows,
-                   row_index,
-                   indexes[scan - 1U]
-               ) < 0) {
+               information_schema_compare_tables_default_rows(rows, row_index, indexes[scan - 1U]) <
+                   0) {
             indexes[scan] = indexes[scan - 1U];
             --scan;
         }
@@ -911,8 +907,7 @@ static int information_schema_compare_tables_default_rows(
     const char *left_schema = rows->rows[left_row][information_schema_tables_table_schema_column];
     const char *right_schema = rows->rows[right_row][information_schema_tables_table_schema_column];
     const int left_priority = information_schema_tables_default_schema_priority(left_schema);
-    const int right_priority =
-        information_schema_tables_default_schema_priority(right_schema);
+    const int right_priority = information_schema_tables_default_schema_priority(right_schema);
 
     if (left_priority != right_priority) {
         return left_priority - right_priority;
@@ -1000,8 +995,7 @@ static int information_schema_compare_rows(
                query->order_index == information_schema_collations_name_column) {
         size_t left_index = 0U;
         size_t right_index = 0U;
-        bool left_known =
-            mylite_execution_catalog_mysql_collation_index_by_name(left, &left_index);
+        bool left_known = mylite_execution_catalog_mysql_collation_index_by_name(left, &left_index);
         bool right_known =
             mylite_execution_catalog_mysql_collation_index_by_name(right, &right_index);
 

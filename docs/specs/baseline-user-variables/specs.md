@@ -91,8 +91,8 @@ value type.
 The following remain unsupported: exponent-form floating literals, hex/bit
 literals, temporal literals, JSON values, arbitrary arithmetic assignment
 expressions, function calls, subqueries, parameters, column references,
-assignment outside `SET`, and binary-string values containing embedded `NUL`
-bytes.
+assignment outside `SET` except the later top-level `SELECT ... INTO @vars`
+slice, and binary-string values containing embedded `NUL` bytes.
 
 ### SET
 
@@ -137,6 +137,10 @@ variables in predicates, ordering, assignments, generated expressions, check
 constraints, defaults, or descriptor-driven DML values.
 
 Uninitialized variables read as `NULL`.
+
+Top-level supported `SELECT ... INTO @var[, ...]` assignment is specified
+separately in
+[baseline SELECT INTO user variables](../baseline-select-into-user-variables/specs.md).
 
 ## Grammar
 

@@ -232,6 +232,10 @@ if(BUILD_TESTING)
   )
   mylite_add_parser_test(mylite_parser_show_test tests/parser_show_test.c)
   mylite_add_parser_test(mylite_parser_select_test tests/parser_select_test.c)
+  mylite_add_parser_test(
+    mylite_parser_select_into_user_variables_test
+    tests/parser_select_into_user_variables_test.c
+  )
   mylite_add_parser_test(mylite_parser_dml_control_test tests/parser_dml_control_test.c)
   mylite_add_parser_test(
     mylite_parser_admin_stored_program_placeholders_test
@@ -3576,6 +3580,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_user_variables_test)
 
+  add_executable(mylite_runtime_select_into_user_variables_test
+    tests/runtime_select_into_user_variables_test.c
+  )
+  target_link_libraries(mylite_runtime_select_into_user_variables_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_select_into_user_variables_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_select_into_user_variables_test)
+
   add_executable(mylite_runtime_sql_prepared_statements_test
     tests/runtime_sql_prepared_statements_test.c
   )
@@ -5456,6 +5471,10 @@ if(BUILD_TESTING)
   )
   add_test(NAME libmylite.parser.show COMMAND mylite_parser_show_test)
   add_test(NAME libmylite.parser.select COMMAND mylite_parser_select_test)
+  add_test(
+    NAME libmylite.parser.select_into_user_variables
+    COMMAND mylite_parser_select_into_user_variables_test
+  )
   add_test(NAME libmylite.parser.dml_control COMMAND mylite_parser_dml_control_test)
   add_test(
     NAME libmylite.parser.admin_stored_program_placeholders
@@ -6648,6 +6667,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.user_variables
     COMMAND mylite_runtime_user_variables_test
+  )
+  add_test(
+    NAME libmylite.runtime.select_into_user_variables
+    COMMAND mylite_runtime_select_into_user_variables_test
   )
   add_test(
     NAME libmylite.runtime.sql_prepared_statements

@@ -115,7 +115,7 @@ static bool select_statement_has_count_expression_aggregate(
 static bool select_statement_has_joined_count_expression_source(
     const struct mylite_sql_ast_node *statement
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
 
     return from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JOIN;
 }
@@ -228,7 +228,7 @@ static int plan_count_expression_aggregate_source(
     size_t *out_table_column_count,
     struct planned_count_expression_aggregate *out_plan
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
 
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         set_unsupported_error(

@@ -5,6 +5,10 @@ static int64_t row_count_for_completed_statement(
     if (statement != NULL && statement->kind == MYLITE_SQL_AST_CALL_STATEMENT) {
         return 0;
     }
+    if (statement != NULL && statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT &&
+        select_statement_into_list(statement) != NULL) {
+        return result == NULL ? 0 : mylite_result_affected_rows(result);
+    }
     if (result != NULL && mylite_result_column_count(result) != 0U) {
         return -1;
     }
@@ -123,6 +127,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT:
     case MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT:
     case MYLITE_SQL_AST_WINDOW_FRAME_BOUND:
+    case MYLITE_SQL_AST_SELECT_INTO_LIST:
         break;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:

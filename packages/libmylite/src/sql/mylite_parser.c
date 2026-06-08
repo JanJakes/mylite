@@ -73,8 +73,13 @@ struct placeholder_statement_scan {
 enum {
     placeholder_initial_token_capacity = 16,
     placeholder_create_scan_token_limit = 12,
+    create_table_partition_min_token_count = 6,
 };
 
+static enum mylite_sql_parse_status parse_sql_with_lemon(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *out_result
+);
 static bool map_lexer_token(
     const struct mylite_sql_parser_state *state,
     const struct mylite_sql_lexer *lexer,
@@ -269,6 +274,26 @@ enum mylite_sql_parse_status mylite_sql_parse(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *out_result
 ) {
+    enum mylite_sql_parse_status status = parse_sql_with_lemon(config, out_result);
+
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
+        enum mylite_sql_parse_status placeholder_status =
+            try_parse_placeholder_statement(config, out_result, &handled);
+
+        if (handled) {
+            status = placeholder_status;
+            out_result->status = placeholder_status;
+        }
+    }
+
+    return status;
+}
+
+static enum mylite_sql_parse_status parse_sql_with_lemon(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *out_result
+) {
     struct mylite_sql_parser_state state;
     struct mylite_sql_lexer lexer;
     void *parser = NULL;
@@ -365,15 +390,6 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
     if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
         out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
-    }
-    if (out_result->status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-        enum mylite_sql_parse_status placeholder_status =
-            try_parse_placeholder_statement(config, out_result, &handled);
-
-        if (handled) {
-            out_result->status = placeholder_status;
-        }
     }
 
     return out_result->status;
@@ -561,11 +577,12 @@ static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
         return MYLITE_SQL_PARSE_MISUSE;
     }
     *out_handled = false;
-    if (!scan_is_create_table_partition_statement(scan, &partition_index)) {
+    if (scan == NULL || scan->tokens == NULL ||
+        !scan_is_create_table_partition_statement(scan, &partition_index)) {
         return MYLITE_SQL_PARSE_OK;
     }
 
-    status = mylite_sql_parse(
+    status = parse_sql_with_lemon(
         (struct mylite_sql_parse_config){
             .input = config.input,
             .length = scan->tokens[partition_index].offset,
@@ -591,7 +608,8 @@ static bool scan_is_create_table_partition_statement(
     size_t table_index = 1U;
     int paren_depth = 0;
 
-    if (scan == NULL || out_partition_index == NULL || scan->token_count < 6U ||
+    if (scan == NULL || scan->tokens == NULL || out_partition_index == NULL ||
+        scan->token_count < create_table_partition_min_token_count ||
         !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
         return false;
     }
@@ -635,18 +653,16 @@ static bool create_table_partition_suffix_is_supported(
         return false;
     }
     for (size_t index = partition_index + 2U; index < scan->token_count; ++index) {
-        if (paren_depth == 0 &&
-            (placeholder_scan_token_text_equals(scan, index, "SELECT") ||
-             placeholder_scan_token_text_equals(scan, index, "AS") ||
-             placeholder_scan_token_text_equals(scan, index, "IGNORE") ||
-             placeholder_scan_token_text_equals(scan, index, "REPLACE"))) {
+        if (paren_depth == 0 && (placeholder_scan_token_text_equals(scan, index, "SELECT") ||
+                                 placeholder_scan_token_text_equals(scan, index, "AS") ||
+                                 placeholder_scan_token_text_equals(scan, index, "IGNORE") ||
+                                 placeholder_scan_token_text_equals(scan, index, "REPLACE"))) {
             return false;
         }
-        if (!saw_method &&
-            (placeholder_scan_token_text_equals(scan, index, "HASH") ||
-             placeholder_scan_token_text_equals(scan, index, "KEY") ||
-             placeholder_scan_token_text_equals(scan, index, "RANGE") ||
-             placeholder_scan_token_text_equals(scan, index, "LIST"))) {
+        if (!saw_method && (placeholder_scan_token_text_equals(scan, index, "HASH") ||
+                            placeholder_scan_token_text_equals(scan, index, "KEY") ||
+                            placeholder_scan_token_text_equals(scan, index, "RANGE") ||
+                            placeholder_scan_token_text_equals(scan, index, "LIST"))) {
             saw_method = true;
         }
         if (saw_method && token_is_left_paren(&scan->tokens[index])) {
@@ -1104,20 +1120,12 @@ static enum mylite_sql_parse_status finish_explain_placeholder_statement_parse(
     if (placeholder_scan_token_text_equals(scan, token_index, "FORMAT")) {
         struct mylite_sql_ast_node *format_name =
             mylite_sql_parser_make_identifier(&state, scan->tokens[token_index + 2U]);
-        format = mylite_sql_parser_make_explain_format(
-            &state,
-            scan->tokens[token_index],
-            format_name
-        );
+        format =
+            mylite_sql_parser_make_explain_format(&state, scan->tokens[token_index], format_name);
     }
 
-    statement = mylite_sql_parser_make_explain_statement(
-        &state,
-        scan->tokens[0],
-        format,
-        analyze,
-        NULL
-    );
+    statement =
+        mylite_sql_parser_make_explain_statement(&state, scan->tokens[0], format, analyze, NULL);
     script = mylite_sql_parser_make_script_with_statement(&state, statement);
     if (statement == NULL || script == NULL) {
         result->status = MYLITE_SQL_PARSE_NOMEM;
@@ -1341,6 +1349,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_attach_select_window_clause(
     }
     mylite_sql_ast_node_append_child(statement, window_clause);
     mylite_sql_ast_node_set_span(statement, span_join(statement->span, window_clause->span));
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_attach_select_into_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement,
+    struct mylite_sql_ast_node *into_clause
+) {
+    (void)state;
+
+    if (statement == NULL || into_clause == NULL) {
+        return statement;
+    }
+    mylite_sql_ast_node_append_child(statement, into_clause);
+    mylite_sql_ast_node_set_span(statement, span_join(statement->span, into_clause->span));
     return statement;
 }
 
@@ -2111,6 +2134,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable(
     struct mylite_sql_token token
 ) {
     return make_node(state, MYLITE_SQL_AST_USER_VARIABLE, span_from_token(&token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_into_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *variable
+) {
+    struct mylite_sql_source_span span =
+        variable == NULL ? (struct mylite_sql_source_span){0} : variable->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_SELECT_INTO_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, variable);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_select_into_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *variable
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, variable);
+    if (variable != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, variable->span));
+    }
+    return list;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(

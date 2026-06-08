@@ -55,9 +55,12 @@ primary-key subset, or DML assignments.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, and SQL-level
-prepared statement source/`USING` positions. It does not make user variables
-available directly in descriptor predicates, ordering, grouping, DML assignment
-values, generated expressions, or arbitrary parameters.
+prepared statement source/`USING` positions. Top-level supported
+`SELECT ... INTO @var[, ...]` also assigns one selected row into session user
+variables with MySQL-compatible zero-row warnings and multi-row/count-mismatch
+errors. It does not make user variables available directly in descriptor
+predicates, ordering, grouping, DML assignment values, generated expressions, or
+arbitrary parameters.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

@@ -132,6 +132,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
     case MYLITE_SQL_AST_VALUES_ROW_LIST:
     case MYLITE_SQL_AST_VALUES_ROW:
+    case MYLITE_SQL_AST_SELECT_INTO_LIST:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -217,6 +218,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
     case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:
+    case MYLITE_SQL_AST_SELECT_INTO_LIST:
         break;
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return execute_drop_index_statement(database, statement, out_result);
@@ -325,7 +327,14 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CALL_STATEMENT:
         return execute_call_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT: {
-        int rc = execute_select_statement(database, context, statement, true, out_result);
+        int rc = select_statement_into_list(statement) == NULL
+                     ? execute_select_statement(database, context, statement, true, out_result)
+                     : execute_select_into_user_variables_statement(
+                           database,
+                           context,
+                           statement,
+                           out_result
+                       );
 
         if (rc == MYLITE_OK) {
             clear_select_consumed_next_transaction_characteristics(database);

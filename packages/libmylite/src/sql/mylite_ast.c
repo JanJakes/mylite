@@ -842,6 +842,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "select_list";
     case MYLITE_SQL_AST_SELECT_ITEM:
         return "select_item";
+    case MYLITE_SQL_AST_SELECT_INTO_LIST:
+        return "select_into_list";
     case MYLITE_SQL_AST_FROM_DUAL:
         return "from_dual";
     case MYLITE_SQL_AST_FROM_DERIVED:

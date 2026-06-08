@@ -247,6 +247,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_attach_select_window_clause(
     struct mylite_sql_ast_node *statement,
     struct mylite_sql_ast_node *window_clause
 );
+struct mylite_sql_ast_node *mylite_sql_parser_attach_select_into_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement,
+    struct mylite_sql_ast_node *into_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_into_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *variable
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_select_into_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *variable
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_compound_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *first_select,

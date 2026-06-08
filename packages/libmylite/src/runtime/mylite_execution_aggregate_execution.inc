@@ -166,7 +166,7 @@ static int plan_count(
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
@@ -198,7 +198,7 @@ static int plan_count(
         return rc;
     }
 
-    optional_clause = child_at(statement, 2U);
+    optional_clause = select_statement_optional_clause_start(statement);
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             where_clause = optional_clause;
@@ -206,6 +206,8 @@ static int plan_count(
             order_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
             limit_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            /* SELECT ... INTO is handled after normal SELECT execution. */
         } else {
             set_unsupported_error(database, count_supported_clauses_message(out_plan->function));
             return MYLITE_ERROR;
@@ -1141,7 +1143,7 @@ static int plan_column_aggregate(
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
@@ -1177,10 +1179,12 @@ static int plan_column_aggregate(
         return MYLITE_ERROR;
     }
 
-    optional_clause = child_at(statement, 2U);
+    optional_clause = select_statement_optional_clause_start(statement);
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            /* SELECT ... INTO is handled after normal SELECT execution. */
         } else {
             set_unsupported_error(
                 database,
@@ -1414,8 +1418,8 @@ static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_f
 }
 
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function) {
-    return (function == PLANNED_COLUMN_AGGREGATE_MIN ||
-            function == PLANNED_COLUMN_AGGREGATE_MAX) != 0;
+    return (function == PLANNED_COLUMN_AGGREGATE_MIN || function == PLANNED_COLUMN_AGGREGATE_MAX) !=
+           0;
 }
 
 static const char *column_aggregate_single_item_error(
@@ -1551,11 +1555,7 @@ static int plan_column_aggregate_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = validate_column_aggregate_descriptor_column(
-        database,
-        aggregate_function,
-        out_column
-    );
+    rc = validate_column_aggregate_descriptor_column(database, aggregate_function, out_column);
     if (rc != MYLITE_OK) {
         return rc;
     }

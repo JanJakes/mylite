@@ -1927,7 +1927,7 @@ static int reject_select_modifier_usage_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     bool has_descriptor_table_source = false;
 
     if (from_clause != NULL && (from_clause->kind == MYLITE_SQL_AST_FROM_TABLE ||
@@ -2008,7 +2008,8 @@ static int select_statement_targets_information_schema(
     while (rc == MYLITE_OK && statement_stack.count != 0U && !*out_matches) {
         const struct mylite_sql_ast_node *current_statement =
             statement_stack.items[--statement_stack.count];
-        const struct mylite_sql_ast_node *from_clause = child_at(current_statement, 1U);
+        const struct mylite_sql_ast_node *from_clause =
+            select_statement_source_clause(current_statement);
 
         if (from_clause != NULL) {
             rc = select_source_targets_information_schema(
@@ -2164,7 +2165,7 @@ static int select_statement_targets_mysql_data_dictionary_table(
     size_t table_name_size,
     bool *out_matches
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     const char *schema_name = NULL;
     const char *table_name = NULL;
@@ -2221,7 +2222,7 @@ static int select_statement_targets_absent_mysql_enterprise_table(
     size_t table_name_size,
     bool *out_matches
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     const char *schema_name = NULL;
     const char *table_name = NULL;
@@ -2276,7 +2277,7 @@ static int select_statement_targets_mysql_system_table(
     const struct mylite_sql_ast_node *statement,
     bool *out_matches
 ) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t part_count = 0U;
     int rc = MYLITE_OK;
@@ -2318,8 +2319,9 @@ static int resolve_mysql_system_table_query(
     const struct mylite_execution_catalog_mysql_system_table **out_definition
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;

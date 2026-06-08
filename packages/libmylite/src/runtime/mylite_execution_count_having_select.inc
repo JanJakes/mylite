@@ -1,5 +1,6 @@
 static bool select_statement_has_count_having_clause(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
 
     if (select_statement_has_count_aggregate(statement) ||
         select_statement_has_column_aggregate(statement)) {
@@ -49,7 +50,7 @@ static int plan_count_having_select(
     struct planned_count_having_select *out_plan
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     struct select_optional_clauses clauses = {0};
     struct table_name_resolution source = {0};
     struct mylite_catalog_table_descriptor table = {0};
@@ -144,7 +145,8 @@ static int collect_count_having_select_clauses(
     const struct mylite_sql_ast_node *statement,
     struct select_optional_clauses *out_clauses
 ) {
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
 
     *out_clauses = (struct select_optional_clauses){0};
     while (optional_clause != NULL) {
@@ -152,6 +154,8 @@ static int collect_count_having_select_clauses(
             out_clauses->where_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_HAVING_CLAUSE) {
             out_clauses->having_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            /* SELECT ... INTO is handled after normal SELECT execution. */
         } else {
             set_unsupported_error(
                 database,

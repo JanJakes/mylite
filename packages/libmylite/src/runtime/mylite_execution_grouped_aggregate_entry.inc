@@ -1,5 +1,6 @@
 static bool select_statement_has_group_by_clause(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
 
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_GROUP_BY_CLAUSE) {
@@ -17,7 +18,7 @@ static int plan_grouped_aggregate(
     struct planned_grouped_aggregate *out_plan
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     struct grouped_aggregate_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_predicate_plan_options predicate_options = {
@@ -215,7 +216,8 @@ static int collect_grouped_aggregate_clauses(
     const struct mylite_sql_ast_node *statement,
     struct grouped_aggregate_clauses *out_clauses
 ) {
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
 
     *out_clauses = (struct grouped_aggregate_clauses){0};
     while (optional_clause != NULL) {
@@ -234,6 +236,8 @@ static int collect_grouped_aggregate_clauses(
             break;
         case MYLITE_SQL_AST_LIMIT_CLAUSE:
             out_clauses->limit_clause = optional_clause;
+            break;
+        case MYLITE_SQL_AST_SELECT_INTO_LIST:
             break;
         default:
             set_unsupported_error(

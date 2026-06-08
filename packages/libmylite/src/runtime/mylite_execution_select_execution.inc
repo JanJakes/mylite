@@ -81,7 +81,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct mylite_sql_ast_node *select_item = NULL;
     bool has_dual_source =
         (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) != 0;
@@ -94,7 +94,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
         select_list_is_wildcard(select_list)) {
         return false;
     }
-    if (has_dual_source && child_at(statement, 2U) != NULL) {
+    if (has_dual_source && select_statement_optional_clause_start(statement) != NULL) {
         return true;
     }
 

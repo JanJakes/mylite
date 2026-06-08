@@ -896,6 +896,20 @@ user_variable(A) ::= USER_VARIABLE(T). {
     A = mylite_sql_parser_make_user_variable(state, T);
 }
 
+select_into_opt(A) ::= . {
+    A = NULL;
+}
+select_into_opt(A) ::= INTO select_into_list(L). {
+    A = L;
+}
+
+select_into_list(A) ::= user_variable(V). {
+    A = mylite_sql_parser_make_select_into_list(state, V);
+}
+select_into_list(A) ::= select_into_list(L) COMMA user_variable(V). {
+    A = mylite_sql_parser_append_select_into_variable(state, L, V);
+}
+
 prepare_statement(A) ::= PREPARE(P) identifier(N) FROM prepare_source(S). {
     A = mylite_sql_parser_make_prepare_statement(state, P, N, S);
 }
@@ -3389,56 +3403,154 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
             state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL, K),
         WN);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
-    where_clause_opt(W) window_clause_opt(WN) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_attach_select_window_clause(
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
+    window_clause_opt(WN) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
         state,
-        mylite_sql_parser_make_select_statement_with_modifiers(
-            state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL, NULL,
-            NULL, K),
-        WN);
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL, K),
+            WN),
+        PI);
+}
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
+    where_clause_opt(W) window_clause_opt(WN) select_locking_clause_opt(K) select_into_opt(AI). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL,
+                NULL, NULL, K),
+            WN),
+        AI);
+}
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
+    FROM(F) DUAL(D) where_clause_opt(W) window_clause_opt(WN) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL,
+                NULL, NULL, K),
+            WN),
+        PI);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
     table_index_hints_opt(IH) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
     window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
-    select_locking_clause_opt(K). {
-    A = mylite_sql_parser_attach_select_window_clause(
+    select_locking_clause_opt(K) select_into_opt(AI). {
+    A = mylite_sql_parser_attach_select_into_clause(
         state,
-        mylite_sql_parser_make_select_statement_with_modifiers(
-            state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O,
-            L, K),
-        WN);
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H,
+                O, L, K),
+            WN),
+        AI);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI) FROM(F)
+    table_name(N) table_alias_opt(AL) table_index_hints_opt(IH) where_clause_opt(W)
+    group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN) select_order_clause_opt(O)
+    limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H,
+                O, L, K),
+            WN),
+        PI);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM derived_table_source(D)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
-    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_attach_select_window_clause(
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K)
+    select_into_opt(AI). {
+    A = mylite_sql_parser_attach_select_into_clause(
         state,
-        mylite_sql_parser_make_select_statement_with_modifiers(
-            state, T, M, B, D, W, G, H, O, L, K),
-        WN);
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, D, W, G, H, O, L, K),
+            WN),
+        AI);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
+    FROM derived_table_source(D) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, D, W, G, H, O, L, K),
+            WN),
+        PI);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM joined_table_source(JT)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
-    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_attach_select_window_clause(
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K)
+    select_into_opt(AI). {
+    A = mylite_sql_parser_attach_select_into_clause(
         state,
-        mylite_sql_parser_make_select_statement_with_modifiers(
-            state, T, M, B, JT, W, G, H, O, L, K),
-        WN);
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, JT, W, G, H, O, L, K),
+            WN),
+        AI);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
+    FROM joined_table_source(JT) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, JT, W, G, H, O, L, K),
+            WN),
+        PI);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM comma_table_sources(CT)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
-    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
-    A = mylite_sql_parser_attach_select_window_clause(
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K)
+    select_into_opt(AI). {
+    A = mylite_sql_parser_attach_select_into_clause(
         state,
-        mylite_sql_parser_make_select_statement_with_modifiers(
-            state, T, M, B, CT, W, G, H, O, L, K),
-        WN);
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, CT, W, G, H, O, L, K),
+            WN),
+        AI);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
+    FROM comma_table_sources(CT) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, CT, W, G, H, O, L, K),
+            WN),
+        PI);
 }
 compound_select_statement(A) ::= select_statement(S) union_term_list(T). {
     A = mylite_sql_parser_make_compound_select_statement(state, S, T);

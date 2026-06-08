@@ -5596,6 +5596,32 @@ static int execute_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int execute_select_into_user_variables_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static const struct mylite_sql_ast_node *select_statement_into_list(
+    const struct mylite_sql_ast_node *statement
+);
+static const struct mylite_sql_ast_node *select_statement_source_clause(
+    const struct mylite_sql_ast_node *statement
+);
+static const struct mylite_sql_ast_node *select_statement_optional_clause_start(
+    const struct mylite_sql_ast_node *statement
+);
+static int apply_select_into_user_variables(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *into_list,
+    const mylite_result *select_result,
+    size_t *out_assigned_row_count,
+    uint64_t *out_found_rows
+);
+static enum mylite_session_user_variable_value_kind select_into_user_variable_value_kind(
+    const mylite_result *select_result,
+    size_t column_index
+);
 static int execute_grouped_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -12962,6 +12988,9 @@ static bool select_statement_is_row_function_scalar_projection(
     const struct mylite_sql_ast_node *statement
 );
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
+static bool select_statement_has_only_scalar_projection_metadata_clauses(
+    const struct mylite_sql_ast_node *statement
+);
 static int reject_bare_native_function_identifier_lookup_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -29697,6 +29726,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_dml_statements.inc"
 
 #include "mylite_execution_metadata_queries.inc"
+
+#include "mylite_execution_select_into_user_variables.inc"
 
 #include "mylite_execution_information_schema_join_compat.inc"
 

@@ -1,6 +1,6 @@
 static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct mylite_sql_ast_node *select_item = NULL;
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
@@ -9,7 +9,7 @@ static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_no
     if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
         return false;
     }
-    if (child_at(statement, 2U) != NULL) {
+    if (!select_statement_has_only_scalar_projection_metadata_clauses(statement)) {
         return false;
     }
 
@@ -28,8 +28,7 @@ static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_no
     return true;
 }
 
-static bool is_scalar_projection_select_item_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_projection_select_item_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_any_value_function_expression(expression);
 
@@ -84,7 +83,7 @@ static bool select_statement_is_row_function_scalar_projection(
 }
 
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
 
     if (from_clause == NULL) {
         return true;
@@ -93,6 +92,20 @@ static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_n
         return true;
     }
     return false;
+}
+
+static bool select_statement_has_only_scalar_projection_metadata_clauses(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *clause = select_statement_optional_clause_start(statement);
+
+    while (clause != NULL) {
+        if (clause->kind != MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            return false;
+        }
+        clause = clause->next_sibling;
+    }
+    return true;
 }
 
 static int reject_bare_native_function_identifier_lookup_if_needed(
@@ -105,7 +118,8 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
-    if (!select_statement_has_no_source_or_dual(statement) || child_at(statement, 2U) != NULL) {
+    if (!select_statement_has_no_source_or_dual(statement) ||
+        !select_statement_has_only_scalar_projection_metadata_clauses(statement)) {
         return MYLITE_OK;
     }
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
@@ -165,7 +179,7 @@ static bool select_statement_is_scalar_projection_attempt(
         return false;
     }
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        child_at(statement, 2U) != NULL) {
+        !select_statement_has_only_scalar_projection_metadata_clauses(statement)) {
         return false;
     }
 

@@ -4,8 +4,9 @@ static int resolve_information_schema_query(
     struct information_schema_query *out_query
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
@@ -29,6 +30,8 @@ static int resolve_information_schema_query(
             order_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
             limit_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
+            /* SELECT ... INTO is handled after normal SELECT execution. */
         } else {
             set_unsupported_error(
                 database,

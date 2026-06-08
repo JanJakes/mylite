@@ -26,6 +26,7 @@
 }
 
 %right DEFAULT.
+%right ASSIGN.
 %left OR.
 %left XOR.
 %left AND.
@@ -5398,8 +5399,11 @@ expression(A) ::= literal(B). {
 expression(A) ::= SYSTEM_VARIABLE(T). {
     A = mylite_sql_parser_make_system_variable(state, T);
 }
-expression(A) ::= USER_VARIABLE(T). {
-    A = mylite_sql_parser_make_user_variable(state, T);
+expression(A) ::= user_variable(T). {
+    A = T;
+}
+expression(A) ::= user_variable(T) ASSIGN(O) expression(V). [ASSIGN] {
+    A = mylite_sql_parser_make_user_variable_assignment_expression(state, T, O, V);
 }
 expression(A) ::= charset_introducer STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);

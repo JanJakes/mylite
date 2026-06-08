@@ -4184,6 +4184,12 @@ static int session_user_variable_value_kind(
     const struct mylite_sql_ast_node *node,
     enum mylite_session_user_variable_value_kind *out_value_kind
 );
+static int user_variable_assignment_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int append_user_variable_assignment_deprecation_warning(struct mylite_db *database);
 static int copy_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -14800,6 +14806,9 @@ static bool is_scalar_projection_select_item_expression(const struct mylite_sql_
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_collate_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_projection_expression_without_collate(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_user_variable_assignment_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_last_insert_id_set_projection_expression(const struct mylite_sql_ast_node *expression

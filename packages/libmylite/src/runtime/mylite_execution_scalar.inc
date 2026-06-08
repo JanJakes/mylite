@@ -641,6 +641,8 @@ static int session_scalar_value(
         return case_expression_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
         return scalar_subquery_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
+        return user_variable_assignment_expression_value(database, expression, out_cell);
     case MYLITE_SQL_AST_USER_VARIABLE:
         return session_user_variable_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
@@ -648,6 +650,65 @@ static int session_scalar_value(
     default:
         return MYLITE_OK;
     }
+}
+
+static int user_variable_assignment_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    const struct mylite_sql_ast_node *unwrapped_value = NULL;
+    struct session_scalar_cell value = {0};
+    enum mylite_session_user_variable_value_kind value_kind =
+        MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        expression->kind != MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(expression, 0U);
+    value_node = child_at(expression, 1U);
+    unwrapped_value = unwrap_parenthesized_expression(value_node);
+    rc = session_scalar_value(database, value_node, &value);
+    if (rc == MYLITE_OK) {
+        value_kind = infer_user_variable_value_kind(value_node, &value);
+        if (unwrapped_value != NULL && unwrapped_value->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+            rc = session_user_variable_value_kind(database, unwrapped_value, &value_kind);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = set_session_user_variable(database, target, &value, value_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_user_variable_assignment_deprecation_warning(database);
+    }
+    if (rc == MYLITE_OK) {
+        copy_session_scalar_cell(out_cell, &value);
+    }
+    session_scalar_cell_deinit(&value);
+    return rc;
+}
+
+static int append_user_variable_assignment_deprecation_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_user_variable_assignment_deprecated,
+        "HY000",
+        "Setting user variables within expressions is deprecated and will be removed in a future "
+        "release. Consider alternatives: 'SET variable=expression, ...', or 'SELECT "
+        "expression(s) INTO variables(s)'."
+    );
 }
 
 static int last_insert_id_set_function_value(

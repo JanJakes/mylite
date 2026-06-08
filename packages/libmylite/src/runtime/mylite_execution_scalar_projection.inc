@@ -59,6 +59,9 @@ static bool is_scalar_projection_expression_without_collate(
     if (is_session_scalar_expression(expression)) {
         return true;
     }
+    if (is_user_variable_assignment_projection_expression(expression)) {
+        return true;
+    }
     if (is_last_insert_id_set_projection_expression(expression)) {
         return true;
     }
@@ -87,6 +90,23 @@ static bool is_scalar_projection_expression_without_collate(
         return true;
     }
     return is_scalar_value_projection_expression(expression);
+}
+
+static bool is_user_variable_assignment_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL ||
+        expression->kind != MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        return false;
+    }
+    if (child_at(expression, 0U) == NULL ||
+        child_at(expression, 0U)->kind != MYLITE_SQL_AST_USER_VARIABLE) {
+        return false;
+    }
+    return is_scalar_projection_expression(child_at(expression, 1U));
 }
 
 static bool is_last_insert_id_set_projection_expression(

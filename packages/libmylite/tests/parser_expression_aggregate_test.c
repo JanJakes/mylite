@@ -8,6 +8,7 @@ static int test_row_count_function(void);
 static int test_found_rows_function(void);
 static int test_last_insert_id_function(void);
 static int test_diagnostics_count_system_variables(void);
+static int test_user_variable_assignment_expression(void);
 static int test_count_star_aggregate(void);
 static int test_min_max_aggregate(void);
 static int test_sum_aggregate(void);
@@ -26,6 +27,7 @@ int main(void) {
     failures += test_found_rows_function();
     failures += test_last_insert_id_function();
     failures += test_diagnostics_count_system_variables();
+    failures += test_user_variable_assignment_expression();
     failures += test_count_star_aggregate();
     failures += test_min_max_aggregate();
     failures += test_sum_aggregate();
@@ -1096,6 +1098,83 @@ static int test_diagnostics_count_system_variables(void) {
         parser_test_expect_span_text(first_expression, "@warning_count", "user variable span");
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_user_variable_assignment_expression(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *nested_expression = NULL;
+    const struct mylite_sql_ast_node *comparison = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "SELECT @a := 1, @b := (@a := @a + 2), @b = 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    comparison = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION,
+        "first assignment expression"
+    );
+    failures +=
+        parser_test_expect_child_count(first_expression, 2U, "first assignment child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_USER_VARIABLE,
+        "first assignment target"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "first assignment value"
+    );
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION,
+        "second assignment expression"
+    );
+    nested_expression = parser_test_child_at(parser_test_child_at(second_expression, 1U), 0U);
+    failures += parser_test_expect_node(
+        nested_expression,
+        MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION,
+        "nested assignment expression"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(nested_expression, 1U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "nested assignment value"
+    );
+    failures += parser_test_expect_node(
+        comparison,
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "equals outside SET remains comparison"
+    );
+    failures += parser_test_expect_operator(
+        comparison,
+        MYLITE_SQL_AST_OPERATOR_EQUAL,
+        "user variable equality operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("DO @d := 5;", MYLITE_SQL_PARSE_OK, &result);
+    first_expression =
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION,
+        "DO assignment expression"
+    );
+    failures += parser_test_expect_span_text(first_expression, "@d := 5", "DO assignment span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

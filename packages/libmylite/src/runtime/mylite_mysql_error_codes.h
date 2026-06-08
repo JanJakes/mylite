@@ -99,6 +99,7 @@ enum {
     mysql_warning_information_schema_processlist_deprecated = 1287,
     mysql_warning_information_schema_profiling_deprecated = 1287,
     mysql_warning_sql_calc_found_rows_deprecated = 1287,
+    mysql_warning_user_variable_assignment_deprecated = 1287,
     mysql_warning_sql_no_cache_deprecated = 1681,
     mysql_warning_hash_index_unsupported = 3502,
     mysql_error_invalid_default = 1067,

@@ -16,6 +16,8 @@ fail() {
 run_mysql() {
     sql=$1
     shift
+    sql="SET SESSION sql_mode = '${DEFAULT_SQL_MODE}';
+${sql}"
     if [ -n "$MYSQL_BIN" ]; then
         if [ -n "$MYSQL_SOCKET" ]; then
             printf '%s\n' "$sql" \
@@ -182,6 +184,23 @@ expect_output \
     "do and scalar expression operands" \
     "3	0	0" \
     "SET @n = 2; DO @n, @n + 1; SELECT @n + 1, @@warning_count, @@error_count;" \
+    "$DATABASE"
+
+expect_output \
+    "assignment expressions" \
+    "1	1	3	3
+2
+NULL	1	1
+1
+7	7	1
+5	0	1" \
+    "SELECT @a := 1, @a, @a := @a + 2, @a;
+     SELECT @@warning_count;
+     SELECT @b = 1, @b := 1, @b;
+     SELECT @@warning_count;
+     SELECT @sub := (SELECT 7), @sub, @@warning_count;
+     DO @done := 5;
+     SELECT @done, ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
 expect_output \

@@ -2134,6 +2134,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_count_errors_statement";
     case MYLITE_SQL_AST_USER_VARIABLE:
         return "user_variable";
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
+        return "user_variable_assignment_expression";
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return "system_variable";
     case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:

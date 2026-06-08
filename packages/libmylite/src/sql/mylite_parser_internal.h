@@ -463,6 +463,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable_assignment_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_token operator_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token prepare_token,

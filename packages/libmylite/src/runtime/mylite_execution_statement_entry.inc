@@ -133,6 +133,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VALUES_ROW_LIST:
     case MYLITE_SQL_AST_VALUES_ROW:
     case MYLITE_SQL_AST_SELECT_INTO_LIST:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -947,6 +948,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
     case MYLITE_SQL_AST_SET_DEFAULT_VALUE:

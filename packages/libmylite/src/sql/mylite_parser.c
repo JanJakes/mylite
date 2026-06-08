@@ -2151,6 +2151,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable(
     return make_node(state, MYLITE_SQL_AST_USER_VARIABLE, span_from_token(&token));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable_assignment_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_token operator_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span =
+        target == NULL ? span_from_token(&operator_token) : target->span;
+    struct mylite_sql_ast_node *expression = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    expression = make_node(state, MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, target);
+    mylite_sql_ast_node_append_child(expression, value);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_into_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *variable

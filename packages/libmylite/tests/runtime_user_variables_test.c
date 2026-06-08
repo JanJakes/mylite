@@ -22,6 +22,7 @@ enum {
     user_variable_sql_capacity = 320,
     uninitialized_read_column_count = 5,
     assigned_read_column_count = 18,
+    assignment_expression_column_count = 7,
     atomic_rollback_column_count = 5,
     test_path_capacity = 256,
 };
@@ -48,6 +49,7 @@ static const char default_sql_mode[] =
     "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
 
 static int test_user_variable_values_and_scalar_reads(void);
+static int test_user_variable_assignment_expressions(void);
 static int test_user_variable_system_restore_and_atomic_failure(void);
 static int test_user_variable_diagnostics(void);
 static int test_user_variable_file_reopen_is_nonpersistent(void);
@@ -88,6 +90,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_user_variable_values_and_scalar_reads();
+    failures += test_user_variable_assignment_expressions();
     failures += test_user_variable_system_restore_and_atomic_failure();
     failures += test_user_variable_diagnostics();
     failures += test_user_variable_file_reopen_is_nonpersistent();
@@ -219,6 +222,97 @@ static int test_user_variable_values_and_scalar_reads(void) {
             .affected_rows = 0,
             .warning_count = 0U,
             .context = "user variable names are case-insensitive",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_user_variable_assignment_expressions(void) {
+    static const char *const assignment_columns[] = {
+        "@a := 1",
+        "@a",
+        "@a := @a + 2",
+        "@a",
+        "@b = 1",
+        "@b := 1",
+        "@b",
+    };
+    static const char *const assignment_values[] = {"1", "1", "3", "3", NULL, "1", "1"};
+    static const char *const nested_columns[] = {"@outer := (@inner := 10)", "@inner", "@outer"};
+    static const char *const nested_values[] = {"10", "10", "10"};
+    static const char *const subquery_columns[] = {"@sub := (SELECT 7)", "@sub"};
+    static const char *const subquery_values[] = {"7", "7"};
+    static const char *const do_columns[] = {"@done", "ROW_COUNT()", "@@warning_count"};
+    static const char *const do_values[] = {"5", "0", "1"};
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures =
+        expect_int(mylite_open_memory(&database), MYLITE_OK, "open assignment expressions");
+
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @a := 1, @a, @a := @a + 2, @a, @b = 1, @b := 1, @b",
+            .columns = assignment_columns,
+            .values = assignment_values,
+            .column_count = assignment_expression_column_count,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 3U,
+            .context = "assignment expressions update variables and return assigned values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @outer := (@inner := 10), @inner, @outer",
+            .columns = nested_columns,
+            .values = nested_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 2U,
+            .context = "nested assignment expressions",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @sub := (SELECT 7), @sub",
+            .columns = subquery_columns,
+            .values = subquery_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 1U,
+            .context = "assignment expression scalar subquery",
+        }
+    );
+    failures += execute_ok(database, "DO @done := 5", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "DO assignment columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "DO assignment rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "DO assignment affected");
+        failures += expect_size(mylite_result_warning_count(result), 1U, "DO assignment warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @done, ROW_COUNT(), @@warning_count",
+            .columns = do_columns,
+            .values = do_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "DO assignment side effects and warning count",
         }
     );
 

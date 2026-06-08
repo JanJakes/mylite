@@ -177,6 +177,8 @@ static int test_do_statement_warnings(void) {
     static const char *const division_warning_values[] = {"2", "0", "0"};
     static const char *const no_warning_values[] = {"0", "0", "0"};
     static const char *const selected_warning_values[] = {"1", "0", "0"};
+    static const char *const assignment_columns[] = {"@assigned", "ROW_COUNT()", "@@warning_count"};
+    static const char *const assignment_warning_values[] = {"5", "0", "1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -242,6 +244,27 @@ static int test_do_statement_warnings(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "selected CASE warning diagnostics",
+        }
+    );
+    failures += expect_statement(
+        database,
+        (struct expected_statement){
+            .sql = "DO @assigned := 5",
+            .warning_count = 1U,
+            .context = "assignment expression warning",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @assigned, ROW_COUNT(), @@warning_count",
+            .columns = assignment_columns,
+            .column_count = diagnostics_column_count,
+            .values = assignment_warning_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "assignment expression warning diagnostics",
         }
     );
 
@@ -316,15 +339,6 @@ static int test_do_statement_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "near '?'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DO @x := 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near ':='",
         }
     );
     failures += execute_error(

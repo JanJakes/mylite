@@ -294,6 +294,17 @@ void mylite_sql_ast_node_set_approximate_type(
     node->payload.approximate_type = payload;
 }
 
+void mylite_sql_ast_node_set_temporal_fractional_precision(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_temporal_fractional_precision_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.temporal_fractional_precision = payload;
+}
+
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -766,6 +777,24 @@ struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_scale_span(
     }
 
     return node->payload.approximate_type.scale_span;
+}
+
+int mylite_sql_ast_node_has_temporal_fractional_precision(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return 0;
+    }
+
+    return node->payload.temporal_fractional_precision.has_precision;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_temporal_fractional_precision_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.temporal_fractional_precision.precision_span;
 }
 
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(

@@ -92,6 +92,11 @@ or general transcoding.
 
 ## Temporal types
 
+`TIME(0)`, `DATETIME(0)`, and `TIMESTAMP(0)` are accepted in supported column
+definition paths and normalize to the existing seconds-only descriptors. MyLite
+still rejects nonzero temporal fractional precision before schema mutation, and
+`fsp > 6` uses MySQL's precision-limit diagnostic.
+
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `DATE` | 🟡 | Limited canonical `YYYY-MM-DD` descriptors stored as `TEXT`, with valid range `1000-01-01` through `9999-12-31`, canonical and admitted limited relaxed date-string defaults, parenthesized generated current-date defaults, `INSERT`/`REPLACE`/`UPDATE` assignment including explicit zero-fractional current-date and UTC-date values, limited SQL-mode-aware full-zero, partial-zero, and `ALLOW_INVALID_DATES` conversion for row values/defaults/compatible descriptor copies/predicates, `INSERT IGNORE` invalid/zero/`NULL` adjustments to `0000-00-00`, readback, descriptor cloning/copying, `IS NULL` / `IS NOT NULL`, canonical plus limited datetime-shaped string-literal storage/default conversion and comparison/`BETWEEN`/`IN` predicates, single-column ordering with MySQL-compatible `NULL` placement, supported nonunique and unique secondary-index declaration/metadata, and `SHOW` / `INFORMATION_SCHEMA.COLUMNS` rendering; no relaxed date strings outside the documented storage, default, and predicate slices, pre-1000 non-full-zero dates, runtime distinction for parser-admitted `DATE '...'` temporal literal introducers, time parts outside the admitted storage/default/predicate literals, casts, date arithmetic, general expression defaults beyond admitted current-date defaults, current-date/UTC-date assignment to other target families, date primary keys, auto-increment, time-zone shifting outside documented `DATE` storage/default offset normalization, or protocol-grade temporal metadata |

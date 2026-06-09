@@ -105,6 +105,11 @@ struct scalar_convert_charset_info {
     enum scalar_convert_charset_warning warning;
 };
 
+struct mylite_execution_temporal_fractional_precision_context {
+    const char *subject_name;
+    const char *unsupported_message;
+};
+
 int mylite_execution_scalar_string_length_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -508,6 +513,11 @@ int mylite_execution_decode_sql_string_literal(
 int mylite_execution_current_timestamp_scalar_value(
     struct mylite_db *database,
     struct session_scalar_cell *out_cell
+);
+int mylite_execution_validate_temporal_fractional_precision(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_execution_temporal_fractional_precision_context context
 );
 int mylite_execution_sysdate_scalar_value(
     struct mylite_db *database,

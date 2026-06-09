@@ -1871,6 +1871,17 @@ static int convert_statement_time_value_for_column(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
         if (column_descriptor_is_time(column)) {
+            if (mylite_execution_validate_temporal_fractional_precision(
+                    database,
+                    value_node,
+                    (struct mylite_execution_temporal_fractional_precision_context){
+                        .subject_name = "curtime",
+                        .unsupported_message =
+                            "fractional CURRENT_TIME precision is not supported",
+                    }
+                ) != MYLITE_OK) {
+                return MYLITE_ERROR;
+            }
             return make_current_time_value(database, out_value);
         }
         set_unsupported_error(database, "CURRENT_TIME values are supported only for TIME columns");
@@ -1901,12 +1912,34 @@ static int convert_statement_time_value_for_column(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UTC_TIME_VALUE:
         if (column_descriptor_is_time(column)) {
+            if (mylite_execution_validate_temporal_fractional_precision(
+                    database,
+                    value_node,
+                    (struct mylite_execution_temporal_fractional_precision_context){
+                        .subject_name = "utc_time",
+                        .unsupported_message =
+                            "fractional UTC_TIME precision is not supported",
+                    }
+                ) != MYLITE_OK) {
+                return MYLITE_ERROR;
+            }
             return make_utc_time_value(database, out_value);
         }
         set_unsupported_error(database, "UTC_TIME values are supported only for TIME columns");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
         if (column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+            if (mylite_execution_validate_temporal_fractional_precision(
+                    database,
+                    value_node,
+                    (struct mylite_execution_temporal_fractional_precision_context){
+                        .subject_name = "utc_timestamp",
+                        .unsupported_message =
+                            "fractional UTC_TIMESTAMP precision is not supported",
+                    }
+                ) != MYLITE_OK) {
+                return MYLITE_ERROR;
+            }
             return make_utc_timestamp_value(database, out_value);
         }
         set_unsupported_error(

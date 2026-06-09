@@ -29455,6 +29455,47 @@ int mylite_execution_current_timestamp_scalar_value(
     return current_timestamp_scalar_value(database, out_cell);
 }
 
+int mylite_execution_validate_temporal_fractional_precision(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_execution_temporal_fractional_precision_context context
+) {
+    enum { temporal_fractional_precision_max = 6 };
+    struct mylite_sql_source_span precision_span = {0};
+    uint64_t precision = 0U;
+
+    if (!mylite_sql_ast_node_has_temporal_fractional_precision(expression)) {
+        return MYLITE_OK;
+    }
+
+    precision_span = mylite_sql_ast_node_temporal_fractional_precision_span(expression);
+    if (parse_unsigned_integer_literal(&precision_span, &precision) != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "temporal fractional precision supports only integer values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (precision > temporal_fractional_precision_max) {
+        set_temporal_precision_too_big_error(
+            database,
+            context.subject_name == NULL ? "temporal" : context.subject_name,
+            precision
+        );
+        return MYLITE_ERROR;
+    }
+    if (precision != 0U) {
+        set_unsupported_error(
+            database,
+            context.unsupported_message == NULL ? "fractional temporal precision is not supported"
+                                                : context.unsupported_message
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 int mylite_execution_sysdate_scalar_value(
     struct mylite_db *database,
     struct session_scalar_cell *out_cell

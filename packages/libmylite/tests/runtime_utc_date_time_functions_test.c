@@ -19,6 +19,7 @@ enum {
     utc_dml_column_count = 5,
     utc_dml_row_count = 4,
     mysql_error_parse = 1064,
+    mysql_error_precision_too_big = 1426,
 };
 
 struct expected_sql_error {
@@ -433,7 +434,16 @@ static int test_utc_date_time_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "fractional UTC_TIME precision is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT UTC_TIME(7)",
+        (struct expected_sql_error){
+            .code = mysql_error_precision_too_big,
+            .sqlstate = "42000",
+            .message_part = "Too-big precision 7 specified for 'utc_time'. Maximum is 6.",
         }
     );
     failures += execute_error(
@@ -442,7 +452,16 @@ static int test_utc_date_time_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "fractional UTC_TIMESTAMP precision is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT UTC_TIMESTAMP(7)",
+        (struct expected_sql_error){
+            .code = mysql_error_precision_too_big,
+            .sqlstate = "42000",
+            .message_part = "Too-big precision 7 specified for 'utc_timestamp'. Maximum is 6.",
         }
     );
 

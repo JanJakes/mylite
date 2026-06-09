@@ -716,6 +716,11 @@ void mylite_execution_diagnostics_set_decimal_precision_too_big_error(
     const char *column_name,
     uint64_t precision
 );
+void mylite_execution_diagnostics_set_temporal_precision_too_big_error(
+    struct mylite_db *database,
+    const char *subject_name,
+    uint64_t precision
+);
 void mylite_execution_diagnostics_set_decimal_scale_too_big_error(
     struct mylite_db *database,
     const char *column_name,
@@ -1087,6 +1092,8 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
       mylite_execution_diagnostics_set_invalid_year_display_width_error
 #  define set_decimal_precision_too_big_error                                                      \
       mylite_execution_diagnostics_set_decimal_precision_too_big_error
+#  define set_temporal_precision_too_big_error                                                     \
+      mylite_execution_diagnostics_set_temporal_precision_too_big_error
 #  define set_decimal_scale_too_big_error                                                          \
       mylite_execution_diagnostics_set_decimal_scale_too_big_error
 #  define set_decimal_scale_greater_than_precision_error                                           \

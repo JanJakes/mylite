@@ -20,6 +20,7 @@ enum {
     information_schema_column_count = 6,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
+    mysql_error_precision_too_big = 1426,
 };
 
 struct expected_sql_error {
@@ -528,13 +529,26 @@ static int test_current_date_time_default_diagnostics(void) {
             .message_part = "Invalid default value for 'd'",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE time_fsp_zero (tm TIME DEFAULT (CURRENT_TIME(0)))"
+    );
     failures += execute_error(
         database,
-        "CREATE TABLE bad_time_fsp (tm TIME DEFAULT (CURRENT_TIME(0)))",
+        "CREATE TABLE bad_time_fsp (tm TIME DEFAULT (CURRENT_TIME(1)))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "fractional CURRENT_TIME precision is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_time_fsp_limit (tm TIME DEFAULT (CURRENT_TIME(7)))",
+        (struct expected_sql_error){
+            .code = mysql_error_precision_too_big,
+            .sqlstate = "42000",
+            .message_part = "Too-big precision 7 specified for 'curtime'. Maximum is 6.",
         }
     );
 

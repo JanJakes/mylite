@@ -16,6 +16,7 @@
 enum {
     test_path_capacity = 1024,
     mysql_error_parse = 1064,
+    mysql_error_precision_too_big = 1426,
     current_scalar_column_count = 7,
     current_dml_row_count = 5,
 };
@@ -396,7 +397,16 @@ static int test_current_date_time_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "fractional CURRENT_TIME precision is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CURTIME(7)",
+        (struct expected_sql_error){
+            .code = mysql_error_precision_too_big,
+            .sqlstate = "42000",
+            .message_part = "Too-big precision 7 specified for 'curtime'. Maximum is 6.",
         }
     );
     failures += execute_error(

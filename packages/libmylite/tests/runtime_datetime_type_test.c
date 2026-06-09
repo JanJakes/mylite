@@ -25,6 +25,7 @@ enum {
     mysql_error_incorrect_datetime_value = 1292,
     mysql_error_incorrect_temporal_value = 1525,
     mysql_error_no_default = 1364,
+    mysql_error_precision_too_big = 1426,
 };
 
 struct expected_sql_error {
@@ -995,7 +996,16 @@ static int test_datetime_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '('",
+            .message_part = "fractional temporal column precision is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_fractional_precision_limit (d DATETIME(7))",
+        (struct expected_sql_error){
+            .code = mysql_error_precision_too_big,
+            .sqlstate = "42000",
+            .message_part = "Too-big precision 7 specified for 'd'. Maximum is 6.",
         }
     );
     failures += expect_statement_ok(

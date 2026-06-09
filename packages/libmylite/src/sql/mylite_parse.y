@@ -7626,10 +7626,19 @@ cast_basic_target(A) ::= DATE. {
 cast_basic_target(A) ::= TIME. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
 }
+cast_basic_target(A) ::= TIME LPAREN INTEGER RPAREN. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
 cast_basic_target(A) ::= DATETIME. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
 }
+cast_basic_target(A) ::= DATETIME LPAREN INTEGER RPAREN. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
 cast_basic_target(A) ::= TIMESTAMP. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= TIMESTAMP LPAREN INTEGER RPAREN. {
     A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
 }
 cast_basic_target(A) ::= YEAR. {
@@ -8218,9 +8227,32 @@ current_time_value(A) ::= CURRENT_TIME(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_CURRENT_TIME_VALUE, R);
 }
+current_time_value(A) ::= CURRENT_TIME(T) LPAREN INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_temporal_value_with_precision(
+        state,
+        T,
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        (struct mylite_sql_temporal_fractional_precision_tokens){
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
+}
 current_time_value(A) ::= CURTIME(T) LPAREN(L) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_zero_argument_function(
         state, T, L, MYLITE_SQL_AST_CURRENT_TIME_VALUE, R);
+}
+current_time_value(A) ::= CURTIME(T) LPAREN(L) INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_temporal_value_with_precision(
+        state,
+        T,
+        L,
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        (struct mylite_sql_temporal_fractional_precision_tokens){
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
 }
 utc_date_value(A) ::= UTC_DATE(T). {
     A = mylite_sql_parser_make_utc_date_keyword(state, T);
@@ -8236,12 +8268,34 @@ utc_time_value(A) ::= UTC_TIME(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UTC_TIME_VALUE, R);
 }
+utc_time_value(A) ::= UTC_TIME(T) LPAREN INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_temporal_value_with_precision(
+        state,
+        T,
+        MYLITE_SQL_AST_UTC_TIME_VALUE,
+        (struct mylite_sql_temporal_fractional_precision_tokens){
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
+}
 utc_timestamp_value(A) ::= UTC_TIMESTAMP(T). {
     A = mylite_sql_parser_make_utc_timestamp_keyword(state, T);
 }
 utc_timestamp_value(A) ::= UTC_TIMESTAMP(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE, R);
+}
+utc_timestamp_value(A) ::= UTC_TIMESTAMP(T) LPAREN INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_temporal_value_with_precision(
+        state,
+        T,
+        MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE,
+        (struct mylite_sql_temporal_fractional_precision_tokens){
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
 }
 sysdate_value(A) ::= SYSDATE(T) LPAREN(L) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_zero_argument_function(
@@ -13049,15 +13103,60 @@ date_type(A) ::= DATE(T). {
 }
 
 datetime_type(A) ::= DATETIME(T). {
-    A = mylite_sql_parser_make_datetime_type(state, T);
+    A = mylite_sql_parser_make_datetime_type(
+        state,
+        (struct mylite_sql_temporal_type_tokens){
+            .type_token = T,
+            .end_token = T,
+        });
+}
+datetime_type(A) ::= DATETIME(T) LPAREN INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_datetime_type(
+        state,
+        (struct mylite_sql_temporal_type_tokens){
+            .type_token = T,
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
 }
 
 time_type(A) ::= TIME(T). {
-    A = mylite_sql_parser_make_time_type(state, T);
+    A = mylite_sql_parser_make_time_type(
+        state,
+        (struct mylite_sql_temporal_type_tokens){
+            .type_token = T,
+            .end_token = T,
+        });
+}
+time_type(A) ::= TIME(T) LPAREN INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_time_type(
+        state,
+        (struct mylite_sql_temporal_type_tokens){
+            .type_token = T,
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
 }
 
 timestamp_type(A) ::= TIMESTAMP(T). {
-    A = mylite_sql_parser_make_timestamp_type(state, T);
+    A = mylite_sql_parser_make_timestamp_type(
+        state,
+        (struct mylite_sql_temporal_type_tokens){
+            .type_token = T,
+            .end_token = T,
+        });
+}
+timestamp_type(A) ::= TIMESTAMP(T) LPAREN INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_timestamp_type(
+        state,
+        (struct mylite_sql_temporal_type_tokens){
+            .type_token = T,
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
 }
 
 year_type(A) ::= YEAR(T). {

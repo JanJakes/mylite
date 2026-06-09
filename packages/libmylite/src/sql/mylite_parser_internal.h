@@ -119,6 +119,19 @@ struct mylite_sql_approximate_type_tokens {
     int is_unsigned;
 };
 
+struct mylite_sql_temporal_fractional_precision_tokens {
+    struct mylite_sql_token precision_token;
+    struct mylite_sql_token end_token;
+    int has_precision;
+};
+
+struct mylite_sql_temporal_type_tokens {
+    struct mylite_sql_token type_token;
+    struct mylite_sql_token precision_token;
+    struct mylite_sql_token end_token;
+    int has_precision;
+};
+
 struct mylite_sql_show_count_warnings_tokens {
     struct mylite_sql_token show;
     struct mylite_sql_token count;
@@ -2150,6 +2163,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_time_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token current_time_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_temporal_value_with_precision(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_temporal_fractional_precision_tokens precision
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_temporal_value_with_precision(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_temporal_fractional_precision_tokens precision
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_utc_date_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token utc_date_token
@@ -2484,15 +2510,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_date_type(
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_datetime_type(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token datetime_token
+    struct mylite_sql_temporal_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_timestamp_type(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token timestamp_token
+    struct mylite_sql_temporal_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_time_type(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token time_token
+    struct mylite_sql_temporal_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,

@@ -44,7 +44,15 @@ static int validate_column_default_value(
     }
     if (column_default_value_is_current_time_expression(value_node)) {
         if (planned_column_is_time(column)) {
-            return MYLITE_OK;
+            return mylite_execution_validate_temporal_fractional_precision(
+                database,
+                unwrap_parenthesized_expression(value_node),
+                (struct mylite_execution_temporal_fractional_precision_context){
+                    .subject_name = "curtime",
+                    .unsupported_message =
+                        "fractional CURRENT_TIME precision is not supported",
+                }
+            );
         }
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
@@ -169,6 +177,18 @@ static int finalize_planned_column_default(
     }
     if (column_default_value_is_current_time_expression(value_node)) {
         if (planned_column_is_time(column)) {
+            int rc = mylite_execution_validate_temporal_fractional_precision(
+                database,
+                unwrap_parenthesized_expression(value_node),
+                (struct mylite_execution_temporal_fractional_precision_context){
+                    .subject_name = "curtime",
+                    .unsupported_message =
+                        "fractional CURRENT_TIME precision is not supported",
+                }
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
             column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME;
             return MYLITE_OK;
         }

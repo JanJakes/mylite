@@ -988,6 +988,11 @@ struct mylite_sql_ast_approximate_type_payload {
     struct mylite_sql_source_span scale_span;
 };
 
+struct mylite_sql_ast_temporal_fractional_precision_payload {
+    int has_precision;
+    struct mylite_sql_source_span precision_span;
+};
+
 struct mylite_sql_ast_nullability_payload {
     enum mylite_sql_ast_nullability kind;
 };
@@ -1026,6 +1031,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_year_type_payload year_type;
     struct mylite_sql_ast_decimal_type_payload decimal_type;
     struct mylite_sql_ast_approximate_type_payload approximate_type;
+    struct mylite_sql_ast_temporal_fractional_precision_payload temporal_fractional_precision;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
@@ -1138,6 +1144,10 @@ void mylite_sql_ast_node_set_approximate_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_approximate_type_payload payload
 );
+void mylite_sql_ast_node_set_temporal_fractional_precision(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_temporal_fractional_precision_payload payload
+);
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -1241,6 +1251,10 @@ struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_precision_spa
     const struct mylite_sql_ast_node *node
 );
 struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_scale_span(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_has_temporal_fractional_precision(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_temporal_fractional_precision_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(

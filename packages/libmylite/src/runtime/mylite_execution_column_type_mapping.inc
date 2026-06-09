@@ -165,9 +165,7 @@ static int map_temporal_column_type(
     struct planned_column *out_column
 ) {
     const char *logical_type = "DATE";
-
-    (void)database;
-    (void)column_name;
+    int rc = MYLITE_OK;
 
     if (type_node->kind == MYLITE_SQL_AST_TIME_TYPE) {
         logical_type = "TIME";
@@ -175,6 +173,18 @@ static int map_temporal_column_type(
         logical_type = "DATETIME";
     } else if (type_node->kind == MYLITE_SQL_AST_TIMESTAMP_TYPE) {
         logical_type = "TIMESTAMP";
+    }
+
+    rc = mylite_execution_validate_temporal_fractional_precision(
+        database,
+        type_node,
+        (struct mylite_execution_temporal_fractional_precision_context){
+            .subject_name = column_name,
+            .unsupported_message = "fractional temporal column precision is not supported",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     snprintf(

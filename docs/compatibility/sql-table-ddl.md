@@ -31,6 +31,9 @@ plus additional comma-separated `ALTER TABLE` action forms and parser-admitted
 Supported column definition paths preserve inline `VISIBLE` / `INVISIBLE`
 metadata while rejecting all-invisible tables. Spatial-column `SRID` attributes
 are parsed as explicit placeholders without spatial reference-system semantics.
+`TIME(0)`, `DATETIME(0)`, and `TIMESTAMP(0)` are accepted in supported column
+definition paths and normalize to the existing seconds-only descriptors;
+nonzero temporal fractional precision is rejected before schema mutation.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

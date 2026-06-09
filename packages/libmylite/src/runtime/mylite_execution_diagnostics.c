@@ -4033,6 +4033,31 @@ void mylite_execution_diagnostics_set_decimal_precision_too_big_error(
     );
 }
 
+void mylite_execution_diagnostics_set_temporal_precision_too_big_error(
+    struct mylite_db *database,
+    const char *subject_name,
+    uint64_t precision
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Too-big precision %" PRIu64 " specified for '%s'. Maximum is 6.",
+        precision,
+        subject_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_decimal_precision_too_big,
+        "42000",
+        message
+    );
+}
+
 void mylite_execution_diagnostics_set_decimal_scale_too_big_error(
     struct mylite_db *database,
     const char *column_name,

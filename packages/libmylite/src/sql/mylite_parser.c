@@ -8690,6 +8690,54 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_time_keyword(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_temporal_value_with_precision(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_temporal_fractional_precision_tokens precision
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    function = make_node(
+        state,
+        function_kind,
+        span_join(span_from_token(&function_token), span_from_token(&precision.end_token))
+    );
+    if (function == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_temporal_fractional_precision(
+        function,
+        (struct mylite_sql_ast_temporal_fractional_precision_payload){
+            .has_precision = precision.has_precision,
+            .precision_span = span_from_token(&precision.precision_token),
+        }
+    );
+    return function;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_temporal_value_with_precision(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_temporal_fractional_precision_tokens precision
+) {
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    return mylite_sql_parser_make_temporal_value_with_precision(
+        state,
+        function_token,
+        function_kind,
+        precision
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_utc_date_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token utc_date_token
@@ -10172,23 +10220,71 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_date_type(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_datetime_type(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token datetime_token
+    struct mylite_sql_temporal_type_tokens tokens
 ) {
-    return make_node(state, MYLITE_SQL_AST_DATETIME_TYPE, span_from_token(&datetime_token));
+    struct mylite_sql_ast_node *type = make_node(
+        state,
+        MYLITE_SQL_AST_DATETIME_TYPE,
+        span_join(span_from_token(&tokens.type_token), span_from_token(&tokens.end_token))
+    );
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_temporal_fractional_precision(
+        type,
+        (struct mylite_sql_ast_temporal_fractional_precision_payload){
+            .has_precision = tokens.has_precision,
+            .precision_span = span_from_token(&tokens.precision_token),
+        }
+    );
+    return type;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_timestamp_type(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token timestamp_token
+    struct mylite_sql_temporal_type_tokens tokens
 ) {
-    return make_node(state, MYLITE_SQL_AST_TIMESTAMP_TYPE, span_from_token(&timestamp_token));
+    struct mylite_sql_ast_node *type = make_node(
+        state,
+        MYLITE_SQL_AST_TIMESTAMP_TYPE,
+        span_join(span_from_token(&tokens.type_token), span_from_token(&tokens.end_token))
+    );
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_temporal_fractional_precision(
+        type,
+        (struct mylite_sql_ast_temporal_fractional_precision_payload){
+            .has_precision = tokens.has_precision,
+            .precision_span = span_from_token(&tokens.precision_token),
+        }
+    );
+    return type;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_time_type(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token time_token
+    struct mylite_sql_temporal_type_tokens tokens
 ) {
-    return make_node(state, MYLITE_SQL_AST_TIME_TYPE, span_from_token(&time_token));
+    struct mylite_sql_ast_node *type = make_node(
+        state,
+        MYLITE_SQL_AST_TIME_TYPE,
+        span_join(span_from_token(&tokens.type_token), span_from_token(&tokens.end_token))
+    );
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_temporal_fractional_precision(
+        type,
+        (struct mylite_sql_ast_temporal_fractional_precision_payload){
+            .has_precision = tokens.has_precision,
+            .precision_span = span_from_token(&tokens.precision_token),
+        }
+    );
+    return type;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(

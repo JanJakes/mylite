@@ -2214,8 +2214,15 @@ static int test_datetime_type_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE datetime_fractional (d DATETIME(3));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    column = parser_test_child_at(parser_test_child_at(statement, 1U), 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(column, 1U),
+        "DATETIME(3)",
+        "datetime fractional span"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2361,9 +2368,13 @@ static int test_time_type_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE time_fractional (t TIME(3));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = parser_test_child_at(result.root, 0U);
+    column = parser_test_child_at(parser_test_child_at(statement, 1U), 0U);
+    failures +=
+        parser_test_expect_span_text(parser_test_child_at(column, 1U), "TIME(3)", "time fsp span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2528,8 +2539,15 @@ static int test_timestamp_type_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE timestamp_fractional (ts TIMESTAMP(3));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    column = parser_test_child_at(parser_test_child_at(statement, 1U), 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(column, 1U),
+        "TIMESTAMP(3)",
+        "timestamp fsp span"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2648,10 +2666,9 @@ static int test_current_date_time_function_statements(void) {
     failures +=
         parser_test_parse_sql("SELECT CURRENT_DATE(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT CURTIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT CURTIME(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT CURRENT_TIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT CURRENT_TIME(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT CURDATE ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -2812,11 +2829,9 @@ static int test_utc_date_time_function_statements(void) {
     failures +=
         parser_test_parse_sql("SELECT UTC_DATE(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT UTC_TIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT UTC_TIME(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT UTC_TIMESTAMP(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT UTC_TIMESTAMP(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

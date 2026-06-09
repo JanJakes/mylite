@@ -2232,12 +2232,42 @@ static int hex_non_weight_string_scalar_argument_value(
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
         return mylite_execution_current_date_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+        if (mylite_execution_validate_temporal_fractional_precision(
+                database,
+                expression,
+                (struct mylite_execution_temporal_fractional_precision_context){
+                    .subject_name = "curtime",
+                    .unsupported_message = "fractional CURRENT_TIME precision is not supported",
+                }
+            ) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
         return mylite_execution_current_time_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_UTC_DATE_VALUE:
         return mylite_execution_utc_date_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_UTC_TIME_VALUE:
+        if (mylite_execution_validate_temporal_fractional_precision(
+                database,
+                expression,
+                (struct mylite_execution_temporal_fractional_precision_context){
+                    .subject_name = "utc_time",
+                    .unsupported_message = "fractional UTC_TIME precision is not supported",
+                }
+            ) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
         return mylite_execution_utc_time_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
+        if (mylite_execution_validate_temporal_fractional_precision(
+                database,
+                expression,
+                (struct mylite_execution_temporal_fractional_precision_context){
+                    .subject_name = "utc_timestamp",
+                    .unsupported_message = "fractional UTC_TIMESTAMP precision is not supported",
+                }
+            ) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
         return mylite_execution_utc_timestamp_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
         written = snprintf(

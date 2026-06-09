@@ -1600,6 +1600,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     struct mylite_sql_token group_token,
     struct mylite_sql_ast_node *group_keys
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_rollup_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_token rollup_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_having_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token having_token,

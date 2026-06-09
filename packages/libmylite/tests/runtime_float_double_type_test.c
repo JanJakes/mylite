@@ -619,6 +619,7 @@ static int test_float_double_success_persistence_and_introspection(void) {
 
 static int test_float_double_diagnostics(void) {
     static const char *const whitespace_string_row[] = {"4", "1.5"};
+    static const char *const approximate_predicate_row[] = {"4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -703,13 +704,24 @@ static int test_float_double_diagnostics(void) {
             .message_part = "Invalid default value for 'd'",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM values_t WHERE f = 1.0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT id FROM values_t WHERE f = 1.5",
+            .values = approximate_predicate_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "approximate comparison predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM values_t WHERE f = 1.0",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "approximate comparison predicate empty",
         }
     );
     failures += execute_error(

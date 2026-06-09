@@ -26,6 +26,7 @@
 }
 
 %right DEFAULT.
+%right WITH.
 %right ASSIGN.
 %left OR.
 %left XOR.
@@ -88,6 +89,7 @@
 %type alter_algorithm_value { struct mylite_sql_alter_algorithm_value }
 %type alter_lock_value { struct mylite_sql_alter_lock_value }
 %type predicate_comparison_operator { struct mylite_sql_comparison_operator_tokens }
+%type dml_function_token { struct mylite_sql_token }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -891,6 +893,9 @@ set_system_variable_value(A) ::= user_variable(T). {
 set_system_variable_value(A) ::= LPAREN(L) set_system_variable_value(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
+set_system_variable_value(A) ::= set_expression_value(B). {
+    A = B;
+}
 
 user_variable_set_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -981,6 +986,49 @@ user_variable_set_value(A) ::= user_variable(T). {
 }
 user_variable_set_value(A) ::= LPAREN(L) user_variable_set_value(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+user_variable_set_value(A) ::= set_expression_value(B). {
+    A = B;
+}
+
+set_expression_value(A) ::= set_function_value(B). {
+    A = B;
+}
+set_expression_value(A) ::= set_function_value(B) PLUS(T) set_expression_literal(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+set_expression_value(A) ::= set_function_value(B) MINUS(T) set_expression_literal(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+set_expression_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
+
+set_function_value(A) ::= dml_function_call(B). {
+    A = B;
+}
+set_function_value(A) ::= LOG10(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LOG10_FUNCTION, B, R);
+}
+set_function_value(A) ::= UNIX_TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, B, R);
+}
+set_function_value(A) ::= cast_convert_expression(B). {
+    A = B;
+}
+
+set_expression_literal(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+set_expression_literal(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+set_expression_literal(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
 }
 
 user_variable(A) ::= USER_VARIABLE(T). {
@@ -3479,6 +3527,31 @@ insert_value(A) ::= dml_constant_scalar_value(B). {
 insert_value(A) ::= update_constant_arithmetic_value(B). {
     A = B;
 }
+insert_value(A) ::= dml_function_call(B). {
+    A = B;
+}
+insert_value(A) ::= ROW(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+}
+insert_value(A) ::= LPAREN(L) dml_function_call(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+insert_value(A) ::= BITWISE_NOT(T) dml_bitwise_operand(B). [BITWISE_NOT] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
+}
+insert_value(A) ::= LPAREN(L) BITWISE_NOT(T) dml_bitwise_operand(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(
+        state,
+        L,
+        mylite_sql_parser_make_unary_expression(
+            state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B),
+        R);
+}
+insert_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, C);
+}
 
 insert_unix_timestamp_value(A) ::= insert_unix_timestamp_now(B). {
     A = B;
@@ -3664,7 +3737,80 @@ update_value(A) ::= update_constant_arithmetic_value(B). {
 update_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
 }
+update_value(A) ::= dml_function_call(B). {
+    A = B;
+}
+update_value(A) ::= ROW(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+}
+update_value(A) ::= LPAREN(L) dml_function_call(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+update_value(A) ::= BITWISE_NOT(T) dml_bitwise_operand(B). [BITWISE_NOT] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
+}
+update_value(A) ::= LPAREN(L) BITWISE_NOT(T) dml_bitwise_operand(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(
+        state,
+        L,
+        mylite_sql_parser_make_unary_expression(
+            state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B),
+        R);
+}
+update_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, C);
+}
 
+dml_function_call(A) ::= dml_function_token(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, NULL, R);
+}
+dml_function_call(A) ::= dml_function_token(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+}
+
+dml_bitwise_operand(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+dml_bitwise_operand(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+dml_bitwise_operand(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+
+dml_function_token(A) ::= IDENTIFIER(T). {
+    A = T;
+}
+dml_function_token(A) ::= POINT(T). {
+    A = T;
+}
+dml_function_token(A) ::= LINESTRING(T). {
+    A = T;
+}
+dml_function_token(A) ::= POLYGON(T). {
+    A = T;
+}
+dml_function_token(A) ::= MULTIPOINT(T). {
+    A = T;
+}
+dml_function_token(A) ::= MULTILINESTRING(T). {
+    A = T;
+}
+dml_function_token(A) ::= MULTIPOLYGON(T). {
+    A = T;
+}
+dml_function_token(A) ::= GEOMETRYCOLLECTION(T). {
+    A = T;
+}
+dml_function_token(A) ::= GEOMCOLLECTION(T). {
+    A = T;
+}
 dml_constant_scalar_value(A) ::= charset_introducer STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
@@ -4628,10 +4774,19 @@ where_clause_opt(A) ::= WHERE(W) predicate(P). {
 group_clause_opt(A) ::= . {
     A = NULL;
 }
-group_clause_opt(A) ::= GROUP(G) BY group_key_list(K). {
-    A = mylite_sql_parser_make_group_by_clause(state, G, K);
+group_clause_opt(A) ::= GROUP(G) BY group_key_list(K) group_rollup_opt(R). {
+    A = mylite_sql_parser_make_group_by_clause(
+        state,
+        G,
+        R == NULL ? K : mylite_sql_parser_append_group_by_key(state, K, R));
 }
 
+group_rollup_opt(A) ::= . [WITH] {
+    A = NULL;
+}
+group_rollup_opt(A) ::= WITH(W) ROLLUP(R). {
+    A = mylite_sql_parser_make_group_by_rollup_modifier(state, W, R);
+}
 group_key_list(A) ::= group_key(K). {
     A = mylite_sql_parser_make_group_by_key_list(state, K);
 }
@@ -4970,6 +5125,14 @@ predicate_atom(A) ::= json_contains_predicate_expression(C). {
 predicate_atom(A) ::= regexp_like_expression(C). {
     A = C;
 }
+predicate_atom(A) ::= match_against_expression(C). {
+    A = C;
+}
+predicate_atom(A) ::= match_against_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
 predicate_atom(A) ::= string_length_expression(C). {
     A = C;
 }
@@ -5078,6 +5241,15 @@ predicate_atom(A) ::= predicate_row_scalar_expression(C) NOT(N) BETWEEN(B)
         predicate_range_value(L) AND predicate_range_value(U). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IN(I) LPAREN predicate_in_value_list(V)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, V, R);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) NOT(N) IN(I) LPAREN
+        predicate_in_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
 }
 predicate_atom(A) ::=
     cast_convert_expression(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
@@ -5552,6 +5724,12 @@ predicate_in_value(A) ::= HEX_LITERAL(T). {
 predicate_in_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
+predicate_in_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+predicate_in_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
 
 predicate_range_value(A) ::= predicate_integer_value(V). {
     A = V;
@@ -5567,6 +5745,12 @@ predicate_range_value(A) ::= HEX_LITERAL(T). {
 }
 predicate_range_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
+predicate_range_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+predicate_range_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
 }
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
@@ -5620,6 +5804,12 @@ predicate_comparison_value(A) ::= row_scalar_json_predicate_expression(V). {
 }
 predicate_comparison_value(A) ::= row_scalar_temporal_predicate_expression(V). {
     A = V;
+}
+predicate_comparison_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+predicate_comparison_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
 }
 
 predicate_row_scalar_expression(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
@@ -6204,6 +6394,9 @@ expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R). {
 expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_generic_function(state, T, B, R);
 }
+expression(A) ::= match_against_expression(B). {
+    A = B;
+}
 expression(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
@@ -6217,6 +6410,29 @@ expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
 expression(A) ::= cast_convert_expression(B). {
     A = B;
 }
+
+match_against_expression(A) ::=
+    MATCH(T) LPAREN match_column_list(C) RPAREN AGAINST LPAREN expression(S)
+    fulltext_search_modifier_opt RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(
+        state,
+        T,
+        mylite_sql_parser_append_function_argument(state, C, S),
+        R);
+}
+
+match_column_list(A) ::= qualified_identifier(C). {
+    A = mylite_sql_parser_make_function_argument_list(state, C);
+}
+match_column_list(A) ::= match_column_list(L) COMMA qualified_identifier(C). {
+    A = mylite_sql_parser_append_function_argument(state, L, C);
+}
+
+fulltext_search_modifier_opt ::= .
+fulltext_search_modifier_opt ::= IN NATURAL LANGUAGE MODE.
+fulltext_search_modifier_opt ::= IN NATURAL LANGUAGE MODE WITH QUERY EXPANSION.
+fulltext_search_modifier_opt ::= IN BOOLEAN MODE.
+fulltext_search_modifier_opt ::= WITH QUERY EXPANSION.
 
 cast_convert_expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY cast_length_opt RPAREN(R). {
     A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
@@ -10361,6 +10577,21 @@ identifier(A) ::= NVARCHAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= MODE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= AGAINST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= EXPANSION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LANGUAGE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= QUERY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ROLLUP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SHARE(T). {

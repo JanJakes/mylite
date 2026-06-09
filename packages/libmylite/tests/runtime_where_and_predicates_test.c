@@ -2713,7 +2713,8 @@ static int test_where_and_predicates(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "WHERE supports only integer, boolean, and exact quoted integer predicate literals",
         }
     );
     failures += execute_error(

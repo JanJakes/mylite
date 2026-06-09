@@ -2,6 +2,11 @@
 
 Spatial constructors, predicates, measurements, and conversion functions.
 
+Selected spatial constructor and conversion function calls are parser-admitted
+as generic function placeholders in current `SET` and DML value positions.
+MyLite still does not implement non-`NULL` geometry values, SRIDs, spatial
+predicates, measurements, or spatial function execution.
+
 | Function | Status | Notes |
 | --- | --- | --- |
 | `GeomCollection()` | ❌ | Construct geometry collection from geometries |

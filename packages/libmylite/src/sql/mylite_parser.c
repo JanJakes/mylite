@@ -6456,6 +6456,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     return group_clause;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_rollup_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_token rollup_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER,
+        span_join(span_from_token(&with_token), span_from_token(&rollup_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_having_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token having_token,
@@ -9926,11 +9938,17 @@ static bool map_keyword_token(
         {"DEFINER", MYLITE_SQL_PARSE_DEFINER},
         {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXCEPT", MYLITE_SQL_PARSE_EXCEPT},
+        {"AGAINST", MYLITE_SQL_PARSE_AGAINST},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"INVOKER", MYLITE_SQL_PARSE_INVOKER},
         {"INTERSECT", MYLITE_SQL_PARSE_INTERSECT},
+        {"LANGUAGE", MYLITE_SQL_PARSE_LANGUAGE},
+        {"MATCH", MYLITE_SQL_PARSE_MATCH},
         {"MERGE", MYLITE_SQL_PARSE_MERGE},
+        {"NATURAL", MYLITE_SQL_PARSE_NATURAL},
         {"OPTION", MYLITE_SQL_PARSE_OPTION},
+        {"QUERY", MYLITE_SQL_PARSE_QUERY},
+        {"ROLLUP", MYLITE_SQL_PARSE_ROLLUP},
         {"SECURITY", MYLITE_SQL_PARSE_SECURITY},
         {"SQL", MYLITE_SQL_PARSE_SQL},
         {"TEMPTABLE", MYLITE_SQL_PARSE_TEMPTABLE},
@@ -10343,6 +10361,7 @@ static bool map_keyword_token(
         {"FLOAT4", MYLITE_SQL_PARSE_FLOAT4},
         {"FLOAT8", MYLITE_SQL_PARSE_FLOAT8},
         {"DOUBLE", MYLITE_SQL_PARSE_DOUBLE},
+        {"EXPANSION", MYLITE_SQL_PARSE_EXPANSION},
         {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
         {"REAL", MYLITE_SQL_PARSE_REAL},
         {"DATE", MYLITE_SQL_PARSE_DATE},

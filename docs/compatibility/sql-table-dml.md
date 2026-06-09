@@ -79,6 +79,10 @@ the target descriptor's existing storage conversion, strict diagnostics, and
 table-backed expressions, scalar subqueries in insert/replace values, spatial
 constructors, stored routines, loadable functions, arbitrary nested function
 forms outside the current scalar evaluator, or general DML expression planning.
+The parser additionally admits selected generic/spatial function calls,
+`ROW(...)` constructors, parenthesized function values, and simple constant
+bitwise expressions in DML value positions as compatibility placeholders; forms
+outside the scalar evaluator fail at execution with explicit diagnostics.
 
 The current temporal DML storage conversion admits canonical temporal strings
 plus a limited `DATE`, `DATETIME`, and `TIMESTAMP` string subset with a `T`

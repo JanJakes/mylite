@@ -1996,6 +1996,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "lock_table_write_lock";
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
         return "group_by_clause";
+    case MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER:
+        return "group_by_rollup_modifier";
     case MYLITE_SQL_AST_HAVING_CLAUSE:
         return "having_clause";
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:

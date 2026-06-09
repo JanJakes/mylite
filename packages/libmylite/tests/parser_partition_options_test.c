@@ -2,6 +2,7 @@
 
 static int test_create_table_partition_options(void);
 static int test_create_table_partition_rejections(void);
+static int test_partitioned_create_table_select_placeholder(void);
 static int parse_status(
     const char *sql,
     enum mylite_sql_parse_status expected_status,
@@ -13,6 +14,7 @@ int main(void) {
 
     failures += test_create_table_partition_options();
     failures += test_create_table_partition_rejections();
+    failures += test_partitioned_create_table_select_placeholder();
 
     return failures == 0 ? 0 : 1;
 }
@@ -61,12 +63,27 @@ static int test_create_table_partition_rejections(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "incomplete partition method"
     );
-    failures += parse_status(
-        "CREATE TABLE t1 (id INT) PARTITION BY RANGE (id) AS SELECT 1",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        "partitioned create table select remains unsupported"
-    );
 
+    return failures;
+}
+
+static int test_partitioned_create_table_select_placeholder(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE t1 (id INT) PARTITION BY RANGE (id) AS SELECT 1",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "partitioned create table select placeholder"
+    );
+    mylite_sql_parse_result_deinit(&result);
     return failures;
 }
 

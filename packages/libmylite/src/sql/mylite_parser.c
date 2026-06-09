@@ -76,6 +76,7 @@ enum {
     placeholder_initial_token_capacity = 16,
     placeholder_create_scan_token_limit = 12,
     create_table_partition_min_token_count = 6,
+    create_table_select_min_token_count = 5,
     alter_table_partition_min_token_count = 5,
 };
 
@@ -130,6 +131,37 @@ static bool scan_is_create_table_partition_statement(
 static bool create_table_partition_suffix_is_supported(
     const struct placeholder_statement_scan *scan,
     size_t partition_index
+);
+static bool create_table_select_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool create_table_select_scan_has_query_source(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+);
+static bool create_table_select_query_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool create_table_select_parenthesized_query_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool create_table_select_with_query_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool create_table_select_plain_query_keyword_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool create_table_select_query_keyword_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool create_table_select_scan_has_balanced_parentheses(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
 );
 static bool token_is_left_paren(const struct mylite_sql_token *token);
 static bool token_is_right_paren(const struct mylite_sql_token *token);
@@ -703,6 +735,162 @@ static bool create_table_partition_suffix_is_supported(
     return saw_method && saw_method_paren && paren_depth == 0;
 }
 
+static bool create_table_select_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t table_index = 1U;
+
+    if (scan == NULL || scan->tokens == NULL ||
+        scan->token_count < create_table_select_min_token_count ||
+        !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, table_index, "TEMPORARY")) {
+        ++table_index;
+    }
+    if (!placeholder_scan_token_text_equals(scan, table_index, "TABLE") ||
+        !create_table_select_scan_has_balanced_parentheses(scan, table_index + 1U)) {
+        return false;
+    }
+    return create_table_select_scan_has_query_source(scan, table_index + 1U);
+}
+
+static bool create_table_select_scan_has_query_source(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+) {
+    int paren_depth = 0;
+
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        if (paren_depth == 0) {
+            if (create_table_select_query_keyword_is_complete(scan, index)) {
+                return true;
+            }
+            if (placeholder_scan_token_text_equals(scan, index, "AS") &&
+                create_table_select_query_starts_at(scan, index + 1U)) {
+                return true;
+            }
+            if (create_table_select_parenthesized_query_starts_at(scan, index)) {
+                return true;
+            }
+        }
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+        }
+    }
+    return false;
+}
+
+static bool create_table_select_query_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return create_table_select_query_keyword_is_complete(scan, index) ||
+           create_table_select_parenthesized_query_starts_at(scan, index);
+}
+
+static bool create_table_select_parenthesized_query_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t query_start_index = index;
+    int paren_depth = 0;
+
+    if (scan == NULL || index + 1U >= scan->token_count ||
+        !token_is_left_paren(&scan->tokens[index])) {
+        return false;
+    }
+    while (query_start_index + 1U < scan->token_count &&
+           token_is_left_paren(&scan->tokens[query_start_index + 1U])) {
+        ++query_start_index;
+    }
+    if (query_start_index + 1U >= scan->token_count ||
+        !create_table_select_query_keyword_is_complete(scan, query_start_index + 1U)) {
+        return false;
+    }
+    for (size_t scan_index = index; scan_index < scan->token_count; ++scan_index) {
+        if (token_is_left_paren(&scan->tokens[scan_index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[scan_index])) {
+            --paren_depth;
+            if (paren_depth == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool create_table_select_with_query_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, index, "WITH")) {
+        return false;
+    }
+    for (size_t scan_index = index + 1U; scan_index < scan->token_count; ++scan_index) {
+        if (paren_depth == 0 &&
+            create_table_select_plain_query_keyword_is_complete(scan, scan_index)) {
+            return scan_index + 1U < scan->token_count;
+        }
+        if (token_is_left_paren(&scan->tokens[scan_index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[scan_index])) {
+            --paren_depth;
+        }
+    }
+    return false;
+}
+
+static bool create_table_select_plain_query_keyword_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return (placeholder_scan_token_text_equals(scan, index, "SELECT") ||
+            placeholder_scan_token_text_equals(scan, index, "TABLE") ||
+            placeholder_scan_token_text_equals(scan, index, "VALUES")) &&
+           index + 1U < scan->token_count;
+}
+
+static bool create_table_select_query_keyword_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    if (create_table_select_plain_query_keyword_is_complete(scan, index)) {
+        return true;
+    }
+    return create_table_select_with_query_is_complete(scan, index);
+}
+
+static bool create_table_select_scan_has_balanced_parentheses(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+        }
+    }
+    return paren_depth == 0;
+}
+
 static bool token_is_left_paren(const struct mylite_sql_token *token) {
     return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
            token->text != NULL && token->text[0] == '(';
@@ -825,6 +1013,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (create_table_select_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
 
     for (size_t index = 1U;

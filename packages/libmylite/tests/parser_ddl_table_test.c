@@ -5361,8 +5361,14 @@ static int test_create_table_select_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE copy (id INT) AS SELECT id FROM source;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "explicit-column ctas placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 

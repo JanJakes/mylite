@@ -26,10 +26,11 @@ relaxed temporal string subset with `T`, valid numeric offsets, or one trailing
 Parser-corpus DDL option placeholders admit selected MySQL 8.4 syntax that does
 not currently map to embedded storage behavior: `TABLESPACE`, `STORAGE DISK` /
 `STORAGE MEMORY`, MERGE-table `UNION=(...)`, and `INSERT_METHOD` table options,
-plus additional comma-separated `ALTER TABLE` action forms. Supported column
-definition paths preserve inline `VISIBLE` / `INVISIBLE` metadata while
-rejecting all-invisible tables. Spatial-column `SRID` attributes are parsed as
-explicit placeholders without spatial reference-system semantics.
+plus additional comma-separated `ALTER TABLE` action forms and parser-admitted
+`ALTER TABLE` partition operations that return unsupported utility diagnostics.
+Supported column definition paths preserve inline `VISIBLE` / `INVISIBLE`
+metadata while rejecting all-invisible tables. Spatial-column `SRID` attributes
+are parsed as explicit placeholders without spatial reference-system semantics.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

@@ -76,6 +76,7 @@ enum {
     placeholder_initial_token_capacity = 16,
     placeholder_create_scan_token_limit = 12,
     create_table_partition_min_token_count = 6,
+    alter_table_partition_min_token_count = 5,
 };
 
 static enum mylite_sql_parse_status parse_sql_with_lemon(
@@ -146,6 +147,26 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
 );
 static enum placeholder_statement_kind classify_alter_placeholder_statement(
     const struct placeholder_statement_scan *scan
+);
+static bool alter_table_partition_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static size_t alter_table_partition_operation_start_index(
+    const struct placeholder_statement_scan *scan
+);
+static bool alter_table_partition_scan_has_operation(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+);
+static bool alter_table_partition_scan_has_balanced_parentheses(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+);
+static bool placeholder_scan_token_text_equals_any(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    const char *const *texts,
+    size_t text_count
 );
 static enum placeholder_statement_kind classify_drop_placeholder_statement(
     const struct placeholder_statement_scan *scan
@@ -830,12 +851,141 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
+        alter_table_partition_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "PROCEDURE") ||
         placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||
         placeholder_scan_token_text_equals(scan, 1U, "EVENT")) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool alter_table_partition_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t operation_start_index = 0U;
+
+    if (scan == NULL || scan->token_count < alter_table_partition_min_token_count ||
+        !alter_table_partition_scan_has_balanced_parentheses(scan, 2U)) {
+        return false;
+    }
+    operation_start_index = alter_table_partition_operation_start_index(scan);
+    if (operation_start_index >= scan->token_count) {
+        return false;
+    }
+    return alter_table_partition_scan_has_operation(scan, operation_start_index);
+}
+
+static size_t alter_table_partition_operation_start_index(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t table_name_index = 2U;
+
+    if (scan == NULL) {
+        return table_name_index;
+    }
+    if (table_name_index + 2U < scan->token_count &&
+        placeholder_scan_token_text_equals(scan, table_name_index + 1U, ".")) {
+        return table_name_index + 3U;
+    }
+    return table_name_index + 1U;
+}
+
+static bool alter_table_partition_scan_has_operation(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+) {
+    static const char *const partition_action_prefixes[] = {
+        "ADD",
+        "DROP",
+        "REORGANIZE",
+        "REBUILD",
+        "COALESCE",
+        "TRUNCATE",
+        "EXCHANGE",
+        "ANALYZE",
+        "CHECK",
+        "OPTIMIZE",
+        "REPAIR",
+    };
+    int paren_depth = 0;
+
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (index + 2U < scan->token_count &&
+            placeholder_scan_token_text_equals(scan, index, "PARTITION") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "BY")) {
+            return true;
+        }
+        if (index + 1U < scan->token_count &&
+            placeholder_scan_token_text_equals(scan, index, "REMOVE") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "PARTITIONING")) {
+            return true;
+        }
+        if (index + 2U < scan->token_count &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "PARTITION") &&
+            placeholder_scan_token_text_equals_any(
+                scan,
+                index,
+                partition_action_prefixes,
+                sizeof(partition_action_prefixes) / sizeof(partition_action_prefixes[0])
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool alter_table_partition_scan_has_balanced_parentheses(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+) {
+    int paren_depth = 0;
+
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+        }
+    }
+    return paren_depth == 0;
+}
+
+static bool placeholder_scan_token_text_equals_any(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    const char *const *texts,
+    size_t text_count
+) {
+    if (texts == NULL) {
+        return false;
+    }
+    for (size_t text_index = 0U; text_index < text_count; ++text_index) {
+        if (placeholder_scan_token_text_equals(scan, index, texts[text_index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static enum placeholder_statement_kind classify_drop_placeholder_statement(

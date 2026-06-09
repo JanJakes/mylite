@@ -921,6 +921,8 @@ static int plan_row_scalar_window_function_expression(
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
     const struct mylite_sql_ast_node *arguments = window_function_argument_list_node(expression);
     const struct mylite_sql_ast_node *window_spec = window_function_spec_node(expression);
+    const struct mylite_sql_ast_node *null_treatment =
+        window_function_null_treatment_node(expression);
     const struct mylite_sql_ast_node *clause = NULL;
     const char *function_name = window_function_display_name(kind);
     int rc = MYLITE_OK;
@@ -930,6 +932,19 @@ static int plan_row_scalar_window_function_expression(
     }
     planned_row_scalar_expression_deinit(out_expression);
     if (kind == PLANNED_WINDOW_FUNCTION_NONE || function_name == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (null_treatment != NULL && null_treatment->kind == MYLITE_SQL_AST_WINDOW_IGNORE_NULLS) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_not_supported_yet,
+            "42000",
+            "This version of MySQL doesn't yet support 'IGNORE NULLS'"
+        );
+        return MYLITE_ERROR;
+    }
+    if (null_treatment != NULL && null_treatment->kind != MYLITE_SQL_AST_WINDOW_RESPECT_NULLS) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -1066,6 +1081,17 @@ static const struct mylite_sql_ast_node *window_function_spec_node(
         return child_at(expression, 0U);
     }
     return child_at(expression, 1U);
+}
+
+static const struct mylite_sql_ast_node *window_function_null_treatment_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
+
+    if (!window_function_has_arguments(kind)) {
+        return NULL;
+    }
+    return child_at(expression, 2U);
 }
 
 static bool window_function_has_arguments(enum planned_window_function_kind kind) {

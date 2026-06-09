@@ -3505,7 +3505,7 @@ static int test_table_statement(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "TABLE simple_lifecycle UNION SELECT * FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -4407,7 +4407,7 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT id FROM t STRAIGHT_JOIN other USING (id);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

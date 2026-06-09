@@ -46,7 +46,8 @@
 %right UPLUS UMINUS BITWISE_NOT.
 
 %fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
-    DISK INSERT_METHOD LAST MEMORY MERGE SECURITY SRID TABLESPACE TEMPTABLE UNDEFINED.
+    DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
+    UNDEFINED.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -73,6 +74,7 @@
 %type join_operator { enum mylite_sql_ast_join_kind }
 %type inner_join_operator { enum mylite_sql_ast_join_kind }
 %type outer_join_operator { enum mylite_sql_ast_join_kind }
+%type natural_join_operator { enum mylite_sql_ast_join_kind }
 %type table_or_tables { struct mylite_sql_token }
 %type trim_direction { enum mylite_sql_ast_node_kind }
 %type cast_basic_target { enum mylite_sql_ast_node_kind }
@@ -114,6 +116,12 @@ statements(A) ::= statements(B) SEMICOLON statement(C). {
 }
 
 statement(A) ::= compound_select_statement(B). {
+    A = B;
+}
+statement(A) ::= query_compound_statement(B). {
+    A = B;
+}
+statement(A) ::= parenthesized_query_expression(B). {
     A = B;
 }
 statement(A) ::= select_statement(B). {
@@ -4803,8 +4811,47 @@ select_statement(A) ::=
             WN),
         PI);
 }
+query_expression_body(A) ::= select_statement(S). {
+    A = S;
+}
+query_expression_body(A) ::= table_statement(S). {
+    A = S;
+}
+query_expression_body(A) ::= values_statement(S). {
+    A = S;
+}
+query_expression_body(A) ::= parenthesized_query_expression(S). {
+    A = S;
+}
+
 compound_select_statement(A) ::= select_statement(S) union_term_list(T). {
     A = mylite_sql_parser_make_compound_select_statement(state, S, T);
+}
+
+query_compound_statement(A) ::= table_statement(S) union_term_list(T). {
+    A = mylite_sql_parser_make_compound_select_statement(state, S, T);
+}
+query_compound_statement(A) ::= values_statement(S) union_term_list(T). {
+    A = mylite_sql_parser_make_compound_select_statement(state, S, T);
+}
+query_compound_statement(A) ::= parenthesized_query_expression(S) union_term_list(T). {
+    A = mylite_sql_parser_make_compound_select_statement(state, S, T);
+}
+
+parenthesized_query_expression(A) ::=
+    LPAREN(L) query_expression_body(S) RPAREN(R)
+    query_expression_order_clause_opt(O) query_expression_limit_clause_opt(LM). {
+    A = mylite_sql_parser_make_parenthesized_query_expression(state, L, S, R, O, LM);
+}
+parenthesized_query_expression(A) ::=
+    LPAREN(L) compound_select_statement(S) RPAREN(R)
+    query_expression_order_clause_opt(O) query_expression_limit_clause_opt(LM). {
+    A = mylite_sql_parser_make_parenthesized_query_expression(state, L, S, R, O, LM);
+}
+parenthesized_query_expression(A) ::=
+    LPAREN(L) query_compound_statement(S) RPAREN(R)
+    query_expression_order_clause_opt(O) query_expression_limit_clause_opt(LM). {
+    A = mylite_sql_parser_make_parenthesized_query_expression(state, L, S, R, O, LM);
 }
 
 with_select_statement(A) ::=
@@ -4861,14 +4908,14 @@ union_term_list(A) ::= union_term_list(L) union_term(T). {
     A = mylite_sql_parser_append_union_term(state, L, T);
 }
 
-union_term(A) ::= UNION(U) union_modifier_opt(M) select_statement(S). {
+union_term(A) ::= UNION(U) union_modifier_opt(M) query_expression_body(S). {
     A = mylite_sql_parser_make_union_term(state, U, M, S);
 }
-union_term(A) ::= INTERSECT(I) union_modifier_opt(M) select_statement(S). {
+union_term(A) ::= INTERSECT(I) union_modifier_opt(M) query_expression_body(S). {
     A = mylite_sql_parser_make_set_operation_term(
         state, I, MYLITE_SQL_AST_SET_OPERATOR_INTERSECT, M, S);
 }
-union_term(A) ::= EXCEPT(E) union_modifier_opt(M) select_statement(S). {
+union_term(A) ::= EXCEPT(E) union_modifier_opt(M) query_expression_body(S). {
     A = mylite_sql_parser_make_set_operation_term(
         state, E, MYLITE_SQL_AST_SET_OPERATOR_EXCEPT, M, S);
 }
@@ -4895,10 +4942,21 @@ table_source(A) ::= derived_table_source(D). {
     A = D;
 }
 
-derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) table_alias_opt(AL). {
+derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
-derived_table_source(A) ::= LPAREN(L) compound_select_statement(S) RPAREN(R) table_alias_opt(AL). {
+derived_table_source(A) ::=
+    LPAREN(L) compound_select_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
+}
+derived_table_source(A) ::= LPAREN(L) table_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
+}
+derived_table_source(A) ::= LPAREN(L) values_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
+}
+derived_table_source(A) ::=
+    LPAREN(L) parenthesized_query_expression(S) RPAREN(R) derived_table_alias_opt(AL). {
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
 
@@ -4917,6 +4975,22 @@ joined_table_source(A) ::=
 joined_table_source(A) ::=
     joined_table_source(LT) outer_join_operator(JO) table_source(RT) ON join_condition(J). {
     A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+joined_table_source(A) ::=
+    table_source(LT) outer_join_operator(JO) table_source(RT) join_using_clause(J). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+joined_table_source(A) ::=
+    joined_table_source(LT) outer_join_operator(JO) table_source(RT) join_using_clause(J). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, J);
+}
+joined_table_source(A) ::=
+    table_source(LT) natural_join_operator(JO) table_source(RT). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, NULL);
+}
+joined_table_source(A) ::=
+    joined_table_source(LT) natural_join_operator(JO) table_source(RT). {
+    A = mylite_sql_parser_make_join_source(state, LT, JO, RT, NULL);
 }
 
 comma_table_sources(A) ::= table_source(LT) COMMA table_source(RT). {
@@ -5125,6 +5199,9 @@ join_operator(A) ::= RIGHT JOIN. {
 join_operator(A) ::= RIGHT OUTER JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
 }
+join_operator(A) ::= natural_join_operator(JO). {
+    A = JO;
+}
 
 inner_join_operator(A) ::= JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_INNER;
@@ -5152,11 +5229,37 @@ outer_join_operator(A) ::= RIGHT OUTER JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
 }
 
+natural_join_operator(A) ::= NATURAL JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_NATURAL_INNER;
+}
+natural_join_operator(A) ::= NATURAL INNER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_NATURAL_INNER;
+}
+natural_join_operator(A) ::= NATURAL LEFT JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_NATURAL_LEFT_OUTER;
+}
+natural_join_operator(A) ::= NATURAL LEFT OUTER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_NATURAL_LEFT_OUTER;
+}
+natural_join_operator(A) ::= NATURAL RIGHT JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_NATURAL_RIGHT_OUTER;
+}
+natural_join_operator(A) ::= NATURAL RIGHT OUTER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_NATURAL_RIGHT_OUTER;
+}
+
 join_condition_opt(A) ::= . [ON] {
     A = NULL;
 }
 join_condition_opt(A) ::= ON join_condition(C). {
     A = C;
+}
+join_condition_opt(A) ::= join_using_clause(C). {
+    A = C;
+}
+
+join_using_clause(A) ::= USING(U) LPAREN identifier_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_join_using_clause(state, U, L, R);
 }
 
 join_condition(A) ::= predicate(P). {
@@ -5297,6 +5400,16 @@ table_alias_opt(A) ::= AS identifier(B). {
     A = B;
 }
 table_alias_opt(A) ::= identifier(B). {
+    A = B;
+}
+
+derived_table_alias_opt(A) ::= table_alias_opt(B). {
+    A = B;
+}
+derived_table_alias_opt(A) ::= AS identifier(B) LPAREN identifier_list RPAREN. {
+    A = B;
+}
+derived_table_alias_opt(A) ::= identifier(B) LPAREN identifier_list RPAREN. {
     A = B;
 }
 
@@ -6667,6 +6780,25 @@ select_order_clause_opt(A) ::=
     );
 }
 
+query_expression_order_clause_opt(A) ::= . {
+    A = NULL;
+}
+query_expression_order_clause_opt(A) ::= query_expression_order_clause(O). {
+    A = O;
+}
+query_expression_order_clause(A) ::=
+    ORDER(O) BY select_order_key(K) order_direction_opt(D) select_order_tail_opt(T). {
+    A = mylite_sql_parser_make_select_order_by_clause(
+        state,
+        O,
+        (struct mylite_sql_parser_select_order_by_parts){
+            .first_order_key = K,
+            .first_direction = D,
+            .tail_items = T,
+        }
+    );
+}
+
 select_order_tail_opt(A) ::= . {
     A = NULL;
 }
@@ -6836,6 +6968,22 @@ limit_clause_opt(A) ::= LIMIT(L) limit_integer(C) OFFSET limit_integer(O). {
     A = mylite_sql_parser_make_limit_clause(state, L, C, O);
 }
 limit_clause_opt(A) ::= LIMIT(L) limit_integer(O) COMMA limit_integer(C). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, O);
+}
+
+query_expression_limit_clause_opt(A) ::= . {
+    A = NULL;
+}
+query_expression_limit_clause_opt(A) ::= query_expression_limit_clause(L). {
+    A = L;
+}
+query_expression_limit_clause(A) ::= LIMIT(L) limit_integer(C). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, NULL);
+}
+query_expression_limit_clause(A) ::= LIMIT(L) limit_integer(C) OFFSET limit_integer(O). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, O);
+}
+query_expression_limit_clause(A) ::= LIMIT(L) limit_integer(O) COMMA limit_integer(C). {
     A = mylite_sql_parser_make_limit_clause(state, L, C, O);
 }
 
@@ -7050,84 +7198,107 @@ expression(A) ::= NTILE(T) LPAREN expression(B) RPAREN over_clause(W). {
         (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
         W);
 }
-expression(A) ::= LAG(T) LPAREN expression(B) RPAREN over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+expression(A) ::= LAG(T) LPAREN expression(B) RPAREN
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LAG_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        NT,
         W);
 }
 expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LAG_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 2U, .items = {B, C}},
+        NT,
         W);
 }
 expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LAG_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 3U, .items = {B, C, D}},
+        NT,
         W);
 }
-expression(A) ::= LEAD(T) LPAREN expression(B) RPAREN over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+expression(A) ::= LEAD(T) LPAREN expression(B) RPAREN
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LEAD_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        NT,
         W);
 }
 expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LEAD_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 2U, .items = {B, C}},
+        NT,
         W);
 }
 expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LEAD_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 3U, .items = {B, C, D}},
+        NT,
         W);
 }
 expression(A) ::= FIRST_VALUE(T) LPAREN expression(B) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_FIRST_VALUE_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        NT,
         W);
 }
 expression(A) ::= LAST_VALUE(T) LPAREN expression(B) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_LAST_VALUE_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
+        NT,
         W);
 }
 expression(A) ::= NTH_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN
-                  over_clause(W). {
-    A = mylite_sql_parser_make_window_function_with_clause(
+                  window_null_treatment_opt(NT) over_clause(W). {
+    A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
         MYLITE_SQL_AST_NTH_VALUE_FUNCTION,
         (struct mylite_sql_window_function_arguments){.count = 2U, .items = {B, C}},
+        NT,
         W);
+}
+
+window_null_treatment_opt(A) ::= . {
+    A = NULL;
+}
+window_null_treatment_opt(A) ::= RESPECT(T) NULLS(N). {
+    A = mylite_sql_parser_make_window_null_treatment(
+        state, T, MYLITE_SQL_AST_WINDOW_RESPECT_NULLS, N);
+}
+window_null_treatment_opt(A) ::= IGNORE(T) NULLS(N). {
+    A = mylite_sql_parser_make_window_null_treatment(
+        state, T, MYLITE_SQL_AST_WINDOW_IGNORE_NULLS, N);
 }
 
 over_clause(A) ::= OVER LPAREN window_spec_opt(W) RPAREN. {

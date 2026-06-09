@@ -62,6 +62,16 @@ static int plan_select(
         };
         return plan_joined_select(database, &joined_select, out_plan);
     }
+    if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        const struct mylite_sql_ast_node *inner_statement = child_at(from_clause, 0U);
+
+        if (inner_statement != NULL &&
+            inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT &&
+            inner_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+            set_unsupported_error(database, "SELECT derived tables support only SELECT query blocks");
+            return MYLITE_ERROR;
+        }
+    }
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
         return MYLITE_ERROR;
@@ -821,6 +831,12 @@ static int collect_joined_select_parts(
         }
         temp_nodes->source_nodes[join_index + 1U] = right_source;
         out_plan->join_kinds[join_index] = mylite_sql_ast_node_join_kind(node);
+        if (out_plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_NATURAL_INNER ||
+            out_plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_NATURAL_LEFT_OUTER ||
+            out_plan->join_kinds[join_index] == MYLITE_SQL_AST_JOIN_KIND_NATURAL_RIGHT_OUTER) {
+            set_unsupported_error(database, "SELECT does not yet support NATURAL joins");
+            return MYLITE_ERROR;
+        }
         temp_nodes->join_condition_nodes[join_index] = child_at(node, 2U);
         node = child_at(node, 0U);
     }
@@ -997,10 +1013,16 @@ static int plan_joined_select_derived_source(
     }
     inner_statement = child_at(source_node, 0U);
     alias = child_at(source_node, 1U);
-    if (inner_statement == NULL ||
-        (inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT &&
-         inner_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT)) {
+    if (inner_statement == NULL) {
         set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT &&
+        inner_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        set_unsupported_error(
+            database,
+            "joined source derived tables support only SELECT query blocks"
+        );
         return MYLITE_ERROR;
     }
     if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -1936,6 +1958,10 @@ static int plan_joined_select_condition(
         return MYLITE_OK;
     }
     condition_node = unwrap_parenthesized_expression(condition_node);
+    if (condition_node->kind == MYLITE_SQL_AST_JOIN_USING_CLAUSE) {
+        set_unsupported_error(database, "SELECT does not yet support USING join conditions");
+        return MYLITE_ERROR;
+    }
     if (joined_select_on_node_is_and(condition_node)) {
         return plan_joined_select_condition_with_extra_predicate(
             database,

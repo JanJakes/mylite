@@ -1873,6 +1873,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "window_frame_clause";
     case MYLITE_SQL_AST_WINDOW_FRAME_BOUND:
         return "window_frame_bound";
+    case MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION:
+        return "parenthesized_query_expression";
+    case MYLITE_SQL_AST_JOIN_USING_CLAUSE:
+        return "join_using_clause";
+    case MYLITE_SQL_AST_WINDOW_RESPECT_NULLS:
+        return "window_respect_nulls";
+    case MYLITE_SQL_AST_WINDOW_IGNORE_NULLS:
+        return "window_ignore_nulls";
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
         return "limit_clause";
     case MYLITE_SQL_AST_DELETE_STATEMENT:

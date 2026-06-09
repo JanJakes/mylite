@@ -352,6 +352,16 @@ static int plan_joined_update(
 
     join_condition = child_at(from_clause, 2U);
     out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_NATURAL_INNER ||
+        out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_NATURAL_LEFT_OUTER ||
+        out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_NATURAL_RIGHT_OUTER) {
+        set_unsupported_error(database, "joined UPDATE does not support NATURAL joins");
+        return MYLITE_ERROR;
+    }
+    if (join_condition != NULL && join_condition->kind == MYLITE_SQL_AST_JOIN_USING_CLAUSE) {
+        set_unsupported_error(database, "joined UPDATE does not support USING join conditions");
+        return MYLITE_ERROR;
+    }
     if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
         set_unsupported_error(database, "joined UPDATE does not support RIGHT JOIN");
         return MYLITE_ERROR;

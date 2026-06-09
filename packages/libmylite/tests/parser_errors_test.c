@@ -1635,7 +1635,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM t JOIN other USING (id);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

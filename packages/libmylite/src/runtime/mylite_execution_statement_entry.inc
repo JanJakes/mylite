@@ -60,6 +60,7 @@ static bool statement_result_is_select(
     }
     if (statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT ||
         statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION ||
         statement->kind == MYLITE_SQL_AST_EXPLAIN_STATEMENT) {
         return true;
     }
@@ -343,6 +344,8 @@ static int execute_non_prepared_statement(
         return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_VALUES_STATEMENT:
         return execute_values_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION:
+        return execute_parenthesized_query_expression(database, context, statement, out_result);
     case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
         return execute_explain_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CALL_STATEMENT:
@@ -645,6 +648,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_FROM_JOIN:
     case MYLITE_SQL_AST_FROM_DERIVED:
+    case MYLITE_SQL_AST_JOIN_USING_CLAUSE:
     case MYLITE_SQL_AST_INDEX_HINT_LIST:
     case MYLITE_SQL_AST_USE_INDEX_HINT:
     case MYLITE_SQL_AST_FORCE_INDEX_HINT:
@@ -688,6 +692,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_WINDOW_DEFINITION_LIST:
     case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
     case MYLITE_SQL_AST_WINDOW_FRAME_BOUND:
+    case MYLITE_SQL_AST_WINDOW_RESPECT_NULLS:
+    case MYLITE_SQL_AST_WINDOW_IGNORE_NULLS:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_EXPLAIN_FORMAT:
     case MYLITE_SQL_AST_EXPLAIN_ANALYZE:
@@ -1004,5 +1010,45 @@ static int execute_non_prepared_statement(
 
     set_unsupported_error(database, "statement is not supported by this MyLite build");
 
+    return MYLITE_ERROR;
+}
+
+static int execute_parenthesized_query_expression(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *inner_statement = child_at(statement, 0U);
+
+    if (inner_statement == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    for (const struct mylite_sql_ast_node *clause = child_at(statement, 1U); clause != NULL;
+         clause = clause->next_sibling) {
+        if (clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
+            clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            set_unsupported_error(
+                database,
+                "parenthesized query expressions do not yet support outer ORDER BY or LIMIT"
+            );
+            return MYLITE_ERROR;
+        }
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    switch (inner_statement->kind) {
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION:
+        return execute_non_prepared_statement(database, context, inner_statement, out_result);
+    default:
+        break;
+    }
+
+    set_unsupported_error(database, "parenthesized query expression operand is not yet supported");
     return MYLITE_ERROR;
 }

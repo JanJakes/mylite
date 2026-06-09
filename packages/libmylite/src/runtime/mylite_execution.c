@@ -3946,6 +3946,12 @@ static int execute_non_prepared_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_parenthesized_query_expression(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_empty_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_use_statement(
     struct mylite_db *database,
@@ -21791,6 +21797,9 @@ static const struct mylite_sql_ast_node *window_function_argument_list_node(
     const struct mylite_sql_ast_node *expression
 );
 static const struct mylite_sql_ast_node *window_function_spec_node(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *window_function_null_treatment_node(
     const struct mylite_sql_ast_node *expression
 );
 static bool window_function_has_arguments(enum planned_window_function_kind kind);

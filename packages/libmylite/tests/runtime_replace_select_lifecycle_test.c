@@ -1187,15 +1187,6 @@ static int test_replace_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO dst PARTITION (p0) (id) SELECT id FROM src",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "REPLACE INTO dst(app.id) SELECT id FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,

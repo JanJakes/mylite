@@ -74,8 +74,8 @@ partition introspection.
 - no partitioned physical storage;
 - no `CREATE TABLE ... SELECT` partition suffix;
 - no `ALTER TABLE` partition maintenance;
-- no explicit partition selection in `SELECT`, `INSERT`, `REPLACE`, `UPDATE`,
-  `DELETE`, `LOAD DATA`, or `LOAD XML`;
+- explicit partition selection is covered separately by the
+  `baseline-table-partition-selection` placeholder slice;
 - no partition pruning or partition-aware optimizer behavior;
 - no partition descriptor persistence or partition rows in metadata;
 - no partition-specific error enforcement for unique keys, primary keys,
@@ -111,9 +111,8 @@ these Lemon productions.
 ## Tests
 
 Focused parser tests cover `RANGE`, `LIST`, `HASH`, `LINEAR KEY`, temporary
-tables, subpartition syntax, incomplete partition suffix rejection,
-`CREATE TABLE ... SELECT` partition-suffix rejection, and continued rejection
-of query partition selection.
+tables, subpartition syntax, incomplete partition suffix rejection, and
+`CREATE TABLE ... SELECT` partition-suffix rejection.
 
 Focused runtime tests verify that a partitioned `CREATE TABLE` statement
 creates a normal base table, stores and reads rows through the ordinary table

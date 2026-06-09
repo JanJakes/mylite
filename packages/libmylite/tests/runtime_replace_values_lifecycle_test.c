@@ -553,15 +553,6 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers PARTITION (p0) VALUES (1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "REPLACE INTO numbers (app.id) VALUES (1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,

@@ -224,6 +224,10 @@ if(BUILD_TESTING)
     tests/parser_expression_window_explain_gaps_test.c
   )
   mylite_add_parser_test(mylite_parser_partition_options_test tests/parser_partition_options_test.c)
+  mylite_add_parser_test(
+    mylite_parser_partition_selection_test
+    tests/parser_partition_selection_test.c
+  )
   mylite_add_parser_test(mylite_parser_ddl_table_test tests/parser_ddl_table_test.c)
   mylite_add_parser_test(mylite_parser_types_test tests/parser_types_test.c)
   mylite_add_parser_test(
@@ -513,6 +517,18 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_create_table_partition_options_test)
+
+  add_executable(mylite_runtime_table_partition_selection_test
+    tests/runtime_table_partition_selection_test.c
+  )
+  target_link_libraries(mylite_runtime_table_partition_selection_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_table_partition_selection_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_table_partition_selection_test)
 
   add_executable(mylite_runtime_scalar_arithmetic_projection_test
     tests/runtime_scalar_arithmetic_projection_test.c
@@ -5496,6 +5512,10 @@ if(BUILD_TESTING)
     COMMAND mylite_parser_expression_window_explain_gaps_test
   )
   add_test(NAME libmylite.parser.partition_options COMMAND mylite_parser_partition_options_test)
+  add_test(
+    NAME libmylite.parser.partition_selection
+    COMMAND mylite_parser_partition_selection_test
+  )
   add_test(NAME libmylite.parser.ddl_table COMMAND mylite_parser_ddl_table_test)
   add_test(NAME libmylite.parser.types COMMAND mylite_parser_types_test)
   add_test(
@@ -5599,6 +5619,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.create_table_partition_options
     COMMAND mylite_runtime_create_table_partition_options_test
+  )
+  add_test(
+    NAME libmylite.runtime.table_partition_selection
+    COMMAND mylite_runtime_table_partition_selection_test
   )
   add_test(
     NAME libmylite.runtime.scalar_arithmetic_projection

@@ -871,15 +871,6 @@ static int test_delete_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "DELETE FROM numbers PARTITION (p0)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "WITH doomed AS (SELECT id FROM numbers) DELETE FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,

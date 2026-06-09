@@ -2779,24 +2779,25 @@ table_rename_connector_opt(A) ::= AS. {
 }
 
 insert_values_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) INTO partitioned_table_name(T) insert_column_list_opt(C)
     insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M, NULL, D);
 }
 insert_values_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO partitioned_table_name(T)
+    insert_column_list_opt(C)
     insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(
         state, I, T, C, R, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
 }
 insert_values_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) partitioned_table_name(T) insert_column_list_opt(C)
     insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M, NULL, D);
 }
 insert_values_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) partitioned_table_name(T) insert_column_list_opt(C)
     insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(
         state, I, T, C, R, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
@@ -2804,24 +2805,24 @@ insert_values_statement(A) ::=
 }
 
 insert_select_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) INTO partitioned_table_name(T) insert_column_list_opt(C)
     insert_select_source_statement(S) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S, M, NULL, D);
 }
 insert_select_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T)
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO partitioned_table_name(T)
     insert_column_list_opt(C) insert_select_source_statement(S) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_select_statement(
         state, I, T, C, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
 }
 insert_select_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) partitioned_table_name(T) insert_column_list_opt(C)
     insert_select_source_statement(S) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S, M, NULL, D);
 }
 insert_select_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) insert_column_list_opt(C)
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) partitioned_table_name(T) insert_column_list_opt(C)
     insert_select_source_statement(S) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_select_statement(
         state, I, T, C, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
@@ -2849,33 +2850,33 @@ insert_modifier_opt(A) ::= DELAYED(T). {
 }
 
 replace_values_statement(A) ::=
-    REPLACE(R) replace_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
+    REPLACE(R) replace_modifier_opt(M) INTO partitioned_table_name(T) insert_column_list_opt(C)
     insert_values_source(V). {
     A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V, M);
 }
 replace_values_statement(A) ::=
-    REPLACE(R) replace_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    REPLACE(R) replace_modifier_opt(M) partitioned_table_name(T) insert_column_list_opt(C)
     insert_values_source(V). {
     A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V, M);
 }
 
 replace_select_statement(A) ::=
-    REPLACE(R) replace_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
+    REPLACE(R) replace_modifier_opt(M) INTO partitioned_table_name(T) insert_column_list_opt(C)
     select_statement(S). {
     A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S, M);
 }
 replace_select_statement(A) ::=
-    REPLACE(R) replace_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    REPLACE(R) replace_modifier_opt(M) partitioned_table_name(T) insert_column_list_opt(C)
     select_statement(S). {
     A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S, M);
 }
 
 replace_set_statement(A) ::=
-    REPLACE(R) replace_modifier_opt(M) INTO table_name(T) SET insert_assignment_list(S). {
+    REPLACE(R) replace_modifier_opt(M) INTO partitioned_table_name(T) SET insert_assignment_list(S). {
     A = mylite_sql_parser_make_replace_set_statement(state, R, T, S, M);
 }
 replace_set_statement(A) ::=
-    REPLACE(R) replace_modifier_opt(M) table_name(T) SET insert_assignment_list(S). {
+    REPLACE(R) replace_modifier_opt(M) partitioned_table_name(T) SET insert_assignment_list(S). {
     A = mylite_sql_parser_make_replace_set_statement(state, R, T, S, M);
 }
 
@@ -2890,32 +2891,45 @@ replace_modifier_opt(A) ::= DELAYED(T). {
 }
 
 insert_set_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) INTO table_name(T) SET insert_assignment_list(S)
+    INSERT(I) insert_modifier_opt(M) INTO partitioned_table_name(T) SET insert_assignment_list(S)
     on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_set_statement(state, I, T, S, M, NULL, D);
 }
 insert_set_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T) SET insert_assignment_list(S)
-    on_duplicate_key_update_opt(D). {
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO partitioned_table_name(T)
+    SET insert_assignment_list(S) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_set_statement(
         state, I, T, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
 }
 insert_set_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) table_name(T) SET insert_assignment_list(S)
+    INSERT(I) insert_modifier_opt(M) partitioned_table_name(T) SET insert_assignment_list(S)
     on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_set_statement(state, I, T, S, M, NULL, D);
 }
 insert_set_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) SET insert_assignment_list(S)
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) partitioned_table_name(T)
+    SET insert_assignment_list(S)
     on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_set_statement(
         state, I, T, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
 }
 
+partitioned_table_name(A) ::= table_name(T). {
+    A = T;
+}
+partitioned_table_name(A) ::= table_name(T) table_partition_selection(P). {
+    (void)P;
+    A = T;
+}
+
+table_partition_selection(A) ::= PARTITION LPAREN identifier_list(L) RPAREN. {
+    A = L;
+}
+
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T). {
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE partitioned_table_name(T). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
         L,
@@ -2926,7 +2940,7 @@ load_data_infile_statement(A) ::=
         NULL);
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T) load_data_ignore_lines(I). {
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE partitioned_table_name(T) load_data_ignore_lines(I). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
         L,
@@ -2937,7 +2951,7 @@ load_data_infile_statement(A) ::=
         NULL);
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T) load_data_column_list(C). {
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE partitioned_table_name(T) load_data_column_list(C). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
         L,
@@ -2948,7 +2962,7 @@ load_data_infile_statement(A) ::=
         NULL);
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA INFILE STRING(F) INTO TABLE table_name(T)
+    LOAD(L) DATA INFILE STRING(F) INTO TABLE partitioned_table_name(T)
     load_data_ignore_lines(I) load_data_column_list(C). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
@@ -2960,7 +2974,7 @@ load_data_infile_statement(A) ::=
         NULL);
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T). {
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE partitioned_table_name(T). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
         L,
@@ -2971,7 +2985,8 @@ load_data_infile_statement(A) ::=
         mylite_sql_parser_make_load_data_local_modifier(state, LO));
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T) load_data_ignore_lines(I). {
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE partitioned_table_name(T)
+    load_data_ignore_lines(I). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
         L,
@@ -2982,7 +2997,8 @@ load_data_infile_statement(A) ::=
         mylite_sql_parser_make_load_data_local_modifier(state, LO));
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T) load_data_column_list(C). {
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE partitioned_table_name(T)
+    load_data_column_list(C). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
         L,
@@ -2993,7 +3009,7 @@ load_data_infile_statement(A) ::=
         mylite_sql_parser_make_load_data_local_modifier(state, LO));
 }
 load_data_infile_statement(A) ::=
-    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE table_name(T)
+    LOAD(L) DATA LOCAL(LO) INFILE STRING(F) INTO TABLE partitioned_table_name(T)
     load_data_ignore_lines(I) load_data_column_list(C). {
     A = mylite_sql_parser_make_load_data_infile_statement(
         state,
@@ -3028,6 +3044,10 @@ delete_statement(A) ::=
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
 }
 delete_table_reference(A) ::= table_name(T) table_alias_opt(AL). {
+    A = AL == NULL ? T : mylite_sql_parser_make_table_source(state, T, AL, NULL);
+}
+delete_table_reference(A) ::= table_name(T) table_partition_selection(P) table_alias_opt(AL). {
+    (void)P;
     A = AL == NULL ? T : mylite_sql_parser_make_table_source(state, T, AL, NULL);
 }
 joined_delete_statement(A) ::=
@@ -3172,7 +3192,18 @@ joined_update_table_source(A) ::=
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
 }
 joined_update_table_source(A) ::=
+    table_name(N) table_partition_selection(P) AS identifier(AL) table_index_hints_opt(IH). {
+    (void)P;
+    A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+joined_update_table_source(A) ::=
     table_name(N) joined_update_bare_alias(AL) table_index_hints_opt(IH). {
+    A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+joined_update_table_source(A) ::=
+    table_name(N) table_partition_selection(P) joined_update_bare_alias(AL)
+    table_index_hints_opt(IH). {
+    (void)P;
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
 }
 joined_update_table_source(A) ::=
@@ -3197,6 +3228,10 @@ joined_update_derived_alias(A) ::= AS identifier(AL). {
 }
 
 update_table_source(A) ::= table_name(N) table_index_hints_opt(IH). {
+    A = mylite_sql_parser_make_table_source(state, N, NULL, IH);
+}
+update_table_source(A) ::= table_name(N) table_partition_selection(P) table_index_hints_opt(IH). {
+    (void)P;
     A = mylite_sql_parser_make_table_source(state, N, NULL, IH);
 }
 
@@ -3955,10 +3990,43 @@ select_statement(A) ::=
         AI);
 }
 select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_name(N)
+    table_partition_selection(P) table_alias_opt(AL) table_index_hints_opt(IH)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K)
+    select_into_opt(AI). {
+    (void)P;
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H,
+                O, L, K),
+            WN),
+        AI);
+}
+select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI) FROM(F)
     table_name(N) table_alias_opt(AL) table_index_hints_opt(IH) where_clause_opt(W)
     group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN) select_order_clause_opt(O)
     limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H,
+                O, L, K),
+            WN),
+        PI);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI) FROM(F)
+    table_name(N) table_partition_selection(P) table_alias_opt(AL) table_index_hints_opt(IH)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    (void)P;
     A = mylite_sql_parser_attach_select_into_clause(
         state,
         mylite_sql_parser_attach_select_window_clause(
@@ -4134,6 +4202,11 @@ union_modifier_opt(A) ::= ALL. {
 }
 
 table_source(A) ::= table_name(N) table_alias_opt(AL) table_index_hints_opt(IH). {
+    A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+table_source(A) ::=
+    table_name(N) table_partition_selection(P) table_alias_opt(AL) table_index_hints_opt(IH). {
+    (void)P;
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
 }
 table_source(A) ::= derived_table_source(D). {

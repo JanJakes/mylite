@@ -66,11 +66,6 @@ static int test_create_table_partition_rejections(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "partitioned create table select remains unsupported"
     );
-    failures += parse_status(
-        "SELECT * FROM t1 PARTITION (p0)",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        "query partition selection remains unsupported"
-    );
 
     return failures;
 }

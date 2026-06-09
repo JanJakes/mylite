@@ -1510,13 +1510,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "REPLACE INTO t PARTITION (p0) VALUES (1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
         "REPLACE INTO t (app.id) VALUES (1);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -1825,13 +1818,6 @@ static int test_syntax_errors(void) {
 
     failures +=
         parser_test_parse_sql("UPDATE t AS x SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "UPDATE t PARTITION (p0) SET id = 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(

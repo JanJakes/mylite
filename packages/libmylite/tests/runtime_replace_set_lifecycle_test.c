@@ -522,15 +522,6 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers PARTITION (p0) SET id = 1, nn = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "REPLACE INTO numbers SET id = DEFAULT, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_field_no_default,

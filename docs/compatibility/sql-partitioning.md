@@ -4,7 +4,7 @@ Partitioning clauses, options, and partition maintenance compatibility.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `PARTITION` selection | ❌ | Explicit partition selection syntax and errors |
+| `PARTITION` selection | ⚪ | `SELECT`, supported `INSERT` / `REPLACE` / `UPDATE` / `DELETE`, supported joined source references, and `LOAD DATA` target suffix syntax are accepted and ignored; table remains nonpartitioned and no partition pruning or write-set validation is performed; see [baseline table partition selection](../specs/baseline-table-partition-selection/specs.md) |
 | Partition maintenance | ❌ | Partition maintenance ALTER actions |
 | `PARTITION BY RANGE` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |
 | `PARTITION BY RANGE COLUMNS` | ⚪ | `CREATE TABLE` storage-layout suffix is accepted and ignored; table remains nonpartitioned |

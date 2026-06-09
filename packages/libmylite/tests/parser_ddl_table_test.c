@@ -1094,6 +1094,34 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "DROP TABLES first_table, app.second_table RESTRICT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    table_names = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_DROP_TABLE_STATEMENT,
+        "drop tables alias statement"
+    );
+    failures += parser_test_expect_child_count(table_names, 2U, "drop tables alias targets");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DROP TEMPORARY TABLE IF EXISTS temp_table CASCADE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT,
+        "drop temporary cascade tail"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("TRUNCATE TABLE app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
@@ -3009,6 +3037,75 @@ static int test_alter_table_multi_action_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN (first_added INT, second_added INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    actions = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter parenthesized add column list statement"
+    );
+    failures +=
+        parser_test_expect_child_count(actions, 2U, "alter parenthesized add column action count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT,
+        "alter parenthesized first add column action"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT,
+        "alter parenthesized second add column action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE simple_lifecycle ALGORITHM=INSTANT, ADD COLUMN c INT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi leading online option statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT,
+        "alter multi leading algorithm"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE simple_lifecycle ALGORITHM=INSTANT, ADD COLUMN c INT",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN d INT, ADD COLUMN e INT, "
+        "ALGORITHM=INSTANT, LOCK=DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    actions = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_child_count(actions, 2U, "alter multi trailing action count");
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT,
+        "alter multi trailing algorithm"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_DEFAULT,
+        "alter multi trailing lock"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "ALTER TABLE add_idx ADD INDEX k_v (v), ADD INDEX k_id (id);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3333,7 +3430,7 @@ static int test_create_table_comment_option_statements(void) {
     failures += parser_test_parse_sql(
         "CREATE TABLE storage_options (id INT) ROW_FORMAT=COMPACT, KEY_BLOCK_SIZE=0 "
         "PACK_KEYS=DEFAULT CHECKSUM=2 STATS_PERSISTENT=1 STATS_AUTO_RECALC=0 "
-        "STATS_SAMPLE_PAGES=7;",
+        "STATS_SAMPLE_PAGES=7 MIN_ROWS=1 MAX_ROWS=100 AVG_ROW_LENGTH=10 DELAY_KEY_WRITE=1;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -3383,6 +3480,26 @@ static int test_create_table_comment_option_statements(void) {
         parser_test_child_at(table_options, storage_stats_sample_pages_option_index),
         MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION,
         "stats sample pages option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(table_options, storage_min_rows_option_index),
+        MYLITE_SQL_AST_TABLE_MIN_ROWS_OPTION,
+        "min rows option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(table_options, storage_max_rows_option_index),
+        MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION,
+        "max rows option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(table_options, storage_avg_row_length_option_index),
+        MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION,
+        "avg row length option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(table_options, storage_delay_key_write_option_index),
+        MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION,
+        "delay key write option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -3602,8 +3719,17 @@ static int test_show_full_tables_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SHOW EXTENDED FULL TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SHOW EXTENDED FULL TABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLES_STATEMENT,
+        "show extended full tables statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_show_tables_is_full(statement),
+        "show extended full tables has full flag"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -4559,6 +4685,14 @@ static int test_table_maintenance_statements(void) {
         "other",
         "checksum second target"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("CHECK TABLES t, app.other;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    table_names = parser_test_child_at(statement, 0U);
+    failures +=
+        parser_test_expect_node(statement, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, "check tables");
+    failures += parser_test_expect_child_count(table_names, 2U, "check tables target count");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("CHECKSUM TABLE t QUICK;", MYLITE_SQL_PARSE_OK, &result);
@@ -5585,10 +5719,13 @@ static int test_alter_table_default_charset_collation_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "ALTER TABLE old_name ENGINE=InnoDB;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("ALTER TABLE old_name ENGINE=InnoDB;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_STORAGE_STATISTICS_STATEMENT,
+        "alter table engine storage option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -5878,6 +6015,35 @@ static int test_alter_table_algorithm_lock_option_statements(void) {
         statement,
         "ALTER TABLE app.simple_lifecycle ADD COLUMN added INT, ALGORITHM=INSTANT, LOCK=DEFAULT",
         "alter add column options span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE app.simple_lifecycle ROW_FORMAT=COMPRESSED, KEY_BLOCK_SIZE=4, "
+        "PACK_KEYS=1, CHECKSUM=1, STATS_PERSISTENT=1, STATS_AUTO_RECALC=1, "
+        "STATS_SAMPLE_PAGES=16, MIN_ROWS=1, MAX_ROWS=100, AVG_ROW_LENGTH=10, "
+        "DELAY_KEY_WRITE=1, ALGORITHM=INPLACE, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_STORAGE_STATISTICS_STATEMENT,
+        "alter storage statistics statement"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "alter storage statistics option list"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter storage statistics algorithm"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter storage statistics lock"
     );
     mylite_sql_parse_result_deinit(&result);
 

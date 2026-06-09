@@ -851,13 +851,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "ALTER TABLE old_name ADD (added INT);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
         "ALTER TABLE old_name ADD COLUMN added INT AFTER old_name.id;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result

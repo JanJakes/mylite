@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 34
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 34
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 35
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 35
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -142,6 +142,10 @@ struct mylite_catalog_table_descriptor {
     int64_t stats_persistent;
     int64_t stats_auto_recalc;
     int64_t stats_sample_pages;
+    int64_t min_rows;
+    int64_t max_rows;
+    int64_t avg_row_length;
+    int64_t delay_key_write;
     bool fulltext_doc_id_initialized;
     int64_t created_time_utc_epoch;
     int64_t updated_time_utc_epoch;
@@ -369,6 +373,10 @@ int mylite_catalog_insert_table_in_mutation(
     int64_t stats_persistent,
     int64_t stats_auto_recalc,
     int64_t stats_sample_pages,
+    int64_t min_rows,
+    int64_t max_rows,
+    int64_t avg_row_length,
+    int64_t delay_key_write,
     int64_t created_time_utc_epoch,
     int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table
@@ -632,6 +640,12 @@ int mylite_catalog_update_table_comment_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t table_id,
     const char *comment,
+    struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_update_table_storage_statistics_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct mylite_catalog_table_descriptor *table,
     struct mylite_catalog_table_descriptor *out_table
 );
 int mylite_catalog_update_schema_default_charset_collation_in_mutation(

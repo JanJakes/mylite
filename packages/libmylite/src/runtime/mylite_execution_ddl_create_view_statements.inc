@@ -474,6 +474,10 @@ static int create_view_from_plan(
             0,
             0,
             0,
+            0,
+            0,
+            0,
+            -1,
             created_time_utc_epoch,
             created_time_utc_epoch,
             &view_table

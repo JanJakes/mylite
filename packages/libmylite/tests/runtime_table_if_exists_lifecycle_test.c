@@ -600,33 +600,10 @@ static int test_errors_and_unsupported_forms(void) {
             .message_part = "Table 'app.other_table' doesn't exist",
         }
     );
-    failures += execute_error(
-        database,
-        "DROP TEMPORARY TABLE IF EXISTS temp_table RESTRICT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DROP TABLE IF EXISTS a RESTRICT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DROP TABLE IF EXISTS a, b CASCADE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures +=
+        execute_empty_ok(database, "DROP TEMPORARY TABLE IF EXISTS temp_table RESTRICT", 1U);
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS a RESTRICT", 1U);
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS a, b CASCADE", 2U);
     failures += execute_error(
         database,
         "CREATE TABLE IF NOT EXISTS select_target AS SELECT 1 AS id",

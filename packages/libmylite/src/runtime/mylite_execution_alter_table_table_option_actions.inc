@@ -30,6 +30,116 @@ static int plan_alter_table_comment(
     return rc;
 }
 
+static int plan_alter_table_storage_statistics(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_storage_statistics *out_plan
+) {
+    const struct mylite_sql_ast_node *table_options = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_option = NULL;
+    struct planned_create_table option_plan = {0};
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_storage_statistics){0};
+    rc = resolve_visible_writable_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->original_table
+    );
+    if (rc == MYLITE_OK && out_plan->original_table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE storage options support only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (table_options == NULL || table_options->kind != MYLITE_SQL_AST_TABLE_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    option_plan = (struct planned_create_table){
+        .target = out_plan->target,
+        .key_block_size = out_plan->original_table.key_block_size,
+        .pack_keys = out_plan->original_table.pack_keys,
+        .checksum = out_plan->original_table.checksum,
+        .stats_persistent = out_plan->original_table.stats_persistent,
+        .stats_auto_recalc = out_plan->original_table.stats_auto_recalc,
+        .stats_sample_pages = out_plan->original_table.stats_sample_pages,
+        .min_rows = out_plan->original_table.min_rows,
+        .max_rows = out_plan->original_table.max_rows,
+        .avg_row_length = out_plan->original_table.avg_row_length,
+        .delay_key_write = out_plan->original_table.delay_key_write,
+    };
+    snprintf(
+        option_plan.row_format_option,
+        sizeof(option_plan.row_format_option),
+        "%s",
+        out_plan->original_table.row_format_option
+    );
+
+    table_option = child_at(table_options, 0U);
+    while (rc == MYLITE_OK && table_option != NULL) {
+        if (table_option->kind == MYLITE_SQL_AST_TABLE_ENGINE_OPTION) {
+            rc = validate_create_table_engine_option(
+                database,
+                table_option,
+                out_plan->target.table_name,
+                false
+            );
+        } else if (create_table_storage_statistics_option_is_valid(table_option)) {
+            rc = apply_table_storage_statistics_option(database, table_option, &option_plan);
+        } else {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        }
+        table_option = table_option->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_storage_statistics_combination(database, &option_plan);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_plan->table = out_plan->original_table;
+    snprintf(
+        out_plan->table.row_format_option,
+        sizeof(out_plan->table.row_format_option),
+        "%s",
+        option_plan.row_format_option
+    );
+    out_plan->table.key_block_size = option_plan.key_block_size;
+    out_plan->table.pack_keys = option_plan.pack_keys;
+    out_plan->table.checksum = option_plan.checksum;
+    out_plan->table.stats_persistent = option_plan.stats_persistent;
+    out_plan->table.stats_auto_recalc = option_plan.stats_auto_recalc;
+    out_plan->table.stats_sample_pages = option_plan.stats_sample_pages;
+    out_plan->table.min_rows = option_plan.min_rows;
+    out_plan->table.max_rows = option_plan.max_rows;
+    out_plan->table.avg_row_length = option_plan.avg_row_length;
+    out_plan->table.delay_key_write = option_plan.delay_key_write;
+    out_plan->changes_descriptor =
+        strcmp(out_plan->table.row_format_option, out_plan->original_table.row_format_option) !=
+            0 ||
+        out_plan->table.key_block_size != out_plan->original_table.key_block_size ||
+        out_plan->table.pack_keys != out_plan->original_table.pack_keys ||
+        out_plan->table.checksum != out_plan->original_table.checksum ||
+        out_plan->table.stats_persistent != out_plan->original_table.stats_persistent ||
+        out_plan->table.stats_auto_recalc != out_plan->original_table.stats_auto_recalc ||
+        out_plan->table.stats_sample_pages != out_plan->original_table.stats_sample_pages ||
+        out_plan->table.min_rows != out_plan->original_table.min_rows ||
+        out_plan->table.max_rows != out_plan->original_table.max_rows ||
+        out_plan->table.avg_row_length != out_plan->original_table.avg_row_length ||
+        out_plan->table.delay_key_write != out_plan->original_table.delay_key_write;
+
+    return MYLITE_OK;
+}
+
 static int plan_alter_table_order_by(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

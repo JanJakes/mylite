@@ -390,6 +390,10 @@ static int insert_create_table_catalog_rows(
         plan->stats_persistent,
         plan->stats_auto_recalc,
         plan->stats_sample_pages,
+        plan->min_rows,
+        plan->max_rows,
+        plan->avg_row_length,
+        plan->delay_key_write,
         created_time_utc_epoch,
         0,
         out_table
@@ -709,6 +713,10 @@ static int build_temporary_table_descriptors(
         .stats_persistent = plan->stats_persistent,
         .stats_auto_recalc = plan->stats_auto_recalc,
         .stats_sample_pages = plan->stats_sample_pages,
+        .min_rows = plan->min_rows,
+        .max_rows = plan->max_rows,
+        .avg_row_length = plan->avg_row_length,
+        .delay_key_write = plan->delay_key_write,
     };
     snprintf(out_table->table.name, sizeof(out_table->table.name), "%s", plan->target.table_name);
     snprintf(

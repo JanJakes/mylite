@@ -12,6 +12,7 @@ static int plan_create_table(
     out_plan->pack_keys = -1;
     out_plan->stats_persistent = -1;
     out_plan->stats_auto_recalc = -1;
+    out_plan->delay_key_write = -1;
     memcpy(
         out_plan->default_charset,
         MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,

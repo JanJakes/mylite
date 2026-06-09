@@ -48,6 +48,10 @@ struct mylite_catalog_table_descriptor_input {
     int64_t stats_persistent;
     int64_t stats_auto_recalc;
     int64_t stats_sample_pages;
+    int64_t min_rows;
+    int64_t max_rows;
+    int64_t avg_row_length;
+    int64_t delay_key_write;
     int64_t created_time_utc_epoch;
     int64_t updated_time_utc_epoch;
 };

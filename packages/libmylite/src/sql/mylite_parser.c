@@ -3151,6 +3151,90 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_stats_sample_pages_opti
     return option;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_min_rows_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token min_rows_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&min_rows_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_MIN_ROWS_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_max_rows_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token max_rows_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&max_rows_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_avg_row_length_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token avg_row_length_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&avg_row_length_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_delay_key_write_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token delay_key_write_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&delay_key_write_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_option_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *option
@@ -4351,6 +4435,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_action_list(
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_action_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *column_definitions
+) {
+    struct mylite_sql_ast_node *list = NULL;
+    struct mylite_sql_ast_node *column = NULL;
+
+    if (column_definitions == NULL ||
+        column_definitions->kind != MYLITE_SQL_AST_COLUMN_DEFINITION_LIST) {
+        return NULL;
+    }
+
+    column = parser_child_at(column_definitions, 0U);
+    while (column != NULL) {
+        struct mylite_sql_ast_node *next_column = column->next_sibling;
+        struct mylite_sql_ast_node *action =
+            mylite_sql_parser_make_alter_table_add_column_statement(
+                state,
+                add_token,
+                NULL,
+                column,
+                NULL,
+                mylite_sql_parser_empty_alter_table_options()
+            );
+
+        list = mylite_sql_parser_append_alter_table_action(state, list, action);
+        column = next_column;
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_append_alter_table_action(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,
@@ -4370,7 +4486,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_multi_action_stat
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *actions
+    struct mylite_sql_ast_node *actions,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -4388,6 +4505,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_multi_action_stat
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, actions);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -5041,6 +5159,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_comment_statement
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, comment_option);
+    apply_alter_table_options(statement, options);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_storage_statistics_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options,
+    struct mylite_sql_alter_table_options options
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_options != NULL) {
+        span = span_join(span, table_options->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_STORAGE_STATISTICS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, table_options);
     apply_alter_table_options(statement, options);
     return statement;
 }
@@ -10186,6 +10331,10 @@ static bool map_keyword_token(
         {"STATS_PERSISTENT", MYLITE_SQL_PARSE_STATS_PERSISTENT},
         {"STATS_AUTO_RECALC", MYLITE_SQL_PARSE_STATS_AUTO_RECALC},
         {"STATS_SAMPLE_PAGES", MYLITE_SQL_PARSE_STATS_SAMPLE_PAGES},
+        {"MIN_ROWS", MYLITE_SQL_PARSE_MIN_ROWS},
+        {"MAX_ROWS", MYLITE_SQL_PARSE_MAX_ROWS},
+        {"AVG_ROW_LENGTH", MYLITE_SQL_PARSE_AVG_ROW_LENGTH},
+        {"DELAY_KEY_WRITE", MYLITE_SQL_PARSE_DELAY_KEY_WRITE},
         {"DYNAMIC", MYLITE_SQL_PARSE_DYNAMIC},
         {"COMPACT", MYLITE_SQL_PARSE_COMPACT},
         {"REDUNDANT", MYLITE_SQL_PARSE_REDUNDANT},

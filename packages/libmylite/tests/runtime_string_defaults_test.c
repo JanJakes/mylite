@@ -917,6 +917,10 @@ static int test_catalog_v33_scalar_expression_migration(void) {
         "sqlite_generation_expression, descriptor_version, created_catalog_generation, "
         "updated_catalog_generation FROM _mylite_catalog_columns_v33_test;"
         "DROP TABLE _mylite_catalog_columns_v33_test;"
+        "ALTER TABLE _mylite_catalog_tables DROP COLUMN min_rows;"
+        "ALTER TABLE _mylite_catalog_tables DROP COLUMN max_rows;"
+        "ALTER TABLE _mylite_catalog_tables DROP COLUMN avg_row_length;"
+        "ALTER TABLE _mylite_catalog_tables DROP COLUMN delay_key_write;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 33, minimum_reader_schema_version = 33;"
         "COMMIT;";

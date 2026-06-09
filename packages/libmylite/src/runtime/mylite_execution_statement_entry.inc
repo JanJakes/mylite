@@ -308,6 +308,8 @@ static int execute_non_prepared_statement(
         return execute_alter_table_convert_character_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
         return execute_alter_table_comment_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_STORAGE_STATISTICS_STATEMENT:
+        return execute_alter_table_storage_statistics_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
         return execute_alter_table_order_by_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
@@ -700,6 +702,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION:
     case MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION:
     case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
+    case MYLITE_SQL_AST_TABLE_MIN_ROWS_OPTION:
+    case MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION:
+    case MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION:
+    case MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION:
     case MYLITE_SQL_AST_INDEX_OPTION_LIST:
     case MYLITE_SQL_AST_INDEX_TYPE_OPTION:
     case MYLITE_SQL_AST_INDEX_COMMENT_OPTION:

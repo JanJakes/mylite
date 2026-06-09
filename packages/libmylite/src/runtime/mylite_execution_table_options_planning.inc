@@ -658,6 +658,18 @@ static int apply_table_storage_statistics_option(
     if (table_option->kind == MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION) {
         return apply_table_stats_sample_pages_option(database, table_option, plan);
     }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_MIN_ROWS_OPTION) {
+        return apply_table_min_rows_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION) {
+        return apply_table_max_rows_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION) {
+        return apply_table_avg_row_length_option(database, table_option, plan);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION) {
+        return apply_table_delay_key_write_option(database, table_option, plan);
+    }
 
     return MYLITE_OK;
 }
@@ -830,6 +842,86 @@ static int apply_table_stats_sample_pages_option(
     return MYLITE_OK;
 }
 
+static int apply_table_min_rows_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    uint64_t value = 0U;
+    int rc = parse_table_option_unsigned_integer(database, child_at(table_option, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value > INT64_MAX) {
+        set_unsupported_error(database, "MIN_ROWS supports only signed 64-bit nonnegative values");
+        return MYLITE_ERROR;
+    }
+    plan->min_rows = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static int apply_table_max_rows_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    uint64_t value = 0U;
+    int rc = parse_table_option_unsigned_integer(database, child_at(table_option, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value > INT64_MAX) {
+        set_unsupported_error(database, "MAX_ROWS supports only signed 64-bit nonnegative values");
+        return MYLITE_ERROR;
+    }
+    plan->max_rows = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static int apply_table_avg_row_length_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    uint64_t value = 0U;
+    int rc = parse_table_option_unsigned_integer(database, child_at(table_option, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value > INT64_MAX) {
+        set_unsupported_error(
+            database,
+            "AVG_ROW_LENGTH supports only signed 64-bit nonnegative values"
+        );
+        return MYLITE_ERROR;
+    }
+    plan->avg_row_length = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static int apply_table_delay_key_write_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+) {
+    int64_t value = -1;
+    int rc =
+        parse_table_option_default_or_integer(database, child_at(table_option, 0U), -1, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value != -1 && value != 0 && value != 1) {
+        set_unsupported_error(database, "DELAY_KEY_WRITE supports only DEFAULT, 0, or 1");
+        return MYLITE_ERROR;
+    }
+    plan->delay_key_write = value;
+    return MYLITE_OK;
+}
+
 static int copy_table_row_format_option_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_option,
@@ -931,6 +1023,10 @@ static bool create_table_storage_statistics_option_is_valid(
     case MYLITE_SQL_AST_TABLE_STATS_PERSISTENT_OPTION:
     case MYLITE_SQL_AST_TABLE_STATS_AUTO_RECALC_OPTION:
     case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
+    case MYLITE_SQL_AST_TABLE_MIN_ROWS_OPTION:
+    case MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION:
+    case MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION:
+    case MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION:
         return true;
     default:
         return false;

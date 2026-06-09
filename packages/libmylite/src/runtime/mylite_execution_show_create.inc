@@ -1463,7 +1463,31 @@ static int append_show_create_table_storage_statistics_options(
     if (plan == NULL) {
         return MYLITE_OK;
     }
-    if (plan->table.pack_keys != -1) {
+    if (plan->table.min_rows > 0) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " MIN_ROWS=",
+            plan->table.min_rows
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.max_rows > 0) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " MAX_ROWS=",
+            plan->table.max_rows
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.avg_row_length > 0) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " AVG_ROW_LENGTH=",
+            plan->table.avg_row_length
+        );
+    }
+    if (rc == MYLITE_OK && plan->table.pack_keys != -1) {
         rc = append_show_create_table_integer_option(
             database,
             string,
@@ -1497,6 +1521,14 @@ static int append_show_create_table_storage_statistics_options(
     }
     if (rc == MYLITE_OK && plan->table.checksum != 0) {
         rc = mylite_dynamic_string_append(string, " CHECKSUM=1");
+    }
+    if (rc == MYLITE_OK && plan->table.delay_key_write != -1) {
+        rc = append_show_create_table_integer_option(
+            database,
+            string,
+            " DELAY_KEY_WRITE=",
+            plan->table.delay_key_write
+        );
     }
     if (rc == MYLITE_OK && plan->table.row_format_option[0] != '\0') {
         rc = mylite_dynamic_string_append(string, " ROW_FORMAT=");

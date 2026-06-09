@@ -2066,6 +2066,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "table_stats_auto_recalc_option";
     case MYLITE_SQL_AST_TABLE_STATS_SAMPLE_PAGES_OPTION:
         return "table_stats_sample_pages_option";
+    case MYLITE_SQL_AST_TABLE_MIN_ROWS_OPTION:
+        return "table_min_rows_option";
+    case MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION:
+        return "table_max_rows_option";
+    case MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION:
+        return "table_avg_row_length_option";
+    case MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION:
+        return "table_delay_key_write_option";
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
         return "insert_set_statement";
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:
@@ -2138,6 +2146,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "user_variable_assignment_expression";
     case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
         return "alter_view_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_STORAGE_STATISTICS_STATEMENT:
+        return "alter_table_storage_statistics_statement";
     case MYLITE_SQL_AST_CREATE_OR_REPLACE_CLAUSE:
         return "create_or_replace_clause";
     case MYLITE_SQL_AST_VIEW_OPTION_LIST:

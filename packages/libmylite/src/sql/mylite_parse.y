@@ -380,6 +380,9 @@ statement(A) ::= alter_table_convert_character_set_statement(B). {
 statement(A) ::= alter_table_comment_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_storage_statistics_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_order_by_statement(B). {
     A = B;
 }
@@ -629,6 +632,11 @@ table_maintenance_statement(A) ::=
 }
 table_maintenance_statement(A) ::=
     CHECK(T) TABLE table_name_list(N) check_table_option_list_opt. {
+    A = mylite_sql_parser_make_table_maintenance_statement(
+        state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N);
+}
+table_maintenance_statement(A) ::=
+    CHECK(T) TABLES table_name_list(N) check_table_option_list_opt. {
     A = mylite_sql_parser_make_table_maintenance_statement(
         state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N);
 }
@@ -1300,6 +1308,27 @@ table_option(A) ::= STATS_AUTO_RECALC(T) equal_opt table_default_or_integer_opti
 table_option(A) ::= STATS_SAMPLE_PAGES(T) equal_opt table_default_or_integer_option_value(V). {
     A = mylite_sql_parser_make_table_stats_sample_pages_option(state, T, V);
 }
+table_option(A) ::= MIN_ROWS(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_min_rows_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+table_option(A) ::= MAX_ROWS(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_max_rows_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+table_option(A) ::= AVG_ROW_LENGTH(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_avg_row_length_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+table_option(A) ::= DELAY_KEY_WRITE(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_delay_key_write_option(state, T, V);
+}
 
 row_format_option_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -1417,11 +1446,13 @@ schema_option(A) ::= default_opt COLLATE(C) equal_opt BINARY(N). {
         mylite_sql_parser_make_identifier(state, N));
 }
 
-drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name_list(T). {
+drop_table_statement(A) ::= DROP(D) table_or_tables drop_if_exists_opt(E) table_name_list(T)
+        drop_table_tail_opt. {
     A = mylite_sql_parser_make_drop_table_statement(state, D, E, T);
 }
 drop_temporary_table_statement(A) ::=
-    DROP(D) TEMPORARY TABLE drop_if_exists_opt(E) table_name_list(T). {
+    DROP(D) TEMPORARY table_or_tables drop_if_exists_opt(E) table_name_list(T)
+        drop_table_tail_opt. {
     A = mylite_sql_parser_make_drop_temporary_table_statement(state, D, E, T);
 }
 drop_view_statement(A) ::= DROP(D) VIEW drop_if_exists_opt(E) table_name_list(T)
@@ -1435,6 +1466,10 @@ drop_procedure_statement(A) ::= DROP(D) PROCEDURE drop_if_exists_opt(E) table_na
 view_drop_tail_opt ::= .
 view_drop_tail_opt ::= RESTRICT.
 view_drop_tail_opt ::= CASCADE.
+
+drop_table_tail_opt ::= .
+drop_table_tail_opt ::= RESTRICT.
+drop_table_tail_opt ::= CASCADE.
 
 drop_if_exists_opt(A) ::= . {
     A = NULL;
@@ -1471,13 +1506,32 @@ truncate_table_statement(A) ::= TRUNCATE(T) TABLE table_name(N). {
     A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
 }
 
-show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) show_tables_filter_opt(L). {
+show_tables_statement(A) ::=
+    SHOW(S) show_full_opt(F) TABLES(T) show_tables_filter_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, NULL, L);
 }
-show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) FROM identifier(D) show_tables_filter_opt(L). {
+show_tables_statement(A) ::=
+    SHOW(S) show_full_opt(F) TABLES(T) FROM identifier(D)
+    show_tables_filter_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
 }
-show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) IN identifier(D) show_tables_filter_opt(L). {
+show_tables_statement(A) ::=
+    SHOW(S) show_full_opt(F) TABLES(T) IN identifier(D)
+    show_tables_filter_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
+}
+show_tables_statement(A) ::=
+    SHOW(S) EXTENDED show_full_opt(F) TABLES(T) show_tables_filter_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, NULL, L);
+}
+show_tables_statement(A) ::=
+    SHOW(S) EXTENDED show_full_opt(F) TABLES(T) FROM identifier(D)
+    show_tables_filter_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
+}
+show_tables_statement(A) ::=
+    SHOW(S) EXTENDED show_full_opt(F) TABLES(T) IN identifier(D)
+    show_tables_filter_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
 }
 
@@ -1930,8 +1984,24 @@ alter_table_rename_statement(A) ::=
 }
 
 alter_table_multi_action_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) alter_table_multi_action_list(L). {
-    A = mylite_sql_parser_make_alter_table_multi_action_statement(state, A1, T, L);
+    ALTER(A1) TABLE table_name(T) alter_table_multi_action_list(L) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_multi_action_statement(state, A1, T, L, O);
+}
+alter_table_multi_action_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) alter_table_algorithm_lock_option_list(P) COMMA
+    alter_table_leading_option_action_list(L). {
+    A = mylite_sql_parser_make_alter_table_multi_action_statement(
+        state, A1, T, L, P);
+}
+alter_table_multi_action_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD(A2) column_keyword_opt LPAREN
+    alter_table_parenthesized_add_column_list(L) RPAREN alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_multi_action_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_make_alter_table_add_column_action_list(state, A2, L),
+        O);
 }
 
 alter_table_multi_action_list(A) ::= alter_table_multi_first_action(L) alter_table_multi_action(N). {
@@ -1939,6 +2009,14 @@ alter_table_multi_action_list(A) ::= alter_table_multi_first_action(L) alter_tab
 }
 alter_table_multi_action_list(A) ::=
     alter_table_multi_action_list(L) COMMA alter_table_multi_action(N). {
+    A = mylite_sql_parser_append_alter_table_action(state, L, N);
+}
+
+alter_table_leading_option_action_list(A) ::= alter_table_multi_action(N). {
+    A = mylite_sql_parser_make_alter_table_action_list(state, N);
+}
+alter_table_leading_option_action_list(A) ::=
+    alter_table_leading_option_action_list(L) COMMA alter_table_multi_action(N). {
     A = mylite_sql_parser_append_alter_table_action(state, L, N);
 }
 
@@ -1952,6 +2030,18 @@ alter_table_multi_first_action(A) ::=
             NULL,
             C,
             P,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::=
+    ADD(A1) column_keyword_opt LPAREN column_definition(C) RPAREN COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_column_statement(
+            state,
+            A1,
+            NULL,
+            C,
+            NULL,
             mylite_sql_parser_empty_alter_table_options()));
 }
 alter_table_multi_first_action(A) ::= ADD(A1) secondary_index_definition(I) COMMA. {
@@ -2077,6 +2167,16 @@ alter_table_multi_action(A) ::=
         P,
         mylite_sql_parser_empty_alter_table_options());
 }
+alter_table_multi_action(A) ::=
+    ADD(A1) column_keyword_opt LPAREN column_definition(C) RPAREN. {
+    A = mylite_sql_parser_make_alter_table_add_column_statement(
+        state,
+        A1,
+        NULL,
+        C,
+        NULL,
+        mylite_sql_parser_empty_alter_table_options());
+}
 alter_table_multi_action(A) ::= ADD(A1) secondary_index_definition(I). {
     A = mylite_sql_parser_make_alter_table_add_index_statement(
         state,
@@ -2167,6 +2267,23 @@ alter_table_add_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD column_keyword_opt column_definition(C)
     column_position_opt(P) alter_table_option_tail_opt(O). {
     A = mylite_sql_parser_make_alter_table_add_column_statement(state, A1, T, C, P, O);
+}
+alter_table_add_column_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD column_keyword_opt LPAREN column_definition(C) RPAREN
+    alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_column_statement(state, A1, T, C, NULL, O);
+}
+
+alter_table_parenthesized_add_column_list(A) ::=
+    column_definition(C) COMMA column_definition(N). {
+    A = mylite_sql_parser_append_column_definition(
+        state,
+        mylite_sql_parser_make_column_definition_list(state, C),
+        N);
+}
+alter_table_parenthesized_add_column_list(A) ::=
+    alter_table_parenthesized_add_column_list(L) COMMA column_definition(C). {
+    A = mylite_sql_parser_append_column_definition(state, L, C);
 }
 
 alter_table_add_primary_key_statement(A) ::=
@@ -2501,6 +2618,81 @@ alter_table_comment_statement(A) ::=
             C,
             mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING)),
         O);
+}
+
+alter_table_storage_statistics_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) alter_table_storage_statistics_option_list(O)
+    alter_table_option_tail_opt(P). {
+    A = mylite_sql_parser_make_alter_table_storage_statistics_statement(state, A1, T, O, P);
+}
+
+alter_table_storage_statistics_option_list(A) ::= alter_table_storage_statistics_option(O). {
+    A = mylite_sql_parser_make_table_option_list(state, O);
+}
+alter_table_storage_statistics_option_list(A) ::=
+    alter_table_storage_statistics_option_list(L) alter_table_storage_statistics_option(O). {
+    A = mylite_sql_parser_append_table_option(state, L, O);
+}
+alter_table_storage_statistics_option_list(A) ::=
+    alter_table_storage_statistics_option_list(L) COMMA alter_table_storage_statistics_option(O). {
+    A = mylite_sql_parser_append_table_option(state, L, O);
+}
+
+alter_table_storage_statistics_option(A) ::= ENGINE(E) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_engine_option(state, E, N);
+}
+alter_table_storage_statistics_option(A) ::= ROW_FORMAT(T) equal_opt row_format_option_value(V). {
+    A = mylite_sql_parser_make_table_row_format_option(state, T, V);
+}
+alter_table_storage_statistics_option(A) ::= KEY_BLOCK_SIZE(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_key_block_size_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+alter_table_storage_statistics_option(A) ::=
+    PACK_KEYS(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_pack_keys_option(state, T, V);
+}
+alter_table_storage_statistics_option(A) ::= CHECKSUM(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_checksum_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+alter_table_storage_statistics_option(A) ::=
+    STATS_PERSISTENT(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_stats_persistent_option(state, T, V);
+}
+alter_table_storage_statistics_option(A) ::=
+    STATS_AUTO_RECALC(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_stats_auto_recalc_option(state, T, V);
+}
+alter_table_storage_statistics_option(A) ::=
+    STATS_SAMPLE_PAGES(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_stats_sample_pages_option(state, T, V);
+}
+alter_table_storage_statistics_option(A) ::= MIN_ROWS(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_min_rows_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+alter_table_storage_statistics_option(A) ::= MAX_ROWS(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_max_rows_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+alter_table_storage_statistics_option(A) ::= AVG_ROW_LENGTH(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_avg_row_length_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+alter_table_storage_statistics_option(A) ::=
+    DELAY_KEY_WRITE(T) equal_opt table_default_or_integer_option_value(V). {
+    A = mylite_sql_parser_make_table_delay_key_write_option(state, T, V);
 }
 
 alter_table_order_by_statement(A) ::=
@@ -9655,6 +9847,18 @@ identifier(A) ::= STATS_AUTO_RECALC(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= STATS_SAMPLE_PAGES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MIN_ROWS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MAX_ROWS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= AVG_ROW_LENGTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DELAY_KEY_WRITE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DYNAMIC(T). {

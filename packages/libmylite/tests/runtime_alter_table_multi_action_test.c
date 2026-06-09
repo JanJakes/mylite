@@ -186,6 +186,18 @@ static int test_multi_action_success_metadata_and_persistence(void) {
             .context = "later multi-action sees earlier added column",
         }
     );
+    failures += expect_statement_ok(database, "CREATE TABLE composed (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE composed ADD COLUMN (a INT DEFAULT 1, b INT DEFAULT 2)"
+    );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE composed ALGORITHM=INSTANT, ADD COLUMN c INT");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE composed ADD COLUMN d INT DEFAULT 4, ADD COLUMN e INT DEFAULT 5, "
+        "ALGORITHM=INSTANT, LOCK=DEFAULT"
+    );
     failures += expect_bytes(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)) == 0 ? actual_preamble
                                                                               : NULL,
@@ -1223,14 +1235,9 @@ static int test_multi_action_diagnostics(void) {
                             "ADD COLUMN",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "ALTER TABLE t ADD COLUMN b INT, ADD COLUMN c INT, ALGORITHM=INPLACE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
+        "ALTER TABLE t ADD COLUMN b INT, ADD COLUMN c INT, ALGORITHM=INPLACE"
     );
 
     mylite_close(database);

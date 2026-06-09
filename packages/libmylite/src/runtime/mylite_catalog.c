@@ -48,9 +48,13 @@ enum catalog_table_insert_in_mutation_bind_index {
     catalog_table_insert_in_mutation_stats_persistent_bind = 15,
     catalog_table_insert_in_mutation_stats_auto_recalc_bind = 16,
     catalog_table_insert_in_mutation_stats_sample_pages_bind = 17,
-    catalog_table_insert_in_mutation_created_time_bind = 18,
-    catalog_table_insert_in_mutation_updated_time_bind = 19,
-    catalog_table_insert_in_mutation_generation_bind = 20,
+    catalog_table_insert_in_mutation_min_rows_bind = 18,
+    catalog_table_insert_in_mutation_max_rows_bind = 19,
+    catalog_table_insert_in_mutation_avg_row_length_bind = 20,
+    catalog_table_insert_in_mutation_delay_key_write_bind = 21,
+    catalog_table_insert_in_mutation_created_time_bind = 22,
+    catalog_table_insert_in_mutation_updated_time_bind = 23,
+    catalog_table_insert_in_mutation_generation_bind = 24,
 };
 
 enum catalog_view_insert_bind_index {
@@ -68,6 +72,22 @@ enum catalog_view_insert_bind_index {
     catalog_view_insert_source_schema_name_bind = 12,
     catalog_view_insert_source_table_name_bind = 13,
     catalog_view_insert_generation_bind = 14,
+};
+
+enum catalog_table_storage_statistics_update_bind_index {
+    catalog_table_storage_statistics_update_row_format_bind = 1,
+    catalog_table_storage_statistics_update_key_block_size_bind = 2,
+    catalog_table_storage_statistics_update_pack_keys_bind = 3,
+    catalog_table_storage_statistics_update_checksum_bind = 4,
+    catalog_table_storage_statistics_update_stats_persistent_bind = 5,
+    catalog_table_storage_statistics_update_stats_auto_recalc_bind = 6,
+    catalog_table_storage_statistics_update_stats_sample_pages_bind = 7,
+    catalog_table_storage_statistics_update_min_rows_bind = 8,
+    catalog_table_storage_statistics_update_max_rows_bind = 9,
+    catalog_table_storage_statistics_update_avg_row_length_bind = 10,
+    catalog_table_storage_statistics_update_delay_key_write_bind = 11,
+    catalog_table_storage_statistics_update_generation_bind = 12,
+    catalog_table_storage_statistics_update_table_id_bind = 13,
 };
 
 enum catalog_column_reorder_offset_bind_index {
@@ -263,6 +283,10 @@ int mylite_catalog_insert_table_in_mutation(
     int64_t stats_persistent,
     int64_t stats_auto_recalc,
     int64_t stats_sample_pages,
+    int64_t min_rows,
+    int64_t max_rows,
+    int64_t avg_row_length,
+    int64_t delay_key_write,
     int64_t created_time_utc_epoch,
     int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table
@@ -283,6 +307,10 @@ int mylite_catalog_insert_table_in_mutation(
         .stats_persistent = stats_persistent,
         .stats_auto_recalc = stats_auto_recalc,
         .stats_sample_pages = stats_sample_pages,
+        .min_rows = min_rows,
+        .max_rows = max_rows,
+        .avg_row_length = avg_row_length,
+        .delay_key_write = delay_key_write,
         .created_time_utc_epoch = created_time_utc_epoch,
         .updated_time_utc_epoch = updated_time_utc_epoch,
     };
@@ -324,11 +352,12 @@ int mylite_catalog_insert_table_in_mutation(
         "(table_id, schema_id, name, kind, physical_name, auto_increment_next, "
         "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
         "key_block_size, pack_keys, checksum, stats_persistent, stats_auto_recalc, "
-        "stats_sample_pages, fulltext_doc_id_initialized, created_time_utc_epoch, "
+        "stats_sample_pages, min_rows, max_rows, avg_row_length, delay_key_write, "
+        "fulltext_doc_id_initialized, created_time_utc_epoch, "
         "updated_time_utc_epoch, descriptor_version, "
         "created_catalog_generation, updated_catalog_generation) "
         "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, "
-        "?17, 0, ?18, ?19, 1, ?20, ?20)",
+        "?17, ?18, ?19, ?20, ?21, 0, ?22, ?23, 1, ?24, ?24)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -514,6 +543,34 @@ static int bind_catalog_table_insert_storage_statistics_values(
             statement,
             catalog_table_insert_in_mutation_stats_sample_pages_bind,
             values->stats_sample_pages
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_insert_in_mutation_min_rows_bind,
+            values->min_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_insert_in_mutation_max_rows_bind,
+            values->max_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_insert_in_mutation_avg_row_length_bind,
+            values->avg_row_length
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_insert_in_mutation_delay_key_write_bind,
+            values->delay_key_write
         );
     }
     return rc;
@@ -1826,6 +1883,185 @@ int mylite_catalog_update_table_comment_in_mutation(
     return MYLITE_OK;
 }
 
+int mylite_catalog_update_table_storage_statistics_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct mylite_catalog_table_descriptor *table,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_table != NULL) {
+        *out_table = (struct mylite_catalog_table_descriptor){0};
+    }
+    rc = mylite_catalog_validate_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = mylite_catalog_validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (table == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = mylite_catalog_validate_positive_id(table->table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = mylite_catalog_validate_table_descriptor_input(
+        &(const struct mylite_catalog_table_descriptor_input){
+            .schema_id = table->schema_id,
+            .name = table->name,
+            .physical_name = table->physical_name,
+            .kind = table->kind,
+            .auto_increment_status = table->auto_increment_status,
+            .default_charset = table->default_charset,
+            .default_collation = table->default_collation,
+            .comment = table->comment,
+            .row_format_option = table->row_format_option,
+            .key_block_size = table->key_block_size,
+            .pack_keys = table->pack_keys,
+            .checksum = table->checksum,
+            .stats_persistent = table->stats_persistent,
+            .stats_auto_recalc = table->stats_auto_recalc,
+            .stats_sample_pages = table->stats_sample_pages,
+            .min_rows = table->min_rows,
+            .max_rows = table->max_rows,
+            .avg_row_length = table->avg_row_length,
+            .delay_key_write = table->delay_key_write,
+            .created_time_utc_epoch = table->created_time_utc_epoch,
+            .updated_time_utc_epoch = table->updated_time_utc_epoch,
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_catalog_prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_tables "
+        "SET row_format_option = ?1, key_block_size = ?2, pack_keys = ?3, checksum = ?4, "
+        "stats_persistent = ?5, stats_auto_recalc = ?6, stats_sample_pages = ?7, "
+        "min_rows = ?8, max_rows = ?9, avg_row_length = ?10, delay_key_write = ?11, "
+        "descriptor_version = descriptor_version + 1, updated_catalog_generation = ?12 "
+        "WHERE table_id = ?13",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_text(
+            statement,
+            catalog_table_storage_statistics_update_row_format_bind,
+            table->row_format_option
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_key_block_size_bind,
+            table->key_block_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_pack_keys_bind,
+            table->pack_keys
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_checksum_bind,
+            table->checksum
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_stats_persistent_bind,
+            table->stats_persistent
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_stats_auto_recalc_bind,
+            table->stats_auto_recalc
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_stats_sample_pages_bind,
+            table->stats_sample_pages
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_min_rows_bind,
+            table->min_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_max_rows_bind,
+            table->max_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_avg_row_length_bind,
+            table->avg_row_length
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_delay_key_write_bind,
+            table->delay_key_write
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_u64(
+            statement,
+            catalog_table_storage_statistics_update_generation_bind,
+            mutation->next_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(
+            statement,
+            catalog_table_storage_statistics_update_table_id_bind,
+            table->table_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_require_changed_row(database->sqlite);
+    }
+    rc = mylite_catalog_finalize_statement(statement, rc);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (out_table != NULL) {
+        return mylite_catalog_read_table_by_id_from_sqlite(
+            database->sqlite,
+            table->table_id,
+            out_table
+        );
+    }
+
+    return MYLITE_OK;
+}
+
 int mylite_catalog_update_schema_default_charset_collation_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -2471,11 +2707,14 @@ int mylite_catalog_validate_table_descriptor_input(
     if (rc == MYLITE_OK && input->auto_increment_status < 0) {
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && (input->pack_keys < -1 || input->pack_keys > 1 || input->checksum < 0 ||
-                            input->checksum > 1 || input->stats_persistent < -1 ||
-                            input->stats_persistent > 1 || input->stats_auto_recalc < -1 ||
-                            input->stats_auto_recalc > 1 || input->stats_sample_pages < 0 ||
-                            input->stats_sample_pages > catalog_table_stats_sample_pages_max)) {
+    if (rc == MYLITE_OK &&
+        (input->pack_keys < -1 || input->pack_keys > 1 || input->checksum < 0 ||
+         input->checksum > 1 || input->stats_persistent < -1 || input->stats_persistent > 1 ||
+         input->stats_auto_recalc < -1 || input->stats_auto_recalc > 1 ||
+         input->stats_sample_pages < 0 ||
+         input->stats_sample_pages > catalog_table_stats_sample_pages_max ||
+         input->delay_key_write < -1 || input->delay_key_write > 1 || input->min_rows < 0 ||
+         input->max_rows < 0 || input->avg_row_length < 0)) {
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK &&

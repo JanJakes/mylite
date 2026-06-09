@@ -265,6 +265,82 @@ static int alter_table_comment_from_plan(
     return MYLITE_OK;
 }
 
+static int execute_alter_table_storage_statistics_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_storage_statistics plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_storage_statistics(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_storage_statistics_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int alter_table_storage_statistics_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_storage_statistics *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = MYLITE_OK;
+
+    if (!plan->changes_descriptor) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_storage_statistics_in_mutation(database, &mutation, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to update table storage options");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int alter_table_storage_statistics_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_storage_statistics *plan
+) {
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!plan->changes_descriptor) {
+        return MYLITE_OK;
+    }
+    return mylite_catalog_update_table_storage_statistics_in_mutation(
+        database,
+        mutation,
+        &plan->table,
+        NULL
+    );
+}
+
 static int plan_alter_schema_default_charset_collation(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

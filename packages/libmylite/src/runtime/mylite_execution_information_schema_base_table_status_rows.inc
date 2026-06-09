@@ -262,7 +262,37 @@ static int load_table_status_create_options(
     out_values->create_options_text[0] = '\0';
     out_values->create_options = out_values->create_options_text;
 
-    if (table->row_format_option[0] != '\0') {
+    if (table->max_rows > 0) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "max_rows=",
+            table->max_rows
+        );
+    }
+    if (rc == MYLITE_OK && table->min_rows > 0) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "min_rows=",
+            table->min_rows
+        );
+    }
+    if (rc == MYLITE_OK && table->avg_row_length > 0) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "avg_row_length=",
+            table->avg_row_length
+        );
+    }
+    if (rc == MYLITE_OK && table->row_format_option[0] != '\0') {
         char text[sizeof("row_format=") + MYLITE_CATALOG_IDENTIFIER_CAPACITY];
         int written = snprintf(text, sizeof(text), "row_format=%s", table->row_format_option);
 
@@ -335,6 +365,16 @@ static int load_table_status_create_options(
             sizeof(out_values->create_options_text),
             &has_option,
             "checksum=1"
+        );
+    }
+    if (rc == MYLITE_OK && table->delay_key_write != -1) {
+        rc = append_table_status_create_option_i64(
+            database,
+            out_values->create_options_text,
+            sizeof(out_values->create_options_text),
+            &has_option,
+            "delay_key_write=",
+            table->delay_key_write
         );
     }
     return rc;

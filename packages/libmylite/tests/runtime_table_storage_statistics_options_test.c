@@ -127,7 +127,7 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
         database,
         "CREATE TABLE all_options (id INT) ENGINE=InnoDB, ROW_FORMAT=COMPACT "
         "PACK_KEYS=1 STATS_PERSISTENT=1 STATS_AUTO_RECALC=0 STATS_SAMPLE_PAGES=7 "
-        "CHECKSUM=2"
+        "CHECKSUM=2 MIN_ROWS=1 MAX_ROWS=100 AVG_ROW_LENGTH=10 DELAY_KEY_WRITE=1"
     );
     failures += execute_dml_ok(database, "INSERT INTO all_options VALUES (1)", 1);
     failures +=
@@ -135,8 +135,9 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
     failures += expect_show_create_contains(
         database,
         "all_options",
+        "MIN_ROWS=1 MAX_ROWS=100 AVG_ROW_LENGTH=10 "
         "PACK_KEYS=1 STATS_PERSISTENT=1 STATS_AUTO_RECALC=0 STATS_SAMPLE_PAGES=7 CHECKSUM=1 "
-        "ROW_FORMAT=COMPACT",
+        "DELAY_KEY_WRITE=1 ROW_FORMAT=COMPACT",
         "all options SHOW CREATE suffix"
     );
     failures += expect_show_create_not_contains(
@@ -158,8 +159,9 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
         "SELECT CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES "
         "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'all_options'",
         0U,
-        "row_format=COMPACT stats_sample_pages=7 stats_auto_recalc=0 stats_persistent=1 "
-        "pack_keys=1 checksum=1",
+        "max_rows=100 min_rows=1 avg_row_length=10 row_format=COMPACT "
+        "stats_sample_pages=7 stats_auto_recalc=0 stats_persistent=1 pack_keys=1 checksum=1 "
+        "delay_key_write=1",
         "information schema create options"
     );
     failures += expect_single_cell(
@@ -173,8 +175,9 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
         database,
         "SHOW TABLE STATUS WHERE Name = 'all_options'",
         show_table_status_create_options_column,
-        "row_format=COMPACT stats_sample_pages=7 stats_auto_recalc=0 stats_persistent=1 "
-        "pack_keys=1 checksum=1",
+        "max_rows=100 min_rows=1 avg_row_length=10 row_format=COMPACT "
+        "stats_sample_pages=7 stats_auto_recalc=0 stats_persistent=1 pack_keys=1 checksum=1 "
+        "delay_key_write=1",
         "SHOW TABLE STATUS create options"
     );
 
@@ -182,7 +185,8 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
         database,
         "CREATE TABLE defaults (id INT) ROW_FORMAT=DEFAULT KEY_BLOCK_SIZE=0 PACK_KEYS=DEFAULT "
         "CHECKSUM=0 STATS_PERSISTENT=DEFAULT STATS_AUTO_RECALC=DEFAULT "
-        "STATS_SAMPLE_PAGES=DEFAULT"
+        "STATS_SAMPLE_PAGES=DEFAULT MIN_ROWS=0 MAX_ROWS=0 AVG_ROW_LENGTH=0 "
+        "DELAY_KEY_WRITE=DEFAULT"
     );
     failures += expect_show_create_not_contains(
         database,
@@ -208,7 +212,8 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
     failures += execute_statement_ok(
         database,
         "CREATE TABLE duplicates (id INT) ROW_FORMAT=COMPACT ROW_FORMAT=DYNAMIC "
-        "PACK_KEYS=1 PACK_KEYS=DEFAULT STATS_PERSISTENT=0 STATS_PERSISTENT=1"
+        "PACK_KEYS=1 PACK_KEYS=DEFAULT STATS_PERSISTENT=0 STATS_PERSISTENT=1 "
+        "MIN_ROWS=1 MIN_ROWS=0 DELAY_KEY_WRITE=1 DELAY_KEY_WRITE=DEFAULT"
     );
     failures += expect_show_create_contains(
         database,
@@ -227,6 +232,18 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
         "duplicates",
         "PACK_KEYS=",
         "duplicate pack keys default clears"
+    );
+    failures += expect_show_create_not_contains(
+        database,
+        "duplicates",
+        "MIN_ROWS=",
+        "duplicate min rows zero clears"
+    );
+    failures += expect_show_create_not_contains(
+        database,
+        "duplicates",
+        "DELAY_KEY_WRITE=",
+        "duplicate delay key write default clears"
     );
 
     failures += execute_statement_ok(database, "CREATE TABLE kbs (id INT) KEY_BLOCK_SIZE=8");
@@ -266,9 +283,51 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
     failures += expect_show_create_contains(
         database,
         "clone_like",
+        "MIN_ROWS=1 MAX_ROWS=100 AVG_ROW_LENGTH=10 "
         "PACK_KEYS=1 STATS_PERSISTENT=1 STATS_AUTO_RECALC=0 STATS_SAMPLE_PAGES=7 CHECKSUM=1 "
-        "ROW_FORMAT=COMPACT",
+        "DELAY_KEY_WRITE=1 ROW_FORMAT=COMPACT",
         "CREATE TABLE LIKE clones table options"
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE altered (id INT PRIMARY KEY)");
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE altered ENGINE=InnoDB, ROW_FORMAT=COMPRESSED, KEY_BLOCK_SIZE=4, "
+        "PACK_KEYS=1, CHECKSUM=1, STATS_PERSISTENT=1, STATS_AUTO_RECALC=1, "
+        "STATS_SAMPLE_PAGES=16, MIN_ROWS=1, MAX_ROWS=100, AVG_ROW_LENGTH=10, "
+        "DELAY_KEY_WRITE=1"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "altered",
+        "MIN_ROWS=1 MAX_ROWS=100 AVG_ROW_LENGTH=10 PACK_KEYS=1 STATS_PERSISTENT=1 "
+        "STATS_AUTO_RECALC=1 STATS_SAMPLE_PAGES=16 CHECKSUM=1 DELAY_KEY_WRITE=1 "
+        "ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=4",
+        "ALTER TABLE storage options SHOW CREATE"
+    );
+    failures += expect_single_cell(
+        database,
+        "SELECT CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'altered'",
+        0U,
+        "max_rows=100 min_rows=1 avg_row_length=10 row_format=COMPRESSED "
+        "stats_sample_pages=16 stats_auto_recalc=1 KEY_BLOCK_SIZE=4 stats_persistent=1 "
+        "pack_keys=1 checksum=1 delay_key_write=1",
+        "ALTER TABLE storage options create options"
+    );
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE altered ROW_FORMAT=DEFAULT, KEY_BLOCK_SIZE=0, PACK_KEYS=DEFAULT, "
+        "CHECKSUM=0, STATS_PERSISTENT=DEFAULT, STATS_AUTO_RECALC=DEFAULT, "
+        "STATS_SAMPLE_PAGES=DEFAULT, MIN_ROWS=0, MAX_ROWS=0, AVG_ROW_LENGTH=0, "
+        "DELAY_KEY_WRITE=DEFAULT"
+    );
+    failures += expect_single_cell(
+        database,
+        "SELECT CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'altered'",
+        0U,
+        "",
+        "ALTER TABLE storage defaults clear create options"
     );
 
     failures += expect_int(
@@ -299,8 +358,9 @@ static int test_persistent_metadata_like_reopen_and_preamble(void) {
         "SELECT CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES "
         "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'all_options'",
         0U,
-        "row_format=COMPACT stats_sample_pages=7 stats_auto_recalc=0 stats_persistent=1 "
-        "pack_keys=1 checksum=1",
+        "max_rows=100 min_rows=1 avg_row_length=10 row_format=COMPACT "
+        "stats_sample_pages=7 stats_auto_recalc=0 stats_persistent=1 pack_keys=1 checksum=1 "
+        "delay_key_write=1",
         "reopen preserves create options"
     );
 
@@ -555,6 +615,12 @@ static int make_catalog_look_like_v30(sqlite3 *sqlite) {
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_auto_recalc");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN stats_sample_pages");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN min_rows");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN max_rows");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN avg_row_length");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN delay_key_write");
     failures += execute_sql(
         sqlite,
         "UPDATE _mylite_catalog_state "

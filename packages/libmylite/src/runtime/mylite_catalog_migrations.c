@@ -34,6 +34,7 @@ enum {
     catalog_schema_version_v31 = 31U,
     catalog_schema_version_v32 = 32U,
     catalog_schema_version_v33 = 33U,
+    catalog_schema_version_v34 = 34U,
 };
 
 static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite);
@@ -69,6 +70,7 @@ static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite);
 static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite);
 static int migrate_catalog_schema_v32_to_v33(sqlite3 *sqlite);
 static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite);
+static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite);
 static void rollback_catalog_transaction(sqlite3 *sqlite);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version) {
@@ -210,6 +212,10 @@ int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v33:
         rc = migrate_catalog_schema_v33_to_v34(sqlite);
+        next_schema_version = catalog_schema_version_v34;
+        break;
+    case catalog_schema_version_v34:
+        rc = migrate_catalog_schema_v34_to_v35(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -1332,6 +1338,31 @@ static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite) {
         "sqlite_generation_expression, descriptor_version, created_catalog_generation, "
         "updated_catalog_generation FROM _mylite_catalog_columns_v33;"
         "DROP TABLE _mylite_catalog_columns_v33;"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 34, minimum_reader_schema_version = 34;"
+        "COMMIT;";
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_tables "
+        "ADD COLUMN min_rows INTEGER NOT NULL DEFAULT 0 CHECK(min_rows >= 0);"
+        "ALTER TABLE _mylite_catalog_tables "
+        "ADD COLUMN max_rows INTEGER NOT NULL DEFAULT 0 CHECK(max_rows >= 0);"
+        "ALTER TABLE _mylite_catalog_tables "
+        "ADD COLUMN avg_row_length INTEGER NOT NULL DEFAULT 0 CHECK(avg_row_length >= 0);"
+        "ALTER TABLE _mylite_catalog_tables "
+        "ADD COLUMN delay_key_write INTEGER NOT NULL DEFAULT -1 "
+        "CHECK(delay_key_write IN (-1, 0, 1));"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
         ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ";"

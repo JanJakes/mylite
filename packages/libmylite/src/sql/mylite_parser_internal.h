@@ -721,6 +721,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_stats_sample_pages_opti
     struct mylite_sql_token stats_sample_pages_token,
     struct mylite_sql_ast_node *value
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_min_rows_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token min_rows_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_max_rows_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token max_rows_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_avg_row_length_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token avg_row_length_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_delay_key_write_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token delay_key_write_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_option_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *option
@@ -1060,6 +1080,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_action_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *action
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_action_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *column_definitions
+);
 struct mylite_sql_ast_node *mylite_sql_parser_append_alter_table_action(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,
@@ -1069,7 +1094,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_multi_action_stat
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *actions
+    struct mylite_sql_ast_node *actions,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_statement(
     struct mylite_sql_parser_state *state,
@@ -1240,6 +1266,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_comment_statement
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *comment_option,
+    struct mylite_sql_alter_table_options options
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_storage_statistics_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options,
     struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_order_by_statement(

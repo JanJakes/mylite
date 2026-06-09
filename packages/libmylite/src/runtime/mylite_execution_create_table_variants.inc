@@ -10,6 +10,7 @@ static int plan_create_table_like(
     out_plan->create_table.pack_keys = -1;
     out_plan->create_table.stats_persistent = -1;
     out_plan->create_table.stats_auto_recalc = -1;
+    out_plan->create_table.delay_key_write = -1;
     rc = reject_builtin_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
         rc = resolve_visible_table_reference(
@@ -46,6 +47,10 @@ static int plan_create_table_like(
         out_plan->create_table.stats_persistent = out_plan->source_table.stats_persistent;
         out_plan->create_table.stats_auto_recalc = out_plan->source_table.stats_auto_recalc;
         out_plan->create_table.stats_sample_pages = out_plan->source_table.stats_sample_pages;
+        out_plan->create_table.min_rows = out_plan->source_table.min_rows;
+        out_plan->create_table.max_rows = out_plan->source_table.max_rows;
+        out_plan->create_table.avg_row_length = out_plan->source_table.avg_row_length;
+        out_plan->create_table.delay_key_write = out_plan->source_table.delay_key_write;
     }
     if (rc == MYLITE_OK) {
         rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->create_table.target);
@@ -379,6 +384,7 @@ static int plan_create_table_select(
     out_plan->create_table.pack_keys = -1;
     out_plan->create_table.stats_persistent = -1;
     out_plan->create_table.stats_auto_recalc = -1;
+    out_plan->create_table.delay_key_write = -1;
     memcpy(
         out_plan->create_table.default_charset,
         MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,

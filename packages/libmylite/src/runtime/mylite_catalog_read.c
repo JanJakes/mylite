@@ -27,12 +27,16 @@ enum catalog_table_select_column_index {
     catalog_table_select_stats_persistent_column = 14,
     catalog_table_select_stats_auto_recalc_column = 15,
     catalog_table_select_stats_sample_pages_column = 16,
-    catalog_table_select_fulltext_doc_id_initialized_column = 17,
-    catalog_table_select_created_time_column = 18,
-    catalog_table_select_updated_time_column = 19,
-    catalog_table_select_descriptor_version_column = 20,
-    catalog_table_select_created_generation_column = 21,
-    catalog_table_select_updated_generation_column = 22,
+    catalog_table_select_min_rows_column = 17,
+    catalog_table_select_max_rows_column = 18,
+    catalog_table_select_avg_row_length_column = 19,
+    catalog_table_select_delay_key_write_column = 20,
+    catalog_table_select_fulltext_doc_id_initialized_column = 21,
+    catalog_table_select_created_time_column = 22,
+    catalog_table_select_updated_time_column = 23,
+    catalog_table_select_descriptor_version_column = 24,
+    catalog_table_select_created_generation_column = 25,
+    catalog_table_select_updated_generation_column = 26,
 };
 
 enum catalog_column_select_column_index {
@@ -336,6 +340,7 @@ int mylite_catalog_for_each_table_in_schema(
         "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
         "key_block_size, "
         "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
+        "min_rows, max_rows, avg_row_length, delay_key_write, "
         "fulltext_doc_id_initialized, "
         "created_time_utc_epoch, updated_time_utc_epoch, descriptor_version, "
         "created_catalog_generation, updated_catalog_generation "
@@ -1354,6 +1359,7 @@ static int try_read_table_by_name(
         "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
         "key_block_size, "
         "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
+        "min_rows, max_rows, avg_row_length, delay_key_write, "
         "fulltext_doc_id_initialized, "
         "created_time_utc_epoch, updated_time_utc_epoch, descriptor_version, "
         "created_catalog_generation, updated_catalog_generation "
@@ -1399,6 +1405,7 @@ int mylite_catalog_read_table_by_id_from_sqlite(
         "auto_increment_status, default_charset, default_collation, comment, row_format_option, "
         "key_block_size, "
         "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
+        "min_rows, max_rows, avg_row_length, delay_key_write, "
         "fulltext_doc_id_initialized, "
         "created_time_utc_epoch, updated_time_utc_epoch, descriptor_version, "
         "created_catalog_generation, updated_catalog_generation "
@@ -1865,6 +1872,34 @@ static int materialize_table_storage_statistics(
             &out_table->stats_sample_pages
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(
+            statement,
+            catalog_table_select_min_rows_column,
+            &out_table->min_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(
+            statement,
+            catalog_table_select_max_rows_column,
+            &out_table->max_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(
+            statement,
+            catalog_table_select_avg_row_length_column,
+            &out_table->avg_row_length
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(
+            statement,
+            catalog_table_select_delay_key_write_column,
+            &out_table->delay_key_write
+        );
+    }
     return rc;
 }
 
@@ -1951,6 +1986,10 @@ static int validate_materialized_table(const struct mylite_catalog_table_descrip
             .stats_persistent = table->stats_persistent,
             .stats_auto_recalc = table->stats_auto_recalc,
             .stats_sample_pages = table->stats_sample_pages,
+            .min_rows = table->min_rows,
+            .max_rows = table->max_rows,
+            .avg_row_length = table->avg_row_length,
+            .delay_key_write = table->delay_key_write,
             .created_time_utc_epoch = table->created_time_utc_epoch,
             .updated_time_utc_epoch = table->updated_time_utc_epoch,
         }

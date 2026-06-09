@@ -238,7 +238,7 @@ enum {
     show_table_status_create_time_column = 11,
     show_table_status_update_time_column = 12,
     show_table_status_data_length = 16384,
-    table_status_create_options_capacity = 192,
+    table_status_create_options_capacity = 512,
     show_character_set_result_column_count = 4,
     show_collation_result_column_count = 7,
     show_triggers_result_column_count = 11,
@@ -1263,6 +1263,10 @@ struct planned_create_table {
     int64_t stats_persistent;
     int64_t stats_auto_recalc;
     int64_t stats_sample_pages;
+    int64_t min_rows;
+    int64_t max_rows;
+    int64_t avg_row_length;
+    int64_t delay_key_write;
     bool suppress_spatial_index_warnings;
 };
 
@@ -1692,6 +1696,13 @@ struct planned_alter_table_comment {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
+};
+
+struct planned_alter_table_storage_statistics {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor original_table;
+    struct mylite_catalog_table_descriptor table;
+    bool changes_descriptor;
 };
 
 struct planned_alter_schema_default_charset_collation {
@@ -5482,6 +5493,11 @@ static int execute_alter_table_comment_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_storage_statistics_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_order_by_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -9037,6 +9053,26 @@ static int apply_table_stats_sample_pages_option(
     const struct mylite_sql_ast_node *table_option,
     struct planned_create_table *plan
 );
+static int apply_table_min_rows_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_max_rows_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_avg_row_length_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
+static int apply_table_delay_key_write_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option,
+    struct planned_create_table *plan
+);
 static int copy_table_row_format_option_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_option,
@@ -10639,6 +10675,20 @@ static int plan_alter_table_comment(
 static int alter_table_comment_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_comment *plan
+);
+static int plan_alter_table_storage_statistics(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_storage_statistics *out_plan
+);
+static int alter_table_storage_statistics_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_storage_statistics *plan
+);
+static int alter_table_storage_statistics_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_storage_statistics *plan
 );
 static int plan_alter_schema_default_charset_collation(
     struct mylite_db *database,

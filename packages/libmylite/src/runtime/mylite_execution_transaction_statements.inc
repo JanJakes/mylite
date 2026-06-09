@@ -486,6 +486,10 @@ static int rebuild_temporary_create_table_plan(
         .stats_persistent = table->table.stats_persistent,
         .stats_auto_recalc = table->table.stats_auto_recalc,
         .stats_sample_pages = table->table.stats_sample_pages,
+        .min_rows = table->table.min_rows,
+        .max_rows = table->table.max_rows,
+        .avg_row_length = table->table.avg_row_length,
+        .delay_key_write = table->table.delay_key_write,
     };
     snprintf(
         out_plan->target.schema.name,

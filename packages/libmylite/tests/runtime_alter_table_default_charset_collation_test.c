@@ -642,16 +642,6 @@ static int test_alter_table_default_charset_diagnostics(void) {
         },
         "raw NUL collation"
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE target ENGINE=InnoDB",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

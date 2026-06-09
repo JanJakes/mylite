@@ -140,7 +140,7 @@ static int execute_alter_table_multi_action_statement(
     }
 
     action_count = mylite_sql_ast_node_child_count(actions);
-    if (action_count < 2U) {
+    if (action_count == 0U) {
         mylite_result_free(result);
         set_parse_error(database, NULL);
         return MYLITE_ERROR;

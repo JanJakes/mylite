@@ -112,6 +112,7 @@ enum {
     mysql_error_database_does_not_exist = 3503,
     mysql_error_system_schema_access = 3552,
     mysql_error_data_dictionary_access = 3554,
+    mysql_error_role_not_granted = 3530,
     mysql_error_primary_key_index_invisible = 3522,
     mysql_error_spatial_column_cannot_be_null = 3673,
     mysql_warning_spatial_index_no_srid = 3674,

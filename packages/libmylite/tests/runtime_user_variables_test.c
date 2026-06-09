@@ -20,7 +20,7 @@ enum {
     user_variable_name_boundary_character_count = 64,
     user_variable_name_too_long_character_count = 65,
     user_variable_sql_capacity = 320,
-    uninitialized_read_column_count = 5,
+    uninitialized_read_column_count = 8,
     assigned_read_column_count = 18,
     assignment_expression_column_count = 7,
     scalar_temporal_column_count = 7,
@@ -114,11 +114,14 @@ static int test_user_variable_values_and_scalar_reads(void) {
     static const char *const missing_columns[] = {
         "@missing_a",
         "@Missing_A",
+        "@",
+        "@''",
+        "@``",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
-    static const char *const missing_values[] = {NULL, NULL, "0", "0", "-1"};
+    static const char *const missing_values[] = {NULL, NULL, NULL, NULL, NULL, "0", "0", "-1"};
     static const char *const assigned_columns[] = {
         "@a",
         "bee",
@@ -173,7 +176,8 @@ static int test_user_variable_values_and_scalar_reads(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT @missing_a, @Missing_A, @@warning_count, @@error_count, ROW_COUNT()",
+            .sql = "SELECT @missing_a, @Missing_A, @, @'', @``, @@warning_count, @@error_count, "
+                   "ROW_COUNT()",
             .columns = missing_columns,
             .values = missing_values,
             .column_count = uninitialized_read_column_count,
@@ -724,6 +728,33 @@ static int test_user_variable_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @ = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_illegal_user_variable_name,
+            .sqlstate = "42000",
+            .message_part = "User variable name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @'' = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_illegal_user_variable_name,
+            .sqlstate = "42000",
+            .message_part = "User variable name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @ := 1",
+        (struct expected_sql_error){
+            .code = mysql_error_illegal_user_variable_name,
+            .sqlstate = "42000",
+            .message_part = "User variable name",
         }
     );
 

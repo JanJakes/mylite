@@ -144,6 +144,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VIEW_DEFINER_ACCOUNT:
     case MYLITE_SQL_AST_VIEW_CHECK_OPTION:
     case MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER:
+    case MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT:
+    case MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -986,6 +988,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
+    case MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT:
+    case MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
     case MYLITE_SQL_AST_SET_DEFAULT_VALUE:

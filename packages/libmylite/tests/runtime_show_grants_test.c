@@ -16,6 +16,7 @@
 enum {
     mysql_error_parse = 1064,
     mysql_error_no_such_grant = 1141,
+    mysql_error_role_not_granted = 3530,
     show_grants_column_count = 1,
     show_grants_row_count = 2,
     status_column_count = 2,
@@ -100,6 +101,8 @@ static int test_show_grants_current_user_forms(void) {
     failures += expect_show_grants(database, "Show Grants For Current_User");
     failures += expect_show_grants(database, "SHOW GRANTS FOR CURRENT_USER()");
     failures += expect_show_grants(database, "SHOW GRANTS FOR 'root'@'%'");
+    failures += expect_show_grants(database, "SHOW GRANTS FOR root");
+    failures += expect_show_grants(database, "SHOW GRANTS FOR root@'%'");
 
     mylite_close(database);
     return failures;
@@ -191,10 +194,10 @@ static int test_independent_show_grants_handles(void) {
 static int test_show_grants_unsupported_diagnostics(void) {
     static const struct expected_sql_error errors[] = {
         {
-            .sql = "SHOW GRANTS FOR root",
-            .code = mysql_error_parse,
+            .sql = "SHOW GRANTS FOR 'missing'",
+            .code = mysql_error_no_such_grant,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "There is no such grant defined for user 'missing' on host '%'",
         },
         {
             .sql = "SHOW GRANTS FOR 'missing'@'%'",
@@ -203,10 +206,28 @@ static int test_show_grants_unsupported_diagnostics(void) {
             .message_part = "There is no such grant defined for user 'missing' on host '%'",
         },
         {
-            .sql = "SHOW GRANTS FOR CURRENT_USER USING 'r'",
-            .code = mysql_error_parse,
+            .sql = "SHOW GRANTS FOR mysqltest_7@",
+            .code = mysql_error_no_such_grant,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "There is no such grant defined for user 'mysqltest_7' on host ''",
+        },
+        {
+            .sql = "SHOW GRANTS FOR CURRENT_USER USING 'r'",
+            .code = mysql_error_role_not_granted,
+            .sqlstate = "HY000",
+            .message_part = "`r`@`%` is not granted to `root`@`%`",
+        },
+        {
+            .sql = "SHOW GRANTS FOR root USING r1,r2",
+            .code = mysql_error_role_not_granted,
+            .sqlstate = "HY000",
+            .message_part = "`r1`@`%` is not granted to `root`@`%`",
+        },
+        {
+            .sql = "SHOW GRANTS FOR root@localhost USING r1",
+            .code = mysql_error_no_such_grant,
+            .sqlstate = "42000",
+            .message_part = "There is no such grant defined for user 'root' on host 'localhost'",
         },
         {
             .sql = "SHOW GRANTS LIKE 'root%'",

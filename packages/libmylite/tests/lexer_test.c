@@ -927,8 +927,8 @@ static int test_errors(void) {
     failures += expect_single_token_values(
         "@",
         0U,
-        MYLITE_SQL_TOKEN_ERROR,
-        MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE
+        MYLITE_SQL_TOKEN_USER_VARIABLE,
+        MYLITE_SQL_LEXER_ERROR_NONE
     );
     failures += expect_single_token_values(
         "@@`default",

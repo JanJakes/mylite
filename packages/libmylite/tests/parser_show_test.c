@@ -1335,7 +1335,12 @@ static int test_show_grants_statement(void) {
         "show grants current user"
     );
     failures +=
-        parser_test_expect_child_count(statement, 0U, "show grants current user child count");
+        parser_test_expect_child_count(statement, 1U, "show grants current user child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "CURRENT_USER",
+        "show grants current user target"
+    );
     failures += parser_test_expect_span_text(
         statement,
         "SHOW GRANTS FOR CURRENT_USER",
@@ -1353,8 +1358,13 @@ static int test_show_grants_statement(void) {
     );
     failures += parser_test_expect_child_count(
         statement,
-        0U,
+        1U,
         "show grants current user function child count"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "CURRENT_USER()",
+        "show grants current user function target"
     );
     failures += parser_test_expect_span_text(
         statement,
@@ -1375,8 +1385,24 @@ static int test_show_grants_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SHOW GRANTS FOR root;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SHOW GRANTS FOR root;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT,
+        "show grants root account"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show grants root child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT,
+        "show grants root account target"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 0U),
+        "root",
+        "show grants root user"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SHOW GRANTS FOR 'root'@'%';", MYLITE_SQL_PARSE_OK, &result);
@@ -1387,23 +1413,88 @@ static int test_show_grants_statement(void) {
         "show grants named account"
     );
     failures +=
-        parser_test_expect_child_count(statement, 2U, "show grants named account child count");
+        parser_test_expect_child_count(statement, 1U, "show grants named account child count");
     failures += parser_test_expect_span_text(
-        parser_test_child_at(statement, 0U),
+        parser_test_child_at(parser_test_child_at(statement, 0U), 0U),
         "'root'",
         "show grants named user"
     );
     failures += parser_test_expect_span_text(
-        parser_test_child_at(statement, 1U),
+        parser_test_child_at(parser_test_child_at(statement, 0U), 1U),
         "@'%'",
         "show grants named host"
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "SHOW GRANTS FOR CURRENT_USER USING 'r';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "SHOW GRANTS FOR `u1`@`%` USING r1,r2;",
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT,
+        "show grants account using roles"
+    );
+    failures += parser_test_expect_child_count(statement, 2U, "show grants using child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 0U),
+        "`u1`",
+        "show grants using user"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 1U),
+        "@`%`",
+        "show grants using host"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST,
+        "show grants role list"
+    );
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(statement, 1U),
+        2U,
+        "show grants role list child count"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 1U), 0U), 0U),
+        "r1",
+        "show grants first role"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 1U), 1U), 0U),
+        "r2",
+        "show grants second role"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SHOW GRANTS FOR mysqltest_7@;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 1U),
+        "@",
+        "show grants empty host"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW GRANTS FOR CURRENT_USER() USING `admin-db1`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "CURRENT_USER()",
+        "show grants current user using target"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 1U), 0U), 0U),
+        "`admin-db1`",
+        "show grants current user role"
     );
     mylite_sql_parse_result_deinit(&result);
 

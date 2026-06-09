@@ -4623,27 +4623,90 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_statement(
     );
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_for_account_statement(
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_for_target_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
-    struct mylite_sql_ast_node *user,
-    struct mylite_sql_ast_node *host
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_ast_node *role_list
 ) {
-    struct mylite_sql_source_span span;
+    struct mylite_sql_source_span span = span_from_token(&show_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (user == NULL || host == NULL) {
-        return NULL;
+    if (role_list != NULL) {
+        span = span_join(span, role_list->span);
+    } else if (target != NULL) {
+        span = span_join(span, target->span);
     }
-    span = span_join(span_from_token(&show_token), host->span);
     statement = make_node(state, MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT, span);
     if (statement == NULL) {
         return NULL;
     }
 
-    mylite_sql_ast_node_append_child(statement, user);
-    mylite_sql_ast_node_append_child(statement, host);
+    mylite_sql_ast_node_append_child(statement, target);
+    mylite_sql_ast_node_append_child(statement, role_list);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_account(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *user,
+    struct mylite_sql_ast_node *host
+) {
+    struct mylite_sql_source_span span =
+        user == NULL ? (struct mylite_sql_source_span){0} : user->span;
+    struct mylite_sql_ast_node *account = NULL;
+
+    if (host != NULL) {
+        span = span_join(span, host->span);
+    }
+    account = make_node(state, MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT, span);
+    if (account != NULL) {
+        mylite_sql_ast_node_append_child(account, user);
+        mylite_sql_ast_node_append_child(account, host);
+    }
+    return account;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_show_grants_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_user_token,
+    struct mylite_sql_token end_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_CURRENT_USER_FUNCTION,
+        span_join(span_from_token(&current_user_token), span_from_token(&end_token))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_role_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *role
+) {
+    struct mylite_sql_source_span span =
+        role == NULL ? (struct mylite_sql_source_span){0} : role->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST, span);
+
+    if (list != NULL) {
+        mylite_sql_ast_node_append_child(list, role);
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_show_grants_role(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *role
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, role);
+    if (role != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, role->span));
+    }
+    return list;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(

@@ -1569,7 +1569,7 @@ static bool scan_variable(
     }
 
     if (!is_user_variable_part(peek_at(lexer, 0U))) {
-        set_error_token(lexer, out_token, MYLITE_SQL_LEXER_ERROR_INVALID_VARIABLE, start);
+        set_token(lexer, out_token, MYLITE_SQL_TOKEN_USER_VARIABLE, start);
         return true;
     }
 

@@ -236,7 +236,7 @@ static int append_execute_parameter_sql(
 ) {
     char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
     struct mylite_session_user_variable *value = NULL;
-    int rc = copy_user_variable_name(database, variable, name, sizeof(name));
+    int rc = copy_user_variable_name(database, variable, name, sizeof(name), true);
 
     if (rc != MYLITE_OK) {
         return rc;

@@ -627,6 +627,9 @@ static int execute_show_grants_statement(
     if (!show_grants_statement_targets_embedded_root(statement)) {
         return set_show_grants_no_such_grant_error(database, statement);
     }
+    if (show_grants_statement_role_list(statement) != NULL) {
+        return set_show_grants_role_not_granted_error(database, statement);
+    }
 
     rc = mylite_result_create(&result);
     if (rc != MYLITE_OK) {
@@ -661,20 +664,44 @@ static int execute_show_grants_statement(
     return finish_successful_result(database, result, out_result);
 }
 
-static bool show_grants_statement_targets_embedded_root(
+static bool show_grants_statement_targets_embedded_root(const struct mylite_sql_ast_node *statement
+) {
+    return show_grants_target_is_embedded_root(show_grants_statement_target(statement));
+}
+
+static const struct mylite_sql_ast_node *show_grants_statement_target(
     const struct mylite_sql_ast_node *statement
 ) {
-    const struct mylite_sql_ast_node *user = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *host = child_at(statement, 1U);
+    return child_at(statement, 0U);
+}
 
-    if (user == NULL && host == NULL) {
+static const struct mylite_sql_ast_node *show_grants_statement_role_list(
+    const struct mylite_sql_ast_node *statement
+) {
+    return child_at(statement, 1U);
+}
+
+static bool show_grants_target_is_embedded_root(const struct mylite_sql_ast_node *target) {
+    const struct mylite_sql_ast_node *user = NULL;
+    const struct mylite_sql_ast_node *host = NULL;
+
+    if (target == NULL) {
         return true;
     }
-    if (user == NULL || host == NULL) {
+    if (target->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION) {
+        return true;
+    }
+    if (target->kind != MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT) {
         return false;
     }
+    user = child_at(target, 0U);
+    host = child_at(target, 1U);
+    if (user == NULL) {
+        return false;
+    }
+
     return show_grants_user_span_equals(&user->span, "root") &&
-           show_grants_host_span_equals(&host->span, "%");
+           show_grants_host_span_equals(host == NULL ? NULL : &host->span, "%");
 }
 
 static int set_show_grants_no_such_grant_error(
@@ -684,19 +711,22 @@ static int set_show_grants_no_such_grant_error(
     char user[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char host[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
-    const struct mylite_sql_ast_node *user_node = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *host_node = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *target = show_grants_statement_target(statement);
+    const struct mylite_sql_ast_node *user_node = child_at(target, 0U);
+    const struct mylite_sql_ast_node *host_node = child_at(target, 1U);
     int written = 0;
 
     if (copy_show_grants_account_part(
             user_node == NULL ? NULL : &user_node->span,
             false,
+            "",
             user,
             sizeof(user)
         ) != MYLITE_OK ||
         copy_show_grants_account_part(
             host_node == NULL ? NULL : &host_node->span,
             true,
+            "%",
             host,
             sizeof(host)
         ) != MYLITE_OK) {
@@ -723,6 +753,56 @@ static int set_show_grants_no_such_grant_error(
     return MYLITE_ERROR;
 }
 
+static int set_show_grants_role_not_granted_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    char role_user[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char role_host[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const struct mylite_sql_ast_node *role_list = show_grants_statement_role_list(statement);
+    const struct mylite_sql_ast_node *role = child_at(role_list, 0U);
+    const struct mylite_sql_ast_node *role_user_node = child_at(role, 0U);
+    const struct mylite_sql_ast_node *role_host_node = child_at(role, 1U);
+    int written = 0;
+
+    if (copy_show_grants_account_part(
+            role_user_node == NULL ? NULL : &role_user_node->span,
+            false,
+            "",
+            role_user,
+            sizeof(role_user)
+        ) != MYLITE_OK ||
+        copy_show_grants_account_part(
+            role_host_node == NULL ? NULL : &role_host_node->span,
+            true,
+            "%",
+            role_host,
+            sizeof(role_host)
+        ) != MYLITE_OK) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    written = snprintf(
+        message,
+        sizeof(message),
+        "`%s`@`%s` is not granted to `root`@`%%`",
+        role_user,
+        role_host
+    );
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_role_not_granted,
+        "HY000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
 static bool show_grants_user_span_equals(
     const struct mylite_sql_source_span *span,
     const char *expected
@@ -734,6 +814,9 @@ static bool show_grants_host_span_equals(
     const struct mylite_sql_source_span *span,
     const char *expected
 ) {
+    if (span == NULL) {
+        return expected != NULL && strcmp(expected, "%") == 0;
+    }
     return show_grants_quoted_span_text_matches(span, 1U, expected);
 }
 
@@ -765,6 +848,7 @@ static bool show_grants_quoted_span_text_matches(
 static int copy_show_grants_account_part(
     const struct mylite_sql_source_span *span,
     bool skip_at,
+    const char *default_text,
     char *buffer,
     size_t buffer_size
 ) {
@@ -777,7 +861,13 @@ static int copy_show_grants_account_part(
         return MYLITE_NOMEM;
     }
     buffer[0] = '\0';
-    if (span == NULL || span->text == NULL || span->length <= offset) {
+    if (span == NULL || span->text == NULL) {
+        if (default_text != NULL) {
+            (void)snprintf(buffer, buffer_size, "%s", default_text);
+        }
+        return MYLITE_OK;
+    }
+    if (span->length <= offset) {
         return MYLITE_OK;
     }
 

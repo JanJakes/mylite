@@ -1817,15 +1817,51 @@ show_processlist_statement(A) ::= SHOW(S) FULL PROCESSLIST(P). {
 show_grants_statement(A) ::= SHOW(S) GRANTS(G). {
     A = mylite_sql_parser_make_show_grants_statement(state, S, G);
 }
-show_grants_statement(A) ::= SHOW(S) GRANTS FOR CURRENT_USER(C). {
-    A = mylite_sql_parser_make_show_grants_statement(state, S, C);
+show_grants_statement(A) ::= SHOW(S) GRANTS FOR show_grants_target(T)
+                              show_grants_using_opt(R). {
+    A = mylite_sql_parser_make_show_grants_for_target_statement(state, S, T, R);
 }
-show_grants_statement(A) ::= SHOW(S) GRANTS FOR CURRENT_USER LPAREN RPAREN(R). {
-    A = mylite_sql_parser_make_show_grants_statement(state, S, R);
+
+show_grants_using_opt(A) ::= . {
+    A = NULL;
 }
-show_grants_statement(A) ::= SHOW(S) GRANTS FOR STRING(U) user_variable(H). {
-    A = mylite_sql_parser_make_show_grants_for_account_statement(
-        state, S, mylite_sql_parser_make_literal(state, U, MYLITE_SQL_AST_LITERAL_STRING), H);
+show_grants_using_opt(A) ::= USING show_grants_role_list(R). {
+    A = R;
+}
+
+show_grants_target(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_current_user_keyword(state, T);
+}
+show_grants_target(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_current_user_show_grants_target(state, T, R);
+}
+show_grants_target(A) ::= show_grants_account_name(N). {
+    A = N;
+}
+
+show_grants_role_list(A) ::= show_grants_role_name(R). {
+    A = mylite_sql_parser_make_show_grants_role_list(state, R);
+}
+show_grants_role_list(A) ::= show_grants_role_list(L) COMMA show_grants_role_name(R). {
+    A = mylite_sql_parser_append_show_grants_role(state, L, R);
+}
+
+show_grants_role_name(A) ::= show_grants_account_name(N). {
+    A = N;
+}
+
+show_grants_account_name(A) ::= show_grants_account_user(U). {
+    A = mylite_sql_parser_make_show_grants_account(state, U, NULL);
+}
+show_grants_account_name(A) ::= show_grants_account_user(U) user_variable(H). {
+    A = mylite_sql_parser_make_show_grants_account(state, U, H);
+}
+
+show_grants_account_user(A) ::= identifier(U). {
+    A = U;
+}
+show_grants_account_user(A) ::= STRING(U). {
+    A = mylite_sql_parser_make_literal(state, U, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 show_warnings_statement(A) ::= SHOW(S) WARNINGS(W) limit_clause_opt(L). {

@@ -114,9 +114,9 @@ e_acute_65=$(repeat_text "$e_acute" 65)
 
 expect_output \
     "uninitialized variables" \
-    "NULL	NULL	0	0	0" \
+    "NULL	NULL	NULL	NULL	NULL	0	0	0" \
     "SET @reset_diagnostics = NULL;
-     SELECT @missing_a, @Missing_A, @@warning_count, @@error_count, ROW_COUNT();" \
+     SELECT @missing_a, @Missing_A, @, @'', @\`\`, @@warning_count, @@error_count, ROW_COUNT();" \
     "$DATABASE"
 
 expect_output \
@@ -239,6 +239,30 @@ expect_error \
     42000 \
     "You have an error in your SQL syntax" \
     "SET @d = DEFAULT;" \
+    "$DATABASE"
+
+expect_error \
+    "empty bare user variable assignment" \
+    3061 \
+    42000 \
+    "User variable name '' is illegal" \
+    "SET @ = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "empty quoted user variable assignment" \
+    3061 \
+    42000 \
+    "User variable name '' is illegal" \
+    "SET @'' = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "empty user variable assignment expression" \
+    3061 \
+    42000 \
+    "User variable name '' is illegal" \
+    "SELECT @ := 1;" \
     "$DATABASE"
 
 expect_output_ignore_stderr \

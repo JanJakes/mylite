@@ -4233,33 +4233,38 @@ static int copy_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 );
 static int copy_unquoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 );
 static int copy_quoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char quote,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 );
 static int copy_string_quoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 );
 static int copy_identifier_quoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char quote,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 );
 static int append_user_variable_name_byte(
     struct mylite_db *database,
@@ -8404,7 +8409,18 @@ static int execute_show_grants_statement(
 );
 static bool show_grants_statement_targets_embedded_root(const struct mylite_sql_ast_node *statement
 );
+static const struct mylite_sql_ast_node *show_grants_statement_target(
+    const struct mylite_sql_ast_node *statement
+);
+static const struct mylite_sql_ast_node *show_grants_statement_role_list(
+    const struct mylite_sql_ast_node *statement
+);
+static bool show_grants_target_is_embedded_root(const struct mylite_sql_ast_node *target);
 static int set_show_grants_no_such_grant_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static int set_show_grants_role_not_granted_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 );
@@ -8424,6 +8440,7 @@ static bool show_grants_quoted_span_text_matches(
 static int copy_show_grants_account_part(
     const struct mylite_sql_source_span *span,
     bool skip_at,
+    const char *default_text,
     char *buffer,
     size_t buffer_size
 );

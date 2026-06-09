@@ -501,7 +501,7 @@ static int set_session_user_variable(
     const char *source_value = value == NULL ? NULL : value->value;
     size_t source_size = 0U;
     char *owned_value = NULL;
-    int rc = copy_user_variable_name(database, target, name, sizeof(name));
+    int rc = copy_user_variable_name(database, target, name, sizeof(name), false);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -556,7 +556,7 @@ static int session_user_variable_value(
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
-    rc = copy_user_variable_name(database, node, name, sizeof(name));
+    rc = copy_user_variable_name(database, node, name, sizeof(name), true);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -584,7 +584,7 @@ static int session_user_variable_value_kind(
         return MYLITE_MISUSE;
     }
     *out_value_kind = MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
-    rc = copy_user_variable_name(database, node, name, sizeof(name));
+    rc = copy_user_variable_name(database, node, name, sizeof(name), true);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -601,7 +601,8 @@ static int copy_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 ) {
     const struct mylite_sql_source_span *span = node == NULL ? NULL : &node->span;
     char quote = '\0';
@@ -612,15 +613,27 @@ static int copy_user_variable_name(
     }
     buffer[0] = '\0';
     if (node == NULL || node->kind != MYLITE_SQL_AST_USER_VARIABLE || span == NULL ||
-        span->text == NULL || span->length < 2U || span->text[0] != '@') {
+        span->text == NULL || span->length == 0U || span->text[0] != '@') {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    if (span->length == 1U) {
+        return allow_empty_name ? MYLITE_OK
+                                : set_illegal_user_variable_name_error(database, "", 0U);
+    }
     quote = span->text[1];
     if (quote == '\'' || quote == '"' || quote == '`') {
-        rc = copy_quoted_user_variable_name(database, span, quote, buffer, buffer_size);
+        rc = copy_quoted_user_variable_name(
+            database,
+            span,
+            quote,
+            buffer,
+            buffer_size,
+            allow_empty_name
+        );
     } else {
-        rc = copy_unquoted_user_variable_name(database, span, buffer, buffer_size);
+        rc =
+            copy_unquoted_user_variable_name(database, span, buffer, buffer_size, allow_empty_name);
     }
     if (rc == MYLITE_OK) {
         fold_user_variable_name(buffer);
@@ -632,16 +645,21 @@ static int copy_unquoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 ) {
     size_t name_length = span == NULL ? 0U : span->length - 1U;
 
-    if (span == NULL || span->text == NULL || name_length == 0U || name_length >= buffer_size) {
+    if (span == NULL || span->text == NULL || name_length >= buffer_size) {
         return set_illegal_user_variable_name_error(
             database,
             span == NULL || span->text == NULL ? "" : span->text + 1U,
             name_length
         );
+    }
+    if (name_length == 0U) {
+        return allow_empty_name ? MYLITE_OK
+                                : set_illegal_user_variable_name_error(database, "", 0U);
     }
     memcpy(buffer, span->text + 1U, name_length);
     buffer[name_length] = '\0';
@@ -653,22 +671,37 @@ static int copy_quoted_user_variable_name(
     const struct mylite_sql_source_span *span,
     char quote,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 ) {
     if (span == NULL || span->text == NULL || span->length < 3U) {
         return set_illegal_user_variable_name_error(database, "", 0U);
     }
     if (quote == '\'' || quote == '"') {
-        return copy_string_quoted_user_variable_name(database, span, buffer, buffer_size);
+        return copy_string_quoted_user_variable_name(
+            database,
+            span,
+            buffer,
+            buffer_size,
+            allow_empty_name
+        );
     }
-    return copy_identifier_quoted_user_variable_name(database, span, quote, buffer, buffer_size);
+    return copy_identifier_quoted_user_variable_name(
+        database,
+        span,
+        quote,
+        buffer,
+        buffer_size,
+        allow_empty_name
+    );
 }
 
 static int copy_string_quoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 ) {
     char *decoded = NULL;
     size_t decoded_length = 0U;
@@ -689,10 +722,15 @@ static int copy_string_quoted_user_variable_name(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (decoded_length == 0U || decoded_length >= buffer_size) {
+    if (decoded_length >= buffer_size) {
         rc = set_illegal_user_variable_name_error(database, decoded, decoded_length);
         free(decoded);
         return rc;
+    }
+    if (decoded_length == 0U) {
+        free(decoded);
+        return allow_empty_name ? MYLITE_OK
+                                : set_illegal_user_variable_name_error(database, "", 0U);
     }
     memcpy(buffer, decoded, decoded_length);
     buffer[decoded_length] = '\0';
@@ -706,7 +744,8 @@ static int copy_identifier_quoted_user_variable_name(
     const struct mylite_sql_source_span *span,
     char quote,
     char *buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool allow_empty_name
 ) {
     size_t name_length = 0U;
 
@@ -729,8 +768,12 @@ static int copy_identifier_quoted_user_variable_name(
                 ++index;
                 continue;
             }
-            if (name_length == 0U || index + 1U != span->length) {
+            if (index + 1U != span->length) {
                 return set_illegal_user_variable_name_error(database, buffer, name_length);
+            }
+            if (name_length == 0U) {
+                return allow_empty_name ? MYLITE_OK
+                                        : set_illegal_user_variable_name_error(database, "", 0U);
             }
             buffer[name_length] = '\0';
             return validate_user_variable_name(database, buffer, name_length);

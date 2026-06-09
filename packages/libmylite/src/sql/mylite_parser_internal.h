@@ -966,11 +966,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_token end_token
 );
-struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_for_account_statement(
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_for_target_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_ast_node *role_list
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_account(
+    struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *user,
     struct mylite_sql_ast_node *host
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_show_grants_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_user_token,
+    struct mylite_sql_token end_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_role_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *role
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_show_grants_role(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *role
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(
     struct mylite_sql_parser_state *state,

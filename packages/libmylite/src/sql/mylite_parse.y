@@ -1210,13 +1210,13 @@ create_temporary_table_select_statement(A) ::=
 }
 create_view_statement(A) ::=
     CREATE(C) create_or_replace_opt(R) view_option_list_opt(O) VIEW table_name(T)
-    view_column_list_opt(L) AS select_statement(S) view_check_option_opt(K). {
+    view_column_list_opt(L) AS view_query_expression(S) view_check_option_opt(K). {
     A = mylite_sql_parser_make_create_view_statement(state, C, R, O, T, L, K, S);
 }
 
 alter_view_statement(A) ::=
     ALTER(C) view_option_list_opt(O) VIEW table_name(T) view_column_list_opt(L)
-    AS select_statement(S) view_check_option_opt(K). {
+    AS view_query_expression(S) view_check_option_opt(K). {
     A = mylite_sql_parser_make_alter_view_statement(state, C, O, T, L, K, S);
 }
 
@@ -4986,6 +4986,25 @@ query_compound_statement(A) ::= parenthesized_query_expression(S) union_term_lis
     A = mylite_sql_parser_make_compound_select_statement(state, S, T);
 }
 
+view_query_expression(A) ::= select_statement(S). {
+    A = S;
+}
+view_query_expression(A) ::= compound_select_statement(S). {
+    A = S;
+}
+view_query_expression(A) ::= query_compound_statement(S). {
+    A = S;
+}
+view_query_expression(A) ::= parenthesized_query_expression(S). {
+    A = S;
+}
+view_query_expression(A) ::= table_statement(S). {
+    A = S;
+}
+view_query_expression(A) ::= values_statement(S). {
+    A = S;
+}
+
 parenthesized_query_expression(A) ::=
     LPAREN(L) query_expression_body(S) RPAREN(R)
     query_expression_order_clause_opt(O) query_expression_limit_clause_opt(LM). {
@@ -5095,6 +5114,10 @@ derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) derived_tabl
 }
 derived_table_source(A) ::=
     LPAREN(L) compound_select_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
+    A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
+}
+derived_table_source(A) ::=
+    LPAREN(L) query_compound_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
 derived_table_source(A) ::= LPAREN(L) table_statement(S) RPAREN(R) derived_table_alias_opt(AL). {

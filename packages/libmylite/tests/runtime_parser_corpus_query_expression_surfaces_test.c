@@ -116,11 +116,40 @@ static int test_query_expression_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "CREATE VIEW v_union AS SELECT id FROM t1 UNION SELECT id FROM t2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CREATE VIEW supports only a single SELECT statement",
+        }
+    );
+    failures += execute_ok(database, "CREATE VIEW v_table AS TABLE t1");
+    failures += execute_ok(database, "CREATE VIEW v_plain AS SELECT id FROM t1");
+    failures += execute_error(
+        database,
+        "ALTER VIEW v_plain AS VALUES ROW(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CREATE VIEW supports only a single SELECT statement",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT * FROM (VALUES ROW(1)) AS dt(a)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "derived tables support only SELECT",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM (VALUES ROW(1) UNION SELECT 2) AS dt(a)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
     failures += execute_error(

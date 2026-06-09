@@ -2,6 +2,7 @@
 
 static int test_parenthesized_query_expressions(void);
 static int test_query_block_set_operands(void);
+static int test_view_query_expression_bodies(void);
 static int test_derived_values_aliases(void);
 static int test_natural_and_using_joins(void);
 static int test_window_null_treatment(void);
@@ -17,6 +18,7 @@ int main(void) {
 
     failures += test_parenthesized_query_expressions();
     failures += test_query_block_set_operands();
+    failures += test_view_query_expression_bodies();
     failures += test_derived_values_aliases();
     failures += test_natural_and_using_joins();
     failures += test_window_null_treatment();
@@ -97,6 +99,55 @@ static int test_query_block_set_operands(void) {
     return failures;
 }
 
+static int test_view_query_expression_bodies(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *view_body = NULL;
+    int failures = 0;
+
+    failures += parse_ok("CREATE VIEW v AS SELECT 1 UNION SELECT 2");
+    failures += parse_ok("CREATE ALGORITHM=TEMPTABLE VIEW v AS (SELECT 1 UNION SELECT 2)");
+    failures += parse_ok("CREATE VIEW v AS TABLE t");
+    failures += parse_ok("ALTER VIEW v AS VALUES ROW(1), ROW(2)");
+
+    failures += parser_test_parse_sql(
+        "CREATE VIEW v AS SELECT 1 UNION SELECT 2",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    view_body = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_VIEW_STATEMENT,
+        "compound create view statement"
+    );
+    failures += parser_test_expect_node(
+        view_body,
+        MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT,
+        "compound create view body"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("ALTER VIEW v AS VALUES ROW(1)", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    view_body = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_VIEW_STATEMENT,
+        "VALUES alter view statement"
+    );
+    failures += parser_test_expect_node(
+        view_body,
+        MYLITE_SQL_AST_VALUES_STATEMENT,
+        "VALUES alter view body"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_derived_values_aliases(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -106,6 +157,7 @@ static int test_derived_values_aliases(void) {
     failures += parse_ok("SELECT * FROM (VALUES ROW(1, 10), ROW(2, 20)) AS dt(a,b)");
     failures += parse_ok("SELECT * FROM (TABLE t) dt");
     failures += parse_ok("SELECT * FROM ((SELECT 1)) AS dt(a)");
+    failures += parse_ok("SELECT * FROM (VALUES ROW(1) UNION SELECT 2) AS dt(a)");
 
     failures += parser_test_parse_sql(
         "SELECT * FROM (VALUES ROW(1, 10)) AS dt(a,b)",

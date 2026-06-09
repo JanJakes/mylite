@@ -114,6 +114,24 @@ expect_output \
     "USE ${DATABASE}; SELECT * FROM (VALUES ROW(1, 10), ROW(2, 20)) AS dt(a,b) "\
 "ORDER BY a;"
 
+expect_success \
+    "compound create view body" \
+    "USE ${DATABASE}; CREATE VIEW v_union AS SELECT id FROM t1 UNION SELECT id FROM t2; "\
+"DROP VIEW v_union;"
+
+expect_success \
+    "table create view body" \
+    "USE ${DATABASE}; CREATE VIEW v_table AS TABLE t1; DROP VIEW v_table;"
+
+expect_success \
+    "values create view body" \
+    "USE ${DATABASE}; CREATE VIEW v_values AS VALUES ROW(1), ROW(2); DROP VIEW v_values;"
+
+expect_success \
+    "values alter view body" \
+    "USE ${DATABASE}; CREATE VIEW v_alter AS SELECT id FROM t1; "\
+"ALTER VIEW v_alter AS VALUES ROW(1); DROP VIEW v_alter;"
+
 expect_output \
     "join using coalesces join column in wildcard output" \
     "100|1|10|1|30

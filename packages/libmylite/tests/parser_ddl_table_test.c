@@ -1561,6 +1561,24 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "ALTER TABLE app.simple_lifecycle RENAME TO archive.renamed_lifecycle, "
+        "ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT,
+        "alter table rename algorithm statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter rename algorithm option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "ALTER TABLE simple_lifecycle RENAME renamed_lifecycle;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2263,6 +2281,24 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "ALTER TABLE app.simple_lifecycle ALTER COLUMN old_col SET DEFAULT +8, "
+        "ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT,
+        "alter table set default algorithm statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter set default algorithm option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "ALTER TABLE simple_lifecycle ALTER old_col SET DEFAULT NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2305,6 +2341,19 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "ALTER TABLE app.simple_lifecycle ALTER COLUMN old_col DROP DEFAULT, "
+        "ALGORITHM=INSTANT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT,
+        "alter drop default algorithm option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "ALTER TABLE simple_lifecycle ALTER old_col DROP DEFAULT;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2343,6 +2392,18 @@ static int test_table_lifecycle_statements(void) {
         statement,
         MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE,
         "alter column invisible payload"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE app.simple_lifecycle ALTER COLUMN old_col SET INVISIBLE, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter column visibility lock option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -5725,6 +5786,27 @@ static int test_alter_table_default_charset_collation_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "ALTER TABLE old_name DEFAULT CHARSET=utf8mb4, ALGORITHM=INPLACE, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT,
+        "alter default charset option tail statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter default charset algorithm option"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter default charset lock option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("ALTER TABLE old_name ENGINE=InnoDB;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
@@ -5850,20 +5932,73 @@ static int test_alter_table_default_charset_collation_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4, ALGORITHM=COPY;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_CONVERT_CHARACTER_SET_STATEMENT,
+        "alter convert charset option tail statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter convert charset algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name ALGORITHM=INSTANT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        "alter actionless algorithm utility placeholder"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("ALTER TABLE old_name LOCK=DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        "alter actionless lock utility placeholder"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE old_name LOCK=SHARED, ALGORITHM=COPY, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        "alter actionless repeated options utility placeholder"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE old_name ALGORITHM=BOGUS;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "ALTER TABLE old_name LOCK=DEFAULT;",
+        "ALTER TABLE old_name LOCK=BOGUS;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4 LOCK=NONE;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

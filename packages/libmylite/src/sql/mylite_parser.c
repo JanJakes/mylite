@@ -118,6 +118,35 @@ static bool append_placeholder_statement_token(
     size_t *token_count,
     size_t *token_capacity
 );
+static enum mylite_sql_parse_status try_parse_alter_table_algorithm_lock_tail_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static bool scan_alter_table_algorithm_lock_tail(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_option_index,
+    size_t *out_prefix_length,
+    bool *out_actionless
+);
+static size_t alter_table_placeholder_name_end_index(const struct placeholder_statement_scan *scan);
+static bool parse_alter_table_algorithm_lock_options(
+    const struct placeholder_statement_scan *scan,
+    size_t option_index,
+    struct mylite_sql_alter_table_options *out_options
+);
+static bool parse_alter_table_algorithm_lock_option(
+    const struct placeholder_statement_scan *scan,
+    size_t *index,
+    struct mylite_sql_alter_table_options *options
+);
+static bool alter_table_statement_accepts_prefix_option_tail(
+    const struct mylite_sql_ast_node *statement
+);
+static bool alter_table_algorithm_lock_options_are_known(
+    struct mylite_sql_alter_table_options options
+);
 static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
@@ -165,6 +194,8 @@ static bool create_table_select_scan_has_balanced_parentheses(
 );
 static bool token_is_left_paren(const struct mylite_sql_token *token);
 static bool token_is_right_paren(const struct mylite_sql_token *token);
+static bool token_is_comma(const struct mylite_sql_token *token);
+static bool token_is_equal_sign(const struct mylite_sql_token *token);
 static enum placeholder_statement_kind classify_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -504,6 +535,12 @@ static enum mylite_sql_parse_status try_parse_placeholder_statement(
         return status;
     }
     scan.tokens = tokens;
+    status =
+        try_parse_alter_table_algorithm_lock_tail_statement(config, result, &scan, out_handled);
+    if (*out_handled) {
+        free(tokens);
+        return status;
+    }
     status = try_parse_create_table_partition_statement(config, result, &scan, out_handled);
     if (*out_handled) {
         free(tokens);
@@ -616,6 +653,245 @@ static bool append_placeholder_statement_token(
     (*tokens)[*token_count] = *token;
     ++*token_count;
     return true;
+}
+
+static enum mylite_sql_parse_status try_parse_alter_table_algorithm_lock_tail_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    struct mylite_sql_alter_table_options options = mylite_sql_parser_empty_alter_table_options();
+    struct mylite_sql_parse_result prefix_result;
+    struct mylite_sql_ast_node *statement = NULL;
+    size_t option_index = 0U;
+    size_t prefix_length = 0U;
+    bool actionless = false;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !scan_alter_table_algorithm_lock_tail(scan, &option_index, &prefix_length, &actionless) ||
+        !parse_alter_table_algorithm_lock_options(scan, option_index, &options)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    if (actionless) {
+        if (!alter_table_algorithm_lock_options_are_known(options)) {
+            return MYLITE_SQL_PARSE_OK;
+        }
+        *out_handled = true;
+        return finish_placeholder_statement_parse(
+            config,
+            result,
+            PLACEHOLDER_STATEMENT_UTILITY_NOOP
+        );
+    }
+
+    memset(&prefix_result, 0, sizeof(prefix_result));
+    status = parse_sql_with_lemon(
+        (struct mylite_sql_parse_config){
+            .input = config.input,
+            .length = prefix_length,
+            .modes = config.modes,
+        },
+        &prefix_result
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    statement = parser_child_at(prefix_result.root, 0U);
+    if (!alter_table_statement_accepts_prefix_option_tail(statement)) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    apply_alter_table_options(statement, options);
+    mylite_sql_ast_deinit(&result->ast);
+    *result = prefix_result;
+    *out_handled = true;
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool scan_alter_table_algorithm_lock_tail(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_option_index,
+    size_t *out_prefix_length,
+    bool *out_actionless
+) {
+    size_t table_name_end = 0U;
+    int paren_depth = 0;
+
+    if (scan == NULL || out_option_index == NULL || out_prefix_length == NULL ||
+        out_actionless == NULL || scan->token_count < 4U ||
+        !placeholder_scan_token_text_equals(scan, 0U, "ALTER") ||
+        !placeholder_scan_token_text_equals(scan, 1U, "TABLE")) {
+        return false;
+    }
+
+    table_name_end = alter_table_placeholder_name_end_index(scan);
+    if (table_name_end >= scan->token_count) {
+        return false;
+    }
+
+    for (size_t index = table_name_end; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0 || (!placeholder_scan_token_text_equals(scan, index, "ALGORITHM") &&
+                                 !placeholder_scan_token_text_equals(scan, index, "LOCK"))) {
+            continue;
+        }
+        if (index == table_name_end) {
+            *out_option_index = index;
+            *out_prefix_length = 0U;
+            *out_actionless = true;
+            return true;
+        }
+        if (index > 0U && token_is_comma(&scan->tokens[index - 1U])) {
+            *out_option_index = index;
+            *out_prefix_length = scan->tokens[index - 1U].offset;
+            *out_actionless = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+static size_t alter_table_placeholder_name_end_index(const struct placeholder_statement_scan *scan
+) {
+    size_t index = 2U;
+
+    if (scan == NULL) {
+        return index;
+    }
+    if (index < scan->token_count) {
+        ++index;
+    }
+    while (index + 1U < scan->token_count && placeholder_scan_token_text_equals(scan, index, ".")) {
+        index += 2U;
+    }
+    return index;
+}
+
+static bool parse_alter_table_algorithm_lock_options(
+    const struct placeholder_statement_scan *scan,
+    size_t option_index,
+    struct mylite_sql_alter_table_options *out_options
+) {
+    struct mylite_sql_alter_table_options options = mylite_sql_parser_empty_alter_table_options();
+    size_t index = option_index;
+
+    if (scan == NULL || out_options == NULL || index >= scan->token_count) {
+        return false;
+    }
+
+    for (;;) {
+        if (!parse_alter_table_algorithm_lock_option(scan, &index, &options)) {
+            return false;
+        }
+        if (index == scan->token_count) {
+            *out_options = options;
+            return true;
+        }
+        if (!token_is_comma(&scan->tokens[index])) {
+            return false;
+        }
+        ++index;
+        if (index == scan->token_count) {
+            return false;
+        }
+    }
+}
+
+static bool parse_alter_table_algorithm_lock_option(
+    const struct placeholder_statement_scan *scan,
+    size_t *index,
+    struct mylite_sql_alter_table_options *options
+) {
+    struct mylite_sql_alter_table_options option;
+    const struct mylite_sql_token *option_token = NULL;
+    const struct mylite_sql_token *value_token = NULL;
+    bool option_is_algorithm = false;
+
+    if (scan == NULL || index == NULL || options == NULL || *index >= scan->token_count) {
+        return false;
+    }
+    option_token = &scan->tokens[*index];
+    option_is_algorithm = placeholder_scan_token_text_equals(scan, *index, "ALGORITHM");
+    if (!option_is_algorithm && !placeholder_scan_token_text_equals(scan, *index, "LOCK")) {
+        return false;
+    }
+    ++*index;
+    if (*index < scan->token_count && token_is_equal_sign(&scan->tokens[*index])) {
+        ++*index;
+    }
+    if (*index >= scan->token_count) {
+        return false;
+    }
+    value_token = &scan->tokens[*index];
+    if (!placeholder_scan_token_is_identifier_like(scan, *index) &&
+        !placeholder_scan_token_text_equals(scan, *index, "DEFAULT") &&
+        !placeholder_scan_token_text_equals(scan, *index, "NONE")) {
+        return false;
+    }
+
+    if (option_is_algorithm) {
+        option = mylite_sql_parser_make_alter_table_algorithm_option(
+            *option_token,
+            mylite_sql_parser_make_alter_algorithm_value(*value_token)
+        );
+    } else {
+        option = mylite_sql_parser_make_alter_table_lock_option(
+            *option_token,
+            mylite_sql_parser_make_alter_lock_value(*value_token)
+        );
+    }
+    *options = mylite_sql_parser_append_alter_table_option(*options, option);
+    ++*index;
+    return true;
+}
+
+static bool alter_table_statement_accepts_prefix_option_tail(
+    const struct mylite_sql_ast_node *statement
+) {
+    if (statement == NULL) {
+        return false;
+    }
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CONVERT_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool alter_table_algorithm_lock_options_are_known(
+    struct mylite_sql_alter_table_options options
+) {
+    return options.algorithm != MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN &&
+           options.lock != MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN;
 }
 
 static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
@@ -899,6 +1175,18 @@ static bool token_is_left_paren(const struct mylite_sql_token *token) {
 static bool token_is_right_paren(const struct mylite_sql_token *token) {
     return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
            token->text != NULL && token->text[0] == ')';
+}
+
+static bool token_is_comma(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == ',';
+}
+
+static bool token_is_equal_sign(const struct mylite_sql_token *token) {
+    return (token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+            token->text != NULL && token->text[0] == '=') ||
+           (token != NULL && token->kind == MYLITE_SQL_TOKEN_OPERATOR &&
+            token->operator_kind == MYLITE_SQL_OPERATOR_EQUAL);
 }
 
 static enum placeholder_statement_kind classify_placeholder_statement(

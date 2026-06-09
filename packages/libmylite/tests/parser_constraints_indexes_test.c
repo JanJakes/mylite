@@ -2546,6 +2546,23 @@ static int test_alter_table_check_constraint_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "ALTER TABLE app.checked ADD CONSTRAINT positive CHECK (a > 0), ALGORITHM=COPY;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT,
+        "alter add check algorithm statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter add check algorithm option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "ALTER TABLE checked DROP CHECK positive;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2561,6 +2578,23 @@ static int test_alter_table_check_constraint_statements(void) {
         parser_test_child_at(statement, 1U),
         "positive",
         "alter drop check name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE checked DROP CHECK positive, ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT,
+        "alter drop check algorithm statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter drop check algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2593,6 +2627,23 @@ static int test_alter_table_check_constraint_statements(void) {
         parser_test_child_at(statement, 2U),
         MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED,
         "alter check enforced"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE checked ALTER CHECK positive ENFORCED, ALGORITHM=COPY;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT,
+        "alter check algorithm statement"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter check algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 

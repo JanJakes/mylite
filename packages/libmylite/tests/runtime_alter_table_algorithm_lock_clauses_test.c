@@ -42,6 +42,7 @@ static int test_algorithm_lock_diagnostics(void);
 static int test_algorithm_lock_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int execute_utility_noop(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
@@ -381,9 +382,20 @@ static int test_algorithm_lock_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
+    failures += execute_utility_noop(database, "ALTER TABLE bad_algorithm ALGORITHM=INSTANT");
+    failures += execute_utility_noop(database, "ALTER TABLE bad_algorithm LOCK=NONE");
     failures += execute_error(
         database,
-        "ALTER TABLE bad_algorithm ALGORITHM=INSTANT",
+        "ALTER TABLE bad_algorithm ALGORITHM=BOGUS",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE bad_algorithm LOCK=BOGUS",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -468,6 +480,19 @@ static int execute_statement_ok(mylite_db *database, const char *sql, int64_t af
     failures += expect_size(mylite_result_row_count(result), 0U, sql);
     failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
     failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int execute_utility_noop(mylite_db *database, const char *sql) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, sql);
+    failures += expect_size(mylite_result_warning_count(result), 1U, sql);
     mylite_result_free(result);
 
     return failures;

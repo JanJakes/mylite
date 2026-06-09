@@ -612,21 +612,16 @@ static int test_failure_diagnostics_and_unwinding(void) {
             .message_part = "Incorrect integer value: 'abc' for column 'i' at row 1",
         }
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO numbers (i, nn) VALUES (1 + 2, 8)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures += execute_ok(database, "INSERT INTO numbers (i, nn) VALUES (1 + 2, 8)", &result);
+    failures += expect_dml_result(result, 1, "constant arithmetic INSERT result");
+    mylite_result_free(result);
+    result = NULL;
 
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_physical_row_count(sqlite, table.physical_name, &physical_rows);
     }
-    failures += expect_int(physical_rows, 1, "failed semantic inserts leave row count");
+    failures += expect_int(physical_rows, 2, "semantic inserts leave row count");
 
     failures += execute_error(
         database,
@@ -641,7 +636,7 @@ static int test_failure_diagnostics_and_unwinding(void) {
     if (sqlite != NULL) {
         failures += query_physical_row_count(sqlite, table.physical_name, &physical_rows);
     }
-    failures += expect_int(physical_rows, 1, "conversion failure is atomic");
+    failures += expect_int(physical_rows, 2, "conversion failure is atomic");
 
     if (sqlite != NULL) {
         failures += create_blocking_insert_trigger(sqlite, table.physical_name);
@@ -659,7 +654,7 @@ static int test_failure_diagnostics_and_unwinding(void) {
     if (sqlite != NULL) {
         failures += query_physical_row_count(sqlite, table.physical_name, &physical_rows);
     }
-    failures += expect_int(physical_rows, 1, "physical failure rolls back inserted rows");
+    failures += expect_int(physical_rows, 2, "physical failure rolls back inserted rows");
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {

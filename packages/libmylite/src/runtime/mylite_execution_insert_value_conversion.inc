@@ -120,6 +120,7 @@ static int convert_dml_constant_scalar_value(
     bool allow_string_truncation_adjustment,
     bool warn_on_trailing_space_truncation,
     bool auto_increment_null_generates,
+    bool allow_constant_arithmetic,
     bool *out_handled,
     struct planned_value *out_value
 ) {
@@ -131,7 +132,7 @@ static int convert_dml_constant_scalar_value(
     }
     *out_handled = false;
     value_node = unwrap_parenthesized_expression(value_node);
-    if (!dml_value_is_constant_scalar_expression(value_node)) {
+    if (!dml_value_is_constant_scalar_expression(value_node, allow_constant_arithmetic)) {
         return MYLITE_OK;
     }
     *out_handled = true;
@@ -143,8 +144,7 @@ static int convert_dml_constant_scalar_value(
     if (rc == MYLITE_OK && cell.value == NULL) {
         if (auto_increment_null_generates && column_descriptor_is_auto_increment(column)) {
             planned_value_deinit(out_value);
-            *out_value =
-                (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+            *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         } else {
             rc = convert_null_insert_value(database, column, ignore_errors, out_value);
         }
@@ -167,11 +167,18 @@ static int convert_dml_constant_scalar_value(
 }
 
 static bool dml_value_is_constant_scalar_expression(
-    const struct mylite_sql_ast_node *value_node
+    const struct mylite_sql_ast_node *value_node,
+    bool allow_constant_arithmetic
 ) {
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL) {
         return false;
+    }
+    if (dml_scalar_expression_contains_unsupported_source(value_node)) {
+        return false;
+    }
+    if (allow_constant_arithmetic && dml_scalar_expression_is_constant_arithmetic(value_node)) {
+        return true;
     }
     switch (value_node->kind) {
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
@@ -185,13 +192,109 @@ static bool dml_value_is_constant_scalar_expression(
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
     case MYLITE_SQL_AST_REPEAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+    case MYLITE_SQL_AST_IF_FUNCTION:
+    case MYLITE_SQL_AST_IFNULL_FUNCTION:
+    case MYLITE_SQL_AST_NULLIF_FUNCTION:
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
+    case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
+    case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_ABS_FUNCTION:
+    case MYLITE_SQL_AST_FLOOR_FUNCTION:
+    case MYLITE_SQL_AST_ROUND_FUNCTION:
+    case MYLITE_SQL_AST_ACOS_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
+    case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
         return true;
     default:
         return false;
     }
+}
+
+static bool dml_scalar_expression_is_constant_arithmetic(
+    const struct mylite_sql_ast_node *value_node
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_MULTIPLY) {
+        return false;
+    }
+    return is_scalar_arithmetic_projection_expression(value_node);
+}
+
+static bool dml_scalar_expression_contains_unsupported_source(
+    const struct mylite_sql_ast_node *value_node
+) {
+    size_t child_count = 0U;
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL) {
+        return false;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY ||
+        value_node->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        value_node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER ||
+        value_node->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return true;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(value_node);
+    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+        const struct mylite_sql_ast_node *child = child_at(value_node, child_index);
+
+        if (dml_scalar_expression_child_is_syntax_metadata(value_node, child_index, child)) {
+            continue;
+        }
+        if (dml_scalar_expression_contains_unsupported_source(child)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool dml_scalar_expression_child_is_syntax_metadata(
+    const struct mylite_sql_ast_node *value_node,
+    size_t child_index,
+    const struct mylite_sql_ast_node *child
+) {
+    if (value_node == NULL || child == NULL) {
+        return false;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION &&
+        child_index == 1U) {
+        return true;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION && child_index == 1U) {
+        return true;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_DATE_ADD_FUNCTION &&
+        child == mylite_execution_date_interval_unit_node(value_node)) {
+        return true;
+    }
+    return false;
 }
 
 static int convert_dml_scalar_cell_for_column(
@@ -432,19 +535,10 @@ static int convert_dml_scalar_cell_text_value(
         .row_number = row_number,
     };
     if (column_descriptor_is_char(column)) {
-        rc = convert_char_text(
-            database,
-            column,
-            &conversion,
-            allow_string_truncation_adjustment
-        );
+        rc = convert_char_text(database, column, &conversion, allow_string_truncation_adjustment);
     } else if (column_descriptor_is_varchar(column)) {
-        rc = convert_varchar_text(
-            database,
-            column,
-            &conversion,
-            allow_string_truncation_adjustment
-        );
+        rc =
+            convert_varchar_text(database, column, &conversion, allow_string_truncation_adjustment);
     } else {
         rc = convert_text_family_text(
             database,
@@ -652,6 +746,7 @@ static int convert_insert_value(
         allow_string_truncation_adjustment,
         false,
         true,
+        true,
         &handled,
         out_value
     );
@@ -671,8 +766,7 @@ static int convert_insert_value(
     );
 }
 
-static bool insert_value_is_unix_timestamp_arithmetic(
-    const struct mylite_sql_ast_node *value_node
+static bool insert_value_is_unix_timestamp_arithmetic(const struct mylite_sql_ast_node *value_node
 ) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;
@@ -1037,8 +1131,7 @@ static int format_insert_unix_timestamp_integer_text(
     return MYLITE_OK;
 }
 
-static bool insert_unix_timestamp_now_node_is_admitted(
-    const struct mylite_sql_ast_node *value_node
+static bool insert_unix_timestamp_now_node_is_admitted(const struct mylite_sql_ast_node *value_node
 ) {
     value_node = unwrap_parenthesized_expression(value_node);
     return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION &&
@@ -1344,6 +1437,7 @@ static int convert_auto_increment_insert_value(
             ignore_errors,
             dml_allows_string_truncation_adjustment(database, ignore_errors),
             false,
+            true,
             true,
             &handled,
             out_value

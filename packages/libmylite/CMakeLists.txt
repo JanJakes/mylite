@@ -4395,6 +4395,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_dml_constant_scalar_values_test)
 
+  add_executable(mylite_runtime_dml_scalar_expression_values_test
+    tests/runtime_dml_scalar_expression_values_test.c
+  )
+  target_link_libraries(mylite_runtime_dml_scalar_expression_values_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_dml_scalar_expression_values_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_dml_scalar_expression_values_test)
+
   add_executable(mylite_runtime_insert_on_duplicate_key_update_test
     tests/runtime_insert_on_duplicate_key_update_test.c
   )
@@ -6970,6 +6981,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.dml_constant_scalar_values
     COMMAND mylite_runtime_dml_constant_scalar_values_test
+  )
+  add_test(
+    NAME libmylite.runtime.dml_scalar_expression_values
+    COMMAND mylite_runtime_dml_scalar_expression_values_test
   )
   add_test(
     NAME libmylite.runtime.insert_on_duplicate_key_update

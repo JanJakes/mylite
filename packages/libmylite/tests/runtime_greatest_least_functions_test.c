@@ -481,7 +481,8 @@ static int test_greatest_least_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part =
+                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
         }
     );
 

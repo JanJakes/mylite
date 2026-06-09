@@ -18293,10 +18293,25 @@ static int convert_dml_constant_scalar_value(
     bool allow_string_truncation_adjustment,
     bool warn_on_trailing_space_truncation,
     bool auto_increment_null_generates,
+    bool allow_constant_arithmetic,
     bool *out_handled,
     struct planned_value *out_value
 );
-static bool dml_value_is_constant_scalar_expression(const struct mylite_sql_ast_node *value_node);
+static bool dml_value_is_constant_scalar_expression(
+    const struct mylite_sql_ast_node *value_node,
+    bool allow_constant_arithmetic
+);
+static bool dml_scalar_expression_is_constant_arithmetic(
+    const struct mylite_sql_ast_node *value_node
+);
+static bool dml_scalar_expression_contains_unsupported_source(
+    const struct mylite_sql_ast_node *value_node
+);
+static bool dml_scalar_expression_child_is_syntax_metadata(
+    const struct mylite_sql_ast_node *value_node,
+    size_t child_index,
+    const struct mylite_sql_ast_node *child
+);
 static int convert_dml_scalar_cell_for_column(
     struct mylite_db *database,
     const struct session_scalar_cell *cell,

@@ -1051,7 +1051,7 @@ static bool update_assignment_value_is_multi_constant_supported(
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return update_assignment_unary_value_is_multi_constant_supported(value_node);
     default:
-        return dml_value_is_constant_scalar_expression(value_node);
+        return dml_value_is_constant_scalar_expression(value_node, false);
     }
 }
 
@@ -1631,6 +1631,7 @@ static int convert_update_value_for_column(
         ignore_errors,
         dml_allows_string_truncation_adjustment(database, ignore_errors),
         true,
+        false,
         false,
         &handled,
         out_value

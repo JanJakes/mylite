@@ -303,7 +303,7 @@ static int test_insert_set_success_persistence_rename_and_drop(void) {
 
 static int test_insert_set_schema_resolution_and_diagnostics(void) {
     static const char *const qualified_values[] = {"1", "2"};
-    static const char *const empty_values[] = {NULL};
+    static const char *const scalar_expression_values[] = {"3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -467,15 +467,7 @@ static int test_insert_set_schema_resolution_and_diagnostics(void) {
             .message_part = "INSERT ... SET supports only unqualified assignment columns",
         }
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO numbers SET id = 1 + 2, nn = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
+    failures += expect_insert_ok(database, "INSERT INTO numbers SET id = 1 + 2, nn = 1");
     failures += execute_error(
         database,
         "INSERT INTO numbers SET id = 'abc', nn = 1",
@@ -499,10 +491,10 @@ static int test_insert_set_schema_resolution_and_diagnostics(void) {
         database,
         (struct expected_query){
             .sql = "SELECT id FROM numbers",
-            .values = empty_values,
+            .values = scalar_expression_values,
             .column_count = 1U,
-            .row_count = 0U,
-            .context = "failed insert set leaves no rows",
+            .row_count = 1U,
+            .context = "scalar expression insert set row",
         }
     );
 

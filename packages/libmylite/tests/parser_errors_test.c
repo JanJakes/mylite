@@ -1391,21 +1391,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "INSERT INTO t VALUES (1 + 2);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
         "INSERT INTO t VALUES (+TRUE);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "INSERT INTO t SET id = 1 + 2;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -1430,13 +1416,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "REPLACE INTO t VALUES (1 + 2);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -1549,13 +1528,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "REPLACE INTO t VALUES (ABS(1));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
         "REPLACE INTO t VALUES ((SELECT 1));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -1582,26 +1554,12 @@ static int test_syntax_errors(void) {
     failures += parser_test_parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "REPLACE INTO t SET id = 1 + 2;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
     failures +=
         parser_test_parse_sql("REPLACE INTO t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
         parser_test_parse_sql("REPLACE INTO t SET id = ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "REPLACE INTO t SET id = ABS(1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
